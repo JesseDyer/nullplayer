@@ -839,7 +839,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             classicFallback: { id, showOnly in
                 WindowManager.shared.showClassicHostedWindowForWinampModern(id, showOnly: showOnly)
             },
-            instanceDidMaterialize: { [weak self] instance in
+            instanceWillStartScripts: { [weak self] instance in
                 guard let self else { return }
                 viewsByContainer[instance.view.containerID] = instance.view
                 instance.view.surfaceToggleRequested = { [weak self] kind in

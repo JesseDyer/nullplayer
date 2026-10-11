@@ -17,7 +17,7 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
     private weak var componentHost: WinampModernComponentHost?
     private let skinScale: () -> CGFloat
     private let classicFallback: (WinampModernHostedWindowID, Bool) -> Void
-    private let instanceDidMaterialize: (MaterializedWindow) -> Void
+    private let instanceWillStartScripts: (MaterializedWindow) -> Void
     private let instanceWillTeardown: (MaterializedWindow) -> Void
     private let visibilityDidChange: (WinampModernHostedWindowID, Bool, NSRect) -> Void
     /// This window is now somewhere, and whatever the skin draws around it has to hear about it
@@ -38,7 +38,7 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
          componentHost: WinampModernComponentHost,
          skinScale: @escaping () -> CGFloat,
          classicFallback: @escaping (WinampModernHostedWindowID, Bool) -> Void,
-         instanceDidMaterialize: @escaping (MaterializedWindow) -> Void = { _ in },
+         instanceWillStartScripts: @escaping (MaterializedWindow) -> Void = { _ in },
          instanceWillTeardown: @escaping (MaterializedWindow) -> Void = { _ in },
          visibilityDidChange: @escaping (WinampModernHostedWindowID, Bool, NSRect) -> Void = { _, _, _ in },
          windowDidSettle: @escaping (MaterializedWindow) -> Void = { _ in },
@@ -49,7 +49,7 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
         self.componentHost = componentHost
         self.skinScale = skinScale
         self.classicFallback = classicFallback
-        self.instanceDidMaterialize = instanceDidMaterialize
+        self.instanceWillStartScripts = instanceWillStartScripts
         self.instanceWillTeardown = instanceWillTeardown
         self.visibilityDidChange = visibilityDidChange
         self.windowDidSettle = windowDidSettle
@@ -186,6 +186,7 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
         var root: WasabiObject?
         var view: WinampModernMainView?
         var nativeWindow: NSWindow?
+        var announced: MaterializedWindow?
         do {
             let createdRoot = try instantiate(.init(definition: definition, frame: frame,
                                                     playerWidth: skinPlayerWidth()))
@@ -230,6 +231,16 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
                 if createdView.frame.size != size { createdView.setFrameSize(size) }
             }
 
+            // **Announced before its scripts start**, because the announcement is what lets the
+            // controller resolve an object in this scene: a frame script's `getWidth()` read the
+            // markup's `w="0"` instead, and its seeding `onResize` laid the chrome out at width 0.
+            // Hal's Eye computes its top bar there, and a window nothing resized afterwards — the
+            // Equalizer Studio, outside the centre stack — opened with no top bar at all.
+            let instance = MaterializedWindow(id: id, graphRoot: createdRoot,
+                                              window: window, view: createdView)
+            announced = instance
+            instanceWillStartScripts(instance)
+
             try scripts.startTrustedHostedWindowScripts(beneath: createdRoot)
             // The frame script has now built whatever chrome it draws, and a skin whose chrome is a
             // second window states that window's own floor there and nowhere else — MoonLight's video
@@ -264,12 +275,10 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
                     location: WalSourceLocation(path: WasabiSurfaceSynthesizer.sourcePath)))
             }
 
-            let instance = MaterializedWindow(id: id, graphRoot: createdRoot,
-                                              window: window, view: createdView)
             instances[id] = instance
-            instanceDidMaterialize(instance)
             return instance
         } catch {
+            if let announced { instanceWillTeardown(announced) }
             view?.teardown()
             nativeWindow?.orderOut(nil)
             nativeWindow?.contentView = nil
