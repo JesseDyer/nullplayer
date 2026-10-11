@@ -24,6 +24,12 @@
   BYPASS per channel to hear one side without its curve, and you hear edits as you make them. Queue rows with a profile show **∿**, and File Info names it.
   A local file's assignment is dropped at launch once the file is gone; a drive that is not plugged
   in keeps its files' assignments.
+- **A 4-band parametric EQ in the Equalizer Studio** — **GRAPHIC / PARAMETRIC** switches the
+  Studio between the 31 faders and a console-style strip: a high-pass filter and LF, LMF, HMF and HF
+  bands with frequency, gain and Q dials, LF and HF switchable to shelves. Both are part of one
+  curve, saved in one profile and always heard together, so switching never loses anything; the
+  faders sit on that curve. The Boutique faceplate is now Nixie orange, and its analyser glows
+  hotter as levels rise, with glowing peak holds.
 
 ## 0.32.1
 

@@ -6,18 +6,20 @@ extension Notification.Name {
     static let eqProfilesDidChange = Notification.Name("eqProfilesDidChange")
 }
 
-/// A profile's curve in dB, per channel: 31 band gains and a preamp. The DSP's input.
+/// A profile's curve in dB, per channel: 31 band gains, then a parametric strip, then a preamp —
+/// one curve, both stages heard. The DSP's input.
 struct EQCurve: Codable, Equatable {
     struct Channel: Codable, Equatable {
         static let flat = Channel(bands: Array(repeating: 0, count: EQProfileDesign.bandCount), preamp: 0)
 
         var bands: [Float]
         var preamp: Float
+        var parametric: EQParametric = .flat
 
-        /// Every value inside ±12 dB and 31 bands long, whatever a file held.
+        /// Every value inside its range and 31 bands long, whatever a file held.
         func clamped() -> Channel {
             Channel(bands: (0..<EQProfileDesign.bandCount).map { bands.indices.contains($0) ? EQCurve.clamp(bands[$0]) : 0 },
-                    preamp: EQCurve.clamp(preamp))
+                    preamp: EQCurve.clamp(preamp), parametric: parametric.clamped())
         }
     }
 
@@ -39,6 +41,16 @@ struct EQCurve: Codable, Equatable {
 
     static func clamp(_ value: Float) -> Float {
         value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : 0
+    }
+}
+
+/// Curves saved before the parametric strip read it flat.
+extension EQCurve.Channel {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bands = try container.decode([Float].self, forKey: .bands)
+        preamp = try container.decode(Float.self, forKey: .preamp)
+        parametric = try container.decodeIfPresent(EQParametric.self, forKey: .parametric) ?? .flat
     }
 }
 

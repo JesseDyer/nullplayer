@@ -315,7 +315,7 @@ preamps, applied per track, album or artist. A profile runs before the Equalizer
 Equalizer window never changes a profile, and a profile never changes it.
 
 - **Making profiles — Windows ▸ Equalizer Studio.** Two channels, LEFT above RIGHT, each with 31
-  faders, a preamp and its own spectrum analyser. Edits are heard live while the Studio is open and
+  faders, a 4-band parametric EQ, a preamp and its own spectrum analyser. Edits are heard live while the Studio is open and
   are discarded unless saved. Opening it loads the playing track's profile, or a new flat one.
   - **LINK** (on by default, remembered): moving a fader on one channel moves the same fader on the
     other by the same amount, so channels that already differ keep their difference. Both channel
@@ -325,8 +325,16 @@ Equalizer window never changes a profile, and a profile never changes it.
     side).
   - Header: **HEADROOM** (sets each preamp so the channel's peak response is 0 dB — `PK` under each
     channel name shows that peak), **SAVE**, **SAVE AS**, **RENAME**, **DELETE**, **REVERT**, and
-    **CONSOLE / BOUTIQUE** to switch the faceplate. Click the name display for the list of profiles
+    **CONSOLE / BOUTIQUE** to switch the faceplate (Boutique's analyser glows hotter, ember to
+    white-hot, as levels rise; its peak holds glow from -12 dB). Click the name display for the list of profiles
     and New. Double-click a fader to reset it.
+  - **GRAPHIC / PARAMETRIC** (header, remembered) shows the faders or the parametric strip. Both are
+    always heard as one curve, and the mode is not saved in the profile, so switching loses nothing.
+    The strip, per channel: **HPF** (ON, frequency 20–500 Hz, 12 dB/octave) and **LF**, **LMF**,
+    **HMF**, **HF**, each with frequency, gain (±12 dB) and Q dials; LF and HF have **SHELF**, which
+    dims their Q. Drag a dial up or down to turn it; double-click resets it. Above the dials, a graph
+    shows the curve with a dot per band. In GRAPHIC mode each fader is drawn on the curve (its own
+    setting plus the strip's at that frequency), and dragging changes only its own setting.
   - The analyser shows the source plus the profile for local files (a bypassed channel shows the
     source alone); for streams it shows the final output and is labelled `OUTPUT`.
 - **Assigning — right-click ▸ Assign EQ Profile (Track / Album / Artist) ▸** on library rows (tracks,

@@ -18,9 +18,10 @@ struct StudioFaceplate {
     let slot: NSColor
     /// Fader caps by range: low, mid, high.
     let caps: [NSColor]
-    let meter: NSColor
-    let meterHot: NSColor
     let peak: NSColor
+    /// Colours at analyser levels (dB), coolest first: Console's bars step through them, Boutique
+    /// grades its analyser fill and peak embers with them.
+    let heat: [(db: Float, color: NSColor)]
     let legendFont: NSFont
     let buttonFont: NSFont
     let titleFont: NSFont
@@ -56,7 +57,8 @@ struct StudioFaceplate {
         kind: .console, panel: rgb(0x4a5463), well: rgb(0x1b2027), edge: rgb(0x2b313a),
         text: rgb(0xe6e9ec), dimText: rgb(0x9ba5b0), accent: rgb(0xf2b33d), scale: rgb(0xc9ced4),
         slot: rgb(0x14181d), caps: [rgb(0xd9822b), rgb(0xe9e3d1), rgb(0x3f7fd9)],
-        meter: rgb(0x4fc36b), meterHot: rgb(0xe6c341), peak: rgb(0xff5a4a),
+        peak: rgb(0xff5a4a),
+        heat: [(-78, rgb(0x4fc36b)), (-12, rgb(0xe6c341)), (-3, rgb(0xff5a4a))],
         legendFont: font("AvenirNextCondensed-DemiBold", 8, fallback: .semibold),
         buttonFont: font("AvenirNextCondensed-Bold", 10, fallback: .bold),
         titleFont: font("AvenirNextCondensed-DemiBold", 14, fallback: .semibold),
@@ -65,13 +67,15 @@ struct StudioFaceplate {
         faderTicks: [12, 6, 3, 0, -3, -6, -12], faderTickLabels: [12, 6, 0, -6, -12],
         slotWidth: 3, capWidth: 14)
 
-    /// Boutique DSP: Weiss / Dangerous / Bricasti — flat black glass, thin type, one subtle accent,
-    /// slim line faders, the analyser as a filled curve on a fine grid.
+    /// Boutique DSP: Weiss / Dangerous / Bricasti — flat black glass, thin type, one Nixie-orange
+    /// accent, slim line faders, the analyser as a curve filled with heat on a fine grid.
     static let boutique = StudioFaceplate(
         kind: .boutique, panel: rgb(0x0b0c0e), well: rgb(0x050607), edge: rgb(0x1c1e22),
-        text: rgb(0xd9dbde), dimText: rgb(0x6d727a), accent: rgb(0x7cc4e4), scale: rgb(0x23262b),
-        slot: rgb(0x2a2d33), caps: [rgb(0x7cc4e4), rgb(0x7cc4e4), rgb(0x7cc4e4)],
-        meter: rgb(0x7cc4e4, 0.28), meterHot: rgb(0x7cc4e4), peak: rgb(0xffffff, 0.7),
+        text: rgb(0xd9dbde), dimText: rgb(0x6d727a), accent: rgb(0xff8c42), scale: rgb(0x23262b),
+        slot: rgb(0x2a2d33), caps: [rgb(0xff8c42), rgb(0xff8c42), rgb(0xff8c42)],
+        peak: rgb(0xfff2d6),
+        heat: [(-78, rgb(0x140503)), (-48, rgb(0x4a0f06)), (-30, rgb(0x9a2a0c)), (-18, rgb(0xe0521a)),
+               (-9, rgb(0xff8c42)), (-3, rgb(0xffc65c)), (0, rgb(0xfff2d6))],
         legendFont: font("HelveticaNeue-Light", 8, fallback: .light),
         buttonFont: font("HelveticaNeue-Light", 9.5, fallback: .light),
         titleFont: font("HelveticaNeue-Thin", 15, fallback: .thin),
@@ -86,15 +90,18 @@ struct StudioFaceplate {
 }
 
 /// The Studio's single view: header, buttons and two channel panels (L above R), each a per-channel
-/// analyser over 31 band faders plus a preamp, with its own FLAT and BYPASS under the channel name. Edits are heard live (the profile controller's
-/// `audition`) and discarded unless saved.
+/// analyser over 31 band faders — or, in parametric mode, a response graph over a channel strip's
+/// dials — plus a preamp, with its own FLAT and BYPASS under the channel name. Both stages are always
+/// heard and every curve drawn is their sum; the mode only picks which controls are shown. Edits are
+/// heard live (the profile controller's `audition`) and discarded unless saved.
 final class EqualizerStudioView: NSView {
     private enum Button: CaseIterable {
-        case link, headroom, save, saveAs, rename, delete, revert, faceplate
+        case link, mode, headroom, save, saveAs, rename, delete, revert, faceplate
 
         var title: String {
             switch self {
             case .link: return "LINK"
+            case .mode: return "MODE"
             case .headroom: return "HEADROOM"
             case .save: return "SAVE"
             case .saveAs: return "SAVE AS"
@@ -127,12 +134,38 @@ final class EqualizerStudioView: NSView {
         let bandX0: CGFloat
         let bandWidth: CGFloat
 
+        /// Parametric mode's use of the fader and legend rows, and of what the analyser gives up.
+        var strip: CGRect { CGRect(x: bandX0, y: analyser.maxY + 6, width: analyser.width, height: legend.maxY - analyser.maxY - 6) }
+
         func centreX(_ band: Int) -> CGFloat { bandX0 + (CGFloat(band) + 0.5) * bandWidth }
         /// Continuous x for a frequency: the ISO centres sit ⅓ octave apart.
         func x(frequency: Double) -> CGFloat { bandX0 + (CGFloat(log2(frequency / 20) * 3) + 0.5) * bandWidth }
     }
 
+    private enum StripSwitch: Equatable {
+        case highPass
+        case shelf(Int)
+    }
+
+    private enum StripControl {
+        case toggle(StripSwitch)
+        case knob(EQParametric.Knob)
+    }
+
+    /// Parametric mode below the analyser: a response graph, then the high-pass and the four bands,
+    /// each a title row (with its switch) over its dials.
+    private struct Strip {
+        let graph: CGRect
+        let titles: [(String, CGRect)]
+        let switches: [(StripSwitch, CGRect)]
+        let knobs: [(EQParametric.Knob, CGRect)]
+    }
+
+    /// Which stage's controls are shown. Not part of the profile: both stages are always heard.
+    private enum Mode: String { case graphic, parametric }
+
     private static let linkedKey = "equalizerStudioLinked"
+    private static let modeKey = "equalizerStudioMode"
     /// Response and peaks are shown at this rate; the stream's own rate differs only above 20 kHz.
     private static let displayRate = 48000.0
     private static let gridFrequencies: [Double] = (0...180).map { 20 * pow(1000, Double($0) / 180) }
@@ -151,10 +184,17 @@ final class EqualizerStudioView: NSView {
     /// Per channel: heard flat, for this session. A monitoring switch, not an edit, so LINK leaves it alone.
     private var bypass = [false, false]
     private var linked = true
+    private var mode = Mode.graphic
     private var faceplate = StudioFaceplate.console
     private var dragging: Fader?
-    /// Per channel: band-only response on `gridFrequencies` and its peak, dB.
+    /// A dial being turned, and the pointer's last y.
+    private var turning: (channel: Int, knob: EQParametric.Knob, y: CGFloat)?
+    /// Per channel: both stages' response (no preamp) on `gridFrequencies`, at the band centres, and its peak, dB.
     private var response: [[Double]] = [[], []]
+    private var centreResponse: [[Double]] = [[], []]
+    /// Per channel: the parametric strip alone at the band centres, dB. A band fader shows its graphic
+    /// share on top of this, so the faders sit on the curve; dragging moves only the share.
+    private var stripAtCentre = [[Float]](repeating: [Float](repeating: 0, count: EQProfileDesign.bandCount), count: 2)
     private var peakDB: [Double] = [0, 0]
     private var levels = [[Float]](repeating: [Float](repeating: StudioRTA.floorDB, count: EQProfileDesign.bandCount), count: 2)
     private var peaks = [[Float]](repeating: [Float](repeating: StudioRTA.floorDB, count: EQProfileDesign.bandCount), count: 2)
@@ -186,8 +226,10 @@ final class EqualizerStudioView: NSView {
             let inner = frame.insetBy(dx: 8, dy: 8)
             let column: CGFloat = 52
             let bandX0 = inner.minX + column + 8
-            let analyser = CGRect(x: bandX0, y: inner.minY, width: inner.maxX - bandX0, height: 74)
-            let faders = CGRect(x: bandX0, y: analyser.maxY + 8, width: analyser.width, height: 112)
+            // Parametric mode shortens the analyser to give the strip's dials room.
+            let analyser = CGRect(x: bandX0, y: inner.minY, width: inner.maxX - bandX0,
+                                  height: mode == .graphic ? 74 : 56)
+            let faders = CGRect(x: bandX0, y: inner.minY + 82, width: analyser.width, height: 112)
             func row(_ y: CGFloat, _ height: CGFloat) -> CGRect {
                 CGRect(x: inner.minX, y: inner.minY + y, width: column, height: height)
             }
@@ -200,6 +242,35 @@ final class EqualizerStudioView: NSView {
                          // The analyser's dB labels sit in a gutter right of the 20 kHz band.
                          bandX0: bandX0, bandWidth: (analyser.width - 24) / CGFloat(EQProfileDesign.bandCount))
         }
+    }
+
+    private func strip(_ panel: Panel) -> Strip {
+        let region = panel.strip
+        let graph = CGRect(x: region.minX, y: region.minY, width: region.width, height: 50)
+        let top = graph.maxY + 8, height = region.maxY - top
+        let highPassWidth: CGFloat = 56, gap: CGFloat = 8, dial: CGFloat = 38
+        let bandWidth = (region.width - highPassWidth - gap * 4) / 4
+        var sections = [("HPF", CGRect(x: region.minX, y: top, width: highPassWidth, height: height), [EQParametric.Knob.highPass])]
+        for band in 0..<4 {
+            let frame = CGRect(x: region.minX + highPassWidth + gap + CGFloat(band) * (bandWidth + gap), y: top,
+                               width: bandWidth, height: height)
+            sections.append((EQParametric.bandNames[band], frame, [.frequency(band), .gain(band), .q(band)]))
+        }
+        func switchRect(_ frame: CGRect, width: CGFloat) -> CGRect {
+            CGRect(x: frame.maxX - width, y: frame.minY, width: width, height: 15)
+        }
+        return Strip(
+            graph: graph,
+            titles: sections.map { ($0.0, CGRect(x: $0.1.minX, y: $0.1.minY, width: 30, height: 15)) },
+            switches: [(.highPass, switchRect(sections[0].1, width: 26))]
+                + EQParametric.shelvingBands.map { (.shelf($0), switchRect(sections[$0 + 1].1, width: 40)) },
+            knobs: sections.flatMap { _, frame, knobs in
+                let cell = frame.width / CGFloat(knobs.count)
+                return knobs.enumerated().map { index, knob in
+                    (knob, CGRect(x: frame.minX + (CGFloat(index) + 0.5) * cell - dial / 2, y: frame.minY + 21,
+                                  width: dial, height: dial))
+                }
+            })
     }
 
     private func y(gain: Float, in rect: CGRect) -> CGFloat {
@@ -215,6 +286,7 @@ final class EqualizerStudioView: NSView {
 
     func studioDidOpen() {
         linked = UserDefaults.standard.object(forKey: Self.linkedKey) as? Bool ?? true
+        mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(Mode.init) ?? .graphic
         faceplate = .stored
         bypass = [false, false]
         if let track = WindowManager.shared.audioEngine.currentTrack, let profile = EQProfileResolver.shared.resolve(track)?.profile {
@@ -256,9 +328,15 @@ final class EqualizerStudioView: NSView {
 
     private func editDidChange() {
         for channel in 0..<2 {
-            let sections = EQProfileDesign.sections(for: edit[channel].bands, sampleRate: Self.displayRate)
-            response[channel] = Self.gridFrequencies.map {
-                EQProfileDesign.responseDB(sections, frequency: $0, sampleRate: Self.displayRate)
+            let sections = EQProfileDesign.sections(for: edit, channel: channel, sampleRate: Self.displayRate)
+            func respond(_ frequency: Double) -> Double {
+                EQProfileDesign.responseDB(sections, frequency: frequency, sampleRate: Self.displayRate)
+            }
+            response[channel] = Self.gridFrequencies.map(respond)
+            centreResponse[channel] = EQProfileDesign.frequencies.map(respond)
+            let strip = edit[channel].parametric.sections(sampleRate: Self.displayRate)
+            stripAtCentre[channel] = EQProfileDesign.frequencies.map {
+                Float(EQProfileDesign.responseDB(strip, frequency: $0, sampleRate: Self.displayRate))
             }
             peakDB[channel] = response[channel].max() ?? 0
         }
@@ -273,6 +351,11 @@ final class EqualizerStudioView: NSView {
     }
 
     // MARK: - Editing
+
+    /// Where a fader's cap is drawn and dragged: a band fader adds the strip at its centre; the preamp is itself.
+    private func offset(_ fader: Fader) -> Float {
+        fader.band.map { stripAtCentre[fader.channel][$0] } ?? 0
+    }
 
     private func value(_ fader: Fader) -> Float {
         fader.band.map { edit[fader.channel].bands[$0] } ?? edit[fader.channel].preamp
@@ -303,11 +386,52 @@ final class EqualizerStudioView: NSView {
         editDidChange()
     }
 
+    /// LINK lit turns the other channel's dial by the same travel, as with faders.
+    private func turn(_ knob: EQParametric.Knob, channel: Int, by travel: Float) {
+        let old = edit[channel].parametric[knob]
+        edit[channel].parametric[knob] = knob.value(at: knob.position(of: old) + travel)
+        let moved = knob.position(of: edit[channel].parametric[knob]) - knob.position(of: old)
+        guard moved != 0 else { return }
+        if linked {
+            let other = edit[1 - channel].parametric[knob]
+            edit[1 - channel].parametric[knob] = knob.value(at: knob.position(of: other) + moved)
+        }
+        editDidChange()
+    }
+
+    private func reset(_ knob: EQParametric.Knob, channel: Int) {
+        for channel in linked ? [0, 1] : [channel] { edit[channel].parametric[knob] = EQParametric.flat[knob] }
+        editDidChange()
+    }
+
+    private func isOn(_ toggle: StripSwitch, channel: Int) -> Bool {
+        switch toggle {
+        case .highPass: return edit[channel].parametric.highPassOn
+        case .shelf(let band): return edit[channel].parametric.bands[band].shelf
+        }
+    }
+
+    /// A switch is an edit, so LINK lit sets both channels to the clicked one's new state.
+    private func flip(_ toggle: StripSwitch, channel: Int) {
+        let on = !isOn(toggle, channel: channel)
+        for channel in linked ? [0, 1] : [channel] {
+            switch toggle {
+            case .highPass: edit[channel].parametric.highPassOn = on
+            case .shelf(let band): edit[channel].parametric.bands[band].shelf = on
+            }
+        }
+        editDidChange()
+    }
+
     private func perform(_ button: Button) {
         switch button {
         case .link:
             linked.toggle()
             UserDefaults.standard.set(linked, forKey: Self.linkedKey)
+            needsDisplay = true
+        case .mode:
+            mode = mode == .graphic ? .parametric : .graphic
+            UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey)
             needsDisplay = true
         case .headroom:
             for channel in 0..<2 { edit[channel].preamp = EQCurve.clamp(Float(-peakDB[channel])) }
@@ -342,6 +466,7 @@ final class EqualizerStudioView: NSView {
     }
 
     /// FLAT is an edit, so LINK lit flattens both channels, as double-clicking a fader resets both.
+    /// It flattens the whole curve — both stages — whichever controls are shown.
     private func flatten(_ channel: Int) {
         for channel in linked ? [0, 1] : [channel] { edit[channel] = .flat }
         editDidChange()
@@ -404,7 +529,7 @@ final class EqualizerStudioView: NSView {
     private func fader(at point: CGPoint) -> Fader? {
         for (channel, panel) in panels.enumerated() {
             if panel.preamp.insetBy(dx: -8, dy: -4).contains(point) { return Fader(channel: channel, band: nil) }
-            guard panel.faders.insetBy(dx: 0, dy: -4).contains(point) else { continue }
+            guard mode == .graphic, panel.faders.insetBy(dx: 0, dy: -4).contains(point) else { continue }
             let band = Int((point.x - panel.bandX0) / panel.bandWidth)
             if (0..<EQProfileDesign.bandCount).contains(band) { return Fader(channel: channel, band: band) }
         }
@@ -429,25 +554,56 @@ final class EqualizerStudioView: NSView {
         } else if let channel = panels.firstIndex(where: { $0.bypass.contains(point) }) {
             bypass[channel].toggle()
             pushAudition()
+        } else if mode == .parametric, let hit = stripHit(at: point) {
+            switch hit.control {
+            case .toggle(let toggle):
+                flip(toggle, channel: hit.channel)
+            case .knob(let knob):
+                if event.clickCount == 2 {
+                    reset(knob, channel: hit.channel)
+                } else if edit[hit.channel].parametric.isActive(knob) {
+                    turning = (hit.channel, knob, point.y)
+                }
+            }
         } else if let fader = fader(at: point) {
             if event.clickCount == 2 {
                 reset(fader)
             } else {
                 dragging = fader
-                move(fader, to: gain(y: point.y, in: faderRect(fader)))
+                move(fader, to: gain(y: point.y, in: faderRect(fader)) - offset(fader))
             }
         } else {
             window?.performDrag(with: event)
         }
     }
 
-    override func mouseDragged(with event: NSEvent) {
-        guard let dragging else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        move(dragging, to: gain(y: point.y, in: faderRect(dragging)))
+    private func stripHit(at point: CGPoint) -> (channel: Int, control: StripControl)? {
+        for (channel, panel) in panels.enumerated() where panel.strip.contains(point) {
+            let strip = strip(panel)
+            if let toggle = strip.switches.first(where: { $0.1.contains(point) })?.0 { return (channel, .toggle(toggle)) }
+            if let knob = strip.knobs.first(where: { $0.1.insetBy(dx: -4, dy: -4).contains(point) })?.0 {
+                return (channel, .knob(knob))
+            }
+        }
+        return nil
     }
 
-    override func mouseUp(with event: NSEvent) { dragging = nil }
+    override func mouseDragged(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let turning {
+            // Up turns clockwise; 200 points is the whole travel.
+            self.turning?.y = point.y
+            turn(turning.knob, channel: turning.channel, by: Float(turning.y - point.y) / 200)
+            return
+        }
+        guard let dragging else { return }
+        move(dragging, to: gain(y: point.y, in: faderRect(dragging)) - offset(dragging))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragging = nil
+        turning = nil
+    }
 
     // MARK: - Drawing
 
@@ -522,8 +678,9 @@ final class EqualizerStudioView: NSView {
         cross.stroke()
 
         for (button, rect) in buttonRects {
-            drawButton(button == .faceplate ? f.kind.rawValue.uppercased() : button.title, in: rect,
-                       lit: button == .link && linked, enabled: isEnabled(button), f)
+            let title = button == .faceplate ? f.kind.rawValue.uppercased()
+                : button == .mode ? mode.rawValue.uppercased() : button.title
+            drawButton(title, in: rect, lit: button == .link && linked, enabled: isEnabled(button), f)
         }
     }
 
@@ -554,13 +711,19 @@ final class EqualizerStudioView: NSView {
         drawButton("BYPASS", in: panel.bypass, lit: bypass[channel], f)
 
         drawAnalyser(panel, channel: channel, f)
-        drawFaders(panel, channel: channel, f)
-
-        for band in 0..<EQProfileDesign.bandCount {
-            drawText(Self.bandLabels[band], font: f.legendFont, color: f.dimText,
-                     in: CGRect(x: panel.centreX(band) - panel.bandWidth / 2 - 2, y: panel.legend.minY,
-                                width: panel.bandWidth + 4, height: panel.legend.height), alignment: .center)
+        switch mode {
+        case .graphic: drawFaders(panel, channel: channel, f)
+        case .parametric: drawStrip(panel, channel: channel, f)
         }
+        drawPreamp(panel, channel: channel, f)
+    }
+
+    private func drawPreamp(_ panel: Panel, channel: Int, _ f: StudioFaceplate) {
+        for tick in f.faderTickLabels {
+            drawText(String(format: "%+.0f", tick).replacingOccurrences(of: "+0", with: "0"), font: f.legendFont,
+                     color: f.dimText, in: CGRect(x: panel.preamp.maxX + 2, y: y(gain: tick, in: panel.preamp) - 6, width: 18, height: 12))
+        }
+        drawFader(x: panel.preamp.midX, value: edit[channel].preamp, in: panel.preamp, cap: f.text, width: 18, f)
         drawText("PRE", font: f.legendFont, color: f.dimText,
                  in: CGRect(x: panel.preamp.minX - 8, y: panel.legend.minY, width: panel.preamp.width + 16,
                             height: panel.legend.height), alignment: .center)
@@ -598,8 +761,8 @@ final class EqualizerStudioView: NSView {
 
         let streaming = WindowManager.shared.audioEngine.isStreamingPlayback
         let bypassed = bypass[channel]
-        let added: (Int) -> Float = { [edit] band in
-            streaming || bypassed ? 0 : edit[channel].bands[band] + edit[channel].preamp
+        let added: (Int) -> Float = { [edit, centreResponse] band in
+            streaming || bypassed ? 0 : Float(centreResponse[channel][band]) + edit[channel].preamp
         }
         drawText(streaming ? "OUTPUT" : bypassed ? "SOURCE" : "SOURCE + PROFILE", font: f.legendFont,
                  color: f.dimText, in: CGRect(x: rect.minX + 4, y: rect.minY + 2, width: 120, height: 11))
@@ -614,32 +777,49 @@ final class EqualizerStudioView: NSView {
                 let top = analyserY(level, in: rect)
                 let bar = CGRect(x: panel.centreX(band) - panel.bandWidth / 2 + 1.5, y: top,
                                  width: panel.bandWidth - 3, height: rect.maxY - top)
-                (level > -3 ? f.peak : level > -12 ? f.meterHot : f.meter).setFill()
+                (f.heat.last { level > $0.db } ?? f.heat[0]).color.setFill()
                 bar.fill()
                 f.peak.setFill()
                 NSRect(x: bar.minX, y: analyserY(peaks[band] + added(band), in: rect), width: bar.width, height: 1.5).fill()
             }
         case .boutique:
-            let curve = NSBezierPath()
-            curve.move(to: CGPoint(x: panel.centreX(0), y: rect.maxY))
-            for band in 0..<EQProfileDesign.bandCount {
-                curve.line(to: CGPoint(x: panel.centreX(band), y: analyserY(levels[band] + added(band), in: rect)))
+            let range = Self.analyserRange
+            var locations = f.heat.map { CGFloat(($0.db - range.lowerBound) / (range.upperBound - range.lowerBound)) }
+            guard let heat = NSGradient(colors: f.heat.map(\.color), atLocations: &locations, colorSpace: .sRGB) else { break }
+            let points = (0..<EQProfileDesign.bandCount).map {
+                CGPoint(x: panel.centreX($0), y: analyserY(levels[$0] + added($0), in: rect))
             }
-            curve.line(to: CGPoint(x: panel.centreX(EQProfileDesign.bandCount - 1), y: rect.maxY))
-            curve.close()
-            f.meter.setFill()
-            curve.fill()
             let line = NSBezierPath()
-            for band in 0..<EQProfileDesign.bandCount {
-                let point = CGPoint(x: panel.centreX(band), y: analyserY(levels[band] + added(band), in: rect))
-                band == 0 ? line.move(to: point) : line.line(to: point)
-            }
+            for (band, point) in points.enumerated() { band == 0 ? line.move(to: point) : line.line(to: point) }
+            let curve = NSBezierPath()
+            curve.append(line)
+            curve.line(to: CGPoint(x: points[points.count - 1].x, y: rect.maxY))
+            curve.line(to: CGPoint(x: points[0].x, y: rect.maxY))
+            curve.close()
+            // The fill is graded on the analyser's own dB scale, so a loud band burns white-hot.
+            NSGraphicsContext.saveGraphicsState()
+            curve.addClip()
+            heat.draw(from: CGPoint(x: rect.minX, y: rect.maxY), to: CGPoint(x: rect.minX, y: rect.minY), options: [])
+            NSGraphicsContext.restoreGraphicsState()
             line.lineWidth = 1
-            f.meterHot.setStroke()
+            f.accent.withAlphaComponent(0.8).setStroke()
             line.stroke()
-            f.peak.setFill()
+            // Peak holds are embers in their level's heat; from -12 dB they glow, wider the hotter.
             for band in 0..<EQProfileDesign.bandCount {
-                NSRect(x: panel.centreX(band) - 2, y: analyserY(peaks[band] + added(band), in: rect), width: 4, height: 1).fill()
+                let db = peaks[band] + added(band)
+                let color = heat.interpolatedColor(atLocation: CGFloat((min(range.upperBound, max(range.lowerBound, db))
+                    - range.lowerBound) / (range.upperBound - range.lowerBound)))
+                NSGraphicsContext.saveGraphicsState()
+                if db > -12 {
+                    let glow = NSShadow()
+                    glow.shadowColor = color
+                    glow.shadowBlurRadius = CGFloat(min(12, 3 + (db + 12) * 0.6))
+                    glow.set()
+                }
+                color.setFill()
+                NSBezierPath(roundedRect: CGRect(x: panel.centreX(band) - 4, y: analyserY(db, in: rect) - 1, width: 8, height: 2),
+                             xRadius: 1, yRadius: 1).fill()
+                NSGraphicsContext.restoreGraphicsState()
             }
         }
         NSGraphicsContext.restoreGraphicsState()
@@ -663,42 +843,43 @@ final class EqualizerStudioView: NSView {
                 NSRect(x: rect.minX, y: y - 0.25, width: rect.width, height: 0.5).fill()
             }
         }
-        for tick in f.faderTickLabels {
-            drawText(String(format: "%+.0f", tick).replacingOccurrences(of: "+0", with: "0"), font: f.legendFont,
-                     color: f.dimText, in: CGRect(x: panel.preamp.maxX + 2, y: y(gain: tick, in: rect) - 6, width: 18, height: 12))
-        }
-
-        func drawFader(x: CGFloat, value: Float, in rect: CGRect, cap: NSColor, width: CGFloat) {
-            f.slot.setFill()
-            NSRect(x: x - f.slotWidth / 2, y: rect.minY + 4, width: f.slotWidth, height: rect.height - 8).fill()
-            let y = self.y(gain: value, in: rect)
-            switch f.kind {
-            case .console:
-                let capRect = CGRect(x: x - width / 2, y: y - 4.5, width: width, height: 9)
-                NSColor.black.withAlphaComponent(0.4).setFill()
-                capRect.offsetBy(dx: 0, dy: 1).fill()
-                cap.setFill()
-                NSBezierPath(roundedRect: capRect, xRadius: 1.5, yRadius: 1.5).fill()
-                NSColor.white.withAlphaComponent(0.45).setFill()
-                NSRect(x: capRect.minX + 1, y: capRect.minY + 1, width: capRect.width - 2, height: 1).fill()
-                NSColor.black.withAlphaComponent(0.55).setFill()
-                NSRect(x: capRect.minX + 1, y: capRect.midY - 0.5, width: capRect.width - 2, height: 1).fill()
-            case .boutique:
-                let zero = self.y(gain: 0, in: rect)
-                cap.withAlphaComponent(0.35).setFill()
-                NSRect(x: x - 0.5, y: min(y, zero), width: 1, height: abs(y - zero)).fill()
-                cap.setFill()
-                NSRect(x: x - width / 2, y: y - 1, width: width, height: 2).fill()
-            }
-        }
 
         for band in 0..<EQProfileDesign.bandCount {
-            drawFader(x: panel.centreX(band), value: bands[band], in: rect, cap: f.capColor(band: band),
-                      width: min(panel.bandWidth - 4, f.capWidth))
+            drawFader(x: panel.centreX(band), value: EQCurve.clamp(bands[band] + stripAtCentre[channel][band]), in: rect, cap: f.capColor(band: band),
+                      width: min(panel.bandWidth - 4, f.capWidth), f)
+            drawText(Self.bandLabels[band], font: f.legendFont, color: f.dimText,
+                     in: CGRect(x: panel.centreX(band) - panel.bandWidth / 2 - 2, y: panel.legend.minY,
+                                width: panel.bandWidth + 4, height: panel.legend.height), alignment: .center)
         }
-        drawFader(x: panel.preamp.midX, value: edit[channel].preamp, in: panel.preamp, cap: f.text, width: 18)
+        drawResponse(panel, channel: channel, in: rect, f)
+    }
 
-        // The response actually applied (band sections, 48 kHz): what the faders produce between centres.
+    private func drawFader(x: CGFloat, value: Float, in rect: CGRect, cap: NSColor, width: CGFloat, _ f: StudioFaceplate) {
+        f.slot.setFill()
+        NSRect(x: x - f.slotWidth / 2, y: rect.minY + 4, width: f.slotWidth, height: rect.height - 8).fill()
+        let y = self.y(gain: value, in: rect)
+        switch f.kind {
+        case .console:
+            let capRect = CGRect(x: x - width / 2, y: y - 4.5, width: width, height: 9)
+            NSColor.black.withAlphaComponent(0.4).setFill()
+            capRect.offsetBy(dx: 0, dy: 1).fill()
+            cap.setFill()
+            NSBezierPath(roundedRect: capRect, xRadius: 1.5, yRadius: 1.5).fill()
+            NSColor.white.withAlphaComponent(0.45).setFill()
+            NSRect(x: capRect.minX + 1, y: capRect.minY + 1, width: capRect.width - 2, height: 1).fill()
+            NSColor.black.withAlphaComponent(0.55).setFill()
+            NSRect(x: capRect.minX + 1, y: capRect.midY - 0.5, width: capRect.width - 2, height: 1).fill()
+        case .boutique:
+            let zero = self.y(gain: 0, in: rect)
+            cap.withAlphaComponent(0.35).setFill()
+            NSRect(x: x - 0.5, y: min(y, zero), width: 1, height: abs(y - zero)).fill()
+            cap.setFill()
+            NSRect(x: x - width / 2, y: y - 1, width: width, height: 2).fill()
+        }
+    }
+
+    /// The response actually applied — both stages, without the preamp, at 48 kHz — on a ±12 dB scale in `rect`.
+    private func drawResponse(_ panel: Panel, channel: Int, in rect: CGRect, _ f: StudioFaceplate) {
         guard response[channel].count == Self.gridFrequencies.count else { return }
         let path = NSBezierPath()
         for (index, frequency) in Self.gridFrequencies.enumerated() {
@@ -709,5 +890,118 @@ final class EqualizerStudioView: NSView {
         path.lineWidth = 1.2
         f.accent.withAlphaComponent(bypass[channel] ? 0.25 : 0.85).setStroke()
         path.stroke()
+    }
+
+    // MARK: - Parametric strip (Boutique look)
+
+    private static let stripGraphFrequencies: [(Double, String)] = [
+        (50, "50"), (100, "100"), (200, "200"), (500, "500"), (1000, "1k"), (2000, "2k"), (5000, "5k"), (10000, "10k")]
+
+    private func drawStrip(_ panel: Panel, channel: Int, _ f: StudioFaceplate) {
+        let strip = strip(panel)
+        let parametric = edit[channel].parametric
+        let graph = strip.graph
+
+        // Graph: a fine grid, the response, and a dot per band at its frequency and gain.
+        f.well.setFill()
+        NSBezierPath(roundedRect: graph, xRadius: 2, yRadius: 2).fill()
+        for db: Float in [-12, -6, 0, 6, 12] {
+            let y = self.y(gain: db, in: graph).rounded() + 0.5
+            (db == 0 ? f.graticuleZero : f.graticule).setFill()
+            NSRect(x: graph.minX, y: y - 0.25, width: graph.width - 24, height: db == 0 ? 1 : 0.5).fill()
+            if db.truncatingRemainder(dividingBy: 12) == 0 {
+                drawText(String(format: "%+.0f", db).replacingOccurrences(of: "+0", with: "0"), font: f.legendFont,
+                         color: f.dimText.withAlphaComponent(0.7),
+                         in: CGRect(x: graph.maxX - 22, y: y - 6, width: 20, height: 12), alignment: .right)
+            }
+        }
+        for (frequency, label) in Self.stripGraphFrequencies {
+            let x = panel.x(frequency: frequency)
+            f.graticule.setFill()
+            NSRect(x: x, y: graph.minY, width: 0.5, height: graph.height).fill()
+            drawText(label, font: f.legendFont, color: f.dimText.withAlphaComponent(0.7),
+                     in: CGRect(x: x + 2, y: graph.maxY - 11, width: 24, height: 10))
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: graph).addClip()
+        drawResponse(panel, channel: channel, in: graph, f)
+        for band in parametric.bands {
+            let centre = CGPoint(x: panel.x(frequency: Double(band.frequency)), y: y(gain: band.gain, in: graph))
+            (band.gain == 0 ? f.dimText : f.accent).setFill()
+            NSBezierPath(ovalIn: CGRect(x: centre.x - 2.5, y: centre.y - 2.5, width: 5, height: 5)).fill()
+        }
+        if parametric.highPassOn {
+            f.accent.setFill()
+            NSRect(x: panel.x(frequency: Double(parametric.highPass)) - 0.5, y: graph.minY, width: 1, height: graph.height).fill()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        for (title, rect) in strip.titles {
+            drawText(title, font: f.buttonFont, color: f.text, in: rect)
+        }
+        for (toggle, rect) in strip.switches {
+            drawButton(toggle == .highPass ? "ON" : "SHELF", in: rect, lit: isOn(toggle, channel: channel), f)
+        }
+        for (knob, rect) in strip.knobs {
+            let active = parametric.isActive(knob)
+            drawKnob(knob, value: parametric[knob], active: active, in: rect, f)
+            drawText(Self.readout(knob, parametric[knob]), font: f.legendFont,
+                     color: active ? f.dimText : f.dimText.withAlphaComponent(0.4),
+                     in: CGRect(x: rect.midX - 24, y: rect.maxY + 4, width: 48, height: 11), alignment: .center)
+        }
+    }
+
+    private static func readout(_ knob: EQParametric.Knob, _ value: Float) -> String {
+        switch knob {
+        case .highPass, .frequency:
+            return value >= 1000 ? String(format: "%.2f kHz", value / 1000) : String(format: "%.0f Hz", value)
+        case .gain: return String(format: "%+.1f dB", value)
+        case .q: return String(format: "Q %.2f", value)
+        }
+    }
+
+    /// A thin ring over 270° of travel, lit from its origin (12 o'clock for gain, the stop otherwise)
+    /// to the value, with a hairline pointer.
+    private func drawKnob(_ knob: EQParametric.Knob, value: Float, active: Bool, in rect: CGRect, _ f: StudioFaceplate) {
+        let centre = CGPoint(x: rect.midX, y: rect.midY), radius = rect.width / 2
+        func point(_ position: Float, _ r: CGFloat) -> CGPoint {
+            let angle = CGFloat(-135 + 270 * position) * .pi / 180
+            return CGPoint(x: centre.x + r * sin(angle), y: centre.y - r * cos(angle))
+        }
+        func arc(_ from: Float, _ to: Float) -> NSBezierPath {
+            let path = NSBezierPath()
+            let steps = max(1, Int(abs(to - from) * 48))
+            for i in 0...steps {
+                let p = point(from + (to - from) * Float(i) / Float(steps), radius - 1)
+                i == 0 ? path.move(to: p) : path.line(to: p)
+            }
+            return path
+        }
+        let alpha: CGFloat = active ? 1 : 0.35
+        let position = knob.position(of: value)
+        let origin: Float
+        if case .gain = knob { origin = 0.5 } else { origin = 0 }
+
+        let track = arc(0, 1)
+        track.lineWidth = 1
+        f.slot.withAlphaComponent(alpha).setStroke()
+        track.stroke()
+        let lit = arc(origin, position)
+        lit.lineWidth = 2
+        f.accent.withAlphaComponent(alpha).setStroke()
+        lit.stroke()
+
+        let body = NSBezierPath(ovalIn: rect.insetBy(dx: 5, dy: 5))
+        f.well.setFill()
+        body.fill()
+        body.lineWidth = 0.5
+        f.edge.setStroke()
+        body.stroke()
+        let pointer = NSBezierPath()
+        pointer.move(to: point(position, radius * 0.2))
+        pointer.line(to: point(position, radius - 6))
+        pointer.lineWidth = 1
+        f.text.withAlphaComponent(alpha).setStroke()
+        pointer.stroke()
     }
 }

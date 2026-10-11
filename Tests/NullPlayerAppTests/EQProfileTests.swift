@@ -278,6 +278,48 @@ final class EQProfileTests: XCTestCase {
         XCTAssertLessThan(impulse.suffix(4096).map(abs).max() ?? 1, 1e-9)
     }
 
+    /// The strip's dials mean what they say, and it stacks on the faders: the curve heard is both.
+    func testParametricStripMeetsItsDialsAndStacksOnTheFaders() {
+        let rate = 48000.0
+        var strip = EQParametric.flat
+        strip.highPassOn = true
+        strip.highPass = 100
+        strip.bands[0].gain = 6
+        strip.bands[1].gain = -6
+        strip.bands[1].q = 2
+        strip.bands[3].gain = 9
+        let sections = strip.sections(sampleRate: rate)
+        XCTAssertEqual(sections.count, EQParametric.sectionCount)
+        XCTAssertEqual(sections[3], .identity, "a band at 0 dB (HMF) keeps its slot, unrun")
+        func response(_ slot: Int, _ frequency: Double) -> Double {
+            EQProfileDesign.responseDB([sections[slot]], frequency: frequency, sampleRate: rate)
+        }
+        XCTAssertEqual(response(0, 100), -3.01, accuracy: 0.01, "high-pass is Butterworth: -3 dB at its frequency")
+        XCTAssertEqual(response(1, 100), 3, accuracy: 0.01, "a shelf is at half its gain at its frequency")
+        XCTAssertEqual(response(1, 20), 6, accuracy: 0.1)
+        XCTAssertEqual(response(2, 400), -6, accuracy: 0.01, "a bell is at its gain at its frequency")
+        XCTAssertEqual(response(4, 20000), 9, accuracy: 0.1)
+
+        var curve = EQCurve.flat
+        curve.left.bands[17] = 4
+        curve.left.parametric = strip
+        let stacked = EQProfileDesign.sections(for: curve, channel: 0, sampleRate: rate)
+        XCTAssertEqual(stacked.count, EQProfileCoefficients.sections)
+        let at1k = EQProfileDesign.responseDB(stacked, frequency: 1000, sampleRate: rate)
+        XCTAssertEqual(at1k, 4 + EQProfileDesign.responseDB(sections, frequency: 1000, sampleRate: rate), accuracy: 0.05)
+    }
+
+    func testACurveSavedBeforeTheStripReadsItFlat() throws {
+        let flat = Array(repeating: "0", count: 31).joined(separator: ",")
+        let saved = #"{"left":{"bands":[\#(flat)],"preamp":-2},"right":{"bands":[\#(flat)],"preamp":0}}"#
+        let curve = try JSONDecoder().decode(EQCurve.self, from: Data(saved.utf8))
+        XCTAssertEqual(curve.left.parametric, .flat)
+        XCTAssertEqual(curve.left.preamp, -2)
+        var edited = curve
+        edited.right.parametric.bands[2].gain = 5
+        XCTAssertEqual(try JSONDecoder().decode(EQCurve.self, from: JSONEncoder().encode(edited)), edited)
+    }
+
     /// No click on change: across a crossfade no sample steps further than the signal's own slope.
     func testCoefficientChangeShowsNoStep() {
         let rate = 48000.0, block = 512

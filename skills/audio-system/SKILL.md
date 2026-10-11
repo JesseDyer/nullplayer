@@ -338,8 +338,9 @@ UserDefaults (`srsEnabled`, `srsWOWLevel`, `srsTruBassLevel`, `srsSpeakerSize`).
 
 ## EQ Profiles
 
-Per-content 31-band stereo curves made in the Equalizer Studio (`Windows/EqualizerStudio/`) and
-assigned per track, album or artist (user-facing behaviour: `user-guide` § *EQ Profiles*).
+Per-content stereo curves made in the Equalizer Studio (`Windows/EqualizerStudio/`) and
+assigned per track, album or artist (user-facing behaviour: `user-guide` § *EQ Profiles*). A curve is
+two stages in series, both always heard: 31 graphic bands, then a 4-band parametric strip.
 
 ### Graph placement
 
@@ -403,8 +404,24 @@ A database that cannot be opened (an unreadable file, no Application Support) is
 so the file on disk is never replaced. `init(path: nil)` is an in-memory database.
 
 `EQCurve` is the stored curve: per channel (`left`, `right`, `curve[channel]`) a `Channel` of 31
-`bands` and a `preamp`. `EQProfileDesign.sections` memoises recent designs by (faders, rate), so one
-edit is designed once per sample rate however many nodes and Studio views ask for it.
+`bands`, a `parametric` strip and a `preamp`. `EQProfileDesign.sections(for:sampleRate:)` (the
+faders) memoises recent designs by (faders, rate), so one edit is designed once per sample rate
+however many nodes and Studio views ask for it; `sections(for:channel:sampleRate:)` is what a channel
+runs — those 31, then the strip's.
+
+`EQParametric` (`Audio/EQParametric.swift`) is the strip: a 12 dB/octave high-pass (on/off,
+20–500 Hz) and LF, LMF, HMF, HF bands, each frequency (overlapping ranges, SSL-style), gain (±12 dB)
+and Q (0.4–8); LF and HF switch to shelves. Bells are the matched peaking section at the band's Q;
+shelves and the high-pass are RBJ at Butterworth Q, so shelves have no Q dial. `sections` always
+returns `EQParametric.sectionCount` (5) slots, identity where off or at 0 dB, so each keeps its slot —
+and its filter state across a change. The kernel runs `EQProfileCoefficients.sections` (36) slots per
+channel: the faders' 31, then the strip's 5. A curve saved before the strip decodes it flat
+(`EQCurve.Channel.init(from:)`).
+
+The Studio's GRAPHIC / PARAMETRIC button picks which stage's controls are shown; it is a view
+setting, not part of the profile. Every curve drawn is both stages, and a band fader's cap is drawn
+at its own value plus the strip's response at its centre (`stripAtCentre`), so the faders sit on the
+curve; dragging changes only the fader's own value.
 
 Scopes (`Track.eqProfileScopes`, in the resolver's file; an `EQProfileScope` per level), most specific first, names
 lower-cased and trimmed, a level omitted when its names are empty. `source` is `plex:<serverId>`
@@ -707,7 +724,7 @@ For detailed information, see:
 | Core | `Audio/AudioEngine.swift`, `Audio/AudioGraphRecoveryCoordinator.swift`, `Audio/StreamingAudioPlayer.swift` |
 | EQ | EQ node configuration in AudioEngine, StreamingAudioPlayer |
 | Spectrum | `Audio/AudioEngine.swift` (FFT processing) |
-| EQ Profiles | `Audio/EQProfileAudioUnit.swift`, `Audio/EQProfileController.swift`, `Audio/EQProfileStore.swift`, `Audio/EQProfileResolver.swift`, `Audio/AudioUnitFanout.swift`, `App/EQProfileMenu.swift`, `Windows/EqualizerStudio/` |
+| EQ Profiles | `Audio/EQProfileAudioUnit.swift`, `Audio/EQParametric.swift`, `Audio/EQProfileController.swift`, `Audio/EQProfileStore.swift`, `Audio/EQProfileResolver.swift`, `Audio/AudioUnitFanout.swift`, `App/EQProfileMenu.swift`, `Windows/EqualizerStudio/` |
 | BPM | `Audio/BPMDetector.swift` |
 | Output devices | `Audio/AudioOutputManager.swift` |
 | Track URL resolution | `Audio/StreamingTrackResolver.swift` |

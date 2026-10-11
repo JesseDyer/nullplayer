@@ -52,7 +52,7 @@ EQ profiles are not session state. Profiles and their assignments live in their 
 database, `~/Library/Application Support/NullPlayer/eq_profiles.db` (`EQProfileStore`; schema in
 `audio-system` § *EQ Profiles*), read whatever Remember State says — an assignment is a standing default. Their
 preferences are UserDefaults: `eqProfilesEnabled` (default on), `equalizerStudioFaceplate`,
-`equalizerStudioLinked` (default on). Only the Equalizer Studio window is in `AppState`
+`equalizerStudioLinked` (default on), `equalizerStudioMode` (`graphic` by default). Only the Equalizer Studio window is in `AppState`
 (`isEqualizerStudioVisible`, `equalizerStudioWindowFrame`, `decodeIfPresent`); it is not a
 centre-stack window. A Studio restored open auditions its edit from launch, so assigned profiles
 are not heard until it is closed. The reset path for a profile is the Studio's DELETE, which drops
