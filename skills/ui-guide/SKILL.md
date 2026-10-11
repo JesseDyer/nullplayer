@@ -783,9 +783,12 @@ geometry as an exact match.
   its caster. Mid group drag nothing regroups, because the dragged window lands a step after its
   peers, so the shape holds until the drop. Outside Original mode, or in a skin that docks with
   visible seams, the pass hands every former member its own shadow back and touches nothing else.
-  A new `outlineBounds` clears the shadow's image until its own is built: the frame changes at
-  once and the build lands tens of milliseconds later, and the old image laid into the new frame
-  (`contentsGravity = .resize`) read as a large stray outline on every dock and undock. A member's
+  Any change to the shadow's size — a new `outlineBounds`, a resize, a `.wal` layout switch — clears
+  its image and fingerprint and bumps `sizeGeneration`, and `finishBuild` drops a build pulled
+  under an older generation and pulls again. The frame changes at once, the build lands later, and the
+  old image laid into the new frame (`contentsGravity = .resize`) read as a stray box. Every dock
+  produces such a build: the views' `"corners"` pull runs on `windowLayoutDidChange`, just before
+  the stack regroups. Trace: `stale <size>`. A member's
   outline is its content view's layer, so a skin-shadowed window's content view must be
   layer-backed (`wantsLayer`) or it casts nothing and leaves a hole in its group's shadow.
 - **AppKit's shadow stays** on transient panels (skin-loading overlay, row thumbnail preview, Audion

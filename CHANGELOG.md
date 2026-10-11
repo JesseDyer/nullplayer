@@ -51,6 +51,9 @@
   behind on every move.
 - **PeppyMeter and the Equalizer Studio keep their rounded corners in Original skins** — their
   square content covered the window border's rounded corners.
+- **A window's drop shadow no longer shows as a box when the window changes size** — in `.wal`
+  skins such as iTunes MiniPlayer, and on docking in Original skins, the old shadow could appear
+  stretched to the new size.
 
 ## 0.32.1
 
