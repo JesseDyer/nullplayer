@@ -32,7 +32,6 @@ struct StudioFaceplate {
     let heat: [(db: Float, color: NSColor)]
     let legendFont: NSFont
     let buttonFont: NSFont
-    let titleFont: NSFont
     /// The analyser's dB lines: their spacing, weight and colour (0 dB's own). Labelled every 12 dB.
     let graticuleStep: Float
     let graticuleWeight: CGFloat
@@ -58,8 +57,9 @@ struct StudioFaceplate {
     /// a dB graticule. Boutique DSP: Weiss / Dangerous / Bricasti — one accent, slim line faders, the
     /// analyser as a curve filled with heat on a fine grid. Both take the skin's ground for the panel
     /// and its current-text colour for the accent; `meter` is the skin's low, mid and high level
-    /// colours, for the heat and Console's caps. Type is the Library's: its content font for text,
-    /// and its tabs (`tab`) for buttons.
+    /// colours, for the heat and Console's caps. Text is in the Library's content font; the strip's
+    /// switches are its tabs (`tab`), the buttons SF Symbols, and the profile name is in the main
+    /// window's display face.
     ///
     /// An Original-Metal skin (`metalSkin`) has no palette ground: the panel is left clear, so the
     /// chrome's brushed surface — the main window's own — shows through. Its wells and lines are the
@@ -74,7 +74,6 @@ struct StudioFaceplate {
         self.tab = tab
         legendFont = .systemFont(ofSize: 8)
         buttonFont = .systemFont(ofSize: 10)
-        titleFont = .systemFont(ofSize: 14)
         let well = metal?.eqPanelFill ?? blend(style.background, .black, 0.4)
         self.kind = kind
         panel = metal == nil ? style.background : .clear
@@ -156,25 +155,90 @@ extension StudioFaceplate {
                                   withAttributes: attributes)
     }
 
-    /// A button as the Library's tab: lit is the selected tab. A disabled one is drawn faint. Its
-    /// label is the tab's at `scale`, or shrunk to fit `rect` when not given.
-    func drawButton(_ title: String, in rect: CGRect, lit: Bool, enabled: Bool = true, scale: CGFloat? = nil) {
+    /// A button as the Library's tab: lit is the selected tab. Its label shrinks to fit `rect`.
+    func drawButton(_ title: String, in rect: CGRect, lit: Bool) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        let scale = min(scale ?? 1, tab.scale(fitting: title, in: rect.size))
-        guard !enabled else {
-            tab.draw(title, isSelected: lit, box: rect, scale: scale, context: context)
-            return
+        tab.draw(title, isSelected: lit, box: rect, scale: tab.scale(fitting: title, in: rect.size), context: context)
+    }
+
+    /// The profile name as the main window's display draws its title: an Original skin's marquee —
+    /// its font, capitals and colour (where legible in the well) — or the classic text sheet at twice
+    /// its size, in its own colour; in a `.wal` or `.wmz` session, that style's matched face.
+    func drawDisplayText(_ text: String, in rect: CGRect) {
+        switch tab {
+        case .original(let skin):
+            let color = SkinnedSurfaceStyle.legible(preferring: [skin.applyTextOpacity(to: skin.marqueeColor), wellText], on: well)
+            drawText(text.uppercased(), font: skin.primaryFont(size: 14), color: color, in: rect)
+        case .classic(let renderer, let style, _):
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            let scale: CGFloat = 2
+            context.saveGState()
+            context.clip(to: rect)
+            ClassicLibraryTab.drawSkinText(text, at: CGPoint(x: rect.minX, y: rect.midY - SkinElements.TextFont.charHeight * scale / 2),
+                                           scale: scale, color: wellText, renderer: renderer, style: style, context: context)
+            context.restoreGState()
         }
+    }
+
+    /// A mixing console's channel label: a dark display with the name in bold monospaced capitals,
+    /// over a colour bar in the accent when `lit`, else the edge.
+    func drawScribbleStrip(_ name: String, in rect: CGRect, lit: Bool) {
+        let shape = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
+        well.setFill()
+        shape.fill()
+        edge.setStroke()
+        NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 2, yRadius: 2).stroke()
+        (lit ? accent : edge).setFill()
+        NSRect(x: rect.minX + 2, y: rect.maxY - 4, width: rect.width - 4, height: 2).fill()
+        drawText(name, font: .monospacedSystemFont(ofSize: 10, weight: .bold), color: lit ? accent : wellText,
+                 in: rect.insetBy(dx: 2, dy: 0).offsetBy(dx: 0, dy: -1.5), alignment: .center)
+    }
+
+    /// A toolbar button: an SF Symbol in the panel's text colour; lit sits in a well in the accent,
+    /// `faint` draws it at a third.
+    @MainActor
+    func drawIcon(_ symbol: String, in rect: CGRect, lit: Bool, faint: Bool) {
+        if lit {
+            well.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
+        }
+        guard let context = NSGraphicsContext.current?.cgContext, let image = Self.symbol(symbol) else { return }
+        let size = image.size
+        let icon = CGRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
+        // Tinted in a layer of its own: the colour lands only on the glyph, then the layer is faded.
         context.saveGState()
-        context.setAlpha(0.4)
-        context.beginTransparencyLayer(auxiliaryInfo: nil)
-        tab.draw(title, isSelected: lit, box: rect, scale: scale, context: context)
+        context.setAlpha(faint ? 0.35 : 1)
+        context.beginTransparencyLayer(in: icon, auxiliaryInfo: nil)
+        image.draw(in: icon, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        (lit ? accent : text).setFill()
+        icon.fill(using: .sourceAtop)
         context.endTransparencyLayer()
         context.restoreGState()
     }
 
-    /// A fader: its track, a notch across the track at each labelled dB step, and the cap over them.
-    func drawFader(x: CGFloat, value: Float, in rect: CGRect, cap: NSColor, width: CGFloat) {
+    /// SF Symbols at the toolbar's size, looked up once each: the view redraws at the analyser's rate.
+    @MainActor private static var symbols: [String: NSImage] = [:]
+
+    @MainActor
+    private static func symbol(_ name: String) -> NSImage? {
+        if let image = symbols[name] { return image }
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        symbols[name] = image
+        return image
+    }
+
+    /// How far a fader has moved from 0 dB, filled along its track.
+    typealias Travel = (color: NSColor, width: CGFloat)
+
+    /// A band fader's travel: a hairline in its cap's colour on Boutique; Console's caps show it alone.
+    func bandTravel(cap: NSColor) -> Travel? { kind == .boutique ? (cap.withAlphaComponent(0.35), 1) : nil }
+
+    /// The preamp's travel on either faceplate: its track lit in the accent, as a console lights its preamp.
+    var preampTravel: Travel { (accent, max(slotWidth, 3)) }
+
+    /// A fader: its track, a notch across the track at each labelled dB step, its travel, and the cap over them.
+    func drawFader(x: CGFloat, value: Float, in rect: CGRect, cap: NSColor, width: CGFloat, travel: Travel?) {
         slot.setFill()
         NSRect(x: x - slotWidth / 2, y: rect.minY + 4, width: slotWidth, height: rect.height - 8).fill()
         for tick in faderTickLabels {
@@ -182,6 +246,11 @@ extension StudioFaceplate {
             NSRect(x: x - slotWidth / 2 - 2, y: rect.y(gain: tick).rounded(), width: slotWidth + 4, height: 1).fill()
         }
         let y = rect.y(gain: value)
+        if let travel {
+            let zero = rect.y(gain: 0)
+            travel.color.setFill()
+            NSRect(x: x - travel.width / 2, y: min(y, zero), width: travel.width, height: abs(y - zero)).fill()
+        }
         switch kind {
         case .console:
             let capRect = CGRect(x: x - width / 2, y: y - 4.5, width: width, height: 9)
@@ -194,9 +263,6 @@ extension StudioFaceplate {
             NSColor.black.withAlphaComponent(0.55).setFill()
             NSRect(x: capRect.minX + 1, y: capRect.midY - 0.5, width: capRect.width - 2, height: 1).fill()
         case .boutique:
-            let zero = rect.y(gain: 0)
-            cap.withAlphaComponent(0.35).setFill()
-            NSRect(x: x - 0.5, y: min(y, zero), width: 1, height: abs(y - zero)).fill()
             cap.setFill()
             NSRect(x: x - width / 2, y: y - 1, width: width, height: 2).fill()
         }

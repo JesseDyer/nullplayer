@@ -7276,10 +7276,11 @@ class WindowManager {
     }
 
     /// Regroup the seamless Original stack shadows. Runs after every view has taken the layout, its
-    /// corner masks included. Mid group drag the stack moves as one but the dragged window lands a
-    /// step after its peers, so the stacks stand until the drop.
+    /// corner masks included. A stack the drag carries whole — a group drag, or the player's docked
+    /// children — cannot change shape, and regrouping it mid-move reads its members a step apart,
+    /// so it stands until the drop. A window dragged out alone regroups as it goes.
     private func updateSeamlessStackShadow() {
-        guard draggingWindow == nil || dragMode != .group else { return }
+        guard draggingWindow == nil || dockedWindowsToMove.isEmpty else { return }
         let seamless = isRunningModernUI
             && (ModernSkinEngine.shared.currentSkin?.config.window.seamlessDocking ?? 0) > 0
         seamlessStackShadow.cast(stacks: seamless ? dockedGroups() : [], main: mainWindowController?.window)

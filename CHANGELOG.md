@@ -46,6 +46,16 @@
   Equalizer Studio a selected tab was hard to tell from the rest.
 - **Sonos Rooms has its close button again in `.wmz` and `.wal` skins** — the corner close of a
   window with no title bar did nothing.
+- **A quick drag of the player keeps its docked windows with it** — in a seamless Original skin,
+  quickly dragging the player around left the windows docked to it drifting a little further
+  behind on every move.
+- **PeppyMeter and the Equalizer Studio keep their rounded corners in Original skins** — their
+  square content covered the window border's rounded corners.
+- **A window's drop shadow no longer shows as a box when the window changes size** — in `.wal`
+  skins such as iTunes MiniPlayer, and on docking in Original skins, the old shadow could appear
+  stretched to the new size.
+- **An album opened from Tiles or Flow no longer scrolls over the Library's tabs** — scrolling a
+  long album's tracks slid its cover and title up over the source bar and tabs.
 
 ## 0.32.1
 

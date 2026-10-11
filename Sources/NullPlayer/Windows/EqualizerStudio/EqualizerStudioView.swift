@@ -8,11 +8,17 @@ import AppKit
 /// one of its own.
 final class EqualizerStudioView: NSView {
     private typealias Fader = EqualizerStudioSession.Fader
-    private typealias Mode = EqualizerStudioSession.Mode
 
-    private enum Button: CaseIterable {
+    /// The toolbar's buttons and each channel's BYPASS and FLAT: icon buttons all, so one model
+    /// answers clicks, tooltips and drawing.
+    private enum Button: Equatable {
         case link, mode, headroom, save, saveAs, rename, delete, revert, faceplate
+        case bypass(channel: Int), flat(channel: Int)
     }
+
+    /// The toolbar's groups, left to right.
+    private static let toolbar: [[Button]] = [[.link, .mode, .headroom],
+                                              [.save, .saveAs, .rename, .delete, .revert], [.faceplate]]
 
     /// What a click in a channel panel lands on.
     private enum Control {
@@ -81,24 +87,41 @@ final class EqualizerStudioView: NSView {
     // MARK: - Layout
 
     /// The smallest the faceplate lays out at; the window's minimum adds its chrome to this.
-    static let designSize = NSSize(width: 688, height: 548)
+    static let designSize = NSSize(width: 688, height: 518)
     /// A channel panel's inner height at `designSize`. Height beyond it goes to the analyser and the
     /// fader field (in parametric mode, the strip's graph).
     private static let designPanelHeight: CGFloat = 213
 
     private var nameRect: CGRect { CGRect(x: bounds.minX + 12, y: bounds.minY + 10, width: 220, height: 22) }
 
-    private var buttonRects: [(Button, CGRect)] {
-        let count = CGFloat(Button.allCases.count), gap: CGFloat = 6
-        let width = (bounds.width - 24 - gap * (count - 1)) / count
-        return Button.allCases.enumerated().map { index, button in
-            (button, CGRect(x: bounds.minX + 12 + CGFloat(index) * (width + gap), y: bounds.minY + 42,
-                            width: width, height: 20))
+    /// Every icon button: the toolbar, right-aligned on the name's row — square, a wider gap between
+    /// groups — then each channel's BYPASS and FLAT.
+    private var buttons: [(Button, CGRect)] {
+        let size = nameRect.height, gap: CGFloat = 4, groupGap: CGFloat = 14
+        let count = CGFloat(Self.toolbar.joined().count), groups = CGFloat(Self.toolbar.count)
+        var x = bounds.maxX - 12 - (count * size + (count - groups) * gap + (groups - 1) * groupGap)
+        var buttons: [(Button, CGRect)] = []
+        for group in Self.toolbar {
+            for button in group {
+                buttons.append((button, CGRect(x: x, y: nameRect.minY, width: size, height: size)))
+                x += size + gap
+            }
+            x += groupGap - gap
         }
+        for (channel, panel) in panels.enumerated() {
+            buttons += [(.bypass(channel: channel), panel.bypass), (.flat(channel: channel), panel.flat)]
+        }
+        return buttons
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        removeAllToolTips()
+        for (_, rect) in buttons { addToolTip(rect, owner: self, userData: nil) }
     }
 
     private var panels: [Panel] {
-        let top = bounds.minY + 72
+        let top = bounds.minY + 42
         let height = (bounds.maxY - 6 - top) / 2
         return (0..<2).map { channel in
             let frame = CGRect(x: bounds.minX + 8, y: top + CGFloat(channel) * height,
@@ -115,9 +138,11 @@ final class EqualizerStudioView: NSView {
             func row(_ y: CGFloat, _ height: CGFloat) -> CGRect {
                 CGRect(x: inner.minX, y: inner.minY + y, width: column, height: height)
             }
+            // BYPASS and FLAT: two icon buttons side by side, as the toolbar's.
+            let (bypass, flat) = row(44, 22).divided(atDistance: column / 2, from: .minXEdge)
             return Panel(frame: frame,
                          name: row(0, 18), peakReadout: row(19, 11), preampReadout: row(30, 11),
-                         flat: row(44, 14), bypass: row(60, 14),
+                         flat: flat.insetBy(dx: 2, dy: 0), bypass: bypass.insetBy(dx: 2, dy: 0),
                          analyser: analyser, faders: faders,
                          legend: CGRect(x: bandX0, y: faders.maxY + 3, width: analyser.width, height: 11),
                          preamp: CGRect(x: inner.minX + 14, y: faders.minY, width: 24, height: faders.height),
@@ -149,6 +174,8 @@ final class EqualizerStudioView: NSView {
             if alert.runModal() == .alertFirstButtonReturn { session.delete() }
         case .revert: session.revert()
         case .faceplate: session.toggleFaceplate()
+        case .bypass(let channel): session.toggleBypass(channel)
+        case .flat(let channel): session.flatten(channel)
         }
     }
 
@@ -162,6 +189,21 @@ final class EqualizerStudioView: NSView {
         case .revert: return session.isDirty
         default: return true
         }
+    }
+
+    /// LINK lights while on; BYPASS, a plug-in's power button, while its channel is heard.
+    private func isLit(_ button: Button) -> Bool {
+        switch button {
+        case .link: return session.linked
+        case .bypass(let channel): return !session.bypass[channel]
+        default: return false
+        }
+    }
+
+    /// A disabled button is faint, and so is a bypassed channel's power button.
+    private func isFaint(_ button: Button) -> Bool {
+        if case .bypass(let channel) = button { return session.bypass[channel] }
+        return !isEnabled(button)
     }
 
     private func promptName(_ message: String, initial: String) -> String? {
@@ -235,12 +277,8 @@ final class EqualizerStudioView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if nameRect.contains(point) {
             showProfileMenu()
-        } else if let (button, _) = buttonRects.first(where: { $0.1.contains(point) }) {
+        } else if let (button, _) = buttons.first(where: { $0.1.contains(point) }) {
             if isEnabled(button) { perform(button) }
-        } else if let channel = panels.firstIndex(where: { $0.flat.contains(point) }) {
-            session.flatten(channel)
-        } else if let channel = panels.firstIndex(where: { $0.bypass.contains(point) }) {
-            session.toggleBypass(channel)
         } else if let control = control(at: point) {
             press(control, at: point.y, clickCount: event.clickCount)
         } else if hostedContext != nil {
@@ -376,6 +414,9 @@ final class EqualizerStudioView: NSView {
 
         drawHeader(f)
         for (channel, panel) in panels.enumerated() { drawPanel(panel, channel: channel, f) }
+        for (button, rect) in buttons {
+            f.drawIcon(symbol(button), in: rect, lit: isLit(button), faint: isFaint(button))
+        }
     }
 
     /// Draws `body` into `rect` through the bloom where the faceplate glows, else as it is.
@@ -390,34 +431,43 @@ final class EqualizerStudioView: NSView {
         NSBezierPath(roundedRect: nameRect, xRadius: 3, yRadius: 3).fill()
         f.edge.setStroke()
         NSBezierPath(roundedRect: nameRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3).stroke()
-        f.drawText(session.name + (session.isDirty ? "  ●" : ""), font: f.titleFont, color: f.wellText,
-                   in: CGRect(x: nameRect.minX + 10, y: nameRect.minY, width: nameRect.width - 40, height: nameRect.height))
+        // "*" marks unsaved changes: the classic sheet has no "●".
+        f.drawDisplayText(session.name + (session.isDirty ? " *" : ""),
+                          in: CGRect(x: nameRect.minX + 10, y: nameRect.minY, width: nameRect.width - 40, height: nameRect.height))
         f.drawText("▾", font: f.buttonFont, color: f.wellDimText, in: CGRect(x: nameRect.maxX - 22, y: nameRect.minY, width: 14, height: nameRect.height))
+    }
 
-        // One label scale for the row, as the Library's tab row shrinks as a whole — fitted to every
-        // title a button can show, so switching MODE does not resize the row.
-        let rowScale = buttonRects.flatMap { button, rect in
-            (button == .mode ? Mode.allCases.map { $0.rawValue.capitalized } : [title(button)])
-                .map { f.tab.scale(fitting: $0, in: rect.size) }
-        }.min() ?? 1
-        for (button, rect) in buttonRects {
-            f.drawButton(title(button), in: rect, lit: button == .link && session.linked, enabled: isEnabled(button),
-                         scale: rowScale)
+    /// MODE shows its current setting's icon.
+    private func symbol(_ button: Button) -> String {
+        switch button {
+        case .link: return "link"
+        case .mode: return session.mode == .graphic ? "slider.vertical.3" : "dial.medium"
+        case .headroom: return "gauge.with.dots.needle.33percent"
+        case .save: return "square.and.arrow.down"
+        case .saveAs: return "square.and.arrow.down.on.square"
+        case .rename: return "pencil"
+        case .delete: return "trash"
+        case .revert: return "arrow.uturn.backward"
+        case .faceplate: return "paintpalette"
+        case .bypass: return "power"
+        case .flat: return "arrow.counterclockwise"
         }
     }
 
-    /// MODE shows its current setting; FACEPLATE is "View", which switches between the two looks.
+    /// The tooltip: MODE names its current setting; FACEPLATE switches between the two looks.
     private func title(_ button: Button) -> String {
         switch button {
-        case .link: return "Link"
-        case .mode: return session.mode.rawValue.capitalized
+        case .link: return "Link Channels"
+        case .mode: return "Mode: \(session.mode.rawValue.capitalized)"
         case .headroom: return "Headroom"
         case .save: return "Save"
-        case .saveAs: return "Save As"
-        case .rename: return "Rename"
-        case .delete: return "Delete"
+        case .saveAs: return "Save As…"
+        case .rename: return "Rename…"
+        case .delete: return "Delete…"
         case .revert: return "Revert"
-        case .faceplate: return "View"
+        case .faceplate: return "Switch View"
+        case .bypass: return "Bypass"
+        case .flat: return "Flat"
         }
     }
 
@@ -425,17 +475,15 @@ final class EqualizerStudioView: NSView {
         f.edge.withAlphaComponent(0.6).setStroke()
         NSBezierPath(roundedRect: panel.frame.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3).stroke()
 
-        // Channel name (lit, as the LINK tab is, while LINK is on), the peak response readout, and the
-        // channel's FLAT and BYPASS.
-        // The name is a tab lit with LINK, so the two read as one state; only the lighting changes.
-        f.drawButton(channel == 0 ? "LEFT" : "RIGHT", in: panel.name, lit: session.linked)
+        // The name is a console's scribble strip; its colour bar lights with LINK, so the two
+        // channels read as one linked pair. Then the peak response and preamp readouts; BYPASS and
+        // FLAT are drawn with the toolbar.
+        f.drawScribbleStrip(channel == 0 ? "LEFT" : "RIGHT", in: panel.name, lit: session.linked)
         let peak = session.responses[channel].peak + Double(session.edit[channel].preamp)
         f.drawText(String(format: "PK %+.1f", peak), font: f.legendFont, color: peak > 0.05 ? f.peak : f.dimText,
                    in: panel.peakReadout)
         f.drawText(String(format: "PRE %+.1f", session.edit[channel].preamp), font: f.legendFont, color: f.dimText,
                    in: panel.preampReadout)
-        f.drawButton("Flat", in: panel.flat, lit: false)
-        f.drawButton("Bypass", in: panel.bypass, lit: session.bypass[channel])
 
         drawAnalyser(panel, channel: channel, f)
         switch session.mode {
@@ -461,7 +509,8 @@ final class EqualizerStudioView: NSView {
             f.drawText(StudioFaceplate.dbLabel(tick), font: f.legendFont, color: f.dimText,
                        in: CGRect(x: panel.preamp.maxX + 2, y: panel.preamp.y(gain: tick) - 6, width: 18, height: 12))
         }
-        f.drawFader(x: panel.preamp.midX, value: session.edit[channel].preamp, in: panel.preamp, cap: f.text, width: 18)
+        f.drawFader(x: panel.preamp.midX, value: session.edit[channel].preamp, in: panel.preamp, cap: f.text, width: 18,
+                    travel: f.preampTravel)
         f.drawText("PRE", font: f.legendFont, color: f.dimText,
                    in: CGRect(x: panel.preamp.minX - 8, y: panel.legend.minY, width: panel.preamp.width + 16,
                               height: panel.legend.height), alignment: .center)
@@ -580,8 +629,9 @@ final class EqualizerStudioView: NSView {
                 }
             }
             for band in 0..<EQProfileDesign.bandCount {
+                let cap = f.capColor(band: band)
                 f.drawFader(x: panel.centreX(band), value: EQCurve.clamp(bands[band] + session.responses[channel].stripAtCentres[band]),
-                            in: rect, cap: f.capColor(band: band), width: min(panel.bandWidth - 4, f.capWidth))
+                            in: rect, cap: cap, width: min(panel.bandWidth - 4, f.capWidth), travel: f.bandTravel(cap: cap))
             }
             drawResponse(panel, channel: channel, in: rect, f)
         }
@@ -602,6 +652,14 @@ final class EqualizerStudioView: NSView {
         path.lineWidth = 1.2
         f.accent.withAlphaComponent(session.bypass[channel] ? 0.25 : 0.85).setStroke()
         path.stroke()
+    }
+}
+
+/// The toolbar's icons carry no labels; each names itself on hover.
+extension EqualizerStudioView: NSViewToolTipOwner {
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint,
+              userData data: UnsafeMutableRawPointer?) -> String {
+        buttons.first { $0.1.contains(point) }.map { title($0.0) } ?? ""
     }
 }
 

@@ -133,6 +133,12 @@ final class ModernPeppyMeterView: NSView {
     private func drawMeterContent(in rect: NSRect, presenter: PeppyMeterPresenter, context: CGContext) {
         context.saveGState()
         context.clip(to: rect)
+        // Inside the border's rounded corners, which the square content rect overlaps; the per-tick
+        // fast path does not redraw the border over them.
+        if !isFullscreen {
+            context.addPath(renderer.windowContentClipPath(in: bounds, sharpCorners: sharpCorners))
+            context.clip()
+        }
         NSColor.black.setFill()
         context.fill(rect)
         PeppyMeterDrawing.draw(in: rect, presenter: presenter, context: context)

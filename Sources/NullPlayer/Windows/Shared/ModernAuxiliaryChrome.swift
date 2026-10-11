@@ -2,6 +2,13 @@ import AppKit
 
 /// `AuxiliaryWindowChrome`'s Original (Metal skin) frame.
 enum ModernAuxiliaryChrome {
+    /// Inside the frame's border, rounded with its corners.
+    static func contentClip(in bounds: NSRect, window: NSWindow?) -> CGPath {
+        let skin = ModernSkinEngine.shared.currentSkin ?? ModernSkinLoader.shared.loadDefault()
+        return ModernSkinRenderer(skin: skin).windowContentClipPath(
+            in: bounds, sharpCorners: window.map { WindowManager.shared.computeSharpCorners(for: $0) } ?? [])
+    }
+
     static func draw(in bounds: NSRect, window: NSWindow?, title: String, closePressed: Bool,
                      titleHeight: CGFloat, closeRect: NSRect, context: CGContext) {
         let skin = ModernSkinEngine.shared.currentSkin ?? ModernSkinLoader.shared.loadDefault()

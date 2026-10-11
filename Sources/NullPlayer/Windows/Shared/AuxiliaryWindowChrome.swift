@@ -47,6 +47,12 @@ struct AuxiliaryWindowChrome {
         return NSRect(x: border, y: bottom, width: max(0, bounds.width - 2 * border),
                       height: max(0, bounds.height - titleHeight - bottom))
     }
+    /// Where the content may draw, where that is not simply `contentRect`: inside an Original
+    /// frame's rounded border, which the square content rect overlaps at the corners. The other
+    /// families' frames are square.
+    func contentClip(_ bounds: NSRect) -> CGPath? {
+        modern ? ModernAuxiliaryChrome.contentClip(in: bounds, window: window) : nil
+    }
     func closeRect(_ bounds: NSRect) -> NSRect {
         if wmp {
             // Stated top-left, like the chrome that draws it; flipped into the view's space. A
