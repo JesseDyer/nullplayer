@@ -4,11 +4,14 @@ import AppKit
 /// skin family: a resizable borderless window in the running family's auxiliary chrome
 /// (`AuxiliaryWindowChrome`), around a faceplate of its own in the skin's colours. It snaps, docks
 /// and group-drags with the other windows, but is not a centre-stack window.
+///
+/// A `.wal` skin that lends a frame hosts an `EqualizerStudioView` of its own instead, as it does
+/// PeppyMeter and Cava. Both show the one `EqualizerStudioSession`, so a switch of skin or family
+/// keeps the edit.
 final class EqualizerStudioWindowController: NSWindowController, NSWindowDelegate {
     fileprivate static var current: EqualizerStudioWindowController?
 
     fileprivate let chromeView: EqualizerStudioWindowView
-    private var studioView: EqualizerStudioView { chromeView.studioView }
 
     init() {
         let window = BorderlessWindow(contentRect: NSRect(origin: .zero, size: EqualizerStudioView.designSize),
@@ -20,7 +23,7 @@ final class EqualizerStudioWindowController: NSWindowController, NSWindowDelegat
         window.isMovableByWindowBackground = false
         window.allowedResizeEdges = [.left, .right, .bottom]
         window.collectionBehavior = [.managed, .fullScreenPrimary]
-        window.title = "Equalizer Studio"
+        window.title = "EQ Studio"
         chromeView = EqualizerStudioWindowView(frame: NSRect(origin: .zero, size: window.frame.size))
         chromeView.autoresizingMask = [.width, .height]
         window.contentView = chromeView
@@ -31,12 +34,12 @@ final class EqualizerStudioWindowController: NSWindowController, NSWindowDelegat
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func showWindow(_ sender: Any?) {
-        if window?.isVisible != true { studioView.studioDidOpen() }
+        EqualizerStudioSession.shared.hostVisibilityDidChange(true)
         super.showWindow(sender)
     }
 
     func windowWillClose(_ notification: Notification) {
-        studioView.studioDidClose()
+        EqualizerStudioSession.shared.hostVisibilityDidChange(false)
         WindowManager.shared.notifyMainWindowVisibilityChanged()
     }
 
@@ -66,7 +69,7 @@ final class EqualizerStudioWindowView: NSView {
     let studioView = EqualizerStudioView(frame: NSRect(origin: .zero, size: EqualizerStudioView.designSize))
     private var dragStart: NSPoint?
     private var closePressed = false
-    private var chrome: AuxiliaryWindowChrome { AuxiliaryWindowChrome(window: window, title: "EQUALIZER STUDIO") }
+    private var chrome: AuxiliaryWindowChrome { AuxiliaryWindowChrome(window: window, title: "EQ STUDIO") }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -149,13 +152,28 @@ final class EqualizerStudioWindowView: NSView {
 }
 
 extension WindowManager {
+    /// The standalone window, shown or not. A hosted Studio's window is the `.wal` controller's.
     var equalizerStudioWindow: NSWindow? { EqualizerStudioWindowController.current?.window }
 
-    var isEqualizerStudioVisible: Bool { equalizerStudioWindow?.isVisible ?? false }
+    /// The Studio's window on screen: a `.wal` skin's frame where one shows it, else the standalone.
+    var shownEqualizerStudioWindow: NSWindow? {
+        if let controller = winampModernHostedController, controller.isHostedWindowVisible(.equalizerStudio) {
+            return controller.hostedWindow(ifMaterialized: .equalizerStudio)
+        }
+        return equalizerStudioWindow?.isVisible == true ? equalizerStudioWindow : nil
+    }
 
-    var equalizerStudioWindowFrame: NSRect? { equalizerStudioWindow?.frame }
+    var isEqualizerStudioVisible: Bool { shownEqualizerStudioWindow != nil }
 
+    var equalizerStudioWindowFrame: NSRect? { (shownEqualizerStudioWindow ?? equalizerStudioWindow)?.frame }
+
+    /// A `.wal` skin that lends a frame hosts the Studio; every other family, and a `.wal` skin that
+    /// lends none, shows the standalone window. The two are never up at once.
     func showEqualizerStudio(at restoredFrame: NSRect? = nil) {
+        if routeWinampModernHostedWindow(.equalizerStudio, toggle: false, restoredFrame: restoredFrame) {
+            if equalizerStudioWindow?.isVisible == true { equalizerStudioWindow?.close() }
+            return
+        }
         let controller = EqualizerStudioWindowController.current ?? EqualizerStudioWindowController()
         EqualizerStudioWindowController.current = controller
         guard let window = controller.window else { return }
@@ -172,7 +190,8 @@ extension WindowManager {
     }
 
     func toggleEqualizerStudio() {
-        if isEqualizerStudioVisible {
+        if routeWinampModernHostedWindow(.equalizerStudio, toggle: true) { return }
+        if equalizerStudioWindow?.isVisible == true {
             equalizerStudioWindow?.close()
         } else {
             showEqualizerStudio()

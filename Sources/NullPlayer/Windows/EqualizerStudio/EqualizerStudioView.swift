@@ -1,19 +1,17 @@
 import AppKit
 
-/// The Studio's single view: header, buttons and two channel panels (L above R), each a per-channel
-/// analyser over 31 band faders — or, in parametric mode, a response graph over a channel strip's
-/// dials — plus a preamp, with its own FLAT and BYPASS under the channel name. Both stages are always
-/// heard and every curve drawn is their sum; the mode only picks which controls are shown. Edits are
-/// heard live (the profile controller's `audition`) and discarded unless saved.
+/// The Studio's view of its session (`EqualizerStudioSession`): header, buttons and two channel
+/// panels (L above R), each a per-channel analyser over 31 band faders — or, in parametric mode, a
+/// response graph over a channel strip's dials — plus a preamp, with its own FLAT and BYPASS under
+/// the channel name. Both stages are always heard and every curve drawn is their sum; the mode only
+/// picks which controls are shown. Each host — the standalone window, a `.wal` skin's frame — has
+/// one of its own.
 final class EqualizerStudioView: NSView {
+    private typealias Fader = EqualizerStudioSession.Fader
+    private typealias Mode = EqualizerStudioSession.Mode
+
     private enum Button: CaseIterable {
         case link, mode, headroom, save, saveAs, rename, delete, revert, faceplate
-    }
-
-    /// A band fader (`band` 0…30) or the preamp (`band` nil) of one channel.
-    private struct Fader: Equatable {
-        let channel: Int
-        let band: Int?
     }
 
     /// What a click in a channel panel lands on.
@@ -21,30 +19,6 @@ final class EqualizerStudioView: NSView {
         case fader(Fader)
         case knob(channel: Int, EQParametric.Knob)
         case toggle(channel: Int, EQParametric.Switch)
-    }
-
-    /// One channel's curve heard — both stages, no preamp — in dB, as drawn.
-    private struct ChannelResponse {
-        /// On `gridFrequencies`.
-        let grid: [Double]
-        /// At the band centres.
-        let centres: [Double]
-        /// The parametric strip alone at the band centres. A band fader shows its graphic share on
-        /// top of this, so the faders sit on the curve; dragging moves only the share.
-        let stripAtCentres: [Float]
-        let peak: Double
-
-        static let flat = ChannelResponse(.flat, channel: 0)
-
-        init(_ curve: EQCurve, channel: Int) {
-            let rate = EqualizerStudioView.displayRate
-            let sections = EQProfileDesign.sections(for: curve, channel: channel, sampleRate: rate)
-            let strip = curve[channel].parametric.sections(sampleRate: rate)
-            grid = EqualizerStudioView.gridFrequencies.map { EQProfileDesign.responseDB(sections, frequency: $0, sampleRate: rate) }
-            centres = EQProfileDesign.frequencies.map { EQProfileDesign.responseDB(sections, frequency: $0, sampleRate: rate) }
-            stripAtCentres = EQProfileDesign.frequencies.map { Float(EQProfileDesign.responseDB(strip, frequency: $0, sampleRate: rate)) }
-            peak = grid.max() ?? 0
-        }
     }
 
     private struct Panel {
@@ -72,43 +46,37 @@ final class EqualizerStudioView: NSView {
         func x(frequency: Double) -> CGFloat { bandX0 + (CGFloat(log2(frequency / 20) * 3) + 0.5) * bandWidth }
     }
 
-    /// Which stage's controls are shown. Not part of the profile: both stages are always heard.
-    private enum Mode: String, CaseIterable { case graphic, parametric }
-
-    private static let linkedKey = "equalizerStudioLinked"
-    private static let modeKey = "equalizerStudioMode"
-    /// Response and peaks are shown at this rate; the stream's own rate differs only above 20 kHz.
-    private static let displayRate = 48000.0
-    private static let gridFrequencies: [Double] = (0...180).map { 20 * pow(1000, Double($0) / 180) }
     private static let bandLabels = ["20", "25", "31", "40", "50", "63", "80", "100", "125", "160", "200",
                                      "250", "315", "400", "500", "630", "800", "1k", "1.2k", "1.6k", "2k",
                                      "2.5k", "3.1k", "4k", "5k", "6.3k", "8k", "10k", "12k", "16k", "20k"]
     private static let analyserRange: ClosedRange<Float> = -78...6
 
-    private let store = EQProfileStore.shared
-    private var controller: EQProfileController { WindowManager.shared.audioEngine.eqProfileController }
-    private let rta = StudioRTA()
-
-    private var edit = EQCurve.flat
-    private var profileID: UUID?
-    /// What an unsaved profile is called until it is saved under a name of its own.
-    private static let newName = "New EQ Profile"
-    private var name = EqualizerStudioView.newName
-    /// Per channel: heard flat, for this session. A monitoring switch, not an edit, but LINK lit
-    /// sets both channels to the clicked one's new state, as it does FLAT.
-    private var bypass = [false, false]
-    private var linked = true
-    private var mode = Mode.graphic
-    private var faceplateKind = StudioFaceplate.Kind.console
+    private let session = EqualizerStudioSession.shared
     private let bloom = StudioBloom()
+    /// Set while a `.wal` skin's frame hosts this view: an empty-area press then moves that window
+    /// through the shared hosted drag, the skin's scene having no drag of its own for it.
+    private var hostedContext: WinampModernHostedSurfaceContext?
+    private var hostedDrag = WinampModernHostedWindowDrag()
     /// A fader or dial held, and the pointer's last y.
     private var drag: (control: Control, y: CGFloat)?
-    private var responses = [ChannelResponse.flat, .flat]
-    private var levels = [[Float]](repeating: [Float](repeating: StudioRTA.floorDB, count: EQProfileDesign.bandCount), count: 2)
-    private var peaks = [[Float]](repeating: [Float](repeating: StudioRTA.floorDB, count: EQProfileDesign.bandCount), count: 2)
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        NotificationCenter.default.addObserver(self, selector: #selector(sessionDidChange),
+                                               name: EqualizerStudioSession.didChangeNotification, object: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func sessionDidChange() { needsDisplay = true }
+
+    func configureForHostedSurface(context: WinampModernHostedSurfaceContext) {
+        hostedContext = context
+        needsDisplay = true
+    }
 
     // MARK: - Layout
 
@@ -142,7 +110,7 @@ final class EqualizerStudioView: NSView {
             let grow = (spare * 0.4).rounded()
             // Parametric mode shortens the analyser to give the strip's dials room.
             let analyser = CGRect(x: bandX0, y: inner.minY, width: inner.maxX - bandX0,
-                                  height: (mode == .graphic ? 74 : 56) + grow)
+                                  height: (session.mode == .graphic ? 74 : 56) + grow)
             let faders = CGRect(x: bandX0, y: inner.minY + 82 + grow, width: analyser.width, height: 112 + spare - grow)
             func row(_ y: CGFloat, _ height: CGFloat) -> CGRect {
                 CGRect(x: inner.minX, y: inner.minY + y, width: column, height: height)
@@ -158,195 +126,42 @@ final class EqualizerStudioView: NSView {
         }
     }
 
-    // MARK: - Open / close
-
-    func studioDidOpen() {
-        linked = UserDefaults.standard.object(forKey: Self.linkedKey) as? Bool ?? true
-        mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(Mode.init) ?? .graphic
-        faceplateKind = StudioFaceplate.storedKind
-        bypass = [false, false]
-        if let track = WindowManager.shared.audioEngine.currentTrack, let profile = EQProfileResolver.shared.resolve(track)?.profile {
-            load(profile)
-        } else {
-            loadNew()
-        }
-        rta.onUpdate = { [weak self] levels, peaks in
-            self?.levels = levels
-            self?.peaks = peaks
-            self?.needsDisplay = true
-        }
-        rta.start()
-    }
-
-    func studioDidClose() {
-        rta.stop()
-        rta.onUpdate = nil
-        bypass = [false, false]
-        controller.audition = nil
-    }
-
-    private func load(_ profile: EQProfile) {
-        profileID = profile.id
-        name = profile.name
-        edit = profile.curve
-        editDidChange()
-    }
-
-    private func loadNew() {
-        profileID = nil
-        name = Self.newName
-        edit = .flat
-        editDidChange()
-    }
-
-    private var savedCurve: EQCurve { profileID.flatMap { store.profile($0)?.curve } ?? .flat }
-    private var isDirty: Bool { edit != savedCurve }
-
-    private func editDidChange() {
-        responses = (0..<2).map { ChannelResponse(edit, channel: $0) }
-        pushAudition()
-    }
-
-    private func pushAudition() {
-        var heard = edit
-        for channel in 0..<2 where bypass[channel] { heard[channel] = .flat }
-        controller.audition = heard
-        needsDisplay = true
-    }
-
-    // MARK: - Editing
-
-    /// The channel an edit is made on, then — LINK lit — the other.
-    private func targets(_ channel: Int) -> [Int] { linked ? [channel, 1 - channel] : [channel] }
-
-    /// Where a fader's cap is drawn and dragged: a band fader adds the strip at its centre; the preamp is itself.
-    private func offset(_ fader: Fader) -> Float {
-        fader.band.map { responses[fader.channel].stripAtCentres[$0] } ?? 0
-    }
-
-    private func value(_ fader: Fader) -> Float {
-        fader.band.map { edit[fader.channel].bands[$0] } ?? edit[fader.channel].preamp
-    }
-
-    private func set(_ fader: Fader, _ value: Float) {
-        let value = EQCurve.clamp(value)
-        if let band = fader.band { edit[fader.channel].bands[band] = value } else { edit[fader.channel].preamp = value }
-    }
-
-    /// LINK lit moves the other channel's fader by the same amount, so channels that differ keep
-    /// their difference.
-    private func move(_ fader: Fader, to newValue: Float) {
-        let moved = EQCurve.clamp(newValue) - value(fader)
-        guard moved != 0 else { return }
-        for channel in targets(fader.channel) {
-            let target = Fader(channel: channel, band: fader.band)
-            set(target, value(target) + moved)
-        }
-        editDidChange()
-    }
-
-    private func reset(_ fader: Fader) {
-        for channel in targets(fader.channel) { set(Fader(channel: channel, band: fader.band), 0) }
-        editDidChange()
-    }
-
-    /// LINK lit turns the other channel's dial by the same travel, as with faders.
-    private func turn(_ knob: EQParametric.Knob, channel: Int, by travel: Float) {
-        let old = edit[channel].parametric[knob]
-        edit[channel].parametric[knob] = knob.value(at: knob.position(of: old) + travel)
-        let moved = knob.position(of: edit[channel].parametric[knob]) - knob.position(of: old)
-        guard moved != 0 else { return }
-        for channel in targets(channel).dropFirst() {
-            let value = edit[channel].parametric[knob]
-            edit[channel].parametric[knob] = knob.value(at: knob.position(of: value) + moved)
-        }
-        editDidChange()
-    }
-
-    private func reset(_ knob: EQParametric.Knob, channel: Int) {
-        for channel in targets(channel) { edit[channel].parametric[knob] = EQParametric.flat[knob] }
-        editDidChange()
-    }
-
-    /// A switch is an edit, so LINK lit sets both channels to the clicked one's new state.
-    private func flip(_ toggle: EQParametric.Switch, channel: Int) {
-        let on = !edit[channel].parametric[toggle]
-        for channel in targets(channel) { edit[channel].parametric[toggle] = on }
-        editDidChange()
-    }
+    // MARK: - Buttons
 
     private func perform(_ button: Button) {
         switch button {
-        case .link:
-            linked.toggle()
-            UserDefaults.standard.set(linked, forKey: Self.linkedKey)
-            needsDisplay = true
-        case .mode:
-            mode = mode == .graphic ? .parametric : .graphic
-            UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey)
-            needsDisplay = true
-        case .headroom:
-            for channel in 0..<2 { edit[channel].preamp = headroomPreamp(channel) }
-            editDidChange()
-        case .save:
-            guard let profileID else { return }
-            store.update(profileID, curve: edit)
-            needsDisplay = true
+        case .link: session.toggleLink()
+        case .mode: session.toggleMode()
+        case .headroom: session.applyHeadroom()
+        case .save: session.save()
         case .saveAs:
-            saveAs()
+            if let newName = promptName("Save Profile As", initial: session.profileID == nil ? "" : session.name) {
+                session.saveAs(newName)
+            }
         case .rename:
-            guard let profileID, let newName = promptName("Rename Profile", initial: name) else { return }
-            name = newName
-            store.update(profileID, name: newName)
-            needsDisplay = true
+            if let newName = promptName("Rename Profile", initial: session.name) { session.rename(newName) }
         case .delete:
-            guard let profileID else { return }
             let alert = NSAlert()
-            alert.messageText = "Delete “\(name)”?"
+            alert.messageText = "Delete “\(session.name)”?"
             alert.informativeText = "Everything assigned to it falls back to the next level down."
             alert.addButton(withTitle: "Delete")
             alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            store.delete(profileID)
-            loadNew()
-        case .revert:
-            edit = savedCurve
-            editDidChange()
-        case .faceplate:
-            faceplateKind = faceplateKind == .console ? .boutique : .console
-            UserDefaults.standard.set(faceplateKind.rawValue, forKey: StudioFaceplate.defaultsKey)
-            needsDisplay = true
+            if alert.runModal() == .alertFirstButtonReturn { session.delete() }
+        case .revert: session.revert()
+        case .faceplate: session.toggleFaceplate()
         }
-    }
-
-    /// FLAT is an edit, so LINK lit flattens both channels, as double-clicking a fader resets both.
-    /// It flattens the whole curve — both stages — whichever controls are shown.
-    private func flatten(_ channel: Int) {
-        for channel in targets(channel) { edit[channel] = .flat }
-        editDidChange()
-    }
-
-    /// The preamp that puts a channel's response peak at 0 dB.
-    private func headroomPreamp(_ channel: Int) -> Float {
-        EQCurve.clamp(Float(-responses[channel].peak))
     }
 
     private func isEnabled(_ button: Button) -> Bool {
         switch button {
         // Lit only while a preamp is off its headroom setting, so a press always changes something.
-        case .headroom: return (0..<2).contains { abs(edit[$0].preamp - headroomPreamp($0)) >= 0.05 }
+        case .headroom: return session.isOffHeadroom
         // An unsaved profile has nothing stored to save over, rename or delete; Save As names it.
-        case .save: return profileID != nil && isDirty
-        case .rename, .delete: return profileID != nil
-        case .revert: return isDirty
+        case .save: return session.profileID != nil && session.isDirty
+        case .rename, .delete: return session.profileID != nil
+        case .revert: return session.isDirty
         default: return true
         }
-    }
-
-    private func saveAs() {
-        guard let newName = promptName("Save Profile As", initial: profileID == nil ? "" : name),
-              let profile = store.add(name: newName, curve: edit) else { return }
-        load(profile)
     }
 
     private func promptName(_ message: String, initial: String) -> String? {
@@ -365,11 +180,11 @@ final class EqualizerStudioView: NSView {
 
     private func showProfileMenu() {
         let menu = NSMenu()
-        for profile in store.sortedProfiles {
+        for profile in EQProfileStore.shared.sortedProfiles {
             let item = NSMenuItem(title: profile.name, action: #selector(chooseProfile(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = profile.id
-            item.state = profile.id == profileID ? .on : .off
+            item.state = profile.id == session.profileID ? .on : .off
             menu.addItem(item)
         }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -380,11 +195,11 @@ final class EqualizerStudioView: NSView {
     }
 
     @objc private func chooseProfile(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID, let profile = store.profile(id) else { return }
-        load(profile)
+        guard let id = sender.representedObject as? UUID, let profile = EQProfileStore.shared.profile(id) else { return }
+        session.load(profile)
     }
 
-    @objc private func chooseNew(_ sender: NSMenuItem) { loadNew() }
+    @objc private func chooseNew(_ sender: NSMenuItem) { session.loadNew() }
 
     // MARK: - Mouse
 
@@ -392,7 +207,7 @@ final class EqualizerStudioView: NSView {
     private func control(at point: CGPoint) -> Control? {
         for (channel, panel) in panels.enumerated() {
             if panel.preamp.insetBy(dx: -8, dy: -4).contains(point) { return .fader(Fader(channel: channel, band: nil)) }
-            switch mode {
+            switch session.mode {
             case .graphic:
                 guard panel.faders.insetBy(dx: 0, dy: -4).contains(point) else { continue }
                 let band = Int((point.x - panel.bandX0) / panel.bandWidth)
@@ -404,6 +219,11 @@ final class EqualizerStudioView: NSView {
             }
         }
         return nil
+    }
+
+    /// Where a fader's cap is drawn and dragged: a band fader adds the strip at its centre; the preamp is itself.
+    private func offset(_ fader: Fader) -> Float {
+        fader.band.map { session.responses[fader.channel].stripAtCentres[$0] } ?? 0
     }
 
     private func faderRect(_ fader: Fader) -> CGRect {
@@ -418,15 +238,16 @@ final class EqualizerStudioView: NSView {
         } else if let (button, _) = buttonRects.first(where: { $0.1.contains(point) }) {
             if isEnabled(button) { perform(button) }
         } else if let channel = panels.firstIndex(where: { $0.flat.contains(point) }) {
-            flatten(channel)
+            session.flatten(channel)
         } else if let channel = panels.firstIndex(where: { $0.bypass.contains(point) }) {
-            let on = !bypass[channel]
-            for channel in targets(channel) { bypass[channel] = on }
-            pushAudition()
+            session.toggleBypass(channel)
         } else if let control = control(at: point) {
             press(control, at: point.y, clickCount: event.clickCount)
+        } else if hostedContext != nil {
+            // An empty area moves the window: a skin's frame through the shared hosted drag, the
+            // standalone window through the window view behind, snapping as its title does.
+            hostedDrag.prime(event, context: hostedContext)
         } else {
-            // An empty area: the window view behind drags the window, snapping as its title does.
             super.mouseDown(with: event)
         }
     }
@@ -436,39 +257,44 @@ final class EqualizerStudioView: NSView {
         switch control {
         case .fader(let fader):
             if clickCount == 2 {
-                reset(fader)
+                session.reset(fader)
             } else {
                 drag = (control, y)
-                move(fader, to: faderRect(fader).gain(y: y) - offset(fader))
+                session.move(fader, to: faderRect(fader).gain(y: y) - offset(fader))
             }
         case .knob(let channel, let knob):
             if clickCount == 2 {
-                reset(knob, channel: channel)
-            } else if edit[channel].parametric.isActive(knob) {
+                session.reset(knob, channel: channel)
+            } else if session.edit[channel].parametric.isActive(knob) {
                 drag = (control, y)
             }
         case .toggle(let channel, let toggle):
-            flip(toggle, channel: channel)
+            session.flip(toggle, channel: channel)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let (control, lastY) = drag else { super.mouseDragged(with: event); return }
+        guard let (control, lastY) = drag else {
+            if hostedContext != nil { hostedDrag.drag(event) } else { super.mouseDragged(with: event) }
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         drag?.y = point.y
         switch control {
         case .fader(let fader):
-            move(fader, to: faderRect(fader).gain(y: point.y) - offset(fader))
+            session.move(fader, to: faderRect(fader).gain(y: point.y) - offset(fader))
         case .knob(let channel, let knob):
             // Up turns clockwise; 200 points is the whole travel.
-            turn(knob, channel: channel, by: Float(lastY - point.y) / 200)
+            session.turn(knob, channel: channel, by: Float(lastY - point.y) / 200)
         case .toggle:
             break
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        if drag == nil { super.mouseUp(with: event) }
+        if drag == nil {
+            if hostedContext != nil { _ = hostedDrag.end() } else { super.mouseUp(with: event) }
+        }
         drag = nil
     }
 
@@ -543,7 +369,7 @@ final class EqualizerStudioView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let f = StudioFaceplate(faceplateKind, style: surfaceStyle, meter: meterColors, tab: tab, metalSkin: metalSkin)
+        let f = StudioFaceplate(session.faceplateKind, style: surfaceStyle, meter: meterColors, tab: tab, metalSkin: metalSkin)
         // Over, not copied: Metal's clear panel must leave the chrome's surface behind it.
         f.panel.setFill()
         bounds.fill(using: .sourceOver)
@@ -564,7 +390,7 @@ final class EqualizerStudioView: NSView {
         NSBezierPath(roundedRect: nameRect, xRadius: 3, yRadius: 3).fill()
         f.edge.setStroke()
         NSBezierPath(roundedRect: nameRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3).stroke()
-        f.drawText(name + (isDirty ? "  ●" : ""), font: f.titleFont, color: f.wellText,
+        f.drawText(session.name + (session.isDirty ? "  ●" : ""), font: f.titleFont, color: f.wellText,
                    in: CGRect(x: nameRect.minX + 10, y: nameRect.minY, width: nameRect.width - 40, height: nameRect.height))
         f.drawText("▾", font: f.buttonFont, color: f.wellDimText, in: CGRect(x: nameRect.maxX - 22, y: nameRect.minY, width: 14, height: nameRect.height))
 
@@ -575,7 +401,7 @@ final class EqualizerStudioView: NSView {
                 .map { f.tab.scale(fitting: $0, in: rect.size) }
         }.min() ?? 1
         for (button, rect) in buttonRects {
-            f.drawButton(title(button), in: rect, lit: button == .link && linked, enabled: isEnabled(button),
+            f.drawButton(title(button), in: rect, lit: button == .link && session.linked, enabled: isEnabled(button),
                          scale: rowScale)
         }
     }
@@ -584,7 +410,7 @@ final class EqualizerStudioView: NSView {
     private func title(_ button: Button) -> String {
         switch button {
         case .link: return "Link"
-        case .mode: return mode.rawValue.capitalized
+        case .mode: return session.mode.rawValue.capitalized
         case .headroom: return "Headroom"
         case .save: return "Save"
         case .saveAs: return "Save As"
@@ -602,21 +428,21 @@ final class EqualizerStudioView: NSView {
         // Channel name (lit, as the LINK tab is, while LINK is on), the peak response readout, and the
         // channel's FLAT and BYPASS.
         // The name is a tab lit with LINK, so the two read as one state; only the lighting changes.
-        f.drawButton(channel == 0 ? "LEFT" : "RIGHT", in: panel.name, lit: linked)
-        let peak = responses[channel].peak + Double(edit[channel].preamp)
+        f.drawButton(channel == 0 ? "LEFT" : "RIGHT", in: panel.name, lit: session.linked)
+        let peak = session.responses[channel].peak + Double(session.edit[channel].preamp)
         f.drawText(String(format: "PK %+.1f", peak), font: f.legendFont, color: peak > 0.05 ? f.peak : f.dimText,
                    in: panel.peakReadout)
-        f.drawText(String(format: "PRE %+.1f", edit[channel].preamp), font: f.legendFont, color: f.dimText,
+        f.drawText(String(format: "PRE %+.1f", session.edit[channel].preamp), font: f.legendFont, color: f.dimText,
                    in: panel.preampReadout)
         f.drawButton("Flat", in: panel.flat, lit: false)
-        f.drawButton("Bypass", in: panel.bypass, lit: bypass[channel])
+        f.drawButton("Bypass", in: panel.bypass, lit: session.bypass[channel])
 
         drawAnalyser(panel, channel: channel, f)
-        switch mode {
+        switch session.mode {
         case .graphic:
             drawFaders(panel, channel: channel, f)
         case .parametric:
-            let strip = panel.strip, parametric = edit[channel].parametric
+            let strip = panel.strip, parametric = session.edit[channel].parametric
             glow(f, strip.graph) {
                 strip.drawGraph(parametric, x: panel.x(frequency:),
                                 drawResponse: { drawResponse(panel, channel: channel, in: $0, f) }, f)
@@ -635,7 +461,7 @@ final class EqualizerStudioView: NSView {
             f.drawText(StudioFaceplate.dbLabel(tick), font: f.legendFont, color: f.dimText,
                        in: CGRect(x: panel.preamp.maxX + 2, y: panel.preamp.y(gain: tick) - 6, width: 18, height: 12))
         }
-        f.drawFader(x: panel.preamp.midX, value: edit[channel].preamp, in: panel.preamp, cap: f.text, width: 18)
+        f.drawFader(x: panel.preamp.midX, value: session.edit[channel].preamp, in: panel.preamp, cap: f.text, width: 18)
         f.drawText("PRE", font: f.legendFont, color: f.dimText,
                    in: CGRect(x: panel.preamp.minX - 8, y: panel.legend.minY, width: panel.preamp.width + 16,
                               height: panel.legend.height), alignment: .center)
@@ -658,9 +484,9 @@ final class EqualizerStudioView: NSView {
         let rect = panel.analyser
         let graticule = stride(from: Self.analyserRange.upperBound - 6, to: Self.analyserRange.lowerBound, by: -f.graticuleStep)
         let streaming = WindowManager.shared.audioEngine.isStreamingPlayback
-        let bypassed = bypass[channel]
-        let added = responses[channel].centres.map { streaming || bypassed ? 0 : Float($0) + edit[channel].preamp }
-        let levels = zip(self.levels[channel], added).map(+), peaks = zip(self.peaks[channel], added).map(+)
+        let bypassed = session.bypass[channel]
+        let added = session.responses[channel].centres.map { streaming || bypassed ? 0 : Float($0) + session.edit[channel].preamp }
+        let levels = zip(session.levels[channel], added).map(+), peaks = zip(session.peaks[channel], added).map(+)
 
         glow(f, rect) {
             f.well.setFill()
@@ -736,7 +562,7 @@ final class EqualizerStudioView: NSView {
 
     private func drawFaders(_ panel: Panel, channel: Int, _ f: StudioFaceplate) {
         let rect = panel.faders
-        let bands = edit[channel].bands
+        let bands = session.edit[channel].bands
 
         glow(f, rect) {
             // Scale: engraved on Console, a fine line on Boutique.
@@ -754,7 +580,7 @@ final class EqualizerStudioView: NSView {
                 }
             }
             for band in 0..<EQProfileDesign.bandCount {
-                f.drawFader(x: panel.centreX(band), value: EQCurve.clamp(bands[band] + responses[channel].stripAtCentres[band]),
+                f.drawFader(x: panel.centreX(band), value: EQCurve.clamp(bands[band] + session.responses[channel].stripAtCentres[band]),
                             in: rect, cap: f.capColor(band: band), width: min(panel.bandWidth - 4, f.capWidth))
             }
             drawResponse(panel, channel: channel, in: rect, f)
@@ -769,12 +595,28 @@ final class EqualizerStudioView: NSView {
     /// The response actually applied — both stages, without the preamp, at 48 kHz — on a ±12 dB scale in `rect`.
     private func drawResponse(_ panel: Panel, channel: Int, in rect: CGRect, _ f: StudioFaceplate) {
         let path = NSBezierPath()
-        for (index, (frequency, db)) in zip(Self.gridFrequencies, responses[channel].grid).enumerated() {
+        for (index, (frequency, db)) in zip(EqualizerStudioSession.gridFrequencies, session.responses[channel].grid).enumerated() {
             let point = CGPoint(x: panel.x(frequency: frequency), y: rect.y(gain: Float(max(-12, min(12, db)))))
             index == 0 ? path.move(to: point) : path.line(to: point)
         }
         path.lineWidth = 1.2
-        f.accent.withAlphaComponent(bypass[channel] ? 0.25 : 0.85).setStroke()
+        f.accent.withAlphaComponent(session.bypass[channel] ? 0.25 : 0.85).setStroke()
         path.stroke()
+    }
+}
+
+/// The Studio in a `.wal` skin's frame. Its session follows the hosted window's show and hide
+/// (`WindowManager.hostedWindowVisibilityDidChange`), not `resume`/`suspend`, which also come with
+/// occlusion — covering the window must not end it.
+extension EqualizerStudioView: WinampModernHostedSurface {
+    var view: NSView { self }
+    func applyPalette(_ style: WinampModernSurfaceStyle) { needsDisplay = true }
+    func applySkinScale(_ scale: CGFloat) { needsDisplay = true }
+    func resume() {}
+    func suspend() {}
+    func unmountFromHolder() { removeFromSuperview() }
+    func prepareForUITeardown() {
+        hostedContext = nil
+        removeFromSuperview()
     }
 }

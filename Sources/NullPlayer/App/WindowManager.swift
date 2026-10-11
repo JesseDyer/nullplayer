@@ -1158,7 +1158,7 @@ class WindowManager {
     /// their desktops out around.
     var appliesPlacementRecovery: Bool { uiMode.controllerFamily.hostsForeignSkin }
 
-    private var winampModernHostedController: WinampModernMainWindowController? {
+    var winampModernHostedController: WinampModernMainWindowController? {
         guard uiMode.controllerFamily == .winampModern else { return nil }
         return mainWindowController as? WinampModernMainWindowController
     }
@@ -1815,8 +1815,8 @@ class WindowManager {
     }
 
     @discardableResult
-    private func routeWinampModernHostedWindow(_ id: WinampModernHostedWindowID, toggle: Bool,
-                                               restoredFrame: NSRect? = nil) -> Bool {
+    func routeWinampModernHostedWindow(_ id: WinampModernHostedWindowID, toggle: Bool,
+                                       restoredFrame: NSRect? = nil) -> Bool {
         guard !isPerformingWinampModernHostedFallback,
               let controller = winampModernHostedController,
               controller.handlesHostedWindow(id) else { return false }
@@ -1890,6 +1890,8 @@ class WindowManager {
 
     func hostedWindowVisibilityDidChange(id: WinampModernHostedWindowID, visible: Bool,
                                          transitionFrame: NSRect) {
+        // The Studio's session follows a real show or hide; a skin teardown reports neither.
+        if id == .equalizerStudio { EqualizerStudioSession.shared.hostVisibilityDidChange(visible) }
         // No slide-up on close (B158): a hosted window reopens where it was left, so sliding the
         // window below into its spot put the reopened one exactly over it. Same rule as
         // `handleCenterStackWindowWillClose` for `.wal` and `.wmz`.
@@ -1916,6 +1918,7 @@ class WindowManager {
         case .audioAnalysis: return audioAnalysisWindowController?.window
         case .waveform: return waveformWindowController?.window
         case .projectM: return projectMWindowController?.window
+        case .equalizerStudio: return equalizerStudioWindow
         }
     }
 
@@ -2042,6 +2045,7 @@ class WindowManager {
         case .audioAnalysis: showOnly ? showAudioAnalysis() : toggleAudioAnalysis()
         case .waveform: showOnly ? showWaveform() : toggleWaveform()
         case .projectM: showOnly ? showProjectM(routeToSkin: false) : toggleLocalProjectMWindow()
+        case .equalizerStudio: showOnly ? showEqualizerStudio() : toggleEqualizerStudio()
         }
     }
 
@@ -7680,6 +7684,9 @@ class WindowManager {
         var equalizer: UIWindowSnapshot?
         var library: UIWindowSnapshot?
         var projectM: UIWindowSnapshot?
+        /// Captured only while open. The standalone Studio is not mode-dependent and survives a
+        /// rebuild; a `.wal` frame hosting it does not.
+        var equalizerStudio: UIWindowSnapshot?
         var centerStack: [CenterStackFeature: UIWindowSnapshot] = [:]
         /// Live ProjectM preset index, carried across the rebuild so the visualization stays on the
         /// exact preset the user was viewing rather than reverting to the saved startup default.
@@ -7710,6 +7717,7 @@ class WindowManager {
             library: snap(plexBrowserWindowController, normalFrame: plexBrowserWindowController?.frameForPositionMemory),
             projectM: snap(projectMWindowController)
                 ?? snapWindow(winampModernHostedController?.hostedWindow(ifMaterialized: .projectM)),
+            equalizerStudio: snapWindow(shownEqualizerStudioWindow),
             centerStack: CenterStackFeature.allCases.reduce(into: [:]) { snapshots, feature in
                 snapshots[feature] = snapWindow(centerStackWindow(feature))
             },
@@ -7798,6 +7806,12 @@ class WindowManager {
                 at: carried(projectM.frame),
                 restoringPresetIndex: snapshot.projectMPresetIndex
             )
+        }
+        // Only a switch into or out of `.wal` moves the Studio between hosts: the rebuild tore down
+        // the skin frame that hosted it, or the standalone must give way to the incoming skin's.
+        if let studio = snapshot.equalizerStudio,
+           snapshot.family == .winampModern || uiMode.controllerFamily == .winampModern {
+            showEqualizerStudio(at: carried(studio.frame))
         }
 
         pushCurrentPresentationStateToRecreatedWindows()
