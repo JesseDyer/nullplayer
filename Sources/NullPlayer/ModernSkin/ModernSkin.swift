@@ -273,12 +273,14 @@ class ModernSkin {
     
     // MARK: - Scaled Font Helpers
     
+    /// The skin's primary font at exactly `size`, or the monospaced system font where it has none.
+    func primaryFont(size: CGFloat) -> NSFont {
+        primaryFont?.withSize(size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
     /// Return the skin's primary font at an arbitrary base size, scaled by the current scale factor.
-    /// Falls back to monospaced system font if no skin font is available.
     func scaledFont(size: CGFloat) -> NSFont {
-        let scale = ModernSkinElements.scaleFactor
-        return primaryFont?.withSize(size * scale)
-            ?? NSFont.monospacedSystemFont(ofSize: size * scale, weight: .regular)
+        primaryFont(size: size * ModernSkinElements.scaleFactor)
     }
     
     /// Return a proportional system font at scaled size. Used for data-dense views (library browser)
@@ -291,9 +293,7 @@ class ModernSkin {
     /// Return the skin's primary font at a fixed point size, scaled by `sizeMultiplier`.
     /// Used for side-window chrome (tabs, server bar) so they scale with double-size mode.
     func sideWindowFont(size: CGFloat) -> NSFont {
-        let adjustedSize = size * ModernSkinElements.sizeMultiplier
-        return primaryFont?.withSize(adjustedSize)
-            ?? NSFont.monospacedSystemFont(ofSize: adjustedSize, weight: .regular)
+        primaryFont(size: size * ModernSkinElements.sizeMultiplier)
     }
 
     /// Proportional system font for the modern/metal Library Browser chrome — tabs,
