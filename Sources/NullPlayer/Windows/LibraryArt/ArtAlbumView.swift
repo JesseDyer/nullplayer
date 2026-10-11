@@ -38,6 +38,8 @@ final class ArtAlbumView: NSView, LibraryArtView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+        // Scrolled content sits above the top edge; unclipped it drew over the source bar and tabs.
+        clipsToBounds = true
     }
 
     required init?(coder: NSCoder) {

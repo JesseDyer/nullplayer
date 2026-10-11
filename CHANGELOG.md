@@ -54,6 +54,8 @@
 - **A window's drop shadow no longer shows as a box when the window changes size** — in `.wal`
   skins such as iTunes MiniPlayer, and on docking in Original skins, the old shadow could appear
   stretched to the new size.
+- **An album opened from Tiles or Flow no longer scrolls over the Library's tabs** — scrolling a
+  long album's tracks slid its cover and title up over the source bar and tabs.
 
 ## 0.32.1
 
