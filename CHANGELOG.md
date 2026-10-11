@@ -46,6 +46,9 @@
   Equalizer Studio a selected tab was hard to tell from the rest.
 - **Sonos Rooms has its close button again in `.wmz` and `.wal` skins** — the corner close of a
   window with no title bar did nothing.
+- **A quick drag of the player keeps its docked windows with it** — in a seamless Original skin,
+  quickly dragging the player around left the windows docked to it drifting a little further
+  behind on every move.
 
 ## 0.32.1
 
