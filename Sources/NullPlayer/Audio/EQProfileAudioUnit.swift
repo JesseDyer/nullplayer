@@ -188,9 +188,9 @@ enum EQProfileDesign {
 /// per section `active, b0, b1, b2, a1, a2`. Built off the render thread; copied into the kernel.
 enum EQProfileCoefficients {
     /// Slots per channel: the 31 bands, then the parametric strip.
-    static let sections = EQProfileDesign.bandCount + EQParametric.sectionCount
+    static let sectionCount = EQProfileDesign.bandCount + EQParametric.sectionCount
     static let sectionStride = 6
-    static let channelStride = 1 + sections * sectionStride
+    static let channelStride = 1 + sectionCount * sectionStride
     static let count = 2 * channelStride
 
     static func design(_ curve: EQCurve?, sampleRate: Double) -> [Double] {
@@ -215,14 +215,14 @@ enum EQProfileCoefficients {
 private final class EQProfileCascade {
     let coefficients = UnsafeMutablePointer<Double>.allocate(capacity: EQProfileCoefficients.count)
     /// Per channel, per section: x1, x2, y1, y2.
-    let state = UnsafeMutablePointer<Double>.allocate(capacity: 2 * EQProfileCoefficients.sections * 4)
+    let state = UnsafeMutablePointer<Double>.allocate(capacity: 2 * EQProfileCoefficients.sectionCount * 4)
     private(set) var isIdentity = true
 
     init() {
         coefficients.initialize(repeating: 0, count: EQProfileCoefficients.count)
         coefficients[0] = 1
         coefficients[EQProfileCoefficients.channelStride] = 1
-        state.initialize(repeating: 0, count: 2 * EQProfileCoefficients.sections * 4)
+        state.initialize(repeating: 0, count: 2 * EQProfileCoefficients.sectionCount * 4)
     }
 
     deinit {
@@ -238,15 +238,15 @@ private final class EQProfileCascade {
         coefficients.update(from: values, count: EQProfileCoefficients.count)
         isIdentity = (0..<2).allSatisfy { channel in
             coefficients[channel * EQProfileCoefficients.channelStride] == 1
-                && (0..<EQProfileCoefficients.sections).allSatisfy { !isActive(channel, $0) }
+                && (0..<EQProfileCoefficients.sectionCount).allSatisfy { !isActive(channel, $0) }
         }
     }
 
     /// Carry the signal history of every section `other` was running; start the rest from rest.
     func takeState(from other: EQProfileCascade) {
         for channel in 0..<2 {
-            for band in 0..<EQProfileCoefficients.sections {
-                let o = (channel * EQProfileCoefficients.sections + band) * 4
+            for band in 0..<EQProfileCoefficients.sectionCount {
+                let o = (channel * EQProfileCoefficients.sectionCount + band) * 4
                 if other.isActive(channel, band) {
                     state.advanced(by: o).update(from: other.state.advanced(by: o), count: 4)
                 } else {
@@ -256,15 +256,15 @@ private final class EQProfileCascade {
         }
     }
 
-    func reset() { state.update(repeating: 0, count: 2 * EQProfileCoefficients.sections * 4) }
+    func reset() { state.update(repeating: 0, count: 2 * EQProfileCoefficients.sectionCount * 4) }
 
     func process(channel: Int, _ buffer: UnsafeMutablePointer<Double>, frames: Int) {
         let base = coefficients + channel * EQProfileCoefficients.channelStride
-        for band in 0..<EQProfileCoefficients.sections {
+        for band in 0..<EQProfileCoefficients.sectionCount {
             let c = base + 1 + band * EQProfileCoefficients.sectionStride
             guard c[0] != 0 else { continue }
             let b0 = c[1], b1 = c[2], b2 = c[3], a1 = c[4], a2 = c[5]
-            let s = state + (channel * EQProfileCoefficients.sections + band) * 4
+            let s = state + (channel * EQProfileCoefficients.sectionCount + band) * 4
             var x1 = s[0], x2 = s[1], y1 = s[2], y2 = s[3]
             for i in 0..<frames {
                 let x = buffer[i]

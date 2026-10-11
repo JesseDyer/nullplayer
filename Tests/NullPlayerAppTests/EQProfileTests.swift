@@ -304,7 +304,7 @@ final class EQProfileTests: XCTestCase {
         curve.left.bands[17] = 4
         curve.left.parametric = strip
         let stacked = EQProfileDesign.sections(for: curve, channel: 0, sampleRate: rate)
-        XCTAssertEqual(stacked.count, EQProfileCoefficients.sections)
+        XCTAssertEqual(stacked.count, EQProfileCoefficients.sectionCount)
         let at1k = EQProfileDesign.responseDB(stacked, frequency: 1000, sampleRate: rate)
         XCTAssertEqual(at1k, 4 + EQProfileDesign.responseDB(sections, frequency: 1000, sampleRate: rate), accuracy: 0.05)
     }

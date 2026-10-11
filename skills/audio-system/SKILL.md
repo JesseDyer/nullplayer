@@ -414,13 +414,13 @@ runs — those 31, then the strip's.
 and Q (0.4–8); LF and HF switch to shelves. Bells are the matched peaking section at the band's Q;
 shelves and the high-pass are RBJ at Butterworth Q, so shelves have no Q dial. `sections` always
 returns `EQParametric.sectionCount` (5) slots, identity where off or at 0 dB, so each keeps its slot —
-and its filter state across a change. The kernel runs `EQProfileCoefficients.sections` (36) slots per
+and its filter state across a change. The kernel runs `EQProfileCoefficients.sectionCount` (36) slots per
 channel: the faders' 31, then the strip's 5. A curve saved before the strip decodes it flat
 (`EQCurve.Channel.init(from:)`).
 
 The Studio's GRAPHIC / PARAMETRIC button picks which stage's controls are shown; it is a view
 setting, not part of the profile. Every curve drawn is both stages, and a band fader's cap is drawn
-at its own value plus the strip's response at its centre (`stripAtCentre`), so the faders sit on the
+at its own value plus the strip's response at its centre (`ChannelResponse.stripAtCentres`), so the faders sit on the
 curve; dragging changes only the fader's own value.
 
 Scopes (`Track.eqProfileScopes`, in the resolver's file; an `EQProfileScope` per level), most specific first, names
