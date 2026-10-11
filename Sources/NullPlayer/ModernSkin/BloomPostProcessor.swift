@@ -94,139 +94,97 @@ class BloomPostProcessor {
             return
         }
         
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm,
-            width: width,
-            height: height,
-            mipmapped: false
-        )
-        descriptor.usage = [.shaderRead, .shaderWrite]
-        descriptor.storageMode = .private
-        
-        sourceTexture = device.makeTexture(descriptor: descriptor)
-        brightnessTexture = device.makeTexture(descriptor: descriptor)
-        blurTempTexture = device.makeTexture(descriptor: descriptor)
-        bloomTexture = device.makeTexture(descriptor: descriptor)
-        outputTexture = device.makeTexture(descriptor: descriptor)
+        // The ends are CPU-visible (written and read back); the passes between stay on the GPU.
+        func texture(_ storage: MTLStorageMode) -> MTLTexture? {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+            descriptor.usage = [.shaderRead, .shaderWrite]
+            descriptor.storageMode = storage
+            return device.makeTexture(descriptor: descriptor)
+        }
+        sourceTexture = texture(.managed)
+        brightnessTexture = texture(.private)
+        blurTempTexture = texture(.private)
+        bloomTexture = texture(.private)
+        outputTexture = texture(.managed)
     }
-    
+
     // MARK: - Processing
-    
-    /// Apply bloom to a CGImage and return the result
+
+    private static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    private static let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+
+    /// Apply bloom to a CGImage and return the result. The image is redrawn as RGBA8 premultiplied —
+    /// the textures' own layout — so any input format works; an unbloomed image comes back when
+    /// Metal cannot run the passes.
     func apply(to image: CGImage) -> CGImage? {
-        guard isEnabled, isAvailable else { return image }
-        guard let device = device, let commandQueue = commandQueue else { return image }
-        
+        guard isEnabled, isAvailable, let commandQueue,
+              let extract = brightnessExtractPipeline, let blurH = blurHorizontalPipeline,
+              let blurV = blurVerticalPipeline, let composite = compositePipeline else { return image }
+
         let width = image.width
         let height = image.height
-        
+        let bytesPerRow = width * 4
+        let region = MTLRegionMake2D(0, 0, width, height)
+        var pixels = Data(count: bytesPerRow * height)
+        let drawn = pixels.withUnsafeMutableBytes { raw -> Bool in
+            guard let context = CGContext(data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: bytesPerRow, space: Self.colorSpace,
+                                          bitmapInfo: Self.bitmapInfo) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return image }
+
         ensureTextures(width: width, height: height)
-        
+
         guard let source = sourceTexture,
               let brightness = brightnessTexture,
               let blurTemp = blurTempTexture,
               let bloom = bloomTexture,
-              let output = outputTexture else { return image }
-        
-        // Upload source image to texture
-        let loader = MTKTextureLoader(device: device)
-        guard let uploadedTexture = try? loader.newTexture(cgImage: image, options: [
-            .textureUsage: MTLTextureUsage([.shaderRead, .shaderWrite]).rawValue as NSNumber,
-            .textureStorageMode: MTLStorageMode.managed.rawValue as NSNumber
-        ]) else { return image }
-        
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return image }
-        
-        // Copy uploaded texture to our source texture
-        if let blitEncoder = commandBuffer.makeBlitCommandEncoder() {
-            blitEncoder.copy(from: uploadedTexture, to: source)
-            blitEncoder.endEncoding()
+              let output = outputTexture,
+              let commandBuffer = commandQueue.makeCommandBuffer() else { return image }
+        pixels.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            source.replace(region: region, mipmapLevel: 0, withBytes: base, bytesPerRow: bytesPerRow)
         }
-        
+
         let threadgroupSize = MTLSize(width: 16, height: 16, depth: 1)
         let threadgroups = MTLSize(
             width: (width + threadgroupSize.width - 1) / threadgroupSize.width,
             height: (height + threadgroupSize.height - 1) / threadgroupSize.height,
             depth: 1
         )
-        
-        // Pass 1: Extract bright pixels
-        if let encoder = commandBuffer.makeComputeCommandEncoder(),
-           let pipeline = brightnessExtractPipeline {
+        func encode<T>(_ pipeline: MTLComputePipelineState, _ textures: [MTLTexture], _ value: T) -> Bool {
+            guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return false }
             encoder.setComputePipelineState(pipeline)
-            encoder.setTexture(source, index: 0)
-            encoder.setTexture(brightness, index: 1)
-            var thresh = Float(threshold)
-            encoder.setBytes(&thresh, length: MemoryLayout<Float>.size, index: 0)
+            for (index, texture) in textures.enumerated() { encoder.setTexture(texture, index: index) }
+            var value = value
+            encoder.setBytes(&value, length: MemoryLayout<T>.size, index: 0)
             encoder.dispatchThreadgroups(threadgroups, threadsPerThreadgroup: threadgroupSize)
             encoder.endEncoding()
+            return true
         }
-        
-        // Pass 2: Horizontal blur
-        if let encoder = commandBuffer.makeComputeCommandEncoder(),
-           let pipeline = blurHorizontalPipeline {
-            encoder.setComputePipelineState(pipeline)
-            encoder.setTexture(brightness, index: 0)
-            encoder.setTexture(blurTemp, index: 1)
-            var rad = Int32(radius)
-            encoder.setBytes(&rad, length: MemoryLayout<Int32>.size, index: 0)
-            encoder.dispatchThreadgroups(threadgroups, threadsPerThreadgroup: threadgroupSize)
-            encoder.endEncoding()
-        }
-        
-        // Pass 3: Vertical blur
-        if let encoder = commandBuffer.makeComputeCommandEncoder(),
-           let pipeline = blurVerticalPipeline {
-            encoder.setComputePipelineState(pipeline)
-            encoder.setTexture(blurTemp, index: 0)
-            encoder.setTexture(bloom, index: 1)
-            var rad = Int32(radius)
-            encoder.setBytes(&rad, length: MemoryLayout<Int32>.size, index: 0)
-            encoder.dispatchThreadgroups(threadgroups, threadsPerThreadgroup: threadgroupSize)
-            encoder.endEncoding()
-        }
-        
-        // Pass 4: Composite bloom over original
-        if let encoder = commandBuffer.makeComputeCommandEncoder(),
-           let pipeline = compositePipeline {
-            encoder.setComputePipelineState(pipeline)
-            encoder.setTexture(source, index: 0)
-            encoder.setTexture(bloom, index: 1)
-            encoder.setTexture(output, index: 2)
-            var inten = Float(intensity)
-            encoder.setBytes(&inten, length: MemoryLayout<Float>.size, index: 0)
-            encoder.dispatchThreadgroups(threadgroups, threadsPerThreadgroup: threadgroupSize)
-            encoder.endEncoding()
-        }
-        
+
+        // Extract bright pixels, blur them both ways, and add them back over the original.
+        guard encode(extract, [source, brightness], Float(threshold)),
+              encode(blurH, [brightness, blurTemp], Int32(radius)),
+              encode(blurV, [blurTemp, bloom], Int32(radius)),
+              encode(composite, [source, bloom, output], Float(intensity)),
+              let blit = commandBuffer.makeBlitCommandEncoder() else { return image }
+        blit.synchronize(resource: output)
+        blit.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-        
-        // Read back result
-        return textureToImage(output, width: width, height: height)
-    }
-    
-    private func textureToImage(_ texture: MTLTexture, width: Int, height: Int) -> CGImage? {
-        let bytesPerRow = width * 4
-        let dataSize = bytesPerRow * height
-        var data = [UInt8](repeating: 0, count: dataSize)
-        
-        texture.getBytes(&data,
-                         bytesPerRow: bytesPerRow,
-                         from: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
-                                         size: MTLSize(width: width, height: height, depth: 1)),
-                         mipmapLevel: 0)
-        
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(data: &data,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: bytesPerRow,
-                                      space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        
-        return context.makeImage()
+
+        pixels.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            output.getBytes(base, bytesPerRow: bytesPerRow, from: region, mipmapLevel: 0)
+        }
+        guard let provider = CGDataProvider(data: pixels as CFData) else { return image }
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                       space: Self.colorSpace, bitmapInfo: CGBitmapInfo(rawValue: Self.bitmapInfo),
+                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
     
     // MARK: - Configuration

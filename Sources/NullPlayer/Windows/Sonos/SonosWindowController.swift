@@ -77,7 +77,7 @@ final class SonosWindowController: NSWindowController, ModeDependentWindow, NSWi
     func windowDidResignKey(_ notification: Notification) { mixerView.needsDisplay = true }
 }
 
-/// Shared room controls. Skin-specific chrome is supplied by SonosWindowChrome.
+/// Shared room controls. Skin-specific chrome is supplied by AuxiliaryWindowChrome.
 final class SonosWindowView: NSView {
     private var refreshTimer: Timer?
     private var pollTask: Task<Void, Never>?
@@ -98,7 +98,7 @@ final class SonosWindowView: NSView {
     private let mixer: SonosRoomMixer
     private let roomSource: () -> [UPnPManager.SonosRoomSummary]
     private var controlScale: CGFloat { WindowManager.shared.uiScaleLevel.scaleFactor }
-    private var chrome: SonosWindowChrome { SonosWindowChrome(window: window) }
+    private var chrome: AuxiliaryWindowChrome { AuxiliaryWindowChrome(window: window, title: "SONOS") }
 
     override convenience init(frame: NSRect) {
         self.init(frame: frame, mixer: .shared, rooms: { CastManager.shared.sonosRooms })

@@ -12,8 +12,11 @@ struct StudioStrip {
     private static let graphFrequencies: [(Double, String)] = [
         (50, "50"), (100, "100"), (200, "200"), (500, "500"), (1000, "1k"), (2000, "2k"), (5000, "5k"), (10000, "10k")]
 
+    /// The rows below the graph: the gap, a title, a dial and its readout. The graph takes the rest.
+    private static let controlsHeight: CGFloat = 96
+
     init(in region: CGRect) {
-        let graph = CGRect(x: region.minX, y: region.minY, width: region.width, height: 50)
+        let graph = CGRect(x: region.minX, y: region.minY, width: region.width, height: region.height - Self.controlsHeight)
         self.graph = graph
         let top = graph.maxY + 8, height = region.maxY - top
         let highPassWidth: CGFloat = 56, gap: CGFloat = 8, dial: CGFloat = 38
@@ -55,9 +58,27 @@ struct StudioStrip {
         knobs.first { $0.1.insetBy(dx: -4, dy: -4).contains(point) }?.0
     }
 
-    /// `x` places a frequency on the analyser's axis; `drawResponse` strokes the curve heard into a rect.
-    func draw(_ parametric: EQParametric, x: (Double) -> CGFloat, drawResponse: (CGRect) -> Void, _ f: StudioFaceplate) {
-        // Graph: a fine grid, the response, and a dot per band at its frequency and gain.
+    /// The section titles, switches and dials.
+    func drawControls(_ parametric: EQParametric, _ f: StudioFaceplate) {
+        for (title, rect) in titles {
+            f.drawText(title, font: f.buttonFont, color: f.text, in: rect)
+        }
+        for (toggle, rect) in switches {
+            f.drawButton(toggle == .highPass ? "On" : "Shelf", in: rect, lit: parametric[toggle])
+        }
+        for (knob, rect) in knobs {
+            let active = parametric.isActive(knob)
+            Self.drawKnob(knob, value: parametric[knob], active: active, in: rect, f)
+            f.drawText(Self.readout(knob, parametric[knob]), font: f.legendFont,
+                       color: active ? f.dimText : f.inactiveText,
+                       in: CGRect(x: rect.midX - 24, y: rect.maxY + 4, width: 48, height: 11), alignment: .center)
+        }
+    }
+
+    /// A fine grid, the response, and a dot per band at its frequency and gain. `x` places a
+    /// frequency on the analyser's axis; `drawResponse` strokes the curve heard into a rect.
+    func drawGraph(_ parametric: EQParametric, x: (Double) -> CGFloat, drawResponse: (CGRect) -> Void,
+                           _ f: StudioFaceplate) {
         f.well.setFill()
         NSBezierPath(roundedRect: graph, xRadius: 2, yRadius: 2).fill()
         for db: Float in [-12, -6, 0, 6, 12] {
@@ -65,7 +86,7 @@ struct StudioStrip {
             (db == 0 ? f.graticuleZero : f.graticule).setFill()
             NSRect(x: graph.minX, y: y - 0.25, width: graph.width - 24, height: db == 0 ? 1 : 0.5).fill()
             if db.truncatingRemainder(dividingBy: 12) == 0 {
-                f.drawText(StudioFaceplate.dbLabel(db), font: f.legendFont, color: f.dimText.withAlphaComponent(0.7),
+                f.drawText(StudioFaceplate.dbLabel(db), font: f.legendFont, color: f.wellDimText,
                            in: CGRect(x: graph.maxX - 22, y: y - 6, width: 20, height: 12), alignment: .right)
             }
         }
@@ -73,7 +94,7 @@ struct StudioStrip {
             let x = x(frequency)
             f.graticule.setFill()
             NSRect(x: x, y: graph.minY, width: 0.5, height: graph.height).fill()
-            f.drawText(label, font: f.legendFont, color: f.dimText.withAlphaComponent(0.7),
+            f.drawText(label, font: f.legendFont, color: f.wellDimText,
                        in: CGRect(x: x + 2, y: graph.maxY - 11, width: 24, height: 10))
         }
         NSGraphicsContext.saveGraphicsState()
@@ -89,20 +110,6 @@ struct StudioStrip {
             NSRect(x: x(Double(parametric.highPass)) - 0.5, y: graph.minY, width: 1, height: graph.height).fill()
         }
         NSGraphicsContext.restoreGraphicsState()
-
-        for (title, rect) in titles {
-            f.drawText(title, font: f.buttonFont, color: f.text, in: rect)
-        }
-        for (toggle, rect) in switches {
-            f.drawButton(toggle == .highPass ? "ON" : "SHELF", in: rect, lit: parametric[toggle])
-        }
-        for (knob, rect) in knobs {
-            let active = parametric.isActive(knob)
-            Self.drawKnob(knob, value: parametric[knob], active: active, in: rect, f)
-            f.drawText(Self.readout(knob, parametric[knob]), font: f.legendFont,
-                       color: active ? f.dimText : f.dimText.withAlphaComponent(0.4),
-                       in: CGRect(x: rect.midX - 24, y: rect.maxY + 4, width: 48, height: 11), alignment: .center)
-        }
     }
 
     private static func readout(_ knob: EQParametric.Knob, _ value: Float) -> String {

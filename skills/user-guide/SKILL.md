@@ -42,7 +42,7 @@ See `skills/audion-face-guide/reference/user-guide.md`.
 | **Main Window** | Primary player with transport controls | Always visible |
 | **Playlist Editor** | Track list and playlist management | PL button or context menu |
 | **Equalizer** | Classic 10-band EQ or modern 21-band EQ with presets | EQ button or context menu |
-| **Equalizer Studio** | Makes and edits EQ profiles (see *EQ Profiles* below). The same window in every skin family: a gloss rim in the skin's colours around a Console or Boutique DSP faceplate | Windows menu, or **Assign EQ Profile ▸ Equalizer Studio…** |
+| **Equalizer Studio** | Makes and edits EQ profiles (see *EQ Profiles* below). Wears each skin family's own window frame and title bar, snaps and docks with the other windows, resizes (never below its default size), and draws a Console or Boutique DSP faceplate in the skin's colours. Stays open, restyled, across a skin-family switch | Windows menu, or **Assign EQ Profile ▸ Equalizer Studio…** |
 | **Spectrum Analyzer** | Large spectrum visualization | Context menu or Window menu |
 | **Audio Analyzer** | Friture-style multi-pane analyzer (Scope, Levels, Spectrogram, Octave, Pitch, Delay) | Context menu or Window menu |
 | **PeppyMeter** | Skinnable analog VU meter — needle/bar meters that track left/right levels; right-click to pick a meter or enable Random | Context menu or Window menu |
@@ -316,19 +316,22 @@ Equalizer window never changes a profile, and a profile never changes it.
 
 - **Making profiles — Windows ▸ Equalizer Studio.** Two channels, LEFT above RIGHT, each with 31
   faders, a 4-band parametric EQ, a preamp and its own spectrum analyser. Edits are heard live while the Studio is open and
-  are discarded unless saved. Opening it loads the playing track's profile, or a new flat one.
-  - **LINK** (on by default, remembered): moving a fader on one channel moves the same fader on the
-    other by the same amount, so channels that already differ keep their difference. Both channel
-    names are lit while linked. Unlinked, **FLAT** and double-click act on one channel only.
-  - Under each channel's name: **FLAT** (both channels while linked) and **BYPASS** (that channel
-    heard with no profile, for this session; LINK does not affect it; the header names the bypassed
-    side).
-  - Header: **HEADROOM** (sets each preamp so the channel's peak response is 0 dB — `PK` under each
-    channel name shows that peak), **SAVE**, **SAVE AS**, **RENAME**, **DELETE**, **REVERT**, and
-    **CONSOLE / BOUTIQUE** to switch the faceplate (Boutique's analyser glows hotter, ember to
-    white-hot, as levels rise; its peak holds glow from -12 dB). Click the name display for the list of profiles
-    and New. Double-click a fader to reset it.
-  - **GRAPHIC / PARAMETRIC** (header, remembered) shows the faders or the parametric strip. Both are
+  are discarded unless saved. Opening it loads the playing track's profile, or a new flat one, shown
+  as *New EQ Profile*. Its buttons are drawn as the Library's tabs in the running skin family.
+  - **Link** (on by default, remembered): moving a fader on one channel moves the same fader on the
+    other by the same amount, so channels that already differ keep their difference. While linked,
+    the LEFT and RIGHT names light up as the Link tab does. Unlinked, **Flat**, **Bypass** and
+    double-click act on one channel only.
+  - Under each channel's name: **Flat** and **Bypass** (that channel heard with no profile, for this
+    session); while linked, either one acts on both channels.
+  - Header: **Headroom** (sets each preamp so the channel's peak response is 0 dB — `PK` under each
+    channel name shows that peak; greyed when there is nothing to change), **Save**, **Save As**,
+    **Rename**, **Delete**, **Revert**, and **View** to switch the faceplate between Console and
+    Boutique. Save, Rename and Delete are greyed for a profile not yet saved — Save As names it.
+    Boutique's analyser fills with heat in the skin's level colours, and on a dark skin its analyser,
+    fader caps and response graph glow. Click the name display for the list of profiles and New.
+    Double-click a fader to reset it. Every fader track is notched at ±12, ±6 and 0 dB.
+  - **Graphic / Parametric** (header, remembered) shows the faders or the parametric strip. Both are
     always heard as one curve, and the mode is not saved in the profile, so switching loses nothing.
     The strip, per channel: **HPF** (ON, frequency 20–500 Hz, 12 dB/octave) and **LF**, **LMF**,
     **HMF**, **HF**, each with frequency, gain (±12 dB) and Q dials; LF and HF have **SHELF**, which
@@ -336,7 +339,10 @@ Equalizer window never changes a profile, and a profile never changes it.
     shows the curve with a dot per band. In GRAPHIC mode each fader is drawn on the curve (its own
     setting plus the strip's at that frequency), and dragging changes only its own setting.
   - The analyser shows the source plus the profile for local files (a bypassed channel shows the
-    source alone); for streams it shows the final output and is labelled `OUTPUT`.
+    source alone); for streams it shows the final output.
+  - Colours come from the skin and every label is contrast-guarded against what it sits on. On an
+    Original-Metal skin the faceplate sits on the main window's own brushed surface, and a lit tab
+    is the green LCD.
 - **Assigning — right-click ▸ Assign EQ Profile (Track / Album / Artist) ▸** on library rows (tracks,
   albums, artists, playlists and folders), queue rows, radio stations, and YouTube videos with a
   downloaded audio file (greyed with *Download the audio first* otherwise). Choices: **Inherit**

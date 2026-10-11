@@ -73,7 +73,7 @@ final class EqualizerStudioView: NSView {
     }
 
     /// Which stage's controls are shown. Not part of the profile: both stages are always heard.
-    private enum Mode: String { case graphic, parametric }
+    private enum Mode: String, CaseIterable { case graphic, parametric }
 
     private static let linkedKey = "equalizerStudioLinked"
     private static let modeKey = "equalizerStudioMode"
@@ -91,12 +91,16 @@ final class EqualizerStudioView: NSView {
 
     private var edit = EQCurve.flat
     private var profileID: UUID?
-    private var name = "New"
-    /// Per channel: heard flat, for this session. A monitoring switch, not an edit, so LINK leaves it alone.
+    /// What an unsaved profile is called until it is saved under a name of its own.
+    private static let newName = "New EQ Profile"
+    private var name = EqualizerStudioView.newName
+    /// Per channel: heard flat, for this session. A monitoring switch, not an edit, but LINK lit
+    /// sets both channels to the clicked one's new state, as it does FLAT.
     private var bypass = [false, false]
     private var linked = true
     private var mode = Mode.graphic
-    private var faceplate = StudioFaceplate.console
+    private var faceplateKind = StudioFaceplate.Kind.console
+    private let bloom = StudioBloom()
     /// A fader or dial held, and the pointer's last y.
     private var drag: (control: Control, y: CGFloat)?
     private var responses = [ChannelResponse.flat, .flat]
@@ -106,34 +110,40 @@ final class EqualizerStudioView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    // MARK: - Layout (fixed size)
+    // MARK: - Layout
 
-    private var content: CGRect { bounds.insetBy(dx: SkinnedSurfaceChrome.glossBorder, dy: SkinnedSurfaceChrome.glossBorder) }
-    private var nameRect: CGRect { CGRect(x: content.minX + 12, y: content.minY + 8, width: 330, height: 26) }
-    private var closeRect: CGRect { CGRect(x: content.maxX - 28, y: content.minY + 10, width: 18, height: 18) }
+    /// The smallest the faceplate lays out at; the window's minimum adds its chrome to this.
+    static let designSize = NSSize(width: 688, height: 548)
+    /// A channel panel's inner height at `designSize`. Height beyond it goes to the analyser and the
+    /// fader field (in parametric mode, the strip's graph).
+    private static let designPanelHeight: CGFloat = 213
+
+    private var nameRect: CGRect { CGRect(x: bounds.minX + 12, y: bounds.minY + 10, width: 220, height: 22) }
 
     private var buttonRects: [(Button, CGRect)] {
         let count = CGFloat(Button.allCases.count), gap: CGFloat = 6
-        let width = (content.width - 24 - gap * (count - 1)) / count
+        let width = (bounds.width - 24 - gap * (count - 1)) / count
         return Button.allCases.enumerated().map { index, button in
-            (button, CGRect(x: content.minX + 12 + CGFloat(index) * (width + gap), y: content.minY + 42,
+            (button, CGRect(x: bounds.minX + 12 + CGFloat(index) * (width + gap), y: bounds.minY + 42,
                             width: width, height: 20))
         }
     }
 
     private var panels: [Panel] {
-        let top = content.minY + 72
-        let height = (content.maxY - 6 - top) / 2
+        let top = bounds.minY + 72
+        let height = (bounds.maxY - 6 - top) / 2
         return (0..<2).map { channel in
-            let frame = CGRect(x: content.minX + 8, y: top + CGFloat(channel) * height,
-                               width: content.width - 16, height: height - 6)
+            let frame = CGRect(x: bounds.minX + 8, y: top + CGFloat(channel) * height,
+                               width: bounds.width - 16, height: height - 6)
             let inner = frame.insetBy(dx: 8, dy: 8)
             let column: CGFloat = 52
             let bandX0 = inner.minX + column + 8
+            let spare = max(0, inner.height - Self.designPanelHeight)
+            let grow = (spare * 0.4).rounded()
             // Parametric mode shortens the analyser to give the strip's dials room.
             let analyser = CGRect(x: bandX0, y: inner.minY, width: inner.maxX - bandX0,
-                                  height: mode == .graphic ? 74 : 56)
-            let faders = CGRect(x: bandX0, y: inner.minY + 82, width: analyser.width, height: 112)
+                                  height: (mode == .graphic ? 74 : 56) + grow)
+            let faders = CGRect(x: bandX0, y: inner.minY + 82 + grow, width: analyser.width, height: 112 + spare - grow)
             func row(_ y: CGFloat, _ height: CGFloat) -> CGRect {
                 CGRect(x: inner.minX, y: inner.minY + y, width: column, height: height)
             }
@@ -153,7 +163,7 @@ final class EqualizerStudioView: NSView {
     func studioDidOpen() {
         linked = UserDefaults.standard.object(forKey: Self.linkedKey) as? Bool ?? true
         mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(Mode.init) ?? .graphic
-        faceplate = .stored
+        faceplateKind = StudioFaceplate.storedKind
         bypass = [false, false]
         if let track = WindowManager.shared.audioEngine.currentTrack, let profile = EQProfileResolver.shared.resolve(track)?.profile {
             load(profile)
@@ -184,7 +194,7 @@ final class EqualizerStudioView: NSView {
 
     private func loadNew() {
         profileID = nil
-        name = "New"
+        name = Self.newName
         edit = .flat
         editDidChange()
     }
@@ -276,16 +286,18 @@ final class EqualizerStudioView: NSView {
             UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey)
             needsDisplay = true
         case .headroom:
-            for channel in 0..<2 { edit[channel].preamp = EQCurve.clamp(Float(-responses[channel].peak)) }
+            for channel in 0..<2 { edit[channel].preamp = headroomPreamp(channel) }
             editDidChange()
         case .save:
-            if let profileID { store.update(profileID, curve: edit); needsDisplay = true } else { saveAs() }
+            guard let profileID else { return }
+            store.update(profileID, curve: edit)
+            needsDisplay = true
         case .saveAs:
             saveAs()
         case .rename:
-            guard let newName = promptName("Rename Profile", initial: name) else { return }
+            guard let profileID, let newName = promptName("Rename Profile", initial: name) else { return }
             name = newName
-            if let profileID { store.update(profileID, name: newName) }
+            store.update(profileID, name: newName)
             needsDisplay = true
         case .delete:
             guard let profileID else { return }
@@ -301,8 +313,8 @@ final class EqualizerStudioView: NSView {
             edit = savedCurve
             editDidChange()
         case .faceplate:
-            faceplate = faceplate.kind == .console ? .boutique : .console
-            UserDefaults.standard.set(faceplate.kind.rawValue, forKey: StudioFaceplate.defaultsKey)
+            faceplateKind = faceplateKind == .console ? .boutique : .console
+            UserDefaults.standard.set(faceplateKind.rawValue, forKey: StudioFaceplate.defaultsKey)
             needsDisplay = true
         }
     }
@@ -314,10 +326,18 @@ final class EqualizerStudioView: NSView {
         editDidChange()
     }
 
+    /// The preamp that puts a channel's response peak at 0 dB.
+    private func headroomPreamp(_ channel: Int) -> Float {
+        EQCurve.clamp(Float(-responses[channel].peak))
+    }
+
     private func isEnabled(_ button: Button) -> Bool {
         switch button {
-        case .save: return isDirty || profileID == nil
-        case .delete: return profileID != nil
+        // Lit only while a preamp is off its headroom setting, so a press always changes something.
+        case .headroom: return (0..<2).contains { abs(edit[$0].preamp - headroomPreamp($0)) >= 0.05 }
+        // An unsaved profile has nothing stored to save over, rename or delete; Save As names it.
+        case .save: return profileID != nil && isDirty
+        case .rename, .delete: return profileID != nil
         case .revert: return isDirty
         default: return true
         }
@@ -393,21 +413,21 @@ final class EqualizerStudioView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if closeRect.insetBy(dx: -4, dy: -4).contains(point) {
-            window?.close()
-        } else if nameRect.contains(point) {
+        if nameRect.contains(point) {
             showProfileMenu()
         } else if let (button, _) = buttonRects.first(where: { $0.1.contains(point) }) {
             if isEnabled(button) { perform(button) }
         } else if let channel = panels.firstIndex(where: { $0.flat.contains(point) }) {
             flatten(channel)
         } else if let channel = panels.firstIndex(where: { $0.bypass.contains(point) }) {
-            bypass[channel].toggle()
+            let on = !bypass[channel]
+            for channel in targets(channel) { bypass[channel] = on }
             pushAudition()
         } else if let control = control(at: point) {
             press(control, at: point.y, clickCount: event.clickCount)
         } else {
-            window?.performDrag(with: event)
+            // An empty area: the window view behind drags the window, snapping as its title does.
+            super.mouseDown(with: event)
         }
     }
 
@@ -433,7 +453,7 @@ final class EqualizerStudioView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let (control, lastY) = drag else { return }
+        guard let (control, lastY) = drag else { super.mouseDragged(with: event); return }
         let point = convert(event.locationInWindow, from: nil)
         drag?.y = point.y
         switch control {
@@ -447,18 +467,21 @@ final class EqualizerStudioView: NSView {
         }
     }
 
-    override func mouseUp(with event: NSEvent) { drag = nil }
+    override func mouseUp(with event: NSEvent) {
+        if drag == nil { super.mouseUp(with: event) }
+        drag = nil
+    }
 
     // MARK: - Drawing
 
-    private static let neutralRim = SkinnedSurfaceStyle(roles: SkinnedSurfaceRoles(
+    private static let neutralStyle = SkinnedSurfaceStyle(roles: SkinnedSurfaceRoles(
         background: NSColor(white: 0.22, alpha: 1), text: .white, currentText: .white,
         selectionBackground: .gray, selectionText: .white, treeText: .white, treeSelection: .gray))
 
-    /// The rim's colours: the hosting skin's own surface style where it lends one, else the Classic
-    /// skin's or the Original skin's surface roles. Not a Classic case in `hostedSurfaceStyle`, which
-    /// would put Classic's Playlist and EQ windows in the gloss frame too.
-    private var rimStyle: SkinnedSurfaceStyle {
+    /// The faceplate's colours: the hosting skin's own surface style where it lends one, else the
+    /// Classic skin's or the Original skin's surface roles. Not a Classic case in
+    /// `hostedSurfaceStyle`, which would put Classic's Playlist and EQ windows in the gloss frame too.
+    private var surfaceStyle: SkinnedSurfaceStyle {
         let wm = WindowManager.shared
         if let style = wm.hostedSurfaceStyle { return style }
         switch wm.uiMode.controllerFamily {
@@ -467,23 +490,72 @@ final class EqualizerStudioView: NSView {
         case .nullPlayerModern:
             return ModernSkinEngine.shared.currentSkin.map {
                 SkinnedSurfaceStyle(roles: SkinnedSurfaceRoles(modern: $0.config.palette))
-            } ?? Self.neutralRim
+            } ?? Self.neutralStyle
         case .winampModern, .wmp, .audion:
-            // These lend a style once their skin is up; until then, the neutral rim.
-            return Self.neutralRim
+            // These lend a style once their skin is up; until then, the neutral one.
+            return Self.neutralStyle
         }
     }
 
+    /// Winamp's own EQ and spectrum colours: green, yellow, red.
+    private static let winampMeter = [NSColor(srgbRed: 0, green: 0.85, blue: 0, alpha: 1),
+                                      NSColor(srgbRed: 0.85, green: 0.85, blue: 0, alpha: 1),
+                                      NSColor(srgbRed: 0.85, green: 0.15, blue: 0, alpha: 1)]
+
+    /// The skin's own low, mid and high level colours where it declares them: an Original skin's EQ
+    /// colours, or a Classic skin's spectrum (`viscolor.txt`'s bottom, middle and top bar rows).
+    /// The families that lend only surface roles take Winamp's.
+    private var meterColors: [NSColor] {
+        let wm = WindowManager.shared
+        switch wm.uiMode.controllerFamily {
+        case .classic:
+            if let colors = wm.currentSkin?.visColors, colors.count >= 18 { return [colors[17], colors[9], colors[2]] }
+        case .nullPlayerModern:
+            if let skin = ModernSkinEngine.shared.currentSkin { return [skin.eqLowColor, skin.eqMidColor, skin.eqHighColor] }
+        case .winampModern, .wmp, .audion:
+            break
+        }
+        return Self.winampMeter
+    }
+
+    /// The classic Library's renderer, cached per skin as the Library caches it: the white text sheet
+    /// is built once per renderer.
+    private var tabRenderer: (path: String, renderer: SkinRenderer)?
+
+    /// The Library's tab in this family, which the buttons are drawn as.
+    private var tab: StudioTab {
+        let wm = WindowManager.shared
+        if wm.uiMode.controllerFamily == .nullPlayerModern {
+            return .original(ModernSkinEngine.shared.currentSkin ?? ModernSkinLoader.shared.loadDefault())
+        }
+        let skin = wm.currentSkin ?? SkinLoader.shared.loadDefault()
+        let path = wm.currentSkinPath ?? "default"
+        if tabRenderer?.path != path { tabRenderer = (path, SkinRenderer(skin: skin)) }
+        let style = wm.hostedSurfaceStyle
+        return .classic(renderer: tabRenderer!.renderer, style: style, colors: style?.playlistColors ?? skin.playlistColors)
+    }
+
+    /// The running Original-Metal skin; nil in every other family and render style.
+    private var metalSkin: ModernSkin? {
+        guard WindowManager.shared.uiMode.controllerFamily == .nullPlayerModern,
+              let skin = ModernSkinEngine.shared.currentSkin, skin.renderStyle == .metal else { return nil }
+        return skin
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        let f = faceplate
-        SkinnedSurfaceChrome.drawGlossFrame(in: context, bounds: bounds, style: rimStyle,
-                                            isActive: window?.isKeyWindow ?? true, fillGround: false)
+        let f = StudioFaceplate(faceplateKind, style: surfaceStyle, meter: meterColors, tab: tab, metalSkin: metalSkin)
+        // Over, not copied: Metal's clear panel must leave the chrome's surface behind it.
         f.panel.setFill()
-        NSBezierPath(roundedRect: content, xRadius: 2, yRadius: 2).fill()
+        bounds.fill(using: .sourceOver)
 
         drawHeader(f)
         for (channel, panel) in panels.enumerated() { drawPanel(panel, channel: channel, f) }
+    }
+
+    /// Draws `body` into `rect` through the bloom where the faceplate glows, else as it is.
+    private func glow(_ f: StudioFaceplate, _ rect: CGRect, _ body: () -> Void) {
+        guard f.glows else { body(); return }
+        bloom.draw(rect, scale: window?.backingScaleFactor ?? 2, ground: f.panel, body)
     }
 
     private func drawHeader(_ f: StudioFaceplate) {
@@ -492,74 +564,74 @@ final class EqualizerStudioView: NSView {
         NSBezierPath(roundedRect: nameRect, xRadius: 3, yRadius: 3).fill()
         f.edge.setStroke()
         NSBezierPath(roundedRect: nameRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3).stroke()
-        f.drawText(name + (isDirty ? "  ●" : ""), font: f.titleFont, color: f.text,
+        f.drawText(name + (isDirty ? "  ●" : ""), font: f.titleFont, color: f.wellText,
                    in: CGRect(x: nameRect.minX + 10, y: nameRect.minY, width: nameRect.width - 40, height: nameRect.height))
-        f.drawText("▾", font: f.buttonFont, color: f.dimText, in: CGRect(x: nameRect.maxX - 22, y: nameRect.minY, width: 14, height: nameRect.height))
+        f.drawText("▾", font: f.buttonFont, color: f.wellDimText, in: CGRect(x: nameRect.maxX - 22, y: nameRect.minY, width: 14, height: nameRect.height))
 
-        let heading = CGRect(x: nameRect.maxX + 16, y: nameRect.minY, width: closeRect.minX - nameRect.maxX - 28, height: nameRect.height)
-        let bypassed = bypass == [true, true] ? " — BYPASS" : bypass[0] ? " — BYPASS L" : bypass[1] ? " — BYPASS R" : ""
-        f.drawText("EQUALIZER STUDIO" + bypassed, font: f.buttonFont,
-                   color: bypassed.isEmpty ? f.dimText : f.accent, in: heading, alignment: .right)
-
-        // Close: a drawn ×.
-        let x = closeRect.insetBy(dx: 5, dy: 5)
-        let cross = NSBezierPath()
-        cross.move(to: x.origin); cross.line(to: CGPoint(x: x.maxX, y: x.maxY))
-        cross.move(to: CGPoint(x: x.maxX, y: x.minY)); cross.line(to: CGPoint(x: x.minX, y: x.maxY))
-        cross.lineWidth = 1.5
-        f.dimText.setStroke()
-        cross.stroke()
-
+        // One label scale for the row, as the Library's tab row shrinks as a whole — fitted to every
+        // title a button can show, so switching MODE does not resize the row.
+        let rowScale = buttonRects.flatMap { button, rect in
+            (button == .mode ? Mode.allCases.map { $0.rawValue.capitalized } : [title(button)])
+                .map { f.tab.scale(fitting: $0, in: rect.size) }
+        }.min() ?? 1
         for (button, rect) in buttonRects {
-            f.drawButton(title(button), in: rect, lit: button == .link && linked, enabled: isEnabled(button))
+            f.drawButton(title(button), in: rect, lit: button == .link && linked, enabled: isEnabled(button),
+                         scale: rowScale)
         }
     }
 
-    /// MODE and FACEPLATE show their current setting.
+    /// MODE shows its current setting; FACEPLATE is "View", which switches between the two looks.
     private func title(_ button: Button) -> String {
         switch button {
-        case .link: return "LINK"
-        case .mode: return mode.rawValue.uppercased()
-        case .headroom: return "HEADROOM"
-        case .save: return "SAVE"
-        case .saveAs: return "SAVE AS"
-        case .rename: return "RENAME"
-        case .delete: return "DELETE"
-        case .revert: return "REVERT"
-        case .faceplate: return faceplate.kind.rawValue.uppercased()
+        case .link: return "Link"
+        case .mode: return mode.rawValue.capitalized
+        case .headroom: return "Headroom"
+        case .save: return "Save"
+        case .saveAs: return "Save As"
+        case .rename: return "Rename"
+        case .delete: return "Delete"
+        case .revert: return "Revert"
+        case .faceplate: return "View"
         }
     }
 
     private func drawPanel(_ panel: Panel, channel: Int, _ f: StudioFaceplate) {
-        f.edge.withAlphaComponent(0.6).setFill()
-        NSBezierPath(roundedRect: panel.frame, xRadius: 3, yRadius: 3).fill()
-        f.panel.setFill()
-        NSBezierPath(roundedRect: panel.frame.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3).fill()
+        f.edge.withAlphaComponent(0.6).setStroke()
+        NSBezierPath(roundedRect: panel.frame.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3).stroke()
 
-        // Channel name (in the accent while LINK is lit), the peak response readout, and the
+        // Channel name (lit, as the LINK tab is, while LINK is on), the peak response readout, and the
         // channel's FLAT and BYPASS.
-        f.drawText(channel == 0 ? "LEFT" : "RIGHT", font: f.titleFont, color: linked ? f.accent : f.text, in: panel.name)
+        // The name is a tab lit with LINK, so the two read as one state; only the lighting changes.
+        f.drawButton(channel == 0 ? "LEFT" : "RIGHT", in: panel.name, lit: linked)
         let peak = responses[channel].peak + Double(edit[channel].preamp)
         f.drawText(String(format: "PK %+.1f", peak), font: f.legendFont, color: peak > 0.05 ? f.peak : f.dimText,
                    in: panel.peakReadout)
         f.drawText(String(format: "PRE %+.1f", edit[channel].preamp), font: f.legendFont, color: f.dimText,
                    in: panel.preampReadout)
-        f.drawButton("FLAT", in: panel.flat, lit: false)
-        f.drawButton("BYPASS", in: panel.bypass, lit: bypass[channel])
+        f.drawButton("Flat", in: panel.flat, lit: false)
+        f.drawButton("Bypass", in: panel.bypass, lit: bypass[channel])
 
         drawAnalyser(panel, channel: channel, f)
         switch mode {
         case .graphic:
             drawFaders(panel, channel: channel, f)
         case .parametric:
-            panel.strip.draw(edit[channel].parametric, x: panel.x(frequency:),
-                             drawResponse: { drawResponse(panel, channel: channel, in: $0, f) }, f)
+            let strip = panel.strip, parametric = edit[channel].parametric
+            glow(f, strip.graph) {
+                strip.drawGraph(parametric, x: panel.x(frequency:),
+                                drawResponse: { drawResponse(panel, channel: channel, in: $0, f) }, f)
+            }
+            strip.drawControls(parametric, f)
         }
         drawPreamp(panel, channel: channel, f)
     }
 
     private func drawPreamp(_ panel: Panel, channel: Int, _ f: StudioFaceplate) {
+        // A guide across the slot at each labelled step, in its label's colour; 0 dB the strongest.
         for tick in f.faderTickLabels {
+            let y = panel.preamp.y(gain: tick).rounded()
+            f.dimText.withAlphaComponent(tick == 0 ? 1 : 0.55).setFill()
+            NSRect(x: panel.preamp.minX, y: y, width: panel.preamp.width, height: 1).fill()
             f.drawText(StudioFaceplate.dbLabel(tick), font: f.legendFont, color: f.dimText,
                        in: CGRect(x: panel.preamp.maxX + 2, y: panel.preamp.y(gain: tick) - 6, width: 18, height: 12))
         }
@@ -581,42 +653,42 @@ final class EqualizerStudioView: NSView {
 
     /// What the ladder shows depends on where the feed sits: the local feed is pre-profile, so the
     /// auditioned curve is added (BYPASS shows the source); the streaming feed is already the output
-    /// — post-profile, post-EQ, post-SRS — so it is shown as-is and labelled so.
+    /// — post-profile, post-EQ, post-SRS — so it is shown as-is.
     private func drawAnalyser(_ panel: Panel, channel: Int, _ f: StudioFaceplate) {
         let rect = panel.analyser
-        f.well.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
-
-        for db in stride(from: Self.analyserRange.upperBound - 6, to: Self.analyserRange.lowerBound, by: -f.graticuleStep) {
-            let y = analyserY(db, in: rect)
-            (db == 0 ? f.graticuleZero : f.graticule).setFill()
-            NSRect(x: rect.minX, y: y, width: rect.width, height: f.graticuleWeight).fill()
-            if db.truncatingRemainder(dividingBy: 12) == 0 {
-                f.drawText(String(format: "%.0f", db), font: f.legendFont, color: f.dimText.withAlphaComponent(0.7),
-                           in: CGRect(x: rect.maxX - 22, y: y - 6, width: 20, height: 12), alignment: .right)
-            }
-        }
-        if f.octaveGrid {
-            f.scale.setFill()
-            for band in stride(from: 0, to: EQProfileDesign.bandCount, by: 3) {
-                NSRect(x: panel.centreX(band), y: rect.minY, width: 0.5, height: rect.height).fill()
-            }
-        }
-
+        let graticule = stride(from: Self.analyserRange.upperBound - 6, to: Self.analyserRange.lowerBound, by: -f.graticuleStep)
         let streaming = WindowManager.shared.audioEngine.isStreamingPlayback
         let bypassed = bypass[channel]
         let added = responses[channel].centres.map { streaming || bypassed ? 0 : Float($0) + edit[channel].preamp }
-        f.drawText(streaming ? "OUTPUT" : bypassed ? "SOURCE" : "SOURCE + PROFILE", font: f.legendFont,
-                   color: f.dimText, in: CGRect(x: rect.minX + 4, y: rect.minY + 2, width: 120, height: 11))
-
         let levels = zip(self.levels[channel], added).map(+), peaks = zip(self.peaks[channel], added).map(+)
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(rect: rect).addClip()
-        switch f.kind {
-        case .console: drawBars(levels, peaks: peaks, panel, f)
-        case .boutique: drawHeatCurve(levels, peaks: peaks, panel, f)
+
+        glow(f, rect) {
+            f.well.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
+            for db in graticule {
+                (db == 0 ? f.graticuleZero : f.graticule).setFill()
+                NSRect(x: rect.minX, y: analyserY(db, in: rect), width: rect.width, height: f.graticuleWeight).fill()
+            }
+            if f.octaveGrid {
+                f.scale.setFill()
+                for band in stride(from: 0, to: EQProfileDesign.bandCount, by: 3) {
+                    NSRect(x: panel.centreX(band), y: rect.minY, width: 0.5, height: rect.height).fill()
+                }
+            }
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(rect: rect).addClip()
+            switch f.kind {
+            case .console: drawBars(levels, peaks: peaks, panel, f)
+            case .boutique: drawHeatCurve(levels, peaks: peaks, panel, f)
+            }
+            NSGraphicsContext.restoreGraphicsState()
         }
-        NSGraphicsContext.restoreGraphicsState()
+
+        // The labels sit on top, unbloomed.
+        for db in graticule where db.truncatingRemainder(dividingBy: 12) == 0 {
+            f.drawText(String(format: "%.0f", db), font: f.legendFont, color: f.wellDimText,
+                       in: CGRect(x: rect.maxX - 22, y: analyserY(db, in: rect) - 6, width: 20, height: 12), alignment: .right)
+        }
     }
 
     /// Console: a bar per band, coloured by the heat step its level reaches, with a peak line.
@@ -654,20 +726,11 @@ final class EqualizerStudioView: NSView {
         line.lineWidth = 1
         f.accent.withAlphaComponent(0.8).setStroke()
         line.stroke()
-        // Peak holds are embers in their level's heat; from -12 dB they glow, wider the hotter.
+        // Peak holds are embers in their level's heat; the bloom makes the hot ones glow.
         for (band, db) in peaks.enumerated() {
-            let color = heat.interpolatedColor(atLocation: CGFloat(Self.analyserPosition(db)))
-            NSGraphicsContext.saveGraphicsState()
-            if db > -12 {
-                let glow = NSShadow()
-                glow.shadowColor = color
-                glow.shadowBlurRadius = CGFloat(min(12, 3 + (db + 12) * 0.6))
-                glow.set()
-            }
-            color.setFill()
+            heat.interpolatedColor(atLocation: CGFloat(Self.analyserPosition(db))).setFill()
             NSBezierPath(roundedRect: CGRect(x: panel.centreX(band) - 4, y: analyserY(db, in: rect) - 1, width: 8, height: 2),
                          xRadius: 1, yRadius: 1).fill()
-            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
@@ -675,29 +738,32 @@ final class EqualizerStudioView: NSView {
         let rect = panel.faders
         let bands = edit[channel].bands
 
-        // Scale: engraved on Console, a fine line on Boutique.
-        for tick in f.faderTicks {
-            let y = rect.y(gain: tick).rounded() + 0.5
-            switch f.kind {
-            case .console:
-                f.scale.withAlphaComponent(tick == 0 ? 0.55 : 0.28).setFill()
-                NSRect(x: rect.minX, y: y - 0.5, width: rect.width, height: 1).fill()
-                NSColor.black.withAlphaComponent(0.35).setFill()
-                NSRect(x: rect.minX, y: y + 0.5, width: rect.width, height: 1).fill()
-            case .boutique:
-                f.scale.setFill()
-                NSRect(x: rect.minX, y: y - 0.25, width: rect.width, height: 0.5).fill()
+        glow(f, rect) {
+            // Scale: engraved on Console, a fine line on Boutique.
+            for tick in f.faderTicks {
+                let y = rect.y(gain: tick).rounded() + 0.5
+                switch f.kind {
+                case .console:
+                    f.scale.withAlphaComponent(tick == 0 ? 0.55 : 0.28).setFill()
+                    NSRect(x: rect.minX, y: y - 0.5, width: rect.width, height: 1).fill()
+                    NSColor.black.withAlphaComponent(0.35).setFill()
+                    NSRect(x: rect.minX, y: y + 0.5, width: rect.width, height: 1).fill()
+                case .boutique:
+                    f.scale.setFill()
+                    NSRect(x: rect.minX, y: y - 0.25, width: rect.width, height: 0.5).fill()
+                }
             }
+            for band in 0..<EQProfileDesign.bandCount {
+                f.drawFader(x: panel.centreX(band), value: EQCurve.clamp(bands[band] + responses[channel].stripAtCentres[band]),
+                            in: rect, cap: f.capColor(band: band), width: min(panel.bandWidth - 4, f.capWidth))
+            }
+            drawResponse(panel, channel: channel, in: rect, f)
         }
-
         for band in 0..<EQProfileDesign.bandCount {
-            f.drawFader(x: panel.centreX(band), value: EQCurve.clamp(bands[band] + responses[channel].stripAtCentres[band]),
-                        in: rect, cap: f.capColor(band: band), width: min(panel.bandWidth - 4, f.capWidth))
             f.drawText(Self.bandLabels[band], font: f.legendFont, color: f.dimText,
                        in: CGRect(x: panel.centreX(band) - panel.bandWidth / 2 - 2, y: panel.legend.minY,
                                   width: panel.bandWidth + 4, height: panel.legend.height), alignment: .center)
         }
-        drawResponse(panel, channel: channel, in: rect, f)
     }
 
     /// The response actually applied — both stages, without the preamp, at 48 kHz — on a ±12 dB scale in `rect`.

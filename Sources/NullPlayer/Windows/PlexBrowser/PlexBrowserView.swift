@@ -2518,47 +2518,15 @@ class PlexBrowserView: NSView {
     /// non-nil in `winampModern` mode; the classic sprite path has no per-call colour and ignores it.
     private func drawScaledSkinText(_ text: String, at position: NSPoint, scale: CGFloat, renderer: SkinRenderer,
                                     in context: CGContext, color: NSColor? = nil) {
-        if let style = winampModernStyle {
-            WinampModernSurfaceStyle.drawText(text, at: position, scale: scale, color: color ?? style.text,
-                                              in: context)
-            return
-        }
-        context.saveGState()
-        context.translateBy(x: position.x, y: position.y)
-        context.scaleBy(x: scale, y: scale)
-        renderer.drawSkinText(text, at: NSPoint(x: 0, y: 0), in: context)
-        context.restoreGState()
+        ClassicLibraryTab.drawSkinText(text, at: position, scale: scale, color: color, renderer: renderer,
+                                       style: winampModernStyle, context: context)
     }
 
-    /// Helper to draw scaled white skin text
+    /// Helper to draw scaled white skin text. "White" is the classic sheet's emphasis colour; the
+    /// skin's own "current" role is the same job done in a `.wal` palette.
     private func drawScaledWhiteSkinText(_ text: String, at position: NSPoint, scale: CGFloat, renderer: SkinRenderer, in context: CGContext) {
-        if let style = winampModernStyle {
-            // "White" is the classic sheet's emphasis colour; the skin's own "current" role is the
-            // same job done in the skin's palette.
-            WinampModernSurfaceStyle.drawText(text, at: position, scale: scale,
-                                              color: style.currentText, in: context)
-            return
-        }
-        context.saveGState()
-        context.translateBy(x: position.x, y: position.y)
-        context.scaleBy(x: scale, y: scale)
-        renderer.drawSkinTextWhite(text, at: NSPoint(x: 0, y: 0), in: context)
-        context.restoreGState()
-    }
-    
-    /// Helper to draw scaled white skin text centered in a rect
-    private func drawScaledWhiteSkinTextCentered(_ text: String, in rect: NSRect, scale: CGFloat, renderer: SkinRenderer, in context: CGContext) {
-        let charWidth = SkinElements.TextFont.charWidth
-        let charHeight = SkinElements.TextFont.charHeight
-        let textWidth = CGFloat(text.count) * charWidth * scale
-        let textHeight = charHeight * scale
-        let rawX = rect.midX - textWidth / 2
-        let rawY = rect.midY - textHeight / 2
-        // Round coordinates on non-Retina to prevent shimmering
-        let backingScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let x = backingScale < 1.5 ? round(rawX) : rawX
-        let y = backingScale < 1.5 ? round(rawY) : rawY
-        drawScaledWhiteSkinText(text, at: NSPoint(x: x, y: y), scale: scale, renderer: renderer, in: context)
+        ClassicLibraryTab.drawSkinText(text, at: position, scale: scale, white: true, renderer: renderer,
+                                       style: winampModernStyle, context: context)
     }
     
     /// Draw the List / Flow / Tiles buttons with the source-level controls, before F5. Returns the
@@ -2849,30 +2817,9 @@ class PlexBrowserView: NSView {
             }
 
             // Boxed toggle outline around each tab, mirroring the modern library tabs.
-            let boxRect = tabRect.insetBy(dx: 3 * chromeScale, dy: 3)
-            let boxPath = NSBezierPath(roundedRect: boxRect, xRadius: 3, yRadius: 3)
-            boxPath.lineWidth = 1
-            if isSelected {
-                colors.currentText.withAlphaComponent(0.12).setFill()
-                boxPath.fill()
-                colors.currentText.withAlphaComponent(0.8).setStroke()
-            } else {
-                colors.normalText.withAlphaComponent(0.4).setStroke()
-            }
-            boxPath.stroke()
-
-            if isSelected {
-                // Selected tab in WHITE skin text
-                drawScaledWhiteSkinTextCentered(label, in: tabRect, scale: textScale, renderer: renderer, in: context)
-            } else {
-                // Unselected tabs in green skin text
-                let titleWidth = CGFloat(label.count) * scaledCharWidth
-                let rawTextX = tabRect.midX - titleWidth / 2
-                let rawTextY = tabRect.minY + (tabRect.height - scaledCharHeight) / 2
-                let textX = shouldRound ? round(rawTextX) : rawTextX
-                let textY = shouldRound ? round(rawTextY) : rawTextY
-                drawScaledSkinText(label, at: NSPoint(x: textX, y: textY), scale: textScale, renderer: renderer, in: context)
-            }
+            ClassicLibraryTab.draw(label, isSelected: isSelected, in: tabRect, boxInsetX: 3 * chromeScale,
+                                   textScale: textScale, colors: colors, renderer: renderer,
+                                   style: winampModernStyle, context: context)
             tabButtonRects.append(tabRect)
         }
         

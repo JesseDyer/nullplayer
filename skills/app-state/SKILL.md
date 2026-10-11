@@ -54,7 +54,11 @@ database, `~/Library/Application Support/NullPlayer/eq_profiles.db` (`EQProfileS
 preferences are UserDefaults: `eqProfilesEnabled` (default on), `equalizerStudioFaceplate`,
 `equalizerStudioLinked` (default on), `equalizerStudioMode` (`graphic` by default). Only the Equalizer Studio window is in `AppState`
 (`isEqualizerStudioVisible`, `equalizerStudioWindowFrame`, `decodeIfPresent`); it is not a
-centre-stack window. A Studio restored open auditions its edit from launch, so assigned profiles
+centre-stack window. Its full saved frame is restored (`setFrame`, then grown to the running
+family's minimum), but only when the saved UI mode matches, as for every window; otherwise it opens
+at its default size, centred. It stays open across a skin-family switch — it is not a
+`ModeDependentWindow` — and Compact Mode hides and restores it through the orphan sweep
+(`modeDependent: false` in `managedWindowRecords`). A Studio restored open auditions its edit from launch, so assigned profiles
 are not heard until it is closed. The reset path for a profile is the Studio's DELETE, which drops
 its assignments too.
 

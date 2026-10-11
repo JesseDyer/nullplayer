@@ -715,6 +715,8 @@ class WindowManager {
         }
         add(plexBrowserWindowController?.window, snapTarget: true)
         add(projectMWindowController?.window, snapTarget: true)
+        // Not mode-dependent: Compact Mode's orphan sweep hides and restores it, as before it docked.
+        add(equalizerStudioWindow, snapTarget: true, modeDependent: false)
         add(videoPlayerWindowController?.window, modeDependent: false)
 
         if uiMode.controllerFamily == .wmp,
@@ -5636,7 +5638,8 @@ class WindowManager {
         ] + CenterStackFeature.allCases.map { centerStackFeatureWindow($0).controller?.window } + [
             videoPlayerWindowController?.window,
             projectMWindowController?.window,
-            plexBrowserWindowController?.window
+            plexBrowserWindowController?.window,
+            equalizerStudioWindow
         ]
 
         // `.wmz`/`.wal`-only: ordered front regardless of activation. A click from another app starts

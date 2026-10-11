@@ -101,7 +101,18 @@ final class SkinWindowShadow {
     var isSuppressed = false { didSet { if isSuppressed != oldValue { applyPreference() } } }
     /// The outline's rect relative to the parent's origin, when it reaches past the parent: one
     /// window of a seamless Original stack casts the whole stack's shadow. Nil is the parent's own.
-    var outlineBounds: CGRect? { didSet { if outlineBounds != oldValue { reassertFrame() } } }
+    ///
+    /// A new bounds drops the shadow until its own is built: the frame changes at once, and the old
+    /// image, laid into it with `.resize`, read as a large stray outline for a moment on every dock
+    /// and undock.
+    var outlineBounds: CGRect? {
+        didSet {
+            guard outlineBounds != oldValue else { return }
+            shadowWindow.contentView?.layer?.contents = nil
+            lastFingerprint = nil
+            reassertFrame()
+        }
+    }
     /// The parent's `occlusionState`, cached from its notification for the same reason.
     private var isParentOnScreen = false
     private var lastFingerprint: Int?
