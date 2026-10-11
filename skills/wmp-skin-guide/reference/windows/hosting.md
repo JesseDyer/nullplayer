@@ -17,13 +17,16 @@ window) is outside it; one that draws chrome is inside it, and there is no third
   around saved interiors using donor reference insets.
 - **Sonos Rooms is one controller for all four families, so its entry is gated on
   `isRunningWMPUI`** — every other participant has a family-specific controller and is listed
-  unconditionally. Its chrome (`SonosWindowChrome`) branches on `SkinnedSurfaceChrome.hidesPaletteTitleBar`
+  unconditionally. Its chrome (`AuxiliaryWindowChrome`, shared with the Equalizer Studio) branches on `SkinnedSurfaceChrome.hidesPaletteTitleBar`
   ahead of the `.wal` palette: `.wmz`, and since 2026-09-26 `.wal` once its palette has loaded, take
   the titleless gloss path; Classic and Original never reach it. Reported 2026-09-23 as the
   window "wearing the classic skin": it asked only for `winampModernSurfaceStyle`, which is nil in
   `.wmz`, and fell through to Classic sprites. **Palette alone was rejected the same day** as
   "fallback chrome" — a window inside this rule takes the borrowed frame, the growth entry and the
   pre-show `presizeHostedWindow` together.
+  The titleless path keeps `SkinnedSurfaceChrome.closeButtonRect`'s top-right hit area:
+  `AuxiliaryWindowChrome.closeRect` answers it before its own `titleHeight > 4` guard, which had
+  left Sonos — and then the Studio — with no close at all in this rule (fixed 2026-10-11).
 - Playlist and equalizer route to skin-provided surfaces first. Their native fallbacks receive
   WMP theming but **do not participate in border growth**: their classic sprite geometry does not
   follow the shared metrics. Video, radio sheets, compact mode, and debug windows have no skin

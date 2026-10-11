@@ -1,8 +1,10 @@
 import AppKit
 
-/// Selects the existing auxiliary-window renderer; room controls own no skin assets.
-struct SonosWindowChrome {
+/// The titled frame a free-standing NullPlayer window (Sonos, the Equalizer Studio) wears, from
+/// whichever renderer the running family lends; the window's content owns no skin assets.
+struct AuxiliaryWindowChrome {
     let window: NSWindow?
+    let title: String
     private var modern: Bool { WindowManager.shared.isModernUIEnabled }
     /// A `.wmz` session, or a `.wal` one with its palette loaded: the skin's palette in the titleless
     /// gloss frame, and a `.wmz`'s borrowed frame wherever it lends one.
@@ -46,12 +48,13 @@ struct SonosWindowChrome {
                       height: max(0, bounds.height - titleHeight - bottom))
     }
     func closeRect(_ bounds: NSRect) -> NSRect {
-        guard titleHeight > 4 else { return .zero }
         if wmp {
-            // Stated top-left, like the chrome that draws it; flipped into the view's space.
+            // Stated top-left, like the chrome that draws it; flipped into the view's space. A
+            // titleless palette frame keeps its corner hit area, so this never waits on a title bar.
             let rect = SkinnedSurfaceChrome.closeButtonRect(in: bounds, captionHeight: titleHeight)
             return NSRect(x: rect.minX, y: bounds.height - rect.maxY, width: rect.width, height: rect.height)
         }
+        guard titleHeight > 4 else { return .zero }
         let size: CGFloat = modern ? 14 * ModernSkinElements.scaleFactor : 9 * classicScale
         return NSRect(x: bounds.maxX - size - (modern ? 5 : 3) * (modern ? ModernSkinElements.scaleFactor : classicScale),
                       y: bounds.maxY - titleHeight + (titleHeight - size) / 2, width: size, height: size)
@@ -59,7 +62,7 @@ struct SonosWindowChrome {
     func draw(_ bounds: NSRect, closePressed: Bool) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         if modern {
-            ModernSonosChrome.draw(in: bounds, window: window, closePressed: closePressed,
+            ModernAuxiliaryChrome.draw(in: bounds, window: window, title: title, closePressed: closePressed,
                                    titleHeight: titleHeight, closeRect: closeRect(bounds), context: context)
             return
         }
@@ -80,11 +83,11 @@ struct SonosWindowChrome {
             WinampModernChrome(style: style).drawSpectrumFamilyWindow(
                 in: context, bounds: bounds, metrics: .spectrumFamily,
                 isActive: window?.isKeyWindow ?? false, isClosePressed: closePressed,
-                controlScale: classicScale, title: "SONOS", fillBackground: false)
+                controlScale: classicScale, title: title, fillBackground: false)
         } else {
             SkinRenderer(skin: skin).drawSpectrumAnalyzerWindowChromeOverlay(
                 in: context, bounds: bounds, isActive: window?.isKeyWindow ?? false,
-                pressedButton: closePressed ? .close : nil, controlScale: classicScale, title: "SONOS")
+                pressedButton: closePressed ? .close : nil, controlScale: classicScale, title: title)
         }
         context.restoreGState()
     }
@@ -104,7 +107,7 @@ struct SonosWindowChrome {
             .drawSpectrumFamilyWindow(
                 in: context, bounds: bounds, metrics: .spectrumFamily,
                 isActive: window?.isKeyWindow ?? true, isClosePressed: closePressed,
-                controlScale: classicScale, title: "SONOS", fillBackground: false)
+                controlScale: classicScale, title: title, fillBackground: false)
         context.restoreGState()
     }
 }

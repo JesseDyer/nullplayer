@@ -1545,7 +1545,7 @@ class ModernLibraryBrowserView: NSView {
         context.fill(tabBarRect)
 
         let chromeScale = topChromeScale(for: skin)
-        let font = skin.libraryFont(size: (compactMode ? 11 : 12) * chromeScale)
+        let font = ModernLibraryTab.font(skin: skin, compact: compactMode, scale: chromeScale)
         
         // Sort indicator width on right
         let sortText = "Sort"
@@ -1579,7 +1579,7 @@ class ModernLibraryBrowserView: NSView {
                 isSelected = true
             }
             let tabInset = 2 * ModernSkinElements.sizeMultiplier * chromeScale
-            drawToggleTab(label: label, isActive: isSelected,
+            ModernLibraryTab.draw(label, isActive: isSelected,
                           rect: tabRect.insetBy(dx: tabInset,
                                                dy: 2 * ModernSkinElements.sizeMultiplier),
                           font: font, skin: skin, context: context)
@@ -1621,76 +1621,18 @@ class ModernLibraryBrowserView: NSView {
         context.fill(compactFooterRect)
 
         let chromeScale = topChromeScale(for: skin)
-        let font = skin.libraryFont(size: (compactMode ? 11 : 12) * chromeScale)
+        let font = ModernLibraryTab.font(skin: skin, compact: compactMode, scale: chromeScale)
         let m = ModernSkinElements.sizeMultiplier
         // Same box insets the tab bar uses (drawTabBar), so the toggle boxes match the tabs.
         let insetX = 2 * m * chromeScale
         let insetY = 2 * m
         let segments = compactToggleSegmentRects()
-        drawToggleTab(label: "Library", isActive: compactContentMode == .library,
+        ModernLibraryTab.draw("Library", isActive: compactContentMode == .library,
                       rect: segments.library.insetBy(dx: insetX, dy: insetY),
                       font: font, skin: skin, context: context)
-        drawToggleTab(label: "Playlist", isActive: compactContentMode == .queue,
+        ModernLibraryTab.draw("Playlist", isActive: compactContentMode == .queue,
                       rect: segments.queue.insetBy(dx: insetX, dy: insetY),
                       font: font, skin: skin, context: context)
-    }
-
-    private func drawToggleTab(label: String, isActive: Bool, rect: NSRect,
-                               font: NSFont, skin: ModernSkin, context: CGContext) {
-        let color = drawToggleBox(isActive: isActive, rect: rect, skin: skin, context: context)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: skin.applyTextOpacity(to: color)
-        ]
-        let textSize = label.size(withAttributes: attrs)
-        let textOrigin = NSPoint(x: rect.midX - textSize.width / 2,
-                                  y: rect.midY - textSize.height / 2)
-        drawText(label, at: textOrigin, withAttributes: attrs, context: context)
-    }
-
-    /// The boxed outline of a toggle button; returns the color its label is drawn in.
-    private func drawToggleBox(isActive: Bool, rect: NSRect, skin: ModernSkin, context: CGContext) -> NSColor {
-        let scale = ModernSkinElements.scaleFactor
-        let outlineColor = isMetalRenderStyle ? metalControlStroke : skin.elementColor(for: "tab_outline", fallback: skin.accentColor)
-        let activeTextColor = isMetalRenderStyle ? skin.textColor : skin.elementColor(for: "tab_text", fallback: skin.accentColor)
-        let color = isActive ? activeTextColor : skin.textDimColor
-        let strokeRect = rect.insetBy(dx: scale, dy: scale)
-        let cornerRadius = 2 * scale
-        let strokePath = CGPath(roundedRect: strokeRect,
-                                cornerWidth: cornerRadius,
-                                cornerHeight: cornerRadius,
-                                transform: nil)
-        let lineWidth = max(0.5, 0.8 * scale)
-
-        context.saveGState()
-
-        if isActive {
-            context.setFillColor((isMetalRenderStyle ? metalControlActiveFill : outlineColor.withAlphaComponent(0.12)).cgColor)
-            context.addPath(strokePath)
-            context.fillPath()
-
-            if !isMetalRenderStyle {
-                context.setShadow(offset: .zero, blur: 6, color: outlineColor.withAlphaComponent(0.6).cgColor)
-            }
-            context.setStrokeColor(outlineColor.withAlphaComponent(0.8).cgColor)
-            context.setLineWidth(lineWidth)
-            context.addPath(strokePath)
-            context.strokePath()
-            context.restoreGState()
-
-            context.saveGState()
-            context.setStrokeColor(outlineColor.withAlphaComponent(0.6).cgColor)
-            context.setLineWidth(lineWidth)
-            context.addPath(strokePath)
-            context.strokePath()
-        } else {
-            context.setStrokeColor((isMetalRenderStyle ? metalControlStroke : skin.textDimColor.withAlphaComponent(0.4)).cgColor)
-            context.setLineWidth(lineWidth)
-            context.addPath(strokePath)
-            context.strokePath()
-        }
-        context.restoreGState()
-        return color
     }
 
     /// The List / Flow / Tiles buttons: three squares the server bar's height, 2 pt apart.
@@ -1774,7 +1716,7 @@ class ModernLibraryBrowserView: NSView {
         let buttonSide = serverBarButtonSide(m: m)
         let refreshX = barRect.maxX - buttonSide - 8 * hm
         let refreshBox = NSRect(x: refreshX, y: barRect.minY + 3 * m, width: buttonSide, height: buttonSide)
-        let refreshColor = drawToggleBox(isActive: false, rect: refreshBox, skin: skin, context: context)
+        let refreshColor = ModernLibraryTab.drawBox(isActive: false, rect: refreshBox, skin: skin, context: context)
         LibraryBarIcon.fill(LibraryBarIcon.refresh,
                             in: refreshBox.insetBy(dx: buttonSide * 0.28, dy: buttonSide * 0.28),
                             color: skin.applyTextOpacity(to: refreshColor), context: context)
@@ -1790,7 +1732,7 @@ class ModernLibraryBrowserView: NSView {
             var x = leadingX
             for mode in LibraryViewMode.allCases {
                 let rect = NSRect(x: x, y: barRect.minY + 3 * m, width: buttonSide, height: buttonSide)
-                let color = drawToggleBox(isActive: artLens.mode == mode, rect: rect, skin: skin, context: context)
+                let color = ModernLibraryTab.drawBox(isActive: artLens.mode == mode, rect: rect, skin: skin, context: context)
                 mode.drawIcon(in: rect.insetBy(dx: buttonSide * 0.28, dy: buttonSide * 0.28),
                               color: skin.applyTextOpacity(to: color), context: context)
                 viewModeButtonRects.append((mode, rect))
@@ -4480,6 +4422,9 @@ class ModernLibraryBrowserView: NSView {
         let menu = NSMenu()
         if let playable = playable(for: item) {
             TrackVerb.addMenuItems(to: menu, for: playable)
+            if let level = playable.eqProfileLevel {
+                EQProfileMenu.addAssignItem(to: menu, level: level) { try await playable.tracks() }
+            }
         }
         switch item.type {
         case .track(let track):
@@ -4574,6 +4519,7 @@ class ModernLibraryBrowserView: NSView {
         case .radioStation(let station):
             let playItem = NSMenuItem(title: "Play Station", action: #selector(contextMenuPlayRadioStation(_:)), keyEquivalent: "")
             playItem.target = self; playItem.representedObject = station; menu.addItem(playItem)
+            EQProfileMenu.addAssignItem(to: menu, level: .track, tracks: [station.toTrack()])
             menu.addItem(NSMenuItem.separator())
             let foldersItem = NSMenuItem(title: "Folders", action: nil, keyEquivalent: "")
             foldersItem.submenu = buildRadioStationFoldersSubmenu(for: station)

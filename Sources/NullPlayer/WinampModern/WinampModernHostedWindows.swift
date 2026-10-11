@@ -79,6 +79,7 @@ enum WinampModernHostedWindowID: String, CaseIterable {
     case waveform
     case projectM
     case art
+    case equalizerStudio
 
     var containerIdentifier: String { "nullplayer.\(rawValue)" }
     var contentGroupIdentifier: String { "\(containerIdentifier).content" }
@@ -264,6 +265,24 @@ enum WinampModernHostedWindowRegistry {
             ),
             makeSurface: { context in
                 let view = ArtWindowView(frame: NSRect(origin: .zero, size: SkinElements.SpectrumWindow.windowSize))
+                view.configureForHostedSurface(context: context)
+                return view
+            }
+        ),
+        // Floats free like ProjectM. The view draws the one `EqualizerStudioSession`, so the edit
+        // carries across skins and families.
+        WinampModernHostedWindowDefinition(
+            id: .equalizerStudio,
+            title: "EQ Studio",
+            defaultSize: EqualizerStudioView.designSize,
+            minimumSize: EqualizerStudioView.designSize,
+            maximumSize: nil,
+            stackPolicy: WinampModernHostedStackPolicy(
+                participatesInCenterStack: false,
+                preferredHeightMultiplier: 1
+            ),
+            makeSurface: { context in
+                let view = EqualizerStudioView(frame: NSRect(origin: .zero, size: EqualizerStudioView.designSize))
                 view.configureForHostedSurface(context: context)
                 return view
             }

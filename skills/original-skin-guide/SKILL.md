@@ -178,8 +178,8 @@ Some UI sections have dedicated `elements` color keys that override the palette:
 | `seek_fill` | Seek bar fill + thumb | `palette.primary` |
 | `volume_fill` | Volume bar fill + thumb | `seek_fill.color` → `palette.primary` |
 | `playlist_text` | Normal (non-current, non-selected) track text in playlist | `palette.textDim` |
-| `tab_outline` | Active tab border + glow color in library browser tab bar | `palette.accent` |
-| `tab_text` | Active tab label text color in library browser tab bar | `palette.accent` |
+| `tab_outline` | Active tab border + glow color in library browser tab bar and Equalizer Studio buttons | `palette.accent` |
+| `tab_text` | Active tab label text color in library browser tab bar and Equalizer Studio buttons | `palette.accent` |
 | `minicontrol_buttons` | ON state color for main window toggle buttons (EQ, PL, SP, etc.) | `palette.accent` |
 
 ## Image Naming Convention
@@ -253,6 +253,10 @@ Seven built-in metal finishes ship in code (`ModernSkinLoader.createBuiltInMetal
 Display vs. chrome contrast: the main-window time/track panels and EQ curve graph render on a backlit-green LCD (`material.displayFill`); text on the LCD uses `material.lcdInk` (dark in every finish), while on-chrome text uses the skin palette `text`/`textDim`/`dataColor` (light on dark finishes, dark on light). `timeColor`/`marqueeColor` stay dark for all finishes since they sit on the green LCD. EQ faders use a brightness value ramp (`material.faderLow`/`faderMid`/`faderHigh`), not a hue scale.
 
 Dockable sub-windows (EQ, Playlist, Spectrum, Audio Analysis, Flow, PeppyMeter, Waveform, Visualizations, Library) use `ModernSkinElements.auxiliaryWindowBorderWidth` for their chrome/content inset. In standard Original skins this preserves the established thicker inset; in Metal skins it collapses to the renderer's thin window-border width so every dockable sub-window presents the same smallest border width. Metal-only content padding is avoided for Flow and PeppyMeter so their interiors do not read as extra border thickness; their content rects also expand through adjacent joined chrome strips via `expandingThroughJoinedEdges(...)` in every render style (not just Metal), matching the shared-edge border suppression so no seam shows on a docked edge (issue #364). The helper only bridges small edge-adjacent gaps and must not expand body content across a visible title bar.
+
+Tabs (`Windows/ModernLibraryBrowser/ModernLibraryTab.swift`, shared by the Library and the Equalizer Studio's buttons): in metal an active tab is lit as the main window's display — `displayFill` with its label in `lcdInk`, outlined in the text colour — because the material's own stroke and control fill left a selected tab indistinguishable from the rest. The Studio draws no ground of its own in metal (its chrome's brushed surface, at the main window's area opacity, shows through) and takes its insets, lines and levels from the material.
+
+`ModernSkin/BloomPostProcessor.swift`: `ModernSkinEngine` only ever configures its instance; the one caller of `apply(to:)` is the Studio's Boutique faceplate (`Windows/EqualizerStudio/StudioBloom.swift`), with a processor of its own. `apply` redraws its input as RGBA8 premultiplied into a `.managed` texture, reads a `.managed` output back after a blit `synchronize`, and returns the input unbloomed when Metal cannot run the passes.
 
 Library browser (metal): the window renders as one continuous brushed-metal surface — the top-chrome band fills and the alphabet-index inset are cleared, and the renderer's metal accent strip is suppressed for this window via `drawWindowBackground(..., drawMetalAccentStrip:)` (other metal windows keep the strip). Compact player bar (`CompactPlayerBarView`, metal): the upper display row (track-title marquee + inline, vertically-centered time) gets the green LCD fill via `drawInsetPanel(displayFill: true)`, with the seek bar and volume in a separate control row below so they sit off the LCD. The classic compact bar (`ClassicCompactPlayerBarView`) mirrors the same display-row / control-row layout without the green fill.
 

@@ -14,6 +14,38 @@
   window now draws the skin's clutterbar strip and the mono slot's background, as Winamp does.
 - **Next Skin and Previous Skin shortcuts** — Cmd+] and Cmd+[ step through the current skin
   family's installed skins, wrapping at either end. Both are also in the Skins menu.
+- **EQ profiles and the Equalizer Studio** — named 31-band equalizer curves with separate left and
+  right channels, made in the new **Windows ▸ Equalizer Studio** and assigned from **Assign EQ
+  Profile ▸** on tracks, albums, artists, playlists, folders, queue rows, radio stations and
+  downloaded YouTube audio. A track's own setting wins over its album's, which wins over its
+  artist's; **Off** turns a profile off for that item and **Playback ▸ EQ Profiles** turns them all
+  off. Profiles run before the Equalizer window, which never changes them. The Studio has a Console
+  and a Boutique faceplate, a spectrum analyser per channel, LINK to move both channels together, a
+  BYPASS per channel to hear one side without its curve, and you hear edits as you make them. Queue rows with a profile show **∿**, and File Info names it.
+  A local file's assignment is dropped at launch once the file is gone; a drive that is not plugged
+  in keeps its files' assignments.
+- **A 4-band parametric EQ in the Equalizer Studio** — **GRAPHIC / PARAMETRIC** switches the
+  Studio between the 31 faders and a console-style strip: a high-pass filter and LF, LMF, HMF and HF
+  bands with frequency, gain and Q dials, LF and HF switchable to shelves. Both are part of one
+  curve, saved in one profile and always heard together, so switching never loses anything; the
+  faders sit on that curve. The Boutique faceplate is now Nixie orange, and its analyser glows
+  hotter as levels rise, with glowing peak holds.
+- **The Equalizer Studio is a normal NullPlayer window** — it wears each skin family's own frame
+  and title bar, snaps and docks with the other windows, rises with them when you click the main
+  window, can be resized (wider faders and taller analysers, never below its default size), and
+  stays open across a skin-family switch. Both faceplates take the skin's colours, with every label
+  kept readable against what it sits on; on an Original-Metal skin the Studio sits on the main
+  window's own brushed surface. Its buttons are the Library's tabs; LINK lights the channel names
+  the same way, and while linked BYPASS acts on both channels as FLAT does. Boutique's analyser,
+  fader caps and response graph glow on a dark skin. Faders carry dB notches, the preamp has dB
+  guides, HEADROOM, SAVE and RENAME are greyed when they would do nothing, and **View** switches
+  the faceplate.
+- **Docking no longer flashes a large outline in Original skins** — docking or undocking a window
+  briefly showed the group's old drop shadow stretched to its new size.
+- **An active tab in Original-Metal lights up as the green display** — in the Library and the
+  Equalizer Studio a selected tab was hard to tell from the rest.
+- **Sonos Rooms has its close button again in `.wmz` and `.wal` skins** — the corner close of a
+  window with no title bar did nothing.
 
 ## 0.32.1
 
