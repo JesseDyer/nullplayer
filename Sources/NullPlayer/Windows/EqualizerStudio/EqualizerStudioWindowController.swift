@@ -75,6 +75,8 @@ final class EqualizerStudioWindowView: NSView {
         super.init(frame: frame)
         // The skin shadow reads the window's outline from this layer; without it the Studio casts none.
         wantsLayer = true
+        // Its own layer from the start, so the first layout can mask it to the chrome's corners.
+        studioView.wantsLayer = true
         addSubview(studioView)
         for name: Notification.Name in [.classicSkinDidChange, ModernSkinEngine.skinDidChangeNotification,
                                         .hostedSurfaceStyleDidChange, .windowLayoutDidChange, .doubleSizeDidChange] {
@@ -112,7 +114,16 @@ final class EqualizerStudioWindowView: NSView {
 
     override func layout() {
         super.layout()
-        studioView.frame = chrome.contentRect(bounds)
+        let content = chrome.contentRect(bounds)
+        studioView.frame = content
+        // The chrome's clip, in the faceplate's flipped space, masks the faceplate's square fill.
+        studioView.layer?.mask = chrome.contentClip(bounds).map { clip in
+            var toFaceplate = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: -content.minX, ty: content.maxY)
+            let mask = CAShapeLayer()
+            mask.frame = CGRect(origin: .zero, size: content.size)
+            mask.path = clip.copy(using: &toFaceplate)
+            return mask
+        }
         (window as? BorderlessWindow)?.titleBarHeight = chrome.titleHeight
     }
 

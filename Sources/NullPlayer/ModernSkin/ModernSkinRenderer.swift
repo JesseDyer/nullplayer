@@ -325,6 +325,15 @@ class ModernSkinRenderer {
         return strips
     }
 
+    /// The inside edge of `drawWindowBorder`'s stroke: what a window's content is clipped to, so a
+    /// square content fill never covers the border's rounded corners.
+    func windowContentClipPath(in bounds: NSRect, sharpCorners: CACornerMask = []) -> CGPath {
+        let borderWidth = skin.config.window.borderWidth ?? 1.0
+        let cornerRadius = skin.config.window.cornerRadius ?? 0
+        return makeRoundedCornerPath(rect: bounds.insetBy(dx: borderWidth, dy: borderWidth),
+                                     radius: max(0, cornerRadius - borderWidth / 2), sharpCorners: sharpCorners)
+    }
+
     /// Draw the window border with optional glow.
     /// When occlusion segments are present and `seamlessDocking` > 0,
     /// border suppression is applied only on the joined edge intervals.

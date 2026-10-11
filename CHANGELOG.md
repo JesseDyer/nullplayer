@@ -49,6 +49,8 @@
 - **A quick drag of the player keeps its docked windows with it** — in a seamless Original skin,
   quickly dragging the player around left the windows docked to it drifting a little further
   behind on every move.
+- **PeppyMeter and the Equalizer Studio keep their rounded corners in Original skins** — their
+  square content covered the window border's rounded corners.
 
 ## 0.32.1
 
