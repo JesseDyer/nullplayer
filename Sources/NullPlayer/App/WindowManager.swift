@@ -6159,7 +6159,8 @@ class WindowManager {
         let repaired = AppStateManager.repairClassicCenterStackFrames(
             mainFrame: mainWindow.frame,
             frames: windows.mapValues(\.frame),
-            scale: scale
+            scale: scale,
+            floorsMainHeight: !runningControllerFamily.hostsForeignSkin
         )
 
         guard repaired.repaired else { return false }

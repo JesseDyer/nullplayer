@@ -471,11 +471,12 @@ Port of Ryan Geiss's classic Winamp visualization. ProjectM-peer engine — sele
   follows the skin's own outline. It is the same switch in every skin family — Classic, Original,
   Modern, Windows Media Player and Audion faces — and covers NullPlayer's own windows beside the
   skin too.
-- **Default Skin (Black)** is the plain placeholder skin that ships with the app — what Modern mode
-  loads on a first run, before any skin is imported, and after the selected skin is removed. It has
-  no menu entry. NullPlayer bundles no Winamp
-  skins; this one is our own. It gives the mode a working player window (transport, seek, volume,
-  PL and ML buttons) and is meant to be replaced by a skin the user imports.
+- **iTunes Miniplayer** is the default skin that ships with the app — what Modern mode loads on a
+  first run, before any skin is imported, and after the selected skin is removed. It is listed in
+  the skin menu beside imported skins, so it can be picked again, but it cannot be removed. It is
+  the one third-party skin NullPlayer bundles, by
+  [spacecowgoesmoo](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer), shipped with the
+  author's permission.
 - Many of these skins draw their own **About page** — the artwork the skin author wrote about the
   skin. Where the skin has one, it opens in the skin's own window: from whatever control the skin
   binds to it (often a logo or corner bolt), or from **Help > About This Skin** in the skin's own

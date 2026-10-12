@@ -666,6 +666,9 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
     var currentPalette: WasabiPalette? { skinView?.renderer.palette }
     /// The loaded `.wal` archive — the skin's identity for once-per-skin defaults.
     var loadedSkinURL: URL? { loadedSkin?.archive.sourceURL }
+    /// The loaded skin's filename stem — the name the importer selects by and the skin scopes its own
+    /// settings by. Nil while the placeholder is showing.
+    var loadedSkinName: String? { loadedSkinURL?.deletingPathExtension().lastPathComponent }
 
     // MARK: - Text Size (B50)
 

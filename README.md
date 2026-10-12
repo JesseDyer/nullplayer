@@ -35,7 +35,7 @@ NullPlayer is also the **first macOS and only open-source engine capable of rend
 
 NullPlayer is not affiliated with, endorsed by, or connected to Winamp, Nullsoft, Microsoft, Winamp Group SA, Llama Group, Radionomy Group, Jamendo, Hotmix, Bridger, SHOUTcast, Sonos, Plex, WACUP, Emby, Jellyfin, Google, Panic or anyone else
 
-No Winamp or Windows Media Player skins or Audion faces are distributed with the project
+No Winamp or Windows Media Player skins or Audion faces are distributed with the project, apart from the default `.wal` skin, [iTunes Miniplayer](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer), shipped with its author's permission
 
 ### General Features
 
@@ -594,6 +594,8 @@ See [AGENTS.md](AGENTS.md) for documentation links and key source files.
 ## Credits
 
 App icon by **Allan Nyholm Nielsen** ([#488](https://github.com/ad-repo/nullplayer/issues/488)).
+
+Default Winamp Modern skin, **iTunes Miniplayer**, by **[spacecowgoesmoo](https://github.com/spacecowgoesmoo)** ([Old-iTunes-Miniplayer](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer), [#540](https://github.com/ad-repo/nullplayer/issues/540)).
 
 ## Privacy
 
