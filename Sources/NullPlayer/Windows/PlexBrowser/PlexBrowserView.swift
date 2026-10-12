@@ -3338,14 +3338,13 @@ class PlexBrowserView: NSView {
         let font = contentFont(ofSize: 10)
         let smallFont = contentFont(ofSize: 9)
         
-        var columnX = rect.minX + 4 - horizontalScrollOffset
         let hasArtColumn = columns.contains { $0.id == "thumbnail" }
-        for column in columns {
-            let columnWidth = widthForColumn(column, availableWidth: totalWidth, columns: columns, group: group)
-            defer { columnX += columnWidth }
-            // A child row indents inside its Title cell only, so every other cell stays under its heading.
-            let inset = column.id == "title" ? indent : 0
-            let x = columnX + inset, width = columnWidth - inset
+        let cells = LibraryColumnVisibility.cellFrames(
+            widths: columns.map { widthForColumn($0, availableWidth: totalWidth, columns: columns, group: group) },
+            titleIndex: columns.firstIndex { $0.id == "title" }, indent: indent,
+            spansLeadingCells: columnGroup(for: item) != group)
+        for (column, cell) in zip(columns, cells) {
+            let x = rect.minX + cell.start - horizontalScrollOffset, width = cell.width
             if column.id == "thumbnail" {
                 // Inside the counter-flip (y-up), centred on the row so the flip doesn't move it.
                 if let thumbnail = rowThumbnailSource(for: item) {
@@ -11407,7 +11406,7 @@ class PlexBrowserView: NSView {
         if !matchingTracks.isEmpty {
             displayItems.append(PlexDisplayItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for track in matchingTracks {
-                displayItems.append(PlexDisplayItem(id: track.id.uuidString, title: track.displayTitle, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(track)))
+                displayItems.append(PlexDisplayItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(track)))
             }
         }
 
@@ -11425,9 +11424,6 @@ class PlexBrowserView: NSView {
 
         // Snapshot main-actor state before going off-actor (value types are Sendable)
         let expandedSnapshot = expandedLocalFolders
-        let availableFolderURLs = MediaLibrary.shared.watchFolderSummaries()
-            .filter { $0.isAvailable }
-            .map { $0.url }
 
         // Show the loading spinner (not the empty "No folders found" state) while the
         // off-actor walk runs — matters for slow network/NAS watch folders.
@@ -11441,71 +11437,9 @@ class PlexBrowserView: NSView {
         localFolderBuildTask?.cancel()
         localFolderBuildTask = Task.detached { [weak self] in
             // Build the ordered item list entirely off the main actor (FS enumeration + DB query)
-            var items: [PlexDisplayItem] = []
-
-            func walk(_ url: URL, indent: Int) {
-                if Task.isCancelled { return }
-                var subdirectories: [(url: URL, name: String)] = []
-                var audioFiles: [URL] = []
-                if let contents = try? FileManager.default.contentsOfDirectory(
-                    at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) {
-                    for item in contents {
-                        var isDir: ObjCBool = false
-                        if FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir) {
-                            if isDir.boolValue {
-                                // Skip symlinked dirs to prevent infinite recursion
-                                if item.resolvingSymlinksInPath().path == item.path {
-                                    subdirectories.append((url: item, name: item.lastPathComponent))
-                                }
-                            } else if LocalFileDiscovery.isSupportedAudioFile(item) {
-                                audioFiles.append(item)
-                            }
-                        }
-                    }
-                }
-                // Directories first, then files; both case-insensitive by name
-                subdirectories.sort { $0.name.lowercased() < $1.name.lowercased() }
-                audioFiles.sort { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
-
-                for (subURL, subName) in subdirectories {
-                    items.append(PlexDisplayItem(
-                        id: subURL.path, title: subName, info: nil,
-                        indentLevel: indent, hasChildren: true,
-                        type: .localFolder(url: subURL, name: subName)))
-                    // Recurse in place so a child's contents follow it directly (correct tree order)
-                    if expandedSnapshot.contains(subURL.path) {
-                        walk(subURL, indent: indent + 1)
-                    }
-                }
-
-                let urlToTrackMap = MediaLibraryStore.shared.tracks(forURLs: audioFiles)
-                for fileURL in audioFiles {
-                    let track = urlToTrackMap[fileURL] ?? LibraryTrack(url: fileURL)
-                    items.append(PlexDisplayItem(
-                        id: track.id.uuidString, title: track.displayTitle,
-                        info: track.formattedDuration, indentLevel: indent, hasChildren: false,
-                        type: .localTrack(track)))
-                }
-            }
-
-            if availableFolderURLs.count > 1 {
-                // Multiple watch folders: each is a top-level node
-                for folderURL in availableFolderURLs {
-                    items.append(PlexDisplayItem(
-                        id: folderURL.path, title: folderURL.lastPathComponent, info: nil,
-                        indentLevel: 0, hasChildren: true,
-                        type: .localFolder(url: folderURL, name: folderURL.lastPathComponent)))
-                    if expandedSnapshot.contains(folderURL.path) {
-                        walk(folderURL, indent: 1)
-                    }
-                }
-            } else if let only = availableFolderURLs.first {
-                // Single watch folder: show its contents directly
-                walk(only, indent: 0)
-            }
+            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(PlexDisplayItem.init)
 
             if Task.isCancelled { return }
-            let builtItems = items
             await MainActor.run { [weak self] in
                 guard let self = self,
                       self.localFolderBuildGeneration == gen,
@@ -11513,7 +11447,7 @@ class PlexBrowserView: NSView {
                       self.browseMode == .folders else { return }
                 self.isLoading = false
                 self.stopLoadingAnimation()
-                self.displayItems = builtItems
+                self.displayItems = items
                 self.needsDisplay = true
                 self.localFolderBuildTask = nil
             }
@@ -12873,6 +12807,16 @@ extension PlexDisplayItem {
         }
         self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
                   hasChildren: row.hasChildren, type: type, titlePrefix: row.titlePrefix)
+    }
+
+    init(_ row: LocalFolderTree.Row) {
+        let type: ItemType
+        switch row.kind {
+        case .folder(let url): type = .localFolder(url: url, name: row.title)
+        case .track(let track): type = .localTrack(track)
+        }
+        self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
+                  hasChildren: row.hasChildren, type: type)
     }
 }
 

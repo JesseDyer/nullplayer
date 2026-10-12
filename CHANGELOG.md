@@ -48,6 +48,17 @@
   loads it until you import a skin of your own, replacing the plain NullPlayer-Black placeholder.
   It stays in the skin menu beside imported skins, so you can switch back to it.
   Skin by [spacecowgoesmoo](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer) (#540).
+- **The Library's Folders tab shows track titles without the artist** — in Classic, Modern and
+  Windows Media Player skins each track read "Artist - Title", repeating the Artist column (#542).
+- **Folders and files in the Folders tab sort numbers by value** — as Finder does, so `2` comes
+  before `10` instead of `1, 10, 100, 11, 2` (#543).
+- **Expanding an artist no longer pushes the whole Library list to the right** — once tracks were
+  showing, every artist and album name moved over past the empty `#` column; they now stay put,
+  and tracks no longer sit far to the right of their album or folder (#542).
+- **Folders inside a watch folder reached through a symlink show up in the Folders tab** — a
+  watch folder under a symlinked path such as `/tmp` listed none of its subfolders.
+- **Local search results show track titles without the artist** — the Tracks section of a Library
+  search read "Artist - Title" beside the Artist column, in every skin.
 
 ## 0.32.2
 
