@@ -14,6 +14,10 @@ construction on this pattern. It is the one family that is a port rather than a 
 Panic's GPL FaceKit defines the format and renders an oracle, so a diff against that oracle is a
 defect, not an unclassified change.
 
+A sixth, `sonique` (Sonique 1.x `.sgf`, `sonique-skin-guide`, backlog `tasks/SONIQUE_TASKS.md`), is
+planned: format decoded, corpus and census built, and real Sonique under Wine as its oracle, with no
+engine yet.
+
 **The reference implementation is `winamp-modern-skin-guide`**: the most successful engine here, and
 the model for the engine rules, the harness, the corpus census, the demand-driven backlog and the
 skill layout. `wmp-skin-guide` is the same shape at an earlier phase. Read whichever is closer to

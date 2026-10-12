@@ -1,0 +1,182 @@
+# Sonique Skins Phase 0 decision record
+
+**Status:** locked 2026-10-11 by the user's sign-off (§ *Signed off*).
+**Date:** 2026-10-11
+**Implementation branch:** `feat/sonique-skins`
+**Implementation base:** `8b8d4190` (`origin/main`)
+**Product exposure:** DEBUG-only (`AppFeature.soniqueSkinMode`) until a phase makes it public.
+
+Sonique skins are the sixth skin family, beside Classic, Original, Winamp Modern (`.wal`), Windows
+Media Player (`.wmz`) and Audion faces. The format is `skills/sonique-skin-guide/reference/format.md`;
+the ranked work is `tasks/SONIQUE_TASKS.md`.
+
+## Decisions
+
+- **A clean-room engine with a running oracle.** Sonique is closed source and nothing reimplements
+  it. Real Sonique 1.96 under Wine is the oracle (`reference/harness.md`): a diff against its capture
+  of a mode's default state is evidence, as with Audion's FaceKit, but animation and every non-default
+  state are unmeasured until a probe exists for them.
+- **The target is Sonique 1.96**, the last release, which reads skin spec versions 100 and 105.
+- **The navigator's screens are NullPlayer's, in the skin's colours.** Sonique draws them and a skin
+  only recolours them, so cloning them buys fidelity to Lycos's UI, not to the skin. What must match
+  the oracle: the menu screen's layout, the status line, the progress rings, the knob strips, the
+  drawer. What hosts NullPlayer's own views: playlist, visual mode, audio controls (NullPlayer's EQ),
+  search (the library). Setup and about open NullPlayer's own preferences and about panel.
+- **No new behaviour for a skin.** Every control maps to an existing NullPlayer action
+  (§ *Control mapping*); a Sonique feature NullPlayer lacks stays inert rather than being built here.
+- **Skins install as single `.sgf` files**, by Open/drag like the other families. No `.zip` import:
+  Sonique distributed bare `.sgf` files, and none of the corpus came zipped.
+- **The loading limits below are locked**, and never relaxed to make one skin load. A limit found to
+  be mis-specified against its own threat model is amended here, argued about the threat.
+
+## Provenance
+
+| Item | Value |
+|---|---|
+| Format authority | Lycos's skinpack docs (`misc.txt`, `how-to-make-skins-1.09.txt`), kept outside the repo |
+| Reference build | Sonique 1.96 portable, archive.org item `sonique_media_player` |
+| Code | written from scratch; nothing adapted, so no notice row |
+
+- **No Sonique or Lycos artwork, executable or text is committed or bundled**, fixtures included.
+  That rules out shipping Sonique's default skin, which lives inside `Sonique.exe`; NullPlayer draws
+  its own (§ *Omitted entries and the default skin*).
+- **Oracle output is never committed.**
+
+## Threat model
+
+A user-supplied `.sgf` is a hostile binary file: attacker-controlled entry count, names, offsets,
+sizes, JPEG headers and payloads, and INI text. It has no paths that reach the filesystem (entry
+names are looked up, never written), no compression and no script surface.
+
+1. The file size is checked before it is read.
+2. The entry table is bounds-checked as a whole before any entry is read, and every entry's payload
+   range against the file before it is sliced.
+3. A region's byte length must equal `10 + 8 × count` before any rectangle is read.
+4. Every JPEG's dimensions are read from its SOF header, and the per-image and per-skin pixel budgets
+   checked, **before any image is decoded**.
+5. Parsing and decoding run off the main thread. `MainActor` receives only a completed immutable
+   skin.
+
+## Loading limits
+
+`SoniqueSkinPolicy` is the executable source of truth from S2. Codes are stable identifiers.
+
+| Code | Condition | Outcome |
+|---|---|---|
+| `SQ0001` | not a `DAF\0` file, or the entry table does not fit in the file | fatal |
+| `SQ0002` | file larger than 16 MB | fatal |
+| `SQ0003` | more than 256 entries | fatal |
+| `SQ0004` | an entry's payload range outside the file | fatal |
+| `SQ0005` | a JPEG larger than 16,384 px on a side | fatal |
+| `SQ0006` | more than 64 Mpx across the skin's JPEGs, summed from headers | fatal |
+| `SQ0007` | `/skin.ini` larger than 256 KB | fatal |
+| `SQ0008` | a JPEG that does not decode, or a region whose length is not `10 + 8 × count` | warning; entry treated as absent |
+| `SQ0009` | a mode's picture or frame absent, or its `Touch…Mode` is 0 | warning; that mode draws the default skin (§ *Omitted entries and the default skin*) |
+| `SQ0010` | a region extending past its mode picture | warning; clipped to the picture |
+| `SQ0011` | an INI value that does not parse | warning; the key's default |
+
+### Measured headroom (2026-10-11, the 524 skins in `SoniqueSkins/`)
+
+| Limit | Bound | Corpus maximum | Skin |
+|---|---:|---:|---|
+| `SQ0002` file | 16 MB | 1,376,591 B | BoneKnot |
+| `SQ0003` entries | 256 | 55 | sonique |
+| `SQ0005` side | 16,384 px | 9,241 px | Eletro (`/jpeg/smallknob`, 9241×21) |
+| `SQ0006` pixels | 64 Mpx | 5,724,136 px | RedWood_Update |
+| `SQ0007` INI | 256 KB | 28,434 B | project_arms |
+| region rectangles | u16 by format | 3,977 | Heaven&Hell (`/rgn/mid/frame`) |
+
+The tightest margin is `SQ0005` at 1.8×; the knob strips are long and thin, so the pixel budget, not
+the side, is the real decode bound. 819 of the JPEGs are progressive; ImageIO decodes them. Four
+skins have a frame one pixel wider or taller than its picture (`SQ0010`). Measured with throwaway
+Python over the census reader; S2's census replaces these numbers with ones a committed command
+reproduces.
+
+## Omitted entries and the default skin
+
+276 of 524 skins omit at least one entry, which in Sonique means "use the default skin's". The
+skinpack tells authors to do exactly that (*"If you don't change something from the default skin,
+don't make another one"*), so omission is per entry, not per mode: a skin can supply its own
+navigator picture and still rely on the default drawer, knobs and lit states.
+
+**NullPlayer ships its own default Sonique skin** (user decision, 2026-10-11), and every omitted
+entry falls back to that skin's entry of the same name:
+
+| Omitted | Skins |
+|---|---:|
+| `/jpeg/smallknob` | 134 |
+| `/jpeg/shuttle`, `/rgn/mid/shuttle` | 109, 16 |
+| `/rgn/nav/drawer`, `/jpeg/extra` | 79, 15 |
+| `/rgn/mid/eq` | 54 |
+| `/rgn/small/frame` | 38 |
+| `/jpeg/volumeknob` | 13 |
+| a mode's picture (`Touch…Mode = 0` counts as all of that mode's entries omitted) | nav 5+2, mid 2, small 11+4 |
+
+Rules for the default skin:
+
+- **Its artwork is NullPlayer's own.** Never Sonique's (it is inside `Sonique.exe`) and never
+  another family's.
+- **Its layout is Sonique's default layout.** A skin that omits its drawer region expects the drawer
+  where Sonique's default put it, so the default skin's frames, hit regions and `[misc locations]`
+  must sit where Sonique's do. The positions come from `misc.txt`'s defaults; the shapes are measured
+  from the oracle with no skin loaded and from the skinpack's `*_default.bmp` masks, used as
+  measurements, never committed.
+- **Its colours are `misc.txt`'s `[sonique colors]` defaults.**
+- **It is a real `.sgf`-shaped skin**, loaded through the same model as any other, so the fallback is
+  one lookup and not a second code path. It is also the family's unskinned fallback, which
+  `skin-subsystem-blueprint` requires.
+- **It is designed, not generated:** S11 is an artwork task and needs the user's eye.
+
+## INI rules
+
+- **Keys and sections are case-insensitive.** **The first `[skin]` section wins** when there are
+  several (15 skins), matching Win32 `GetPrivateProfileString`; confirm against the oracle for one
+  such skin in S4.
+- **Colours** are `0x` hex; the alpha byte is ignored (Sonique's own file mixes `0xFF…` and 6-digit
+  values).
+- **Expressions:** `NAME + n` / `NAME - n`, where `NAME` is another key in the same section, is
+  supported; 6 skins write `BIGON_DOWN_y = BIGUP_y + n`. Anything richer is `SQ0011`.
+
+## Control mapping
+
+| Skin control | NullPlayer action |
+|---|---|
+| play / pause / stop / prev / next | the same |
+| eject | Open Files… |
+| shuffle | shuffle |
+| repeat | NullPlayer's repeat on/off. Sonique's third state, loop one, is unreachable: NullPlayer's GUI has no repeat-one |
+| volume knob | volume |
+| drawer amp / bal / pitch knobs | preamp / balance / playback speed (`AudioEngine.setPlaybackSpeed`, the Playback Speed menu's control), centre detent 1.0×. NullPlayer's speed preserves pitch; whether Sonique's knob also shifted pitch, and the speed range its travel spans, are read from the oracle in S9 |
+| nav up / down rocker | moves the menu selection, as in Sonique |
+| mid `top` / `bottom` (song / list) | navigator playlist screen / visual mode |
+| window balls (minimise, close, help, mode up/down) | minimise / quit / NullPlayer help / switch mode |
+| `logohref` | nothing: a skin never opens a URL |
+
+## Auxiliary-window policy
+
+- **Sonique has no windows of its own besides its one window in three modes.** Its playlist,
+  equaliser and visual mode are screens inside the navigator, so "ask what the skin provides first"
+  answers: the Playlist and Equalizer menu items switch to navigator mode on that screen, as
+  Sonique's own `P` key does for the playlist.
+- **NullPlayer windows Sonique has no screen for** (library browser, spectrum, waveform, analysis,
+  PeppyMeter, Cava, Flow) use the shared controllers painted through `WindowManager.hostedSurfaceStyle`
+  from a `SkinnedSurfaceStyle` built directly from the skin's `[sonique colors]` (no sampling needed),
+  every foreground through `SkinnedSurfaceStyle.legible`. Never another family's chrome.
+- **Route to a track from S5:** eject (Open Files…) and the navigator playlist screen.
+- **Placement and docking:** the shared tiler, placed once, with a `SONIQUE_PLACE_TRACE` flag in the
+  first commit that places a window; the window is a snap target, not a centre-stack member.
+- **Mode switches resize one window**, which keeps its top-left fixed, matching the oracle.
+  Unverified: S5 checks it.
+
+## Phase order
+
+The S-rows in `tasks/SONIQUE_TASKS.md` run in order. S2–S6 are the spike; it stops at S6 for a
+go/no-go against the oracle for the 12-skin sample before S7 starts.
+
+## Signed off
+
+1. **Pitch knob:** playback speed (§ *Control mapping*).
+2. **Repeat:** NullPlayer's on/off only; Sonique's loop-one state is unreachable.
+3. **Omitted entries:** NullPlayer's own default skin (§ *Omitted entries and the default skin*).
+4. **Navigator screens:** NullPlayer's views in the skin's colours (§ *Decisions*).
+5. **Exposure:** DEBUG-only until the spike passes and a later phase makes it public.
