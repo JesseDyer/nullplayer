@@ -851,6 +851,10 @@ final class WinampModernMainView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
+        if isFallbackClose(at: point) {
+            traceHitTest(point, verdict: "self (fallback close)")
+            return self
+        }
         // Live host subviews (e.g. the embedded library) handle their own region.
         for sub in subviews.reversed() {
             if let hit = sub.hitTest(point) {
@@ -1687,6 +1691,10 @@ final class WinampModernMainView: NSView {
             case .close: if let closeRequested { closeRequested() } else { window?.close() }
             case .drag: if let window { beginWindowDrag(window, from: event) }
             }
+            return
+        }
+        if isFallbackClose(at: convert(event.locationInWindow, from: nil)) {
+            if let closeRequested { closeRequested() } else { window?.close() }
             return
         }
         // A menu-bar entry opens on the **press**, before the divider, the resize border and the

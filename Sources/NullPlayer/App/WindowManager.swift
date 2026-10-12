@@ -6706,9 +6706,14 @@ class WindowManager {
     }
     
     @objc private func handleWindowWillClose(_ notification: Notification) {
-        guard let closingWindow = notification.object as? NSWindow,
-              closingWindow === draggingWindow else { return }
-        windowDidFinishDragging(closingWindow)
+        guard let closingWindow = notification.object as? NSWindow else { return }
+        if closingWindow === draggingWindow { windowDidFinishDragging(closingWindow) }
+        // A window its own view closes (its close button, the fallback close corner) leaves the
+        // docked layout without the layout change the Windows-menu path posts, so the seamless stack
+        // shadow and the neighbours' shared edges went on outlining it. Posted once it is off screen.
+        if isRunningModernUI, managedWindowRecords.contains(where: { $0.window === closingWindow }) {
+            DispatchQueue.main.async { [weak self] in self?.postLayoutChangeNotification() }
+        }
     }
 
     @objc private func handleWindowWillMiniaturize(_ notification: Notification) {

@@ -19,6 +19,8 @@ final class SonosWindowController: NSWindowController, ModeDependentWindow, NSWi
         window.allowedResizeEdges = [.bottom, .left, .right]
         window.collectionBehavior = [.managed, .fullScreenPrimary]
         window.delegate = self
+        // As the close button: the toggle tears the rooms UI down and closes the stack gap.
+        window.fallbackClose = { WindowManager.shared.toggleSonos() }
         window.setAccessibilityIdentifier("SonosRoomsWindow")
         window.setAccessibilityLabel("Sonos rooms and volume")
         mixerView = SonosWindowView(frame: NSRect(origin: .zero, size: window.frame.size))

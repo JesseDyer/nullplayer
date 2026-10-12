@@ -38,4 +38,20 @@ extension WinampModernMainView {
         let rim = SkinnedSurfaceChrome.glossBorder
         return canvas.insetBy(dx: rim, dy: rim).contains(point) ? nil : .drag
     }
+
+    /// The base window rule's close corner (`FallbackCloseArea`) is this scene's, because it has no
+    /// close of its own: nothing visible in it carries `action="CLOSE"`. Itemskin's standard frame is
+    /// one, so the Equalizer Studio it frames could only be closed from the Windows menu.
+    var needsFallbackClose: Bool {
+        !renderer.sceneNodes().contains { node in
+            guard renderer.isVisible(node.object), let action = node.object.attributes["action"] else { return false }
+            return WasabiClickAction.split(action: action, parameter: nil).action
+                .caseInsensitiveCompare("CLOSE") == .orderedSame
+        }
+    }
+
+    /// `viewPoint` in this view's own coordinates.
+    func isFallbackClose(at viewPoint: NSPoint) -> Bool {
+        FallbackCloseArea.contains(viewPoint, in: self) && needsFallbackClose
+    }
 }
