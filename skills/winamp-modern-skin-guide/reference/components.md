@@ -276,6 +276,15 @@ Every `.wal` window is `.borderless`, which changes what AppKit will do for you:
   and their style masks carry `.miniaturizable` — no chrome is drawn for it, but AppKit will not
   miniaturize a window whose mask forbids it. Both go through `closeRequested`/`minimizeRequested` on
   the view; nothing in the view calls AppKit's window commands directly. Phase 24
+- **A window with no close of its own closes from its corner.** When nothing visible in the scene
+  carries `action="CLOSE"` (`needsFallbackClose`, `WinampModernHostChrome.swift`), the view takes the
+  `FallbackCloseArea` corner ahead of its subviews and calls `closeRequested` — the base rule in
+  `ui-guide` § *Every window closes*. A frame a script glues over another window
+  (`windowsGluedOver`) is that window's chrome, so its close forwards to the framed window's
+  `closeRequested` and the skin takes the frame down with it. Itemskin's standard frame around the
+  Equalizer Studio is the case: it has no close, so the Studio could only be closed from the Windows
+  menu. Auxiliary windows get their commands as each is built, so a dynamic copy a script creates
+  after load closes too. Phase 24
 - **A window created with `NSRect(origin: .zero, …)` opens at the bottom-left corner of the screen**,
   which is where every auxiliary container window used to appear. They are placed on **first show**
   — stacked under the main window, clamped to the screen — and never repositioned again, so a window
