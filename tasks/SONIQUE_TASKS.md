@@ -21,7 +21,6 @@ a dozen skins, the remainder is steady work.
 
 | ID | Item | Reach | Notes |
 |---|---|---|---|
-| S2 | Bounded `.sgf` loader and model in `SoniqueSkin/` with a DEBUG census probe replacing `sonique_census.py`; *autonomous* | 524 | Exit: 524 parsed, `greenwitch`-style truncation reported with a code, census lines match the Python census |
 | S3 | Region semantics: whether `right`/`bottom` are exclusive, measured by rasterising `/rgn/*/frame` against the oracle's window outline; *autonomous* | 524 | Exit: frame outlines pixel-identical to the oracle for the 12-skin sample |
 | S4 | Default lookup: an omitted entry resolves to the default skin's (S11), an omitted `skin.ini` key to `misc.txt`'s default; `NAME ± n` expressions; first `[skin]` wins, checked against the oracle | 276 | Decision record § *Omitted entries and the default skin*, § *INI rules* |
 | S5 | `PlayerUIControllerFamily.sonique` behind a DEBUG `AppFeature`, letting the compiler list the seams; the three mode windows with real shapes, transport hit regions and lit states | all | UI row. Exit: nav, mid and small for the 12-skin sample side by side with `SoniqueOracle/captures/sample-2026-10-11` |

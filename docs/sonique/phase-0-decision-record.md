@@ -71,8 +71,8 @@ names are looked up, never written), no compression and no script surface.
 | `SQ0006` | more than 64 Mpx across the skin's JPEGs, summed from headers | fatal |
 | `SQ0007` | `/skin.ini` larger than 256 KB | fatal |
 | `SQ0008` | a JPEG that does not decode, or a region whose length is not `10 + 8 × count` | warning; entry treated as absent |
-| `SQ0009` | a mode's picture or frame absent, or its `Touch…Mode` is 0 | warning; that mode draws the default skin (§ *Omitted entries and the default skin*) |
-| `SQ0010` | a region extending past its mode picture | warning; clipped to the picture |
+| `SQ0009` | a mode's picture absent, or its `Touch…Mode` is 0 (Amendment 1) | warning; that mode draws the default skin (§ *Omitted entries and the default skin*) |
+| `SQ0010` | a region extending past its mode picture, small mode's drawers excepted (Amendment 1) | warning; clipped to the picture |
 | `SQ0011` | an INI value that does not parse | warning; the key's default |
 
 ### Measured headroom (2026-10-11, the 524 skins in `SoniqueSkins/`)
@@ -80,17 +80,33 @@ names are looked up, never written), no compression and no script surface.
 | Limit | Bound | Corpus maximum | Skin |
 |---|---:|---:|---|
 | `SQ0002` file | 16 MB | 1,376,591 B | BoneKnot |
-| `SQ0003` entries | 256 | 55 | sonique |
+| `SQ0003` entries | 256 | 69 | Phos (P205) |
 | `SQ0005` side | 16,384 px | 9,241 px | Eletro (`/jpeg/smallknob`, 9241×21) |
 | `SQ0006` pixels | 64 Mpx | 5,724,136 px | RedWood_Update |
 | `SQ0007` INI | 256 KB | 28,434 B | project_arms |
 | region rectangles | u16 by format | 3,977 | Heaven&Hell (`/rgn/mid/frame`) |
 
 The tightest margin is `SQ0005` at 1.8×; the knob strips are long and thin, so the pixel budget, not
-the side, is the real decode bound. 819 of the JPEGs are progressive; ImageIO decodes them. Four
-skins have a frame one pixel wider or taller than its picture (`SQ0010`). Measured with throwaway
-Python over the census reader; S2's census replaces these numbers with ones a committed command
-reproduces.
+the side, is the real decode bound. 819 of the JPEGs are progressive; ImageIO decodes them.
+`SQ0010` fires on 11 regions: four frames one pixel wider or taller than their picture, and seven
+buttons. Every row but the region count is reproduced by `scripts/sonique_census.sh`
+(`skills/sonique-skin-guide/reference/harness.md` § *The census*); the entry count is raw table
+entries, which is what `SQ0003` bounds, and a planning-session figure of 55 had collapsed duplicate
+names.
+
+### Amendment 1 (S2, 2026-10-11)
+
+Two code rows contradicted the record's own rules once the loader ran over the corpus; neither change
+makes a skin load that did not, and no fatal code moved.
+
+- **`SQ0009` no longer fires on a missing frame.** The row said a missing frame put the whole mode
+  on the default skin, while § *Omitted entries and the default skin* says omission is per entry and
+  lists `/rgn/small/frame` (38 skins) as an ordinary per-entry fallback. The table is the decision;
+  the row now matches it. With the row as written, 27 skins' small mode was discarded for want of a
+  shape the default skin supplies.
+- **`SQ0010` exempts small mode's drawers.** `/rgn/small/extratop` and `extrabottom` are the drawers
+  that slide out above and below the bar, so they lie past the bar's picture by design: 429 of the
+  440 regions the row first clipped were drawers.
 
 ## Omitted entries and the default skin
 
@@ -110,7 +126,7 @@ entry falls back to that skin's entry of the same name:
 | `/rgn/mid/eq` | 54 |
 | `/rgn/small/frame` | 38 |
 | `/jpeg/volumeknob` | 13 |
-| a mode's picture (`Touch…Mode = 0` counts as all of that mode's entries omitted) | nav 5+2, mid 2, small 11+4 |
+| a mode's picture (`Touch…Mode = 0` counts as all of that mode's entries omitted) | nav 5, mid 2, small 11; the six skins with `Touch…Mode = 0` also omit the picture |
 
 Rules for the default skin:
 
@@ -131,7 +147,8 @@ Rules for the default skin:
 
 - **Keys and sections are case-insensitive.** **The first `[skin]` section wins** when there are
   several (15 skins), matching Win32 `GetPrivateProfileString`; confirm against the oracle for one
-  such skin in S4.
+  such skin in S4. It decides those 15 skins' spec version: each writes `version=105` (or 100) in
+  its second `[skin]`, so under this rule they read as version 100.
 - **Colours** are `0x` hex; the alpha byte is ignored (Sonique's own file mixes `0xFF…` and 6-digit
   values).
 - **Expressions:** `NAME + n` / `NAME - n`, where `NAME` is another key in the same section, is

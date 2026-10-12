@@ -77,5 +77,7 @@ app-authored default (S4).
 
 Only values that differ from the default are written, so every key needs its default from
 `misc.txt`. Some defaults there are expressions (`BIGON_DOWN_y = BIGUP_y + 35`), and 6 corpus skins
-write one, always `BIGON_DOWN_y = BIGUP_y + n`. 15 skins carry more than one `[skin]` section. How
-the engine reads both is the decision record's § *INI rules*.
+write one, always `BIGON_DOWN_y = BIGUP_y + n`. 15 skins carry more than one `[skin]` section:
+Skinmaker writes the first (author, title), and an author following `misc.txt` adds a second holding
+`version=105` and the other 1.05 keys. How the engine reads both is the decision record's
+§ *INI rules*.

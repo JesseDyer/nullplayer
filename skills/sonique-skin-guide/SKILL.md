@@ -9,9 +9,10 @@ Read this skill before starting Sonique (`.sgf`) skin work. The locked decisions
 `docs/sonique/phase-0-decision-record.md`; the backlog is `tasks/SONIQUE_TASKS.md`. The family
 pattern every engine follows is `skin-subsystem-blueprint`.
 
-**Status:** planned, decisions locked (2026-10-11). No engine, no `PlayerUIMode` case and no app code
-exist. What exists is the format reading (`reference/format.md`), a 524-skin corpus with a census,
-and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
+**Status:** under construction; decisions locked (2026-10-11). The bounded loader and model exist in
+`Sources/NullPlayer/SoniqueSkin/` (`SoniqueSkinLoader`, `SoniqueSkinPolicy`) and load all 524 corpus
+skins; there is no renderer, `PlayerUIMode` case or app code yet. The harness is a census through
+that loader and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
 (`reference/harness.md`).
 
 ## The rule that outranks everything
@@ -57,6 +58,7 @@ definition. `skin-subsystem-blueprint` § *The rule that outranks everything* is
 | Symptom or change | Read |
 |---|---|
 | an `.sgf` entry, a region, a `skin.ini` key, what a skin can change | [reference/format.md](reference/format.md) |
+| a skin that will not load, an `SQ####` code, a limit | decision record § *Loading limits*; `SoniqueSkinPolicy` is its executable source |
 | the corpus, the census, the oracle, capturing what Sonique drew | [reference/harness.md](reference/harness.md) |
 | what to work on next | `tasks/SONIQUE_TASKS.md` |
 

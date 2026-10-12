@@ -21,17 +21,47 @@ run any of its other executables outside the Wine prefix.
 
 ## The census
 
-Run when the corpus or the format reading changes.
+Every skin through `SoniqueSkinLoader`, the app's own loader. Run when the corpus, the format
+reading or the loader changes. About 11 s for the corpus.
+
+1. Run the census into a fresh directory; `--corpus` takes a directory, one `.sgf` or a list file.
+2. Read the summary it prints; the raw probe lines are `<outdir>/raw.txt`.
 
 ```bash
-python3 -I scripts/sonique_census.py > /tmp/sgf-census.txt; head -3 /tmp/sgf-census.txt
+scripts/sonique_census.sh /tmp/sonique-census | grep -v '^entry'
 ```
 
-**Confirm it took:** the first line reads `files=… unique=… parsed=… failed=0 malformed_regions=0`.
+**Confirm it took:** the first line reads `files=… unique=… parsed=… failed=…`, and `files` equals
+the corpus count. A shorter run prints `the run died` and exits 1.
 
-Measured 2026-10-11: `files=524 unique=524 parsed=524 failed=0 malformed_regions=0`; spec version
-none 274, 105 233, 100 10, other 7. `greenwitch.sgf` was truncated in the source archive and is not
-in the corpus. This is pre-engine tooling; the engine's own census replaces it (S2).
+| Flag | Meaning |
+|---|---|
+| `SONIQUE_SKIN` | an `.sgf`, a directory of them, or a file listing them one per line. Read by `SoniqueSkinCensusTests.testCensusSkinOrCorpus`, which skips without it |
+
+The probe prints, per skin: `SKIN <file>` (or `SKIN <file> FAILED [SQ####] …`), `DIGEST`, `SIZE`
+(the inputs to the locked limits), one `ENTRY` per distinct stored name, one `SECTION` per `skin.ini`
+header, `VERSION`, `MODES default=…`, and one `FINDING` per warning.
+
+Measured 2026-10-11:
+
+```text
+files=524 unique=524 parsed=524 failed=0 malformed_regions=0
+version {'none': 291, '105': 222, '100': 5, '1': 2, 'no-ini': 2, '130': 2}
+findings {'SQ0009': 18, 'SQ0010': 11}
+default_modes {'small': 11, 'navigator': 5, 'mid': 2}
+headroom bytes max 1376591 (BoneKnot.sgf) against SQ0002 16 MiB
+headroom entries max 69 (Phos (P205).sgf) against SQ0003 256
+headroom side max 9241 (Eletro.sgf) against SQ0005 16,384 px
+headroom pixels max 5724136 (RedWood_Update.sgf) against SQ0006 64 Mpx
+headroom ini max 28434 (project_arms.sgf) against SQ0007 256 KiB
+```
+
+- `version` is read from the first `[skin]` section only (decision record § *INI rules*). 17 skins
+  write `version=` elsewhere and read as `none`: 15 in a second `[skin]` section, one in
+  `[preferences]`, one in `[misc values]`. Whether Sonique reads the second `[skin]` is S4's oracle
+  check.
+- `greenwitch.sgf`, truncated in the source archive and kept out of the corpus, fails with
+  `[SQ0004] /jpeg/skinthumb runs past the end of the file.`
 
 ## The oracle
 
