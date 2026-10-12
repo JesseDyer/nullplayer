@@ -125,8 +125,9 @@ final class WinampModernSkinImporter {
     }
 
     /// The default skin that ships inside the app bundle — Modern's answer to Classic's bundled
-    /// `NullPlayer-Silver`. Like Silver it has no menu entry: it is what the mode loads before any
-    /// skin is imported and what it falls back to when the selected skin is removed.
+    /// `NullPlayer-Silver`: what the mode loads before any skin is imported and what it falls back
+    /// to when the selected skin is removed. Unlike Silver it is listed in the menu, so it can be
+    /// picked again after importing others; it is never removable.
     ///
     /// The archive name carries no version: the skin scopes its saved settings by filename, so an
     /// update shipped under the same name keeps the user's font and size choices.
@@ -147,6 +148,18 @@ final class WinampModernSkinImporter {
         return WinampModernImportedSkin(name: name, archiveURL: url)
     }
 
+    /// Every skin that can be picked: what the user imported, plus the bundled default. This is the
+    /// menu's list and what `selectedSkin()` resolves against; `installedSkins()` stays the user's
+    /// library, which is what can be removed. A skin they imported under the default's name wins.
+    func availableSkins() -> [WinampModernImportedSkin] {
+        let installed = installedSkins()
+        guard let bundled = bundledDefaultSkin(),
+              !installed.contains(where: { $0.name.caseInsensitiveCompare(bundled.name) == .orderedSame })
+        else { return installed }
+        return (installed + [bundled])
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     func installedSkins() -> [WinampModernImportedSkin] {
         guard let files = try? fileManager.contentsOfDirectory(
             at: destinationDirectory,
@@ -160,18 +173,15 @@ final class WinampModernSkinImporter {
 
     /// The stored skin, or the bundled default when nothing is stored or the stored name matches
     /// nothing — a removed skin, or the retired `NullPlayer-Black` an upgrade carries over — rather
-    /// than whichever installed skin happens to sort first. A skin the user imported under the
-    /// default's name wins over the bundled copy. Only a build missing its bundled skin falls back
-    /// to the first installed one.
+    /// than whichever installed skin happens to sort first. Only a build missing its bundled skin
+    /// falls back to the first installed one.
     func selectedSkin() -> WinampModernImportedSkin? {
-        let installed = installedSkins()
+        let available = availableSkins()
         func named(_ name: String) -> WinampModernImportedSkin? {
-            installed.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            available.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         }
         return UserDefaults.standard.string(forKey: Self.selectedSkinNameKey).flatMap(named)
-            ?? named(Self.bundledDefaultSkinName)
-            ?? bundledDefaultSkin()
-            ?? installed.first
+            ?? named(Self.bundledDefaultSkinName) ?? available.first
     }
 
     func selectSkin(_ skin: WinampModernImportedSkin) {

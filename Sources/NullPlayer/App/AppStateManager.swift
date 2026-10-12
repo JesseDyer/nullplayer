@@ -1430,7 +1430,7 @@ class AppStateManager {
                 // proves the saved one could not have come from this skin. Winamp Modern only: the
                 // Classic and Original windows are not sized by a skin's own layout, so the signal
                 // does not exist there and their behaviour is untouched.
-                if wm.uiMode == .winampModern, frame.size != saved.size {
+                if isWinampModern, frame.size != saved.size {
                     NSLog("AppStateManager: saved main size %@ is not one %@ can render — keeping its own %@",
                           NSStringFromSize(saved.size), loadedSkin ?? "(none)",
                           NSStringFromSize(window.frame.size))
@@ -1463,10 +1463,16 @@ class AppStateManager {
     /// ones. Repairs near-docked gaps and snaps repaired windows flush below the current anchor in
     /// `CenterStackWindowKind.columnOrder`. Width is preserved for windows that support horizontal
     /// stretching — every one but the equalizer.
+    ///
+    /// `floorsMainHeight` grows a main window shorter than Classic's 145pt strip to it. A hosted
+    /// skin's player size is the skin's — iTunes Miniplayer's is 58pt — so those modes pass `false`: the
+    /// skin snapped the window straight back, but its shadow was rebuilt at 145pt and drew a box
+    /// under the player on every mouse-up, and docked windows were anchored 87pt too low.
     static func repairClassicCenterStackFrames(
         mainFrame: NSRect,
         frames: [WindowManager.CenterStackWindowKind: NSRect],
-        scale: CGFloat
+        scale: CGFloat,
+        floorsMainHeight: Bool = true
     ) -> ClassicCenterStackRepairResult {
         let widthEpsilon: CGFloat = 0.5
         let minMainHeight = Skin.mainWindowSize.height * scale
@@ -1474,7 +1480,7 @@ class AppStateManager {
 
         var repaired = false
         var adjustedMain = mainFrame
-        if adjustedMain.height + widthEpsilon < minMainHeight {
+        if floorsMainHeight, adjustedMain.height + widthEpsilon < minMainHeight {
             let topY = adjustedMain.maxY
             adjustedMain.size.height = minMainHeight
             adjustedMain.origin.y = topY - minMainHeight
@@ -1556,7 +1562,8 @@ class AppStateManager {
         let repairedFrames = Self.repairClassicCenterStackFrames(
             mainFrame: mainWindow.frame,
             frames: windows.mapValues(\.frame),
-            scale: wm.classicScaleMultiplier
+            scale: wm.classicScaleMultiplier,
+            floorsMainHeight: !wm.runningControllerFamily.hostsForeignSkin
         )
 
         if repairedFrames.mainFrame != mainWindow.frame {
