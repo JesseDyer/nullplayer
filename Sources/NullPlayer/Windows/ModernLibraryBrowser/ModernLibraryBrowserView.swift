@@ -2193,21 +2193,13 @@ class ModernLibraryBrowserView: NSView {
         let font = skin.scaledSystemFont(size: 8)
         let smallFont = skin.scaledSystemFont(size: 7.2)
         
-        // Cells are laid out in unscrolled offsets from the row's edge, scrolled once when drawn.
-        let leadingPad: CGFloat = 4
-        var cellOffset = leadingPad
         let hasArtColumn = columns.contains { $0.id == "thumbnail" }
-        // An artist or album row under track columns has nothing for the cells before its Title.
-        let titleSpansLeadingCells = columnGroup(for: item) != group
-        for column in columns {
-            let columnWidth = widthForColumn(column, availableWidth: totalWidth, columns: columns, group: group)
-            defer { cellOffset += columnWidth }
-            // A child row indents inside its Title cell only, so every other cell stays under its heading.
-            let start = column.id == "title"
-                ? LibraryColumnVisibility.titleOffset(cellOffset: cellOffset, leadingPad: leadingPad, indent: indent,
-                                                      spansLeadingCells: titleSpansLeadingCells)
-                : cellOffset
-            let x = rect.minX + start - horizontalScrollOffset, width = cellOffset + columnWidth - start
+        let cells = LibraryColumnVisibility.cellFrames(
+            widths: columns.map { widthForColumn($0, availableWidth: totalWidth, columns: columns, group: group) },
+            titleIndex: columns.firstIndex { $0.id == "title" }, indent: indent,
+            spansLeadingCells: columnGroup(for: item) != group)
+        for (column, cell) in zip(columns, cells) {
+            let x = rect.minX + cell.start - horizontalScrollOffset, width = cell.width
             if column.id == "thumbnail" {
                 if let thumbnail = rowThumbnailSource(for: item) {
                     rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
@@ -7886,22 +7878,8 @@ class ModernLibraryBrowserView: NSView {
         // Cancel any walk still running from a previous (faster) click
         localFolderBuildTask?.cancel()
         localFolderBuildTask = Task.detached { [weak self] in
-            // Build the ordered item list entirely off the main actor (FS enumeration + DB query).
-            // watchFolderSummaries() blocks on dataQueue.sync (four full-array snapshots), which a
-            // running import scan can hold for seconds — compute it here, not on the main actor.
-            let availableFolderURLs = MediaLibrary.shared.watchFolderSummaries()
-                .filter { $0.isAvailable }
-                .map { $0.url }
-            let items = LocalFolderTree.rows(roots: availableFolderURLs, expanded: expandedSnapshot).map { row -> ModernDisplayItem in
-                switch row {
-                case .folder(let url, let name, let indent):
-                    return ModernDisplayItem(id: url.path, title: name, info: nil, indentLevel: indent, hasChildren: true,
-                        type: .localFolder(url: url, name: name))
-                case .track(let track, let indent):
-                    return ModernDisplayItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration,
-                        indentLevel: indent, hasChildren: false, type: .localTrack(track))
-                }
-            }
+            // Build the ordered item list entirely off the main actor (FS enumeration + DB query)
+            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(ModernDisplayItem.init)
 
             if Task.isCancelled { return }
             await MainActor.run { [weak self] in
@@ -7947,7 +7925,7 @@ class ModernLibraryBrowserView: NSView {
         let matchingTracks = store.searchTracks(query: searchQuery, limit: 200, offset: 0)
         if !matchingTracks.isEmpty {
             displayItems.append(ModernDisplayItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for t in matchingTracks { displayItems.append(ModernDisplayItem(id: t.id.uuidString, title: t.displayTitle, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
+            for t in matchingTracks { displayItems.append(ModernDisplayItem(id: t.id.uuidString, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
         }
         displayItems += youtubeRows.localSearch(query: searchQuery, excluding: Set(matchingTracks.map(\.url)))
             .map { ModernDisplayItem($0) }
@@ -9500,6 +9478,16 @@ extension ModernDisplayItem {
         }
         self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
                   hasChildren: row.hasChildren, type: type, titlePrefix: row.titlePrefix)
+    }
+
+    init(_ row: LocalFolderTree.Row) {
+        let type: ItemType
+        switch row.kind {
+        case .folder(let url): type = .localFolder(url: url, name: row.title)
+        case .track(let track): type = .localTrack(track)
+        }
+        self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
+                  hasChildren: row.hasChildren, type: type)
     }
 }
 

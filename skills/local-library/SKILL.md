@@ -337,14 +337,19 @@ Wired identically in `ModernLibraryBrowserView` and `PlexBrowserView`, mirroring
 - `ItemType` gains `localPlaylist(LocalPlaylist)` / `localPlaylistTrack(Track)`; every `switch` over `ItemType` (icons, context menu, double-click, expansion) must handle both. Double-clicking a playlist row plays all its tracks; the disclosure triangle still expands.
 
 ### Folders tab — one walk for both browsers
-`Windows/Shared/LocalFolderTree.rows(roots:expanded:)` is the Folders tab's tree for both
-`ModernLibraryBrowserView` and `PlexBrowserView`; each only maps its `Row`s to its display item and
-keeps its own generation guard and cancel. Change the tree there, never in a browser: the two
-copies it replaced drifted (#542, one titled tracks "Artist - Title"). It runs off the main actor,
-with `watchFolderSummaries()` read inside the same task. Names sort in Finder's order through
-`LibraryTextSorter` with article stripping off (#543), and a symlinked folder is skipped by asking
-the item itself (`isSymbolicLinkKey`) — comparing resolved paths dropped every folder under a
-symlinked root such as `/tmp`.
+`Windows/Shared/LocalFolderTree.rows(expanded:)` is the Folders tab's tree for both
+`ModernLibraryBrowserView` and `PlexBrowserView`. Its `Row` decides each row's id, title and indent,
+and each browser only copies it into its display item (`init(_ row: LocalFolderTree.Row)`, beside the
+`YouTubeRow` one) and keeps its own generation guard and cancel. Change the tree or a row's title there,
+never in a browser: the two copies it replaced drifted (#542, one titled tracks "Artist - Title"). It
+runs off the main actor and reads the watch folders itself (`availableRoots()`, which blocks behind a
+running scan). Names sort in Finder's order through `LibraryTextSorter` with article stripping off
+(#543), and a symlinked folder is skipped by asking the item itself (`isSymbolicLinkKey`) — comparing
+resolved paths dropped every folder under a symlinked root such as `/tmp`.
+
+Column rows lay out their cells through `LibraryColumnVisibility.cellFrames`, shared by both browsers'
+`drawColumnRow`: a title indents from the leading pad as a plain row does, and only by what the cells
+before it leave short of its depth; an artist or album row under track columns spans the empty `#` cell.
 
 ## Data Tab (Play History Analytics)
 

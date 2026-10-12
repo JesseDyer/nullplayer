@@ -71,17 +71,21 @@ final class LibraryColumnVisibilityTests: XCTestCase {
         XCTAssertEqual(LibraryColumnVisibility.channelSortValue("10ch"), 10)
     }
 
-    /// #542: under track columns the `#` cell (about 34 pt with the pad) already puts a track right of
-    /// its album, so a two-deep track gets no extra indent, while an artist or album row, which has
-    /// nothing for `#`, starts its title at the pad or its own indent.
-    func testTitleOffsetIndentsOnlyByWhatTheLeadingCellsLeaveShort() {
-        func offset(_ cell: CGFloat, _ indent: CGFloat, spans: Bool) -> CGFloat {
-            LibraryColumnVisibility.titleOffset(cellOffset: cell, leadingPad: 4, indent: indent, spansLeadingCells: spans)
+    /// #542: under track columns the `#` cell (30 pt after the 4 pt pad) already puts a track right
+    /// of its album, while an artist or album row, which has nothing for `#`, spans it from the pad.
+    /// Every other cell stays under its heading.
+    func testCellFramesIndentTheTitleOnlyByWhatTheLeadingCellsLeaveShort() {
+        func titleStart(_ indent: CGFloat, spans: Bool, widths: [CGFloat] = [30, 120, 50], title: Int = 1) -> CGFloat {
+            LibraryColumnVisibility.cellFrames(widths: widths, titleIndex: title, indent: indent, spansLeadingCells: spans)[title].start
         }
-        XCTAssertEqual(offset(34, 32, spans: false), 34, "a track's # cell already covers its indent")
-        XCTAssertEqual(offset(34, 64, spans: false), 64, "a deep folder track still indents past it")
-        XCTAssertEqual(offset(34, 0, spans: true), 4, "an artist row under track columns stays at the pad")
-        XCTAssertEqual(offset(34, 16, spans: true), 16, "an album row keeps its own indent")
-        XCTAssertEqual(offset(4, 0, spans: false), 4, "a title first in its row is unchanged")
+        XCTAssertEqual(titleStart(32, spans: false), 36, "a two-deep track indents just past the # cell")
+        XCTAssertEqual(titleStart(0, spans: false), 34, "a top-level track sits after the # cell")
+        XCTAssertEqual(titleStart(0, spans: true), 4, "an artist row under track columns stays at the pad")
+        XCTAssertEqual(titleStart(16, spans: true), 20, "an album row indents from the pad, as a plain row does")
+        XCTAssertEqual(titleStart(16, spans: false, widths: [120, 50], title: 0), 20, "the same album under album columns")
+
+        let cells = LibraryColumnVisibility.cellFrames(widths: [30, 120, 50], titleIndex: 1, indent: 16, spansLeadingCells: true)
+        XCTAssertEqual(cells.map(\.start), [4, 20, 154])
+        XCTAssertEqual(cells.map(\.width), [30, 134, 50], "the title cell still ends where its heading does")
     }
 }

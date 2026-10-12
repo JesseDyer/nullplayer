@@ -20,9 +20,9 @@ final class LocalFolderTreeTests: XCTestCase {
 
     private func names(_ rows: [LocalFolderTree.Row]) -> [String] {
         rows.map {
-            switch $0 {
-            case .folder(_, let name, let indent): return "\(indent) \(name)/"
-            case .track(let track, let indent): return "\(indent) \(track.url.lastPathComponent)"
+            switch $0.kind {
+            case .folder: return "\($0.indentLevel) \($0.title)/"
+            case .track(let track): return "\($0.indentLevel) \(track.url.lastPathComponent)"
             }
         }
     }
@@ -31,9 +31,8 @@ final class LocalFolderTreeTests: XCTestCase {
     /// expanded folder's contents are listed.
     func testFoldersThenFilesInFinderOrderIntoExpandedFoldersOnly() {
         // Expand by the row's own URL, as the browsers do: the walk's spelling of the path is its own.
-        let realm = LocalFolderTree.rows(roots: [root], expanded: [], tracks: { _ in [:] }).compactMap {
-            if case .folder(let url, "2 - A Realm Reborn", _) = $0 { return url.path } else { return nil }
-        }
+        let realm = LocalFolderTree.rows(roots: [root], expanded: [], tracks: { _ in [:] })
+            .filter { $0.title == "2 - A Realm Reborn" }.map(\.id)
         let rows = LocalFolderTree.rows(roots: [root], expanded: Set(realm), tracks: { _ in [:] })
         XCTAssertEqual(names(rows), [
             "0 1 - Before Meteor/",
@@ -49,15 +48,27 @@ final class LocalFolderTreeTests: XCTestCase {
         let rows = LocalFolderTree.rows(roots: [root, second], expanded: [second.path], tracks: { _ in [:] })
         XCTAssertEqual(names(rows), ["0 \(root.lastPathComponent)/", "0 The Wall/"])
     }
-}
 
-extension LocalFolderTreeTests {
     /// The walk skips a symlinked folder (it could loop) but not the folders under a symlinked root:
     /// the temporary directory's own path runs through the /var symlink.
     func testASymlinkedFolderIsSkippedButASymlinkedRootIsWalked() throws {
         try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("Loop"), withDestinationURL: root)
         let rows = LocalFolderTree.rows(roots: [root], expanded: [], tracks: { _ in [:] })
-        XCTAssertEqual(names(rows).count, 4, "\(names(rows))")
-        XCTAssertFalse(names(rows).contains("0 Loop/"))
+        XCTAssertEqual(names(rows), ["0 1 - Before Meteor/", "0 2 - A Realm Reborn/", "0 10 - Growing Light/", "0 The Wall/"])
+    }
+
+    /// A scanned track is titled by its own title alone; the Artist column shows its artist (#542).
+    func testATrackRowIsTitledWithoutItsArtist() {
+        let scanned: ([URL]) -> [URL: LibraryTrack] = { files in
+            Dictionary(uniqueKeysWithValues: files.map { file in
+                var track = LibraryTrack(url: file)
+                track.title = "Answers"
+                track.artist = "Susan Calloway"
+                return (file, track)
+            })
+        }
+        let rows = LocalFolderTree.rows(roots: [root.appendingPathComponent("2 - A Realm Reborn")], expanded: [],
+                                        tracks: scanned)
+        XCTAssertEqual(rows.first?.title, "Answers")
     }
 }

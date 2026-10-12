@@ -57,6 +57,8 @@
   and tracks no longer sit far to the right of their album or folder (#542).
 - **Folders inside a watch folder reached through a symlink show up in the Folders tab** — a
   watch folder under a symlinked path such as `/tmp` listed none of its subfolders.
+- **Local search results show track titles without the artist** — the Tracks section of a Library
+  search read "Artist - Title" beside the Artist column, in every skin.
 
 ## 0.32.2
 
