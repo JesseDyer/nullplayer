@@ -46,6 +46,8 @@ enum SoniqueSkinLoader {
             throw SoniqueSkinFinding(.iniTooLarge, "skin.ini is \(iniData.count) bytes, more than \(SoniqueSkinPolicy.iniBytes).")
         }
         let ini = SoniqueSkinINI(String(data: iniData, encoding: .isoLatin1) ?? "")
+        let settings = SoniqueSkinSettings(ini)
+        findings += settings.findings
 
         var sizes: [String: (width: Int, height: Int)] = [:]
         var pixels = 0
@@ -98,15 +100,15 @@ enum SoniqueSkinLoader {
         // Every other omitted entry, a frame included, falls back on its own (S4).
         var defaultModes: Set<SoniqueSkin.Mode> = []
         for mode in SoniqueSkin.Mode.allCases {
-            let touched = ini.value("skin", mode.touchKey).flatMap { Int($0.prefix { $0.isNumber }) } != 0
-            let reason = !touched ? "\(mode.touchKey) is 0" : images[mode.picture] == nil ? "no \(mode.picture)" : nil
+            let reason = settings.int("skin", mode.touchKey) == 0 ? "\(mode.touchKey) is 0"
+                : images[mode.picture] == nil ? "no \(mode.picture)" : nil
             if let reason {
                 defaultModes.insert(mode)
                 findings.append(SoniqueSkinFinding(.modeUsesDefault, "\(mode) mode draws the default skin: \(reason)."))
             }
         }
 
-        return SoniqueSkin(ini: ini, images: images, regions: regions, defaultModes: defaultModes, findings: findings)
+        return SoniqueSkin(ini: ini, settings: settings, images: images, regions: regions, defaultModes: defaultModes, findings: findings)
     }
 
     /// Width and height from the first SOF marker, without decoding. Nil when there is none.

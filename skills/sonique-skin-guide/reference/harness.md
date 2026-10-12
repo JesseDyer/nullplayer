@@ -47,7 +47,7 @@ Measured 2026-10-11:
 ```text
 files=524 unique=524 parsed=524 failed=0 malformed_regions=0
 version {'none': 291, '105': 222, '100': 5, '1': 2, 'no-ini': 2, '130': 2}
-findings {'SQ0009': 18, 'SQ0010': 11}
+findings {'SQ0009': 18, 'SQ0010': 11, 'SQ0011': 3}
 default_modes {'small': 11, 'navigator': 5, 'mid': 2}
 headroom bytes max 1376591 (BoneKnot.sgf) against SQ0002 16 MiB
 headroom entries max 69 (Phos (P205).sgf) against SQ0003 256

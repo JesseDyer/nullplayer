@@ -146,13 +146,41 @@ Rules for the default skin:
 ## INI rules
 
 - **Keys and sections are case-insensitive.** **The first `[skin]` section wins** when there are
-  several (15 skins), matching Win32 `GetPrivateProfileString`; confirm against the oracle for one
-  such skin in S4. It decides those 15 skins' spec version: each writes `version=105` (or 100) in
-  its second `[skin]`, so under this rule they read as version 100.
+  several (15 skins), matching Win32 `GetPrivateProfileString`. It decides those 15 skins' spec
+  version: each writes `version=105` (or 100) in its second `[skin]`, so under this rule they read
+  as version 100. Checked in S4 (Amendment 2): it changes nothing drawn.
 - **Colours** are `0x` hex; the alpha byte is ignored (Sonique's own file mixes `0xFF…` and 6-digit
   values).
-- **Expressions:** `NAME + n` / `NAME - n`, where `NAME` is another key in the same section, is
-  supported; 6 skins write `BIGON_DOWN_y = BIGUP_y + n`. Anything richer is `SQ0011`.
+- **Numbers** read as their leading integer, as C's `atoi` does: `33.5` is 33, `69 (Repeat Green)`
+  is 69, `0v` is 0. An empty value counts as unwritten (Amendment 2).
+- **Expressions:** `NAME`, `NAME + n` and `NAME - n`, where `NAME` is another key in the same
+  section, are supported; 200 values are a bare `NAME`, and 6 skins write `BIGON_DOWN_y = BIGUP_y + n`.
+  Anything else is `SQ0011`, and the key takes its default.
+
+### Amendment 2 (S4, 2026-10-11)
+
+Measured through the oracle; `SoniqueSkinSettings` is the executable source.
+
+- **Sonique reads `skin.ini` through the Win32 profile API.** `Sonique.exe` imports
+  `GetPrivateProfileStringA` and `GetPrivateProfileIntA` and names a `tmpsskin.ini`: it writes the
+  entry to a file and reads it per key, so the first section of a name is the one read, on Windows
+  and under Wine alike. No visible check of the second `[skin]` exists: in 1.96, `version` gates
+  none of what a still capture shows. Skins with no version draw their `NAV_*` lit-state positions
+  (MintE, superman), their `/jpeg/nav_volumeknob` (CHRONIQUE1-0, day_of_defeat, CougarKW), and
+  `DRAWER_POS` over `MISC_DRAWER_POS` (BlueEyes is 105 and does the same). The 15 skins' second
+  sections hold only `version`, `Touch…Mode = 1` (the default) and logo URLs (inert), so the rule
+  changes nothing they draw.
+- **A number is its leading integer.** ChromeTech's `MISC_DRAWER_POS_x=33.5` puts the oracle's
+  drawer at 33: the outline is exact there, 9 px off at 34 and 36 px off at the default 29. The
+  record had made such a value `SQ0011`.
+- **A bare `NAME` resolves.** corrosion's `NAV_CYANON_x=CYANON_x` draws from `CYANON`'s position,
+  not from 0.
+- **An empty value is unwritten** (8 skins). Unverified: no empty key is visible in a still
+  capture. It is what Wine's `GetPrivateProfileIntA` returns, and it keeps a blank line from moving
+  a button to 0.
+
+`SQ0011` now fires on 3 values in the corpus, all colours: BoneKnot's `&H00FFFFFF&` (twice) and
+OnePlayer's `verde`.
 
 ## Control mapping
 

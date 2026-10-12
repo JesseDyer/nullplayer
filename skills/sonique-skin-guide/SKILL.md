@@ -10,9 +10,9 @@ Read this skill before starting Sonique (`.sgf`) skin work. The locked decisions
 pattern every engine follows is `skin-subsystem-blueprint`.
 
 **Status:** under construction; decisions locked (2026-10-11). The bounded loader and model exist in
-`Sources/NullPlayer/SoniqueSkin/` (`SoniqueSkinLoader`, `SoniqueSkinPolicy`) and load all 524 corpus
-skins; there is no renderer, `PlayerUIMode` case or app code yet. The harness is a census through
-that loader and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
+`Sources/NullPlayer/SoniqueSkin/` (`SoniqueSkinLoader`, `SoniqueSkinPolicy`, `SoniqueSkinSettings`
+for `skin.ini` with its defaults) and load all 524 corpus skins; there is no renderer, `PlayerUIMode`
+case or app code yet. The harness is a census through that loader and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
 (`reference/harness.md`).
 
 ## The rule that outranks everything

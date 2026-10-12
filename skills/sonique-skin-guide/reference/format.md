@@ -83,7 +83,9 @@ draws the last drawer in all four measured (8C8-HQ, Danzig, skreen, `_cut_in11`)
 
 An entry absent from a skin means "Sonique's default" (Skinmaker writes `= #` for it). The default
 skin's artwork is inside `Sonique.exe`, not in any `.sgf`, so a skin that omits an entry needs an
-app-authored default (S4).
+app-authored default: `SoniqueSkin.image(_:)` and `region(_:)` fall back to `SoniqueSkin.defaultSkin`
+(a placeholder with no entries until S11), and `source(for:)` hands a mode left to the default skin
+(`SQ0009`) to that skin whole, settings included.
 
 ## `skin.ini`
 
@@ -91,14 +93,21 @@ app-authored default (S4).
 |---|---|
 | `[skin]` | author, title, url, `version` (100, or 105 for the extra 1.05 features), `TouchNavMode` / `TouchMidMode` / `TouchSmallMode` (0 leaves that mode on the default skin), `nav_logo_href` / `mid_logo_href` |
 | `[sonique colors]` | ~25 `0xAARRGGBB` colours: `SystemColor_1..3`, `SystemBkColor_1..2`, `PlayListColor_*`, `ProgressColor_1..3`, `ProgressBkColor`, `StatusBar*`, `*KnobColor`, `Logo*`, `BlueBallsColor`, `InternalVis*` (105) |
-| `[misc locations]` | `<NAME>_x` / `<NAME>_y`: top-left of each lit state in `/jpeg/misc`; `NAV_*` variants (105) let nav and mid differ |
-| `[misc values]` | drawer geometry, knob strip frame width and count, `NC_BB_DIST_FROM_RIGHT` (105), `mid_playlistmode` (270° or 360° ring) |
+| `[misc locations]` | `<NAME>_x` / `<NAME>_y`: top-left of each lit state in `/jpeg/misc`; `NAV_*` variants let nav and mid differ |
+| `[misc values]` | drawer geometry, knob strip frame width and count, `NC_BB_DIST_FROM_RIGHT`, `mid_playlistmode` (270° or 360° ring) |
 | `[msm locations]` | end positions of the mid-mode window-control balls (`MSM_SINGLEUP`, `MSM_HELP`, `MSM_MINIMIZE`, `MSM_CLOSE`, …) |
 | `[preferences]` | Skinmaker's own font settings; ignore |
 
 Only values that differ from the default are written, so every key needs its default from
-`misc.txt`. Some defaults there are expressions (`BIGON_DOWN_y = BIGUP_y + 35`), and 6 corpus skins
-write one, always `BIGON_DOWN_y = BIGUP_y + n`. 15 skins carry more than one `[skin]` section:
-Skinmaker writes the first (author, title), and an author following `misc.txt` adds a second holding
-`version=105` and the other 1.05 keys. How the engine reads both is the decision record's
-§ *INI rules*.
+`misc.txt`; `SoniqueSkinDefaults` holds them, and `SoniqueSkinSettings` resolves every key Sonique
+reads at load. Some defaults are names (`NAV_PREV_y = PREV_y`, `LogoColor = SystemColor_1`), so they
+follow the skin's value of that name. How a value reads (leading integer, `NAME ± n`, empty) is the
+decision record's § *INI rules*.
+
+- **`version` gates nothing a still capture shows** in 1.96: `NAV_*` lit positions,
+  `/jpeg/nav_volumeknob` and `DRAWER_POS` are honoured with no version at all (decision record
+  Amendment 2). `misc.txt` calls them 1.05 features; Sonique does not check.
+- 15 skins carry more than one `[skin]` section: Skinmaker writes the first (author, title), and an
+  author following `misc.txt` adds a second holding `version=105`. Only the first is read.
+- A key written in the wrong section is not read. `NC_BB_DIST_FROM_RIGHT` is the common one (8 skins
+  put it in `[misc locations]`, 3 in `[msm locations]`); whether Sonique looks there is unmeasured.
