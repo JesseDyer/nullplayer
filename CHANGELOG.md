@@ -59,6 +59,11 @@
   watch folder under a symlinked path such as `/tmp` listed none of its subfolders.
 - **Local search results show track titles without the artist** — the Tracks section of a Library
   search read "Artist - Title" beside the Artist column, in every skin.
+- **Every window closes from its top-right corner** — with Hide Title Bars on, or docked without
+  its title bar, an Original skin window could only be closed from the Windows menu; clicking its
+  top-right corner now closes it (the main window quits). A `.wal` window with no close button of
+  its own, such as Itemskin's frame around the Equalizer Studio, closes the same way, and closing a
+  docked window no longer leaves its outline on the windows around it (#546).
 
 ## 0.32.2
 

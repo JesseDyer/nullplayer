@@ -526,6 +526,7 @@ Port of Ryan Geiss's classic Winamp visualization. ProjectM-peer engine — sele
 - **HT Off (default)**: EQ/Playlist/Spectrum hide titlebars when docked — this is always active, even with HT off
 - **HT On**: All 6 windows (main, EQ, playlist, spectrum, ProjectM, library browser) hide titlebars; the main window keeps the same outer size while its internal layout expands to fill the reclaimed space
 - Preserves the border line (titlebar area collapses to border width, not 0)
+- A window without its title bar closes by clicking its top-right corner (nothing is drawn there); closing the main window this way quits. Winamp Modern windows that have no close button of their own close the same way
 
 ## Keyboard Shortcuts
 
