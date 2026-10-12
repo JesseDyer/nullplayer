@@ -665,21 +665,29 @@ The base window rule: **every window closes from its top-right corner.** A skin 
 close keeps it. Where a window has none, `FallbackCloseArea` (`Windows/Shared/`) stands in: a 14pt
 square, 6pt in from the top and right edges, not drawn, outranking whatever content sits under it.
 The inset keeps it off a rounded corner's transparent pixels (the window server sends those presses to
-the window behind) and off AppKit's resize band.
+the window behind) and off AppKit's resize band. The hosted families' drawn closes (a `.wmz` palette
+window, `.wal` glass chrome) are a different target, `SkinnedSurfaceChrome.closeButtonRect`, flush in
+the corner where their art paints the ×.
 
 Two seams own it, one per family; no content view knows about it:
 
 - **Original/Metal** — `BorderlessWindow.sendEvent` takes the press itself whenever
   `effectiveHideTitleBars(for:)` is true (HT on, or a docked sub-window), ahead of the resize edges and
-  any subview, and closes on a release still inside the corner. A window whose close is more than
-  `close()` sets `fallbackClose`: the main window quits, Sonos goes through `toggleSonos()`. Classic
-  never reaches it — `effectiveHideTitleBars` is false outside Modern UI.
-- **`.wal`** — `WinampModernMainView` takes the corner in `hitTest`/`mouseDown` when its scene has no
-  visible `action="CLOSE"` (`needsFallbackClose`), and calls `closeRequested`. See
+  any subview, and closes on a release still inside the corner. What closing means is the window's:
+  `performCloseAction()` runs the controller-set `closeAction` (the main window quits, Sonos goes
+  through `toggleSonos()`) or `close()`, and a drawn close button whose action is more than `close()`
+  calls the same method, so the two cannot drift. Classic never reaches the corner —
+  `effectiveHideTitleBars` is false outside Modern UI.
+- **`.wal`** — `WinampModernMainView.hostChromeHit` answers `.close` for the corner when the scene has
+  no close of its own (`needsFallbackClose`: no glass chrome, no visible `action="CLOSE"`); `hitTest`
+  and `mouseDown` each test it once, and every close goes through `requestClose()`. It closes on the
+  press, as the glass chrome's close always has. See
   `winamp-modern-skin-guide/reference/components.md` § *The window layer these views sit in*.
 
-Any managed window closing in Modern UI posts the layout change from `handleWindowWillClose`, so the
-seamless stack shadow and the neighbours' shared edges stop outlining it.
+Any managed window closing in Modern UI posts the layout change from
+`handleModernManagedWindowWillClose` (the willClose observer), the Modern half of
+`handleCenterStackWindowWillClose`, so the seamless stack shadow and the neighbours' shared edges stop
+outlining it.
 
 ## UI Size Mode (Both UI Modes)
 

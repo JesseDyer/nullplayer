@@ -19,8 +19,8 @@ final class SonosWindowController: NSWindowController, ModeDependentWindow, NSWi
         window.allowedResizeEdges = [.bottom, .left, .right]
         window.collectionBehavior = [.managed, .fullScreenPrimary]
         window.delegate = self
-        // As the close button: the toggle tears the rooms UI down and closes the stack gap.
-        window.fallbackClose = { WindowManager.shared.toggleSonos() }
+        // The toggle tears the rooms UI down and closes the stack gap.
+        window.closeAction = { WindowManager.shared.toggleSonos() }
         window.setAccessibilityIdentifier("SonosRoomsWindow")
         window.setAccessibilityLabel("Sonos rooms and volume")
         mixerView = SonosWindowView(frame: NSRect(origin: .zero, size: window.frame.size))
@@ -291,7 +291,7 @@ final class SonosWindowView: NSView {
     override func mouseUp(with event: NSEvent) {
         if hostedContext != nil { hostedDrag.end(); return }
         if closePressed && chrome.closeRect(bounds).contains(convert(event.locationInWindow, from: nil)) {
-            WindowManager.shared.toggleSonos()
+            (window as? BorderlessWindow)?.performCloseAction()
         }
         closePressed = false
         if dragStart != nil, let window { WindowManager.shared.windowDidFinishDragging(window) }

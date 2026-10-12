@@ -287,7 +287,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             view.componentWindowToggleRequested = { [weak self] kind in
                 self?.toggleAuxiliaryWindow(for: kind) ?? false
             }
-            installWindowCommands()
+            installMainWindowCommands()
             applyLayoutConstraints()
             // Container-scoped callbacks must exist *before* the scripts run: a skin that resizes or
             // switches a layout from `onScriptLoaded` does it during `start()`.
@@ -1885,14 +1885,15 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         WinampModernSkinState.setWindowIsVisible(visible, container: id, in: configuration)
     }
 
-    /// Close / Minimize as Winamp means them, wired to every window this skin owns.
+    /// Close / Minimize as Winamp means them, for the player window; `installWindowCommands(on:id:)`
+    /// wires each auxiliary window as it is built.
     ///
     /// Not left to the view: `performClose(_:)` simulates a click on a close *button*, which a
     /// `.borderless` window does not have — it beeps and returns, which is why no skin's close button
     /// worked. And the commands are about the player, not one window: closing the player quits (the
     /// classic skin's close button does the same), closing an auxiliary window hides just it, and
     /// minimize takes the whole set down together instead of leaving the rest of the skin on screen.
-    private func installWindowCommands() {
+    private func installMainWindowCommands() {
         skinView?.closeRequested = { NSApplication.shared.terminate(nil) }
         skinView?.minimizeRequested = { [weak self] in self?.minimizeAllWindows() }
     }

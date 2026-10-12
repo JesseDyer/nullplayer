@@ -1679,8 +1679,7 @@ class ModernMainWindowView: NSView {
             }
             
         case "btn_close":
-            window?.close()
-            NSApp.terminate(nil)
+            (window as? BorderlessWindow)?.performCloseAction()
             
         case "btn_minimize":
             window?.miniaturize(nil)

@@ -275,10 +275,12 @@ Every `.wal` window is `.borderless`, which changes what AppKit will do for you:
   hides an auxiliary one. `MINIMIZE` likewise takes the whole set of the skin's windows down together,
   and their style masks carry `.miniaturizable` — no chrome is drawn for it, but AppKit will not
   miniaturize a window whose mask forbids it. Both go through `closeRequested`/`minimizeRequested` on
-  the view; nothing in the view calls AppKit's window commands directly. Phase 24
-- **A window with no close of its own closes from its corner.** When nothing visible in the scene
-  carries `action="CLOSE"` (`needsFallbackClose`, `WinampModernHostChrome.swift`), the view takes the
-  `FallbackCloseArea` corner ahead of its subviews and calls `closeRequested` — the base rule in
+  the view (every close through `requestClose()`); the view calls AppKit's window commands only as
+  the fallback for a view with no controller over it (tests). Phase 24
+- **A window with no close of its own closes from its corner.** When the container wears no glass
+  chrome and nothing visible in the scene carries `action="CLOSE"` (`needsFallbackClose`,
+  `WinampModernHostChrome.swift`), `hostChromeHit` answers `.close` for the `FallbackCloseArea`
+  corner, so the view takes it ahead of its subviews and calls `requestClose()` — the base rule in
   `ui-guide` § *Every window closes*. A frame a script glues over another window
   (`windowsGluedOver`) is that window's chrome, so its close forwards to the framed window's
   `closeRequested` and the skin takes the frame down with it. Itemskin's standard frame around the

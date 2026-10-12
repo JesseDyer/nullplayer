@@ -2711,6 +2711,7 @@ class WindowManager {
     /// Call from windowWillClose on classic center-stack windows (EQ, Playlist, Spectrum, Waveform)
     /// when closed via the X button. Slides up windows below and tightens the stack.
     func handleCenterStackWindowWillClose(_ window: NSWindow) {
+        // Modern UI: `handleModernManagedWindowWillClose`, from the willClose observer.
         guard !isRunningModernUI else { return }
         // No stack in WMP or `.wal`: closing one window must not move the others.
         if !uiMode.controllerFamily.hostsForeignSkin {
@@ -2719,6 +2720,16 @@ class WindowManager {
         _ = tightenClassicCenterStackIfNeeded()
         postLayoutChangeNotification()
         updateDockedChildWindows()
+    }
+
+    /// Modern UI's half of the above, for every managed window rather than only those whose
+    /// controller calls in. A window its own view closes (its close button, the fallback close
+    /// corner) leaves the docked layout without the layout change the Windows-menu path posts, so
+    /// the seamless stack shadow and the neighbours' shared edges went on outlining it. Posted once
+    /// it is off screen.
+    private func handleModernManagedWindowWillClose(_ window: NSWindow) {
+        guard isRunningModernUI, managedWindowRecords.contains(where: { $0.window === window }) else { return }
+        DispatchQueue.main.async { [weak self] in self?.postLayoutChangeNotification() }
     }
 
     /// Show local media library (redirects to unified browser in local mode)
@@ -6708,12 +6719,7 @@ class WindowManager {
     @objc private func handleWindowWillClose(_ notification: Notification) {
         guard let closingWindow = notification.object as? NSWindow else { return }
         if closingWindow === draggingWindow { windowDidFinishDragging(closingWindow) }
-        // A window its own view closes (its close button, the fallback close corner) leaves the
-        // docked layout without the layout change the Windows-menu path posts, so the seamless stack
-        // shadow and the neighbours' shared edges went on outlining it. Posted once it is off screen.
-        if isRunningModernUI, managedWindowRecords.contains(where: { $0.window === closingWindow }) {
-            DispatchQueue.main.async { [weak self] in self?.postLayoutChangeNotification() }
-        }
+        handleModernManagedWindowWillClose(closingWindow)
     }
 
     @objc private func handleWindowWillMiniaturize(_ notification: Notification) {

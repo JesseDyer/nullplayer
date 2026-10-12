@@ -91,9 +91,14 @@ class BorderlessWindow: NSWindow {
     
     // MARK: - Event Handling
 
-    /// What a release in the fallback close corner does, where that is more than `close()`: the
-    /// main window quits, Sonos closes through its toggle.
-    var fallbackClose: (() -> Void)?
+    /// What closing this window means, where that is more than `close()`: the main window quits,
+    /// Sonos closes through its toggle. Set by the controller; run through `performCloseAction()`.
+    var closeAction: (() -> Void)?
+
+    /// Closes the window the way its drawn close button and the fallback close corner both do.
+    func performCloseAction() {
+        if let closeAction { closeAction() } else { close() }
+    }
     /// A press in the fallback close corner (`FallbackCloseArea`), held until its release.
     private var pressedFallbackClose = false
 
@@ -116,9 +121,7 @@ class BorderlessWindow: NSWindow {
         case .leftMouseUp:
             guard pressedFallbackClose else { return false }
             pressedFallbackClose = false
-            if isInFallbackClose(event) {
-                if let fallbackClose { fallbackClose() } else { close() }
-            }
+            if isInFallbackClose(event) { performCloseAction() }
             return true
         default:
             return false

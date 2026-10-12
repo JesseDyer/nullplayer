@@ -7,6 +7,11 @@ import AppKit
 /// control — this square just inside the top-right corner stands in for it. Nothing is drawn; it is
 /// only a hit target, and it outranks whatever content sits under it. See `ui-guide` § *Every window
 /// closes*.
+///
+/// The hosted families' frames — a `.wmz` palette window, a `.wal` container in NullPlayer's glass
+/// chrome — draw a close and keep `SkinnedSurfaceChrome.closeButtonRect`, flush in the corner where
+/// that art paints its ×. This square is for the windows with no close art at all, so it sits clear
+/// of the corner pixels a window cannot answer (`inset`).
 enum FallbackCloseArea {
     /// Points along each side.
     static let size: CGFloat = 14
