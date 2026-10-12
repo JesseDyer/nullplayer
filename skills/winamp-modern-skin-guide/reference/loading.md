@@ -208,15 +208,18 @@ both derive a skin's name from its filename stem, so `WinampModernSkinImporter.b
 **no menu entry**: it is what the mode loads before any import and what **Remove “name”...** falls
 back to, and it is never listed among the user's skins because it is neither imported nor removable.
 `selectedSkin()` owns that fallback: a stored name that matches nothing — no key, a removed skin, or
-an earlier default's name carried over by an upgrade — resolves to the bundled default, never to
-whichever installed skin sorts first. `trashSkin` only clears the key. Anything asking *which skin
-is loaded* goes through `selectedSkin()?.name`, never the raw key — `AppStateManager`'s main-frame
-restore does, so a size saved under a retired name is not put back on the default.
+an earlier default's name carried over by an upgrade — resolves to the bundled default, not to
+whichever installed skin sorts first (that happens only in a build missing its bundled skin).
+`trashSkin` only clears the key. *Which skin is selected* and *which skin is loaded* are different
+questions: a stale key, a failed load (placeholder), or a debug `-winampModernSkinPath` launch
+separate them. Anything asking which skin is on screen reads the window controller's
+`loadedSkinName` — `AppStateManager`'s main-frame save and restore do, so a size is recorded under
+the skin it belongs to and a size saved under a retired name is not put back on the default.
 
 **Resolution vs. listing.** `installedSkins()` stays the *user's* library (files in Application
-Support) and nothing else — the Phase 2 importer test pins that. `availableSkins()` is the
-resolution list (installed + bundled) that `selectedSkin()` matches a stored name against, and a
-skin the user imported under the same name wins. The bundle is searched on the same three paths
+Support) and nothing else — the Phase 2 importer test pins that. `selectedSkin()` matches a stored
+name against it first, then falls back to the bundled default, so a skin the user imported under
+the default's name wins over the bundled copy. The bundle is searched on the same three paths
 `WindowManager.findBundledClassicSkin` uses, because SwiftPM's resource bundle, the raw
 `swift build` output, and the assembled `.app` put resources in three different places.
 

@@ -728,11 +728,10 @@ class AppStateManager {
             uiMode: wm.uiMode.rawValue,
             savedInModernMode: wm.uiMode.usesModernControllers,
             // Which skin `mainWindowFrame` above belongs to. Recorded only in `winampModern` mode,
-            // where the window's size is the skin's rather than the app's. The resolved skin, not the
-            // stored key: a stale or absent key loads the bundled default.
-            winampModernSkinName: wm.uiMode == .winampModern
-                ? WinampModernSkinImporter.shared.selectedSkin()?.name
-                : nil
+            // where the window's size is the skin's rather than the app's. The skin on screen, not the
+            // stored selection: a stale key loads the bundled default, and a debug launch can load
+            // another skin entirely.
+            winampModernSkinName: (wm.mainWindowController as? WinampModernMainWindowController)?.loadedSkinName
         )
         for feature in WindowManager.CenterStackFeature.allCases {
             state[keyPath: feature.savedVisibility] =
@@ -1397,7 +1396,7 @@ class AppStateManager {
             let stored = correctedMainFrame ?? NSRectFromString(frameString)
             if stored != .zero {
                 let isWinampModern = wm.uiMode == .winampModern
-                let loadedSkin = isWinampModern ? WinampModernSkinImporter.shared.selectedSkin()?.name : nil
+                let loadedSkin = (controller as? WinampModernMainWindowController)?.loadedSkinName
                 // The skin has already sized this window to its own layout by now, so its current
                 // size is the one to keep when the saved frame belongs to a different skin.
                 let saved = Self.mainFrameForRestore(saved: stored,

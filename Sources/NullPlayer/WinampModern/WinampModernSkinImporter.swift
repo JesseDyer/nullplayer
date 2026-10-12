@@ -147,23 +147,6 @@ final class WinampModernSkinImporter {
         return WinampModernImportedSkin(name: name, archiveURL: url)
     }
 
-    /// Every skin that can be *loaded*: what the user imported, plus the bundled default.
-    ///
-    /// This is the resolution list — what `selectedSkin()` matches a stored name against — and not
-    /// the menu's list, which shows only `installedSkins()`; the bundled skin has no entry. Separate
-    /// from `installedSkins()`, which stays the user's library and nothing else: the import/storage
-    /// seam is about files we own in Application Support, and the bundled skin is neither imported
-    /// nor removable. A skin they imported under the same name wins, so replacing the default
-    /// with their own copy behaves the way importing anything else does.
-    func availableSkins() -> [WinampModernImportedSkin] {
-        let installed = installedSkins()
-        guard let bundled = bundledDefaultSkin(),
-              !installed.contains(where: { $0.name.caseInsensitiveCompare(bundled.name) == .orderedSame })
-        else { return installed }
-        return (installed + [bundled])
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
     func installedSkins() -> [WinampModernImportedSkin] {
         guard let files = try? fileManager.contentsOfDirectory(
             at: destinationDirectory,
@@ -177,14 +160,18 @@ final class WinampModernSkinImporter {
 
     /// The stored skin, or the bundled default when nothing is stored or the stored name matches
     /// nothing — a removed skin, or the retired `NullPlayer-Black` an upgrade carries over — rather
-    /// than whichever installed skin happens to sort first.
+    /// than whichever installed skin happens to sort first. A skin the user imported under the
+    /// default's name wins over the bundled copy. Only a build missing its bundled skin falls back
+    /// to the first installed one.
     func selectedSkin() -> WinampModernImportedSkin? {
-        let available = availableSkins()
+        let installed = installedSkins()
         func named(_ name: String) -> WinampModernImportedSkin? {
-            available.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            installed.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         }
         return UserDefaults.standard.string(forKey: Self.selectedSkinNameKey).flatMap(named)
-            ?? named(Self.bundledDefaultSkinName) ?? available.first
+            ?? named(Self.bundledDefaultSkinName)
+            ?? bundledDefaultSkin()
+            ?? installed.first
     }
 
     func selectSkin(_ skin: WinampModernImportedSkin) {

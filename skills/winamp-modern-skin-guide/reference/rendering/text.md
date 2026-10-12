@@ -503,8 +503,7 @@ whatsoever.
 `<alias id="pledit.font" target="Lucida Grande"/>` (and the same for the other two ids), but `<alias>`
 is not a Wasabi element — every other skin in the corpus aliases with `<elementalias>`, the only tag
 `WasabiSkinInitializer` registers — so the three lines register nothing and its lists take the Arial
-default below. No other skin in the corpus uses `<alias>` (this one says it was written with Codex), so
-honouring it would be inventing a tag to rescue one skin; the fix belongs upstream, as
+default below. No other skin in the corpus uses `<alias>`, so honouring it would be inventing a tag to rescue one skin; the fix belongs upstream, as
 `<elementalias>`. As `<elementalias>` they would resolve through the skin's file-less
 `<truetypefont id="Lucida Grande"/>` to the installed face (traced through `resolved` and
 `resolvedFont`, not rendered). Two consequences:
