@@ -1145,12 +1145,11 @@ class PlexBrowserView: NSView {
     private var serverScrollTimer: Timer?
     private var lastServerName: String = ""
     private var lastLibraryName: String = ""
-    /// Server and library text and field widths, written by drawServerBar each draw for the scroll
-    /// tick; zero while the bar shows no server.
-    private var serverNameTextWidth: CGFloat = 0
-    private var serverNameMaxWidth: CGFloat = 0
-    private var libraryNameTextWidth: CGFloat = 0
-    private var libraryNameMaxWidth: CGFloat = 0
+    /// How far the server and library names travel before their scroll wraps, written by
+    /// drawServerBar each draw for the scroll tick; zero while a name fits its field or the bar
+    /// shows no server.
+    private var serverNameCycleWidth: CGFloat = 0
+    private var libraryNameCycleWidth: CGFloat = 0
 
     /// Cached skin renderer — avoids recreating (and discarding its whiteTextImage cache) every frame
     private var cachedRenderer: SkinRenderer?
@@ -1353,13 +1352,12 @@ class PlexBrowserView: NSView {
     }
 
     private func tabRowNaturalWidth(textScale: CGFloat) -> CGFloat {
-        let scaledCharWidth = SkinElements.TextFont.charWidth * textScale
+        let style = winampModernStyle
         var labels = PlexBrowseMode.allCases.map { $0.title }
         labels.append("Channels")
         labels.append("Folders")
-        let maxLabelChars = labels.map { $0.count }.max() ?? 0
-        let maxLabelWidth = CGFloat(maxLabelChars) * scaledCharWidth
-        let sortWidth = CGFloat("Sort".count) * scaledCharWidth + 8
+        let maxLabelWidth = labels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) }.max() ?? 0
+        let sortWidth = ClassicLibraryTab.textWidth("Sort", scale: textScale, style: style) + 8
         let perTab = maxLabelWidth + 12  // breathing room so labels don't touch
         let tabsWidth = perTab * CGFloat(PlexBrowseMode.allCases.count)
         let insets = tabItemHorizontalEdgePadding + (tabItemHorizontalEdgePadding + rightEdgeItemPaddingBoost)
@@ -1446,7 +1444,8 @@ class PlexBrowserView: NSView {
 
     private func serverBarNaturalWidth(textScale: CGFloat) -> CGFloat {
         let charWidth = SkinElements.TextFont.charWidth * textScale
-        let textWidth: (String) -> CGFloat = { CGFloat($0.count) * charWidth }
+        let style = winampModernStyle
+        let textWidth: (String) -> CGFloat = { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) }
         let leadingInset = 4 + toolbarItemHorizontalEdgePadding
         let trailingInset = 8 + toolbarItemHorizontalEdgePadding + rightEdgeItemPaddingBoost
         let prefixWidth = textWidth("Source: ")
@@ -1506,9 +1505,9 @@ class PlexBrowserView: NSView {
     /// Shared by `drawTabBar` and `hitTestTabBar` so they stay in sync.
     private func tabBarWidths(tabsWidth: CGFloat, textScale: CGFloat,
                               horizontalScale: CGFloat) -> [CGFloat] {
-        let scaledCharWidth = SkinElements.TextFont.charWidth * textScale
+        let style = winampModernStyle
         let boxPadding = 18 * horizontalScale
-        let natural = currentTabLabels().map { CGFloat($0.count) * scaledCharWidth + boxPadding }
+        let natural = currentTabLabels().map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) + boxPadding }
         let naturalSum = natural.reduce(0, +)
         if naturalSum > tabsWidth {
             let scale = tabsWidth / naturalSum
@@ -2509,9 +2508,10 @@ class PlexBrowserView: NSView {
 
     /// Helper to draw scaled skin text (green)
     ///
-    /// Inside a `.wal` skin this is the skin's own list colour in a proportionally-matched system
-    /// font instead of the classic 5×6 bitmap sprite sheet (Phase 16). The advance is identical
-    /// either way, which is why none of the ~77 callers had to change how they lay themselves out.
+    /// Inside a `.wal` skin this is the skin's own list colour in the proportional system font
+    /// instead of the classic 5×6 bitmap sprite sheet (Phase 16), drawn inside the `count` cells the
+    /// layout reserves; anything placed by the label's width measures it with
+    /// `ClassicLibraryTab.textWidth`.
     ///
     /// `color` overrides the skin's list colour for a caller that draws onto something other than the
     /// content background and has already checked what can be read there (B48). It is only ever
@@ -2590,7 +2590,7 @@ class PlexBrowserView: NSView {
         // Common prefix for all sources
         let prefix = "Source: "
         drawScaledSkinText(prefix, at: NSPoint(x: barRect.minX + toolbarLeftInset, y: textY), scale: textScale, renderer: renderer, in: context)
-        let prefixWidth = CGFloat(prefix.count) * scaledCharWidth
+        let prefixWidth = ClassicLibraryTab.textWidth(prefix, scale: textScale, style: winampModernStyle)
         let sourceNameStartX = barRect.minX + toolbarLeftInset + prefixWidth
         
         refreshButtonRect = .zero
@@ -2598,14 +2598,12 @@ class PlexBrowserView: NSView {
         sourceButtonRect = .zero
         libraryButtonRect = .zero
         addButtonRect = .zero
-        serverNameTextWidth = 0
-        serverNameMaxWidth = 0
-        libraryNameTextWidth = 0
-        libraryNameMaxWidth = 0
+        serverNameCycleWidth = 0
+        libraryNameCycleWidth = 0
 
         let content = serverBarContent
         if case .unconfigured(let prompt) = content {
-            let promptWidth = CGFloat(prompt.count) * scaledCharWidth
+            let promptWidth = ClassicLibraryTab.textWidth(prompt, scale: textScale, style: winampModernStyle)
             drawScaledSkinText(prompt, at: NSPoint(x: barRect.midX - promptWidth / 2, y: textY), scale: textScale, renderer: renderer, in: context)
             sourceButtonRect = barRect
             return
@@ -2613,12 +2611,13 @@ class PlexBrowserView: NSView {
 
         // Right side: F5 refresh label, with the view-mode buttons before it
         let refreshText = "F5"
-        let refreshX = barRect.maxX - (CGFloat(refreshText.count) * scaledCharWidth) - toolbarRightInset
+        let refreshTextWidth = ClassicLibraryTab.textWidth(refreshText, scale: textScale, style: winampModernStyle)
+        let refreshX = barRect.maxX - refreshTextWidth - toolbarRightInset
         drawScaledSkinText(refreshText, at: NSPoint(x: refreshX, y: textY), scale: textScale, renderer: renderer, in: context)
         // Under a corner close F5 owns its label plus a 2pt hit margin, so the close keeps the
         // corner beside it.
         let refreshWidth = closesFromCorner
-            ? CGFloat(refreshText.count) * scaledCharWidth + 2 * chromeScale : barRect.maxX - refreshX
+            ? refreshTextWidth + 2 * chromeScale : barRect.maxX - refreshX
         refreshButtonRect = NSRect(x: refreshX, y: barRect.minY, width: refreshWidth, height: barRect.height)
         let accessoryX = drawViewModeButtons(
             before: refreshX, textY: textY, textScale: textScale, chromeScale: chromeScale,
@@ -2629,7 +2628,7 @@ class PlexBrowserView: NSView {
         case .builtIn(let name):
             let sourceText = withItemCount(name)
             drawScaledWhiteSkinText(sourceText, at: NSPoint(x: sourceNameStartX, y: textY), scale: textScale, renderer: renderer, in: context)
-            let sourceTextWidth = CGFloat(sourceText.count) * scaledCharWidth
+            let sourceTextWidth = ClassicLibraryTab.textWidth(sourceText, scale: textScale, style: winampModernStyle)
             sourceButtonRect = NSRect(x: barRect.minX, y: barRect.minY,
                                       width: sourceNameStartX + sourceTextWidth - barRect.minX,
                                       height: barRect.height)
@@ -2639,7 +2638,7 @@ class PlexBrowserView: NSView {
             let addX = sourceNameStartX + sourceTextWidth + 28 * chromeScale
             drawScaledSkinText(addText, at: NSPoint(x: addX, y: textY), scale: textScale, renderer: renderer, in: context)
             addButtonRect = NSRect(x: addX, y: barRect.minY,
-                                   width: CGFloat(addText.count) * scaledCharWidth + 8 * chromeScale,
+                                   width: ClassicLibraryTab.textWidth(addText, scale: textScale, style: winampModernStyle) + 8 * chromeScale,
                                    height: barRect.height)
 
             // Scan animation: small spinner at center of bar while library is scanning
@@ -2676,9 +2675,8 @@ class PlexBrowserView: NSView {
             }
 
             // Server name right after "Source:", in a fixed-width field
-            serverNameMaxWidth = CGFloat(maxChars) * scaledCharWidth
-            serverNameTextWidth = CGFloat(serverName.count) * scaledCharWidth
-            drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
+            let serverNameMaxWidth = CGFloat(maxChars) * scaledCharWidth
+            serverNameCycleWidth = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
                               availableWidth: serverNameMaxWidth, scale: textScale,
                               scrollOffset: serverNameScrollOffset,
                               renderer: renderer, in: context)
@@ -2688,12 +2686,11 @@ class PlexBrowserView: NSView {
             let libraryLabelX = sourceNameStartX + serverNameMaxWidth + 16 * chromeScale
             drawScaledSkinText(libLabel, at: NSPoint(x: libraryLabelX, y: textY), scale: textScale, renderer: renderer, in: context)
 
-            let libraryX = libraryLabelX + CGFloat(libLabel.count) * scaledCharWidth + 4 * chromeScale
+            let libraryX = libraryLabelX + ClassicLibraryTab.textWidth(libLabel, scale: textScale, style: winampModernStyle) + 4 * chromeScale
             let libraryText = withItemCount(library)
             // The field grows into the free space before the right cluster; it scrolls when even that is short.
-            libraryNameMaxWidth = max(Self.minLibraryFieldChars * scaledCharWidth, accessoryX - 24 * chromeScale - libraryX)
-            libraryNameTextWidth = CGFloat(libraryText.count) * scaledCharWidth
-            drawScrollingText(libraryText, startX: libraryX, textY: textY,
+            let libraryNameMaxWidth = max(Self.minLibraryFieldChars * scaledCharWidth, accessoryX - 24 * chromeScale - libraryX)
+            libraryNameCycleWidth = drawScrollingText(libraryText, startX: libraryX, textY: textY,
                               availableWidth: libraryNameMaxWidth, scale: textScale,
                               scrollOffset: libraryNameScrollOffset,
                               renderer: renderer, in: context)
@@ -2704,7 +2701,7 @@ class PlexBrowserView: NSView {
             libraryButtonRect = NSRect(x: libraryLabelX, y: barRect.minY,
                                        width: libraryX + libraryNameMaxWidth - libraryLabelX,
                                        height: barRect.height)
-            if serverNameTextWidth > serverNameMaxWidth || libraryNameTextWidth > libraryNameMaxWidth {
+            if serverNameCycleWidth > 0 || libraryNameCycleWidth > 0 {
                 startServerNameScroll()
             }
 
@@ -2713,24 +2710,23 @@ class PlexBrowserView: NSView {
         }
     }
 
-    /// Draw text in a field `availableWidth` wide, circularly scrolling when it overflows.
+    /// Draw text in a field `availableWidth` wide, circularly scrolling when it overflows. Returns
+    /// how far the text travels before the scroll wraps — what the scroll tick wraps its offset at —
+    /// or 0 when it fits and does not scroll.
     private func drawScrollingText(_ text: String, startX: CGFloat, textY: CGFloat,
                                    availableWidth: CGFloat, scale: CGFloat,
                                    scrollOffset: CGFloat,
-                                   renderer: SkinRenderer, in context: CGContext) {
-        let charWidth = SkinElements.TextFont.charWidth
+                                   renderer: SkinRenderer, in context: CGContext) -> CGFloat {
         let charHeight = SkinElements.TextFont.charHeight
-        let scaledCharWidth = charWidth * scale
         let scaledCharHeight = charHeight * scale
         
-        let textWidth = CGFloat(text.count) * scaledCharWidth
-        guard textWidth > availableWidth else {
+        guard ClassicLibraryTab.textWidth(text, scale: scale, style: winampModernStyle) > availableWidth else {
             drawScaledWhiteSkinText(text, at: NSPoint(x: startX, y: textY), scale: scale, renderer: renderer, in: context)
-            return
+            return 0
         }
-        let separator = "   "  // Separator for seamless wrap
-        let separatorWidth = CGFloat(separator.count) * scaledCharWidth
-        let totalCycleWidth = textWidth + separatorWidth
+        // One cycle is the text and a separator for a seamless wrap, measured as the one run drawn.
+        let fullText = text + "   "
+        let totalCycleWidth = ClassicLibraryTab.textWidth(fullText, scale: scale, style: winampModernStyle)
         
         // Clip to the available area
         context.saveGState()
@@ -2738,8 +2734,6 @@ class PlexBrowserView: NSView {
         context.clip(to: clipRect)
         
         // Draw two copies of "text + separator" for seamless circular scrolling
-        let fullText = text + separator
-        
         for pass in 0..<2 {
             let baseX = startX - scrollOffset + (CGFloat(pass) * totalCycleWidth)
             
@@ -2748,15 +2742,11 @@ class PlexBrowserView: NSView {
                 continue
             }
             
-            // Draw text at calculated position using scaled white skin text
-            context.saveGState()
-            context.translateBy(x: baseX, y: textY)
-            context.scaleBy(x: scale, y: scale)
-            renderer.drawSkinTextWhite(fullText, at: NSPoint(x: 0, y: 0), in: context)
-            context.restoreGState()
+            drawScaledWhiteSkinText(fullText, at: NSPoint(x: baseX, y: textY), scale: scale, renderer: renderer, in: context)
         }
         
         context.restoreGState()
+        return totalCycleWidth
     }
     
     private func drawTabBar(in context: CGContext, drawBounds: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
@@ -2774,11 +2764,9 @@ class PlexBrowserView: NSView {
         }
         context.fill(tabBarRect)
         
-        let charWidth = SkinElements.TextFont.charWidth
         let charHeight = SkinElements.TextFont.charHeight
         let chromeScale = topChromeScale
         let textScale = bitmapTextScale * chromeScale
-        let scaledCharWidth = charWidth * textScale
         let scaledCharHeight = charHeight * textScale
         
         // Round Y coordinates on non-Retina to prevent shimmering
@@ -2787,7 +2775,7 @@ class PlexBrowserView: NSView {
         
         // Calculate sort indicator width (on the right)
         let sortText = "Sort"
-        let sortWidth = CGFloat(sortText.count) * scaledCharWidth + 8 * chromeScale
+        let sortWidth = ClassicLibraryTab.textWidth(sortText, scale: textScale, style: winampModernStyle) + 8 * chromeScale
         let tabLeftInset = tabItemHorizontalEdgePadding * chromeScale
         let tabRightInset = (tabItemHorizontalEdgePadding + rightEdgeItemPaddingBoost) * chromeScale
         let tabsStartX = tabBarRect.minX + tabLeftInset
@@ -2860,7 +2848,6 @@ class PlexBrowserView: NSView {
         // Search text historically renders at the bitmap font's native size at 100%.
         // Preserve that baseline while still following UI Size.
         let textScale = contentScale
-        let charWidth = SkinElements.TextFont.charWidth * textScale
         let charHeight = SkinElements.TextFont.charHeight * textScale
         let textY = searchRect.minY + (searchRect.height - charHeight) / 2
         
@@ -2882,7 +2869,7 @@ class PlexBrowserView: NSView {
 
         // Draw cursor if focused
         if isFocused && !searchQuery.isEmpty {
-            let cursorX = searchRect.minX + 6 + CGFloat(searchQuery.count) * charWidth + 1
+            let cursorX = searchRect.minX + 6 + ClassicLibraryTab.textWidth(searchQuery, scale: textScale, style: winampModernStyle) + 1
             (fieldTextColor ?? colors.normalText).setFill()
             context.fill(CGRect(x: cursorX, y: textY, width: max(1, contentScale), height: charHeight))
         }
@@ -3036,12 +3023,10 @@ class PlexBrowserView: NSView {
         }
         
         // Draw using green skin text, centered
-        let charWidth = SkinElements.TextFont.charWidth
         let charHeight = SkinElements.TextFont.charHeight
         let textScale = bitmapTextScale
-        let scaledCharWidth = charWidth * textScale
         let scaledCharHeight = charHeight * textScale
-        let textWidth = CGFloat(message.count) * scaledCharWidth
+        let textWidth = ClassicLibraryTab.textWidth(message, scale: textScale, style: winampModernStyle)
         let textX = listRect.midX - textWidth / 2
         let textY = listRect.midY - scaledCharHeight / 2
         
@@ -3569,9 +3554,9 @@ class PlexBrowserView: NSView {
     private func updateServerNameScroll() {
         let serverBarArea = NSRect(x: 0, y: bounds.height - Layout.titleBarHeight - Layout.serverBarHeight,
                                    width: bounds.width, height: Layout.serverBarHeight)
-        // The widths are drawServerBar's: zero unless a server's fields are showing.
-        let serverNeedsScroll = serverNameTextWidth > serverNameMaxWidth
-        let libraryNeedsScroll = libraryNameTextWidth > libraryNameMaxWidth
+        // The cycles are drawServerBar's: zero unless a server's name overflows its field.
+        let serverNeedsScroll = serverNameCycleWidth > 0
+        let libraryNeedsScroll = libraryNameCycleWidth > 0
         if !serverNeedsScroll && !libraryNeedsScroll {
             let hadOffset = serverNameScrollOffset != 0 || libraryNameScrollOffset != 0
             stopServerNameScroll()
@@ -3579,17 +3564,15 @@ class PlexBrowserView: NSView {
             return
         }
 
-        // A scrolling name cycles through itself and drawScrollingText's three-space separator.
-        let separatorWidth = 3 * SkinElements.TextFont.charWidth * bitmapTextScale * topChromeScale
         if serverNeedsScroll {
             serverNameScrollOffset += 1
-            if serverNameScrollOffset >= serverNameTextWidth + separatorWidth { serverNameScrollOffset = 0 }
+            if serverNameScrollOffset >= serverNameCycleWidth { serverNameScrollOffset = 0 }
         } else {
             serverNameScrollOffset = 0
         }
         if libraryNeedsScroll {
             libraryNameScrollOffset += 1
-            if libraryNameScrollOffset >= libraryNameTextWidth + separatorWidth { libraryNameScrollOffset = 0 }
+            if libraryNameScrollOffset >= libraryNameCycleWidth { libraryNameScrollOffset = 0 }
         } else {
             libraryNameScrollOffset = 0
         }

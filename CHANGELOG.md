@@ -64,6 +64,10 @@
   top-right corner now closes it (the main window quits). A `.wal` window with no close button of
   its own, such as Itemskin's frame around the Equalizer Studio, closes the same way, and closing a
   docked window no longer leaves its outline on the windows around it (#546).
+- **Text in NullPlayer's own windows is no longer oversized in Modern, Windows Media Player and
+  Audion skins** — the Library's source bar and tabs, the Equalizer Studio's profile name and other
+  labels drew in a large monospaced font, about twice the size of the skin's own text; they now use
+  the regular system font at the size the Classic look uses.
 
 ## 0.32.2
 

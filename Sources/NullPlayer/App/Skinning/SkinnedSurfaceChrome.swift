@@ -335,7 +335,7 @@ struct SkinnedSurfaceChrome {
                             width: bounds.width, height: min(1, bottomHeight)))
 
         let scale = max(controlScale, 0.01)
-        let titleWidth = SkinnedSurfaceStyle.measuredWidth(title, scale: scale)
+        let titleWidth = SkinnedSurfaceStyle.drawnWidth(title, scale: scale)
         let closeRegionWidth = min(25, bounds.width)
         let labelLimit = max(bounds.minX, bounds.maxX - closeRegionWidth)
         let labelX = max(bounds.minX + leftWidth,

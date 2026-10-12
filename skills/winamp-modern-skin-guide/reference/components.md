@@ -1332,11 +1332,16 @@ not looking at.
 - Chrome roles (`barBackground`, `border`, `divider`, `dimText`, `pressedFill`) are **blends of the
   roles the skin declared**, never fixed greys — real skins declare three of the seven, and the blend
   is what makes the chrome move the right way on a light skin as well as a dark one.
-- `font(scale:)` solves for a monospaced point size whose advance is exactly
-  `SkinElements.TextFont.charWidth * scale`, and `attributes` adds a `.kern` correction for the
-  remainder. **This is load-bearing**: the views lay themselves out as
-  `text.count * charWidth * scale` in ~77 places in the browser alone, so a font that measured
-  differently would leave every one of those boxes wrong. `drawText` counter-flips about the cell.
+- `font(scale:)` is the **proportional** system font at the classic glyph's cap height
+  (`classicCapHeight`, 5px of the 6px cell, times `scale`). `text.count * charWidth * scale`
+  (`measuredWidth`) is now a *reservation*, like a Wasabi `forcefixed`: `drawText` draws inside it
+  and shrinks the run only if it would overrun. Anything placed by a label's width — a centred tab
+  or title, a right-aligned `F5`, the next label in a chain (`Source:` → name → `+ADD`), a cursor —
+  measures the drawn run through `ClassicLibraryTab.textWidth` / `SkinnedSurfaceStyle.drawnWidth`,
+  which answer the classic `count * charWidth * scale` when there is no style, so Classic is
+  untouched. It used to be a monospaced face solved to fill the 5px advance exactly, which drew
+  every hosted label a third taller than the bitmap glyph and about twice the skin's own text
+  (2026-10-12). `drawText` counter-flips about the cell.
 - Embedded surfaces redraw their chrome at the **same metrics** as the classic version — same
   title-bar height, same 12px borders, same button boxes the hit tests already own — so only pixels
   change, never geometry. Standalone fallback windows keep those metrics only until the palette
