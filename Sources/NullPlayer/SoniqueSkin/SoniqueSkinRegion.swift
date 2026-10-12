@@ -1,8 +1,8 @@
 import Foundation
 
 /// A `/rgn/…` entry: a window shape or hit shape Skinmaker rasterised from the author's mask into
-/// rectangles. Top-left origin, skin pixels. Whether `right` and `bottom` are exclusive is S3's
-/// measurement; until then they are read as exclusive, Win32's `RECT` convention.
+/// rectangles. Top-left origin, skin pixels. `right` and `bottom` are exclusive, Win32's `RECT`
+/// convention, measured against real Sonique's window outlines (`reference/format.md` § *Container*).
 struct SoniqueSkinRegion: Equatable {
     struct Rect: Equatable {
         var left, top, right, bottom: Int

@@ -45,7 +45,12 @@ Payloads are raw:
 - **`/rgn/<mode>/<control>`**: a region, already rasterised by Skinmaker from the author's mask:
   u16 rectangle count, u16 `left, top, right, bottom` bounds, then `count` × u16
   `left, top, right, bottom`. Size is always `10 + 8 × count`; the census checks every region
-  against that. Whether `right`/`bottom` are exclusive is not yet verified (S3).
+  against that. **`right` and `bottom` are exclusive** (Win32 `RECT`): over the 22 mid and small
+  frames of the oracle sample, the exclusive reading is the closer fit in 21 and pixel-exact in 7,
+  the inclusive reading exact in none (`harness.md` § *Outline comparison*).
+- **A frame is not the whole window outline.** Navigator mode's outline adds the closed drawer;
+  small mode sometimes draws a fixed default outline in place of the skin's frame; mid mode differs
+  at a few necks and tips. Which shape Sonique draws per mode is S12.
 
 ## Entries
 

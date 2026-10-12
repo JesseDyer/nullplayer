@@ -88,6 +88,32 @@ A `0` means no Wine window was on screen: Sonique failed to start, or a dialog r
 - `-showwindow 3 <n>` reaches the navigator's screens: 1 online tools, 2 playlist, 3 visual mode,
   4 setup, 5 about, 6 audio controls, 7 search. The script captures `1`.
 
+### Outline comparison
+
+Each skin's `/rgn/<mode>/frame` against the window outline the oracle drew, reading `right`/`bottom`
+as exclusive and as inclusive. Run when region reading or window-shape assembly changes.
+
+```bash
+python3 -I scripts/sonique_outline_compare.py | grep -E '^SUMMARY|no-frame'
+```
+
+**Confirm it took:** three `SUMMARY` lines, one per mode, each with a frame count above zero.
+Optional arguments are a captures directory and a corpus directory.
+
+Measured 2026-10-11 on `captures/sample-2026-10-11`:
+
+```text
+SUMMARY nav: 11 frames, exclusive closer 8, exclusive exact 0, inclusive exact 0
+SUMMARY mid: 12 frames, exclusive closer 11, exclusive exact 3, inclusive exact 0
+SUMMARY small: 10 frames, exclusive closer 10, exclusive exact 4, inclusive exact 0
+```
+
+- The outline's `oracle=` fingerprint is its cropped 1x mask. Small mode's `67659b3a` is the shape
+  Sonique draws for a skin with no small frame (fluffy, rwsonitek), and it also draws it for Pino,
+  Splash and dm-candella, which do have one. Why is S12.
+- k2's mid mode is the one mid frame the exclusive reading does not win, and it misses by ~2,800
+  pixels either way: a different outline, not a different edge rule.
+
 ### Rebuilding the oracle install
 
 Unpack `SoniquePortable.zip` from the archive, create a prefix with
