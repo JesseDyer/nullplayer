@@ -3,11 +3,16 @@
 
 
 
+
+
+
   <h1 align="center">NullPlayer. Your media. Your backend. Your home devices. Your UI.</h2>
 
 
 
 https://github.com/user-attachments/assets/4f53dbd9-cfd2-4ca1-87d5-96d39e224a92
+
+https://github.com/user-attachments/assets/46c1192c-cc57-4531-89b2-dbbb5e253a63
 
 
   <p align="center">
