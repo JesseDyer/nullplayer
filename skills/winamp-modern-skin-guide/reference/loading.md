@@ -190,14 +190,13 @@ asks for.** `Big Bento Modern.wal` renamed is `Big Bento Modern Light` failing t
 
 ### The bundled default skin (2026-10-12)
 
-**NullPlayer ships one `.wal` skin: iTunes Miniplayer.** It replaced the generated `NullPlayer-Black`
-placeholder (and its `scripts/generate_default_wal_skin.swift` generator, both removed) so Modern
-mode comes up on a real skin on a first run.
+**NullPlayer ships one `.wal` skin: iTunes Miniplayer**, by spacecowgoesmoo, redistributed with the
+author's permission (#540), so Modern mode comes up on a real skin on a first run.
 
 | | |
 |---|---|
 | Artifact | `Sources/NullPlayer/Resources/Skins/iTunes Miniplayer.wal` (committed as released, ~1.1 MB) |
-| Updating | Copy the new release over it **under the same versionless name**; the commit message records the version |
+| Updating | Copy the new release over it **under the same versionless name**, bump the version column of the `itunes-miniplayer` row in `scripts/third_party_components.tsv`, run `scripts/generate_third_party_notices.sh`, then `scripts/validate_notices.sh` |
 
 **Never put the version in the filename.** The skin scopes its saved font and size choices by
 archive filename (its README says so), and the filename stem is also what `selectSkin` persists
@@ -208,6 +207,11 @@ both derive a skin's name from its filename stem, so `WinampModernSkinImporter.b
 (`iTunes Miniplayer`) must match the archive's stem. Like Classic's `NullPlayer-Silver.wsz` it has
 **no menu entry**: it is what the mode loads before any import and what **Remove “name”...** falls
 back to, and it is never listed among the user's skins because it is neither imported nor removable.
+`selectedSkin()` owns that fallback: a stored name that matches nothing — no key, a removed skin, or
+an earlier default's name carried over by an upgrade — resolves to the bundled default, never to
+whichever installed skin sorts first. `trashSkin` only clears the key. Anything asking *which skin
+is loaded* goes through `selectedSkin()?.name`, never the raw key — `AppStateManager`'s main-frame
+restore does, so a size saved under a retired name is not put back on the default.
 
 **Resolution vs. listing.** `installedSkins()` stays the *user's* library (files in Application
 Support) and nothing else — the Phase 2 importer test pins that. `availableSkins()` is the
@@ -225,7 +229,16 @@ WINAMP_MODERN_RENDER_DUMP=<out> WINAMP_MODERN_RENDER_BITMAPS=1 \
   swift test --filter WinampModernRenderDumpTests
 ```
 
-and **look at the PNG** — the dump's lines are structural and say nothing about what was drawn.
+Two lines have to hold, and **look at the PNG** too — they are structural and say nothing about what
+was drawn:
+
+```
+RENDER-DUMP compatibility level=full
+BITMAPS main/normal: resolved=<n> missing=
+```
+
+Anything less than `full`, or a non-empty `missing=`, means the default skin is exercising a
+degraded path — which is exactly the thing a user's first run must not do.
 
 ### `@DEFAULTSKINPATH@` is an optional mount, and the only one
 

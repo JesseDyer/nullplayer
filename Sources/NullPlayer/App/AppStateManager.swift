@@ -728,9 +728,10 @@ class AppStateManager {
             uiMode: wm.uiMode.rawValue,
             savedInModernMode: wm.uiMode.usesModernControllers,
             // Which skin `mainWindowFrame` above belongs to. Recorded only in `winampModern` mode,
-            // where the window's size is the skin's rather than the app's.
+            // where the window's size is the skin's rather than the app's. The resolved skin, not the
+            // stored key: a stale or absent key loads the bundled default.
             winampModernSkinName: wm.uiMode == .winampModern
-                ? UserDefaults.standard.string(forKey: WinampModernSkinImporter.selectedSkinNameKey)
+                ? WinampModernSkinImporter.shared.selectedSkin()?.name
                 : nil
         )
         for feature in WindowManager.CenterStackFeature.allCases {
@@ -1395,15 +1396,15 @@ class AppStateManager {
             // it differs only in position, and only when the session came back stranded.
             let stored = correctedMainFrame ?? NSRectFromString(frameString)
             if stored != .zero {
-                let loadedSkin = UserDefaults.standard
-                    .string(forKey: WinampModernSkinImporter.selectedSkinNameKey)
+                let isWinampModern = wm.uiMode == .winampModern
+                let loadedSkin = isWinampModern ? WinampModernSkinImporter.shared.selectedSkin()?.name : nil
                 // The skin has already sized this window to its own layout by now, so its current
                 // size is the one to keep when the saved frame belongs to a different skin.
                 let saved = Self.mainFrameForRestore(saved: stored,
                                                      ownSize: window.frame.size,
                                                      savedUnderSkin: state.winampModernSkinName,
                                                      loadedSkin: loadedSkin,
-                                                     isWinampModern: wm.uiMode == .winampModern)
+                                                     isWinampModern: isWinampModern)
                 if saved != stored {
                     NSLog("AppStateManager: main frame %@ was saved under skin %@ — keeping %@'s own %@",
                           NSStringFromRect(stored), state.winampModernSkinName ?? "(unknown)",
