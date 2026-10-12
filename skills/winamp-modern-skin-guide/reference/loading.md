@@ -204,9 +204,9 @@ under `winampModernSkinName`. A versioned name would reset both on every update.
 
 **The filename is the identity, the title is not.** `installedSkins()` and `bundledDefaultSkin()`
 both derive a skin's name from its filename stem, so `WinampModernSkinImporter.bundledDefaultSkinName`
-(`iTunes Miniplayer`) must match the archive's stem. Like Classic's `NullPlayer-Silver.wsz` it has
-**no menu entry**: it is what the mode loads before any import and what **Remove “name”...** falls
-back to, and it is never listed among the user's skins because it is neither imported nor removable.
+(`iTunes Miniplayer`) must match the archive's stem. It is what the mode loads before any import and
+what **Remove “name”...** falls back to. Unlike Classic's `NullPlayer-Silver.wsz` it **is listed in
+the skin menu**, so a user who imported others can pick it again; it is never removable.
 `selectedSkin()` owns that fallback: a stored name that matches nothing — no key, a removed skin, or
 an earlier default's name carried over by an upgrade — resolves to the bundled default, not to
 whichever installed skin sorts first (that happens only in a build missing its bundled skin).
@@ -216,10 +216,12 @@ separate them. Anything asking which skin is on screen reads the window controll
 `loadedSkinName` — `AppStateManager`'s main-frame save and restore do, so a size is recorded under
 the skin it belongs to and a size saved under a retired name is not put back on the default.
 
-**Resolution vs. listing.** `installedSkins()` stays the *user's* library (files in Application
-Support) and nothing else — the Phase 2 importer test pins that. `selectedSkin()` matches a stored
-name against it first, then falls back to the bundled default, so a skin the user imported under
-the default's name wins over the bundled copy. The bundle is searched on the same three paths
+**Picking vs. removing.** `availableSkins()` is the user's imported skins plus the bundled default:
+the menu lists it and `selectedSkin()` matches a stored name against it, falling back to the bundled
+default. A skin the user imported under the default's name replaces the bundled copy in that list.
+`installedSkins()` stays the *user's* library (files in Application Support) and nothing else — the
+Phase 2 importer test pins that — and is what `removableSelectedSkin()` checks, so the bundled
+default never offers **Remove**. The bundle is searched on the same three paths
 `WindowManager.findBundledClassicSkin` uses, because SwiftPM's resource bundle, the raw
 `swift build` output, and the assembled `.app` put resources in three different places.
 

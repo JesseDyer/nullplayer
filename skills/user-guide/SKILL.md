@@ -472,8 +472,9 @@ Port of Ryan Geiss's classic Winamp visualization. ProjectM-peer engine — sele
   Modern, Windows Media Player and Audion faces — and covers NullPlayer's own windows beside the
   skin too.
 - **iTunes Miniplayer** is the default skin that ships with the app — what Modern mode loads on a
-  first run, before any skin is imported, and after the selected skin is removed. It has no menu
-  entry. It is the one third-party skin NullPlayer bundles, by
+  first run, before any skin is imported, and after the selected skin is removed. It is listed in
+  the skin menu beside imported skins, so it can be picked again, but it cannot be removed. It is
+  the one third-party skin NullPlayer bundles, by
   [spacecowgoesmoo](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer), shipped with the
   author's permission.
 - Many of these skins draw their own **About page** — the artwork the skin author wrote about the
