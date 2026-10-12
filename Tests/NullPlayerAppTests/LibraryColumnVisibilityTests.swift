@@ -70,4 +70,18 @@ final class LibraryColumnVisibilityTests: XCTestCase {
         XCTAssertEqual(LibraryColumnVisibility.channelSortValue("7.1"), 8)
         XCTAssertEqual(LibraryColumnVisibility.channelSortValue("10ch"), 10)
     }
+
+    /// #542: under track columns the `#` cell (about 34 pt with the pad) already puts a track right of
+    /// its album, so a two-deep track gets no extra indent, while an artist or album row, which has
+    /// nothing for `#`, starts its title at the pad or its own indent.
+    func testTitleOffsetIndentsOnlyByWhatTheLeadingCellsLeaveShort() {
+        func offset(_ cell: CGFloat, _ indent: CGFloat, spans: Bool) -> CGFloat {
+            LibraryColumnVisibility.titleOffset(cellOffset: cell, leadingPad: 4, indent: indent, spansLeadingCells: spans)
+        }
+        XCTAssertEqual(offset(34, 32, spans: false), 34, "a track's # cell already covers its indent")
+        XCTAssertEqual(offset(34, 64, spans: false), 64, "a deep folder track still indents past it")
+        XCTAssertEqual(offset(34, 0, spans: true), 4, "an artist row under track columns stays at the pad")
+        XCTAssertEqual(offset(34, 16, spans: true), 16, "an album row keeps its own indent")
+        XCTAssertEqual(offset(4, 0, spans: false), 4, "a title first in its row is unchanged")
+    }
 }

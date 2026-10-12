@@ -2193,14 +2193,21 @@ class ModernLibraryBrowserView: NSView {
         let font = skin.scaledSystemFont(size: 8)
         let smallFont = skin.scaledSystemFont(size: 7.2)
         
-        var columnX = rect.minX + 4 - horizontalScrollOffset
+        // Cells are laid out in unscrolled offsets from the row's edge, scrolled once when drawn.
+        let leadingPad: CGFloat = 4
+        var cellOffset = leadingPad
         let hasArtColumn = columns.contains { $0.id == "thumbnail" }
+        // An artist or album row under track columns has nothing for the cells before its Title.
+        let titleSpansLeadingCells = columnGroup(for: item) != group
         for column in columns {
             let columnWidth = widthForColumn(column, availableWidth: totalWidth, columns: columns, group: group)
-            defer { columnX += columnWidth }
+            defer { cellOffset += columnWidth }
             // A child row indents inside its Title cell only, so every other cell stays under its heading.
-            let inset = column.id == "title" ? indent : 0
-            let x = columnX + inset, width = columnWidth - inset
+            let start = column.id == "title"
+                ? LibraryColumnVisibility.titleOffset(cellOffset: cellOffset, leadingPad: leadingPad, indent: indent,
+                                                      spansLeadingCells: titleSpansLeadingCells)
+                : cellOffset
+            let x = rect.minX + start - horizontalScrollOffset, width = cellOffset + columnWidth - start
             if column.id == "thumbnail" {
                 if let thumbnail = rowThumbnailSource(for: item) {
                     rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
@@ -7885,71 +7892,18 @@ class ModernLibraryBrowserView: NSView {
             let availableFolderURLs = MediaLibrary.shared.watchFolderSummaries()
                 .filter { $0.isAvailable }
                 .map { $0.url }
-            var items: [ModernDisplayItem] = []
-
-            func walk(_ url: URL, indent: Int) {
-                if Task.isCancelled { return }
-                var subdirectories: [(url: URL, name: String)] = []
-                var audioFiles: [URL] = []
-                if let contents = try? FileManager.default.contentsOfDirectory(
-                    at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) {
-                    for item in contents {
-                        var isDir: ObjCBool = false
-                        if FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir) {
-                            if isDir.boolValue {
-                                // Skip symlinked dirs to prevent infinite recursion
-                                if item.resolvingSymlinksInPath().path == item.path {
-                                    subdirectories.append((url: item, name: item.lastPathComponent))
-                                }
-                            } else if LocalFileDiscovery.isSupportedAudioFile(item) {
-                                audioFiles.append(item)
-                            }
-                        }
-                    }
+            let items = LocalFolderTree.rows(roots: availableFolderURLs, expanded: expandedSnapshot).map { row -> ModernDisplayItem in
+                switch row {
+                case .folder(let url, let name, let indent):
+                    return ModernDisplayItem(id: url.path, title: name, info: nil, indentLevel: indent, hasChildren: true,
+                        type: .localFolder(url: url, name: name))
+                case .track(let track, let indent):
+                    return ModernDisplayItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration,
+                        indentLevel: indent, hasChildren: false, type: .localTrack(track))
                 }
-                // Directories first, then files; both case-insensitive by name
-                subdirectories.sort { $0.name.lowercased() < $1.name.lowercased() }
-                audioFiles.sort { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
-
-                for (subURL, subName) in subdirectories {
-                    items.append(ModernDisplayItem(
-                        id: subURL.path, title: subName, info: nil,
-                        indentLevel: indent, hasChildren: true,
-                        type: .localFolder(url: subURL, name: subName)))
-                    // Recurse in place so a child's contents follow it directly (correct tree order)
-                    if expandedSnapshot.contains(subURL.path) {
-                        walk(subURL, indent: indent + 1)
-                    }
-                }
-
-                let urlToTrackMap = MediaLibraryStore.shared.tracks(forURLs: audioFiles)
-                for fileURL in audioFiles {
-                    let track = urlToTrackMap[fileURL] ?? LibraryTrack(url: fileURL)
-                    items.append(ModernDisplayItem(
-                        id: track.id.uuidString, title: track.title,
-                        info: track.formattedDuration, indentLevel: indent, hasChildren: false,
-                        type: .localTrack(track)))
-                }
-            }
-
-            if availableFolderURLs.count > 1 {
-                // Multiple watch folders: each is a top-level node
-                for folderURL in availableFolderURLs {
-                    items.append(ModernDisplayItem(
-                        id: folderURL.path, title: folderURL.lastPathComponent, info: nil,
-                        indentLevel: 0, hasChildren: true,
-                        type: .localFolder(url: folderURL, name: folderURL.lastPathComponent)))
-                    if expandedSnapshot.contains(folderURL.path) {
-                        walk(folderURL, indent: 1)
-                    }
-                }
-            } else if let only = availableFolderURLs.first {
-                // Single watch folder: show its contents directly
-                walk(only, indent: 0)
             }
 
             if Task.isCancelled { return }
-            let builtItems = items
             await MainActor.run { [weak self] in
                 guard let self = self,
                       self.localFolderBuildGeneration == gen,
@@ -7957,7 +7911,7 @@ class ModernLibraryBrowserView: NSView {
                       self.browseMode == .folders else { return }
                 self.isLoading = false
                 self.stopLoadingAnimation()
-                self.displayItems = builtItems
+                self.displayItems = items
                 self.needsDisplay = true
                 self.localFolderBuildTask = nil
             }
