@@ -10,7 +10,7 @@ import ZIPFoundation
 ///
 /// 1. **No skin declares a list font.** `drawSurfaceText` looks up `pledit.font`, `wasabi.list.font`
 ///    and `studio.list.font`, and across all 73 `.wal` files on hand — the cPro family, Anaheim, Big
-///    Bento, Winamp's own `winampmodern566.wal`, and NullPlayer's bundled `NullPlayer-Black.wal` —
+///    Bento, Winamp's own `winampmodern566.wal`, and NullPlayer's former bundled `NullPlayer-Black.wal` —
 ///    **not one declares any of the three**. They declare the matching *colours* (`wasabi.list.text`,
 ///    `wasabi.list.background`) and no font at all. So the identifier handed down was always `nil`,
 ///    and `WasabiTextMetrics.resolvedFont` answered with the monospaced fallback it keeps for a name

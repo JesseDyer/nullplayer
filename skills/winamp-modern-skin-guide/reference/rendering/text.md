@@ -495,7 +495,7 @@ done
 ```
 
 That is not a corpus of small skins ducking the question: it includes Winamp's own
-`winampmodern566.wal`, Big Bento, the whole cPro family, Anaheim — and NullPlayer's bundled
+`winampmodern566.wal`, Big Bento, the whole cPro family, Anaheim — and NullPlayer's former bundled
 `NullPlayer-Black.wal`. They all declare the matching **colours** (`wasabi.list.text`,
 `wasabi.list.background`, `studio.list.text`) and no font whatsoever. Two consequences:
 

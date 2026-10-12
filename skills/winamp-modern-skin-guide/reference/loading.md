@@ -188,30 +188,26 @@ string.
 The contract this puts on the user: **the installed filename must match the skin name the overlay
 asks for.** `Big Bento Modern.wal` renamed is `Big Bento Modern Light` failing to load.
 
-### The bundled default skin (2026-09-04)
+### The bundled default skin (2026-10-12)
 
-**NullPlayer ships one `.wal` skin, and it is our own.** No Winamp skin is bundled and none ever
-will be — the rule is unchanged. What ships is a deliberately plain placeholder so Modern mode has a
-working window on a first run instead of the "Import a .wal skin from the Winamp Modern menu"
-message it used to come up on. It is a starting point users replace, not a skin anyone is meant to
-keep.
+**NullPlayer ships one `.wal` skin: iTunes Miniplayer.** It replaced the generated `NullPlayer-Black`
+placeholder (and its `scripts/generate_default_wal_skin.swift` generator, both removed) so Modern
+mode comes up on a real skin on a first run.
 
 | | |
 |---|---|
-| Source | `scripts/generate_default_wal_skin.swift` — the `skin.xml` lives inside the script |
-| Artifact | `Sources/NullPlayer/Resources/Skins/NullPlayer-Black.wal` (committed, ~3 KB) |
-| Regenerate | `swift scripts/generate_default_wal_skin.swift` from the repo root |
+| Artifact | `Sources/NullPlayer/Resources/Skins/iTunes Miniplayer.wal` (committed as released, ~1.1 MB) |
+| Updating | Copy the new release over it **under the same versionless name**; the commit message records the version |
 
-**Edit the script, never the archive.** The `.wal` is generated output; a hand-edited archive is lost
-the next time anyone runs the generator, and the XML in the script is the only reviewable copy.
+**Never put the version in the filename.** The skin scopes its saved font and size choices by
+archive filename (its README says so), and the filename stem is also what `selectSkin` persists
+under `winampModernSkinName`. A versioned name would reset both on every update.
 
 **The filename is the identity, the title is not.** `installedSkins()` and `bundledDefaultSkin()`
-both derive a skin's name from its filename stem, and that stem is what `selectSkin` persists under
-`winampModernSkinName`. So `WinampModernSkinImporter.bundledDefaultSkinName` (`NullPlayer-Black`)
-must match the generator's `skinName`. Like Classic's `NullPlayer-Silver.wsz` it has **no menu
-entry** (removed 2026-09-29): it is what the mode loads before any import and what **Remove
-“name”...** falls back to, and it is never listed among the user's skins because it is neither
-imported nor removable.
+both derive a skin's name from its filename stem, so `WinampModernSkinImporter.bundledDefaultSkinName`
+(`iTunes Miniplayer`) must match the archive's stem. Like Classic's `NullPlayer-Silver.wsz` it has
+**no menu entry**: it is what the mode loads before any import and what **Remove “name”...** falls
+back to, and it is never listed among the user's skins because it is neither imported nor removable.
 
 **Resolution vs. listing.** `installedSkins()` stays the *user's* library (files in Application
 Support) and nothing else — the Phase 2 importer test pins that. `availableSkins()` is the
@@ -220,41 +216,16 @@ skin the user imported under the same name wins. The bundle is searched on the s
 `WindowManager.findBundledClassicSkin` uses, because SwiftPM's resource bundle, the raw
 `swift build` output, and the assembled `.app` put resources in three different places.
 
-**It is artwork-less by construction, and that is the interesting part.** The whole skin is one 8×8
-PNG plus `skin.xml`, because every control is a drawn fallback this engine already has: artwork-less
-`<Wasabi:Button text="…">` for the transport and window buttons (see
-[rendering.md](rendering.md) → *Artwork-less `<Wasabi:Button text="…">`*) and `<Wasabi:HSlider>` for
-seek and volume, which falls back to a flat track and drawn thumb when the skin ships no
-`wasabi.slider.horizontal.*` (→ *The Wasabi standard form widgets are the primitives they wrap*).
-The one bitmap is the layout `background=`, and it is a real swatch on purpose: a layout whose
-background does not resolve falls back to the palette's `contentBackground`, but that path exists for
-skins referencing Winamp's own base skin, and reaching it deliberately would record a
-`resourceMissing` diagnostic against our own default.
-
-**What it deliberately does not do.** It declares no `wasabi.standardframe.*`, so the playlist,
-equalizer and library are `catalog: …=classic` — the classic windows, not skin-framed ones — and it
-declares no `<vis>` box. Both are correct for a placeholder; neither is a defect to fix without
-being asked.
-
-**The check before committing a change to it.** Render it through the dump harness with a corpus
+**The check before committing an update.** Render it through the dump harness with a corpus
 directory holding just that archive ([harness.md](harness.md) → the corpus render sweep):
 
 ```
-WINAMP_MODERN_WAL=<dir with only NullPlayer-Black.wal> \
+WINAMP_MODERN_WAL=<dir with only iTunes Miniplayer.wal> \
 WINAMP_MODERN_RENDER_DUMP=<out> WINAMP_MODERN_RENDER_BITMAPS=1 \
   swift test --filter WinampModernRenderDumpTests
 ```
 
-Two lines have to hold, and **look at the PNG** — they are structural and say nothing about what was
-drawn:
-
-```
-RENDER-DUMP compatibility level=full
-BITMAPS main/normal: resolved=1 missing=
-```
-
-Anything less than `full`, or a non-empty `missing=`, means our own default skin is exercising a
-degraded path — which is exactly the thing a user's first run must not do.
+and **look at the PNG** — the dump's lines are structural and say nothing about what was drawn.
 
 ### `@DEFAULTSKINPATH@` is an optional mount, and the only one
 
