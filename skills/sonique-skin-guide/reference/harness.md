@@ -85,34 +85,49 @@ A `0` means no Wine window was on screen: Sonique failed to start, or a dialog r
 - Captures are window-only (`screencapture -l <id>`). Never capture the full screen: it is the
   user's screen.
 - The first launch in a fresh prefix shows a *Register Sonique* dialog; dismiss it once by hand.
+- Never pipe the script: the wineserver it starts holds the pipe open, so `| tail` never returns
+  though the captures are done. Redirect to a file.
 - `-showwindow 3 <n>` reaches the navigator's screens: 1 online tools, 2 playlist, 3 visual mode,
   4 setup, 5 about, 6 audio controls, 7 search. The script captures `1`.
 
 ### Outline comparison
 
-Each skin's `/rgn/<mode>/frame` against the window outline the oracle drew, reading `right`/`bottom`
-as exclusive and as inclusive. Run when region reading or window-shape assembly changes.
+Each mode's outline assembled from the skin (`format.md` § *Window outline*) against the window
+outline the oracle drew. Run when region reading or window-shape assembly changes.
 
 ```bash
-python3 -I scripts/sonique_outline_compare.py | grep -E '^SUMMARY|no-frame'
+python3 -I scripts/sonique_outline_compare.py | grep -E '^SUMMARY|no-frame|default-drawer'
 ```
 
-**Confirm it took:** three `SUMMARY` lines, one per mode, each with a frame count above zero.
+**Confirm it took:** three `SUMMARY` lines, one per mode, each with an outline count above zero.
 Optional arguments are a captures directory and a corpus directory.
 
-Measured 2026-10-11 on `captures/sample-2026-10-11`:
+Per capture it prints `region=` (the assembled outline against the capture), `wine=` (after Wine's
+distortion, below) and `unexplained=` (what is left that is not an unpainted white pixel). Measured
+2026-10-11 on `captures/sample-2026-10-11`, and on 8C8-HQ, Danzig and skreen (all `wine=0`):
 
 ```text
-SUMMARY nav: 11 frames, exclusive closer 8, exclusive exact 0, inclusive exact 0
-SUMMARY mid: 12 frames, exclusive closer 11, exclusive exact 3, inclusive exact 0
-SUMMARY small: 10 frames, exclusive closer 10, exclusive exact 4, inclusive exact 0
+SUMMARY nav: 11 outlines, region exact 3, wine exact 8, explained 9, default drawer 2
+SUMMARY mid: 12 outlines, region exact 3, wine exact 7, explained 12, default drawer 0
+SUMMARY small: 10 outlines, region exact 4, wine exact 6, explained 10, default drawer 0
 ```
 
-- The outline's `oracle=` fingerprint is its cropped 1x mask. Small mode's `67659b3a` is the shape
-  Sonique draws for a skin with no small frame (fluffy, rwsonitek), and it also draws it for Pino,
-  Splash and dm-candella, which do have one. Why is S12.
-- k2's mid mode is the one mid frame the exclusive reading does not win, and it misses by ~2,800
-  pixels either way: a different outline, not a different edge rule.
+- **The oracle's outline is Wine's, not Sonique's.** Wine converts the region Sonique sets into a
+  1-bpp shape for macOS, and a run of a row that starts and ends inside one byte comes out as
+  `[right, end of that byte)` instead of `[left, right)` (empty when `right` is the byte's end).
+  Multi-byte runs are right at both edges. The byte phase is fixed by the skin's x = 0 sitting 3 px
+  into the captured window. This was S3's "k2 mid is a different outline" (1,615 px → 8) and small
+  mode's "default outline" for Pino, Splash and dm-candella (66 px → 4): their own small frame is
+  Sonique's default shape. `wine_shape` in the script is the rule.
+- **What is left after it is unpainted.** Every remaining oracle-only pixel is pure white: inside the
+  shape macOS shows but outside the region Sonique set, which Wine clips painting to. Most are a
+  run's last partial byte drawn full, on a handful of rows (Splash mid, 32 px); the rule for that is
+  not known and buys nothing, since the renderer uses the region, not Wine's shape.
+- `default-drawer` marks a navigator skin with no `/rgn/nav/drawer` (Pino, rwsonitek); the oracle
+  adds the default skin's drawer, the same shape at 29,229 in both (identical pixel for pixel
+  outside their frames). Its shape is S11's to measure.
+- A capture's window starts 29 rows above the skin's y = 0 in nav and mid, and per skin in small
+  mode (the window spans the closed drawers); the script aligns tops.
 
 ### Rebuilding the oracle install
 

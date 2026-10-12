@@ -45,12 +45,28 @@ Payloads are raw:
 - **`/rgn/<mode>/<control>`**: a region, already rasterised by Skinmaker from the author's mask:
   u16 rectangle count, u16 `left, top, right, bottom` bounds, then `count` × u16
   `left, top, right, bottom`. Size is always `10 + 8 × count`; the census checks every region
-  against that. **`right` and `bottom` are exclusive** (Win32 `RECT`): over the 22 mid and small
-  frames of the oracle sample, the exclusive reading is the closer fit in 21 and pixel-exact in 7,
-  the inclusive reading exact in none (`harness.md` § *Outline comparison*).
-- **A frame is not the whole window outline.** Navigator mode's outline adds the closed drawer;
-  small mode sometimes draws a fixed default outline in place of the skin's frame; mid mode differs
-  at a few necks and tips. Which shape Sonique draws per mode is S12.
+  against that. **`right` and `bottom` are exclusive** (Win32 `RECT`): with it every mid and small
+  outline of the oracle sample is exact once Wine's own distortion is accounted for (`harness.md`
+  § *Outline comparison*).
+
+**A repeated entry name reads its last copy.** 70 skins repeat a name (`/rgn/nav/drawer` in 59,
+`/jpeg/skinthumb` in 24, `/rgn/nav/logohref` in 3), 18 of them with differing drawers; the oracle
+draws the last drawer in all four measured (8C8-HQ, Danzig, skreen, `_cut_in11`).
+
+## Window outline
+
+| Mode | Outline |
+|---|---|
+| navigator | `/rgn/nav/frame` ∪ the closed drawer: `/rgn/nav/drawer` with its (0,0) at `DRAWER_POS` in `[misc locations]`, else `MISC_DRAWER_POS` in `[misc values]`, else 29,229 |
+| mid | `/rgn/mid/frame` |
+| small | `/rgn/small/frame`. The drawers add nothing while closed |
+
+- **`DRAWER_POS` wins whenever it is written**, whatever the spec version: BlueEyes (version 105)
+  and corrosion write both and the oracle draws `DRAWER_POS`. `misc.txt` says 105 skins use
+  `MISC_DRAWER_POS`; Sonique reads it only when `DRAWER_POS` is absent (Trigun, Danzig).
+- A skin with no `/rgn/nav/drawer` gets the default skin's drawer at 29,229, and one with no frame
+  the default skin's frame. Sonique's default small frame is the one Pino, Splash and dm-candella
+  carry.
 
 ## Entries
 

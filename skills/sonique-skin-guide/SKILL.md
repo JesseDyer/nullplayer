@@ -74,5 +74,8 @@ What is specific to this family:
    draws it the same way, the report is about Sonique's behaviour, not a defect.
 2. **Check `0x000000` before suspecting a shape.** Pure black is transparent in every picture, so a
    hole may be the artwork, not the region.
-3. **A still capture proves the default state only.** The mode morph, the drawer slide and the
+3. **A window edge off by a few pixels may be Wine's.** The oracle's outline passes through Wine's
+   shape conversion, which moves runs that lie inside one byte (`reference/harness.md`
+   § *Outline comparison*); compare against `wine_shape`, not the raw capture.
+4. **A still capture proves the default state only.** The mode morph, the drawer slide and the
    progress rings filling need the live app beside a running oracle.

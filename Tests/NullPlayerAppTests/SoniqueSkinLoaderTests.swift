@@ -92,11 +92,11 @@ final class SoniqueSkinLoaderTests: XCTestCase {
         XCTAssertEqual(skin.ini.value("SKIN", "Title"), "Fixture")
     }
 
-    func testEntryNamesMatchCaseInsensitivelyAndTheFirstWins() throws {
+    func testEntryNamesMatchCaseInsensitivelyAndTheLastWins() throws {
         let skin = try load(SoniqueSkinFixture.complete + [
             ("/rgn/nav/logoHREF", SoniqueSkinFixture.region([(1, 1, 2, 2)])),
             ("/rgn/nav/logohref", SoniqueSkinFixture.region([(5, 5, 6, 6)]))])
-        XCTAssertEqual(skin.regions["/rgn/nav/logohref"]?.bounds.left, 1)
+        XCTAssertEqual(skin.regions["/rgn/nav/logohref"]?.bounds.left, 5)
     }
 
     func testTheFirstSectionOfANameIsTheOnlyOneRead() {

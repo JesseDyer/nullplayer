@@ -32,9 +32,10 @@ enum SoniqueSkinLoader {
         guard data.count <= SoniqueSkinPolicy.fileBytes else {
             throw SoniqueSkinFinding(.fileTooLarge, "\(data.count) bytes, more than \(SoniqueSkinPolicy.fileBytes).")
         }
-        // The first entry of a name wins; names are matched case-insensitively (`logoHREF`, `logohref`).
+        // The last entry of a name wins: the oracle draws the last of a repeated `/rgn/nav/drawer`;
+        // names are matched case-insensitively (`logoHREF`, `logohref`).
         var payloads: [String: Data] = [:]
-        for entry in try SoniqueSkinArchive.entries(in: data) where payloads[entry.name.lowercased()] == nil {
+        for entry in try SoniqueSkinArchive.entries(in: data) {
             payloads[entry.name.lowercased()] = entry.payload
         }
         let names = payloads.keys.sorted()

@@ -50,7 +50,7 @@ final class SoniqueSkinCensusTests: XCTestCase {
         let entries = (try? SoniqueSkinArchive.entries(in: data)) ?? []
         // The locked limits' inputs (decision record § *Measured headroom*), over every JPEG header.
         let sizes = entries.filter { $0.name.lowercased().hasPrefix("/jpeg/") }.compactMap { SoniqueSkinLoader.jpegSize($0.payload) }
-        let ini = entries.first { $0.name.lowercased() == "/skin.ini" }?.payload.count ?? 0
+        let ini = entries.last { $0.name.lowercased() == "/skin.ini" }?.payload.count ?? 0
         HarnessOutput.emit("SIZE bytes=\(data.count) entries=\(entries.count) ini=\(ini) "
             + "pixels=\(sizes.reduce(0) { $0 + $1.width * $1.height }) side=\(sizes.map { max($0.width, $0.height) }.max() ?? 0)")
         var seen: Set<String> = []
