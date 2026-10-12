@@ -107,8 +107,6 @@ final class SkinWindowShadow {
     /// The parent's `occlusionState`, cached from its notification for the same reason.
     private var isParentOnScreen = false
     private var lastFingerprint: Int?
-    /// Counts the shadow's size changes, so a build that lands after one is known to be stale.
-    private var sizeGeneration = 0
 
     init(minimumInterval: CFTimeInterval = 0) {
         self.minimumInterval = minimumInterval
@@ -224,11 +222,10 @@ final class SkinWindowShadow {
         // frame with `.resize`, read as a stray box: a stack's outline on every dock and undock, a
         // `.wal` layout change held for the whole `minimumInterval`. The fingerprint goes too, or a
         // size that changes and changes back would pull `.same` and leave nothing shown. A build
-        // already under way is for the old size, and `finishBuild` drops it by `sizeGeneration`.
+        // already under way is for the old size, and `finishBuild` drops it.
         if shadowWindow.frame.size != frame.size {
             shadowWindow.contentView?.layer?.contents = nil
             lastFingerprint = nil
-            sizeGeneration += 1
         }
         shadowWindow.setFrame(frame, display: false)
         trace("reassert frame \(Int(outline.width))x\(Int(outline.height))")
@@ -236,6 +233,12 @@ final class SkinWindowShadow {
 
     private func outlineFrame(of parent: NSWindow) -> NSRect {
         outlineBounds.map { $0.offsetBy(dx: parent.frame.minX, dy: parent.frame.minY) } ?? parent.frame
+    }
+
+    /// The outline's size in whole points, which is what a shape is built at.
+    private func outlineSize(of parent: NSWindow) -> (width: Int, height: Int) {
+        let outline = outlineFrame(of: parent)
+        return (max(1, Int(outline.width.rounded())), max(1, Int(outline.height.rounded())))
     }
 
     /// A window that comes back on screen also takes the pull it was owed while hidden.
@@ -276,8 +279,9 @@ final class SkinWindowShadow {
         let layers: [CGImage]
         let width: Int
         let height: Int
+        /// The fingerprint shown when the pull was taken; a build is compared against it.
+        let known: Int?
         let trigger: String
-        let sizeGeneration: Int
     }
 
     private enum ShapeResult {
@@ -320,20 +324,16 @@ final class SkinWindowShadow {
         let label = Self.isTraceEnabled
             ? trigger + String(format: " pull=%.1fms", (CFAbsoluteTimeGetCurrent() - started) * 1_000)
             : trigger
-        let outline = outlineFrame(of: parent)
-        startBuild(ShapeRequest(layers: layers,
-                                width: max(1, Int(outline.width.rounded())),
-                                height: max(1, Int(outline.height.rounded())),
-                                trigger: label,
-                                sizeGeneration: sizeGeneration))
+        let size = outlineSize(of: parent)
+        startBuild(ShapeRequest(layers: layers, width: size.width, height: size.height,
+                                known: lastFingerprint, trigger: label))
     }
 
     private func startBuild(_ request: ShapeRequest) {
         isBuilding = true
-        let known = lastFingerprint
         Self.worker.async { [weak self] in
             let started = CFAbsoluteTimeGetCurrent()
-            let result = Self.shape(request, known: known)
+            let result = Self.shape(request)
             let milliseconds = (CFAbsoluteTimeGetCurrent() - started) * 1_000
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -349,9 +349,14 @@ final class SkinWindowShadow {
         guard isActive else { return }
         let detail = "\(request.width)x\(request.height) "
             + String(format: "%.1fms", milliseconds) + " trigger=\(request.trigger)"
-        // A build pulled before the shadow changed size lands after `reassertFrame` cleared it —
-        // every dock pulls once for its corners just before the stack regroups. Pull again instead.
-        guard request.sizeGeneration == sizeGeneration else {
+        // A build for a size the window no longer has is stale — every dock pulls once for its
+        // corners just before the stack regroups, and a resize that is undone in the same turn
+        // (`reassertFrame` runs a turn late, so it never sees one) pulled at the in-between size.
+        // Compare sizes, not a count of the shadow's own resizes. A size that changed and changed
+        // back passes that, but `reassertFrame` cleared the fingerprint on the way, so a `.same`
+        // against the old one would leave nothing shown. Pull again instead.
+        guard let parent, outlineSize(of: parent) == (request.width, request.height),
+              request.known == lastFingerprint else {
             pendingTrigger = pendingTrigger ?? "stale"
             trace("stale \(detail)")
             return
@@ -369,7 +374,7 @@ final class SkinWindowShadow {
     }
 
     /// Off the main thread: fingerprint the outline, and build a shadow only for a new one.
-    nonisolated private static func shape(_ request: ShapeRequest, known: Int?) -> ShapeResult {
+    nonisolated private static func shape(_ request: ShapeRequest) -> ShapeResult {
         guard let plane = AlphaPlane(layers: request.layers, width: request.width,
                                      height: request.height) else { return .failed }
         var hasher = Hasher()
@@ -377,7 +382,7 @@ final class SkinWindowShadow {
         hasher.combine(request.height)
         plane.bytes.withUnsafeBytes { hasher.combine(bytes: $0) }
         let fingerprint = hasher.finalize()
-        if fingerprint == known { return .same }
+        if fingerprint == request.known { return .same }
         return .rebuilt(fingerprint: fingerprint,
                         image: makeShadowImage(plane: plane, blur: blur, offset: offset,
                                                opacity: opacity, pad: pad))

@@ -5,11 +5,11 @@ that skin**. The engine-wide surface is [compatibility.md](compatibility.md); th
 skin-by-skin view, because a `.wal` skin exercises an arbitrary slice of Wasabi and two skins can fail
 in completely different ways while the compatibility report says the same thing about both.
 
-Nothing third-party is committed — every skin here is user-supplied. See
+Every skin here is user-supplied and none is committed. See
 [manual-qa-checklist.md](manual-qa-checklist.md) for how to run one.
 
-The one `.wal` the repo *does* commit is **NullPlayer-Black**, the bundled placeholder we generate
-ourselves; it is not a compatibility fixture and has no row below. See
+The one `.wal` the repo *does* commit is **iTunes Miniplayer**, the bundled default skin (third-party,
+shipped with its author's permission); it is not a compatibility fixture and has no row below. See
 [reference/loading.md](reference/loading.md) → *The bundled default skin*.
 
 **The local corpus is unmodified, audited 2026-09-05.** A recurring question — whether any installed

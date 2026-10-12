@@ -44,6 +44,10 @@
   stretched to the new size.
 - **An album opened from Tiles or Flow no longer scrolls over the Library's tabs** — scrolling a
   long album's tracks slid its cover and title up over the source bar and tabs.
+- **iTunes Miniplayer is the default `.wal` skin** — Winamp Modern mode now ships with it and
+  loads it until you import a skin of your own, replacing the plain NullPlayer-Black placeholder.
+  It stays in the skin menu beside imported skins, so you can switch back to it.
+  Skin by [spacecowgoesmoo](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer) (#540).
 
 ## 0.32.2
 
