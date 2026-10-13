@@ -15,13 +15,18 @@ Cava window. Cava is also available inside the 76×16 main-window visualization 
 
 Modern and Metal Library and Compact Window surfaces can also use Cava as a full-window backdrop
 via **Visuals > Library Window > Cava**, **Visuals > Compact Window > Cava**, or the corresponding
-surface's context menu. Each backdrop has its own settings scope and lifecycle; neither borrows the
+surface's context menu. The classic browser's library window (Classic, and the `.wal` fallback,
+`.wmz` and Audion library windows) offers **Visuals > Library Window** too, with Cava behind the
+list area only, so a hosted frame's keyed-out corners stay clear. The `.wal` embedded library
+holder and classic Compact Mode never show it. Each backdrop has its own settings scope and lifecycle; neither borrows the
 standalone or main-window presenter.
 The window menus expose **Cava**, **Art**, and **Cava + Art** separately. Art always uses the legacy
 browser list-area renderer and geometry; there is no second full-window artwork renderer. Both
 windows default to **Cava + Art** on first use while preserving an existing saved selection. On
 upgrade, the legacy `showBrowserArtworkBackground` choice seeds only absent window-specific keys:
 enabled becomes Cava + Art and disabled becomes Cava, so adopting Cava does not re-enable artwork.
+The classic browser's choice is its own key, `ClassicLibraryBackdropMode` (default Art), seeded
+by the same migration as on → Art, off → Off, so Classic keeps its look until Cava is picked.
 
 Cava is the shipped default for the embedded main-window visualization in every bundled modern
 skin and every built-in Metal finish. Classic UI continues to default the embedded visualization
@@ -82,8 +87,9 @@ the standalone window. The Library and Compact backdrops use `CavaPresenter(scop
 and `CavaPresenter(scope: .compactWindow)` respectively. Library defaults to Mono and Compact
 defaults to Stereo with Smooth (`0.80`) temporal smoothing. Both browser scopes default to 64 bars.
 Backdrop Mono is center-out mirrored so the combined spectrum occupies the full width.
-`CompactBackdropView` always draws into its full `bounds`; its frame must be the window content
-container's `bounds`, not the browser view's frame,
+`BrowserBackdropView` (`Windows/LibraryBrowser/BrowserBackdropView.swift`, placed by `BrowserBackdrop`
+for both browser views) always draws into its full `bounds`; its frame must be the window content
+container's `bounds` (or the classic view's list `region`), not the browser view's frame,
 so resizing or an offset browser layout cannot confine the visualization to part of the window.
 Its layer mask must also receive the browser's current `sharpCorners`: when the Library docks, the
 backdrop and browser siblings must square the same joined corners or a rounded transparent wedge
@@ -92,7 +98,7 @@ On the first Off → Cava transition, invalidate and lay out the complete backdr
 subtree immediately and again on the next main-run-loop turn. The browser was previously rendered
 opaque, and an ordinary view-only invalidation can leave a horizontal region of cached opaque
 content covering either Mono or Stereo until the window is reconstructed.
-Art-only does not create `CompactBackdropView`. Cava + Art keeps Cava in that full-window sibling
+Art-only does not create `BrowserBackdropView`. Cava + Art keeps Cava in that full-window sibling
 while the browser draws exactly one legacy-sized artwork image in its established list-area path.
 Playing-track and selection-driven artwork loads may run concurrently, but share a display
 generation. They may populate their own caches after a newer request begins; only the newest
@@ -222,8 +228,8 @@ written by older reset logic without discarding a real user choice.
 | `App/ContextMenuBuilder.swift` | Menu item: "Cava" in Windows menu + `toggleCava()` action |
 | `Windows/MainWindow/MainWindowView.swift` | Classic inline Cava rendering + lifecycle |
 | `Windows/ModernMainWindow/ModernMainWindowView.swift` | Modern inline Cava rendering + lifecycle |
-| `Windows/ModernLibraryBrowser/CompactBackdropView.swift` | Shared Library/Compact Cava presenter, lifecycle, and full-surface drawing |
-| `Windows/ModernLibraryBrowser/ModernLibraryBrowserView.swift` | Library/Compact backdrop sizing, translucency, menus, and artwork routing |
+| `Windows/LibraryBrowser/BrowserBackdropView.swift` | Library/Compact Cava backdrop view and its sibling placement (`BrowserBackdrop`), shared by both browser views |
+| `Windows/ModernLibraryBrowser/ModernLibraryBrowserView.swift`, `Windows/ClassicLibraryBrowser/ClassicLibraryBrowserView.swift` | Each view's backdrop look (`backdropLook`), translucency and when Cava shows |
 | `App/AppStateManager.swift` | State capture/restore: `isCavaVisible`, `cavaWindowFrame` |
 | `NullPlayerCore/Audio/CavaCore.swift` | DSP engine (pure Swift vDSP FFT + smoothing) |
 

@@ -2024,7 +2024,7 @@ final class MediaLibraryStore {
         // more: on current Foundation `URL(string: "/Music/My Track.mp3")` succeeds and returns a
         // **schemeless, non-file** URL rather than nil, so the repair branch had become dead code
         // and every legacy plain-path row came back as something `isFileURL` rejects. Same defect
-        // as the playlist loaders (L5 in docs/local-library/backlog.md), one layer down.
+        // as the playlist loaders (`Playlist.resolveEntry`), one layer down.
         if urlString.hasPrefix("/") {
             return URL(fileURLWithPath: urlString)
         }

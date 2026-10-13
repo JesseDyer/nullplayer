@@ -68,6 +68,11 @@
   Audion skins** — the Library's source bar and tabs, the Equalizer Studio's profile name and other
   labels drew in a large monospaced font, about twice the size of the skin's own text; they now use
   the regular system font at the size the Classic look uses.
+- **The Library behaves the same in every skin** — Classic's search field now says to press Enter,
+  star ratings colour their empty stars alike in every skin, the scan spinner keeps turning while a
+  row is loading, and picking a Subsonic folder or a Jellyfin or Emby library loads it once instead
+  of two or three times. A Jellyfin show or season that reports no count no longer reads "0
+  seasons", as in Emby.
 
 ## 0.32.2
 

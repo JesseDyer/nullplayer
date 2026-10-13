@@ -46,7 +46,7 @@ Theming is two layers, and the second is the one a skin with styled panels is as
   is drawn whole over our content. A donor whose interior is a *picture* has no such colour
   (`Scooby Doo`'s wallpaper) and keeps the cut; so does one where more than **10%** of the hole
   survives the erase. `SkinnedSurfaceFrameArtwork.paintsOverContent` carries the flag,
-  `SkinnedSurfaceChrome.drawSkinFrame` and `PlexBrowserView.drawWinampModernChrome` honour it.
+  `SkinnedSurfaceChrome.drawSkinFrame` and `ClassicLibraryBrowserView.drawWinampModernChrome` honour it.
 - **An animation tick that repaints content must repaint the chrome (W209).** `NetworkMonitorView`,
   `CavaView` and `PeppyMeterView` each had a content-only fast path for 60 Hz redraws that returned
   before the chrome overlay. Correct while chrome is a border *around* content; wrong the moment any

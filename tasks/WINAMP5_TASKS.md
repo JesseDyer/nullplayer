@@ -33,6 +33,7 @@ without a seam change; **L** = a host seam, protocol change, or new fixture harn
 
 | Id | Item | Reach | Effort | Tier |
 |---|---|---:|:---:|---|
+| B164 | **The library window's text draws too large on Anaheim.** Reported 2026-10-13, not yet reproduced or measured. The library rows are host-drawn (`drawSurfaceText`), so the skin declares neither their face nor their size: the face is the undeclared-font Arial default, and the size comes from `WinampModernTextScale`'s cell height through `playlistCellToPointSize` (0.9), per `reference/rendering/text.md` § *Host-drawn text is not skin-declared text (B130)*. **Unmeasured, take first**: the point size the library rows draw at on Anaheim beside a small skin, and what cell height `auto` chose for it. Do not retune `pixelHeightToPointSize` (0.8) to fix it; that constant governs every skin-declared `<text>`. **Done when** Anaheim's library rows draw at the same size as its playlist rows, and a corpus sweep shows no other skin's host lists changed size unintentionally. | 1 skin reported | S–M | Live |
 
 ### Awaiting manual QA
 

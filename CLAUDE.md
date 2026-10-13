@@ -32,7 +32,7 @@ Technical documentation lives in `skills/`. Read the owning skill before changin
 - `geiss-port`, `tripex-port`, `vis-classic-guide`: visualization ports and compatibility
 - `app-control`: launching, configuring, driving and measuring the running app; test-data targets
 - Backlogs live in `tasks/`: `WMP_TASKS.md` (`.wmz`), `WINAMP5_TASKS.md` (`.wal`), `AUDION_TASKS.md`
-  (Audion faces), plus `docs/local-library/backlog.md` (library scanning and playlist playback)
+  (Audion faces), plus `MISC_TASKS.md` (everything else, including the local library)
 - `live-ui-testing`: process skill for screen-only defects — instrument first, drive the app yourself, measure what is drawn
 - `testing`: UI test workflows; `non-retina-fixes`: 1x display fixes; `local-library`: SQLite and scanning; `cli`: headless mode
 - `skin-screenshots`: per-skin main-window captures across all skin systems, and slideshow GIFs

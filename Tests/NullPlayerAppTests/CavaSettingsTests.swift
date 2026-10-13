@@ -169,10 +169,11 @@ final class CavaSettingsTests: XCTestCase {
     }
 
     func testBackdropCornerMaskExcludesDockingSharpCorners() {
-        let view = CompactBackdropView(
+        let view = BrowserBackdropView(
             frame: NSRect(x: 0, y: 0, width: 200, height: 100),
             scope: .libraryWindow,
-            modeProvider: { .off }
+            modeProvider: { .off },
+            look: { BrowserBackdropLook(background: .black, low: .blue, high: .red, cornerRadius: 8) }
         )
         let sharpCorners: CACornerMask = [.layerMinXMinYCorner, .layerMinXMaxYCorner]
 

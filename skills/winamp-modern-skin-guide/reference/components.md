@@ -1077,7 +1077,7 @@ Two things follow for any new hosted surface:
 `hostedContext`, so it primes the same helper with the window named outright —
 `prime(_:window:)`:
 
-- **The embedded library** (`PlexBrowserView` with `isEmbeddedInSkin`) primes on whatever press
+- **The embedded library** (`ClassicLibraryBrowserView` with `isEmbeddedInSkin`) primes on whatever press
   falls through every one of its own hit tests — the blank area below the last row, an empty
   Search page — against its own `window`, which is the skin's. Rows, tabs, the scrollbar and the
   alphabet index all claim their presses first.
@@ -1316,7 +1316,7 @@ through the renderer's *own* resolver so gamma matches.
 
 **The surfaces we draw are palette-themed, never classic-skinned.** `WinampModernSurfaceStyle` widens
 a `WasabiPalette` into a whole chrome for the AppKit views NullPlayer supplies — the embedded library
-(`PlexBrowserView` in embedded mode) and the playlist / EQ / library **fallback windows**. Before
+(`ClassicLibraryBrowserView` in embedded mode) and the playlist / EQ / library **fallback windows**. Before
 Phase 16 all of those painted with `SkinRenderer` sprites, the 5×6 bitmap font, and
 `skin.playlistColors` from whatever `.wsz` was selected: a foreign UI coloured by a skin the user is
 not looking at.
@@ -1360,7 +1360,7 @@ not looking at.
   keep painting a skin that is gone. Until B98 it was posted by `themeDidChange` and nothing else, so
   switching skins reskinned everything the renderer draws and nothing NullPlayer draws; the Media
   Library, the playlist and the equalizer kept the outgoing skin's chrome until the user closed and
-  reopened them, which rebuilt the view. **`PlexBrowserView` also caches its resolved style** (it
+  reopened them, which rebuilt the view. **`ClassicLibraryBrowserView` also caches its resolved style** (it
   asks for one per string, ~77 times a frame) and drops that cache on this notification only, so for
   the library it is a cache invalidation and not merely a repaint. Tests: `WinampModernB98Tests`.
 

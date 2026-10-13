@@ -4,10 +4,8 @@ The only live backlog for the WMP skin subsystem, and a list of open rows — no
 `skills/wmp-skin-guide/SKILL.md` before picking anything up.
 
 - `.wal` work goes in [`WINAMP5_TASKS.md`](WINAMP5_TASKS.md); the shared video path goes in
-  [`MISC_TASKS.md`](MISC_TASKS.md) (read M5 before any `.wmz` video work);
-  the local library and the playlist-playback path go in
-  [`docs/local-library/backlog.md`](../docs/local-library/backlog.md) (**read L1 before any report that a
-  skin "won't play" something** — an unreadable track halts the playlist and says nothing in WMP mode).
+  [`MISC_TASKS.md`](MISC_TASKS.md) (read M5 before any `.wmz` video work), as do the local library
+  and the playlist-playback path.
 - Closed rows move to [`docs/wmp-skin/wmp-backlog-archive.md`](../docs/wmp-skin/wmp-backlog-archive.md)
   in the change that closes them. That file's § *Issuing a number* holds the next free number.
 - A row with a defect in the row itself goes to [`LOW_QUALITY_TASKS.md`](LOW_QUALITY_TASKS.md);
