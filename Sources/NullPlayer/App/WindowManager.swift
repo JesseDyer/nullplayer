@@ -2845,7 +2845,7 @@ class WindowManager {
 
     var isLibraryHistoryVisible: Bool {
         guard isPlexBrowserVisible else { return false }
-        return plexBrowserBrowseMode == ModernBrowseMode.history.rawValue
+        return plexBrowserBrowseMode == LibraryBrowseMode.history.rawValue
     }
     
     /// Get the ProjectM window frame (for state saving)
@@ -3547,7 +3547,7 @@ class WindowManager {
 
     func showLibraryHistory() {
         showPlexBrowser()
-        plexBrowserBrowseMode = ModernBrowseMode.history.rawValue
+        plexBrowserBrowseMode = LibraryBrowseMode.history.rawValue
         plexBrowserWindowController?.window?.makeKeyAndOrderFront(nil)
         applyAlwaysOnTopToWindow(plexBrowserWindowController?.window)
         postLayoutChangeNotification()

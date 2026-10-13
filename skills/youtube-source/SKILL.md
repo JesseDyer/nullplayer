@@ -313,8 +313,8 @@ subscriptions and the manifest.
 Every YouTube list row in both browsers comes from `YouTubeRowBuilder`, built per rebuild from the
 view's `expandedYouTubeChannels` and their cached uploads (`YouTubeChannelUploads.uploads(of:)`): `channels(_:)` (Channels tab),
 `channelSearch(_:)` (the YouTube source's Search tab) and `localSearch(query:excluding:)`. It
-returns view-independent `YouTubeRow`s, and each view maps them with a ten-line
-`ModernDisplayItem(_:)` / `PlexDisplayItem(_:)`. Row ids, titles, title prefixes, indents and the
+returns view-independent `YouTubeRow`s, which both views map through the shared
+`LibraryBrowserItem(_:)` (`Windows/LibraryBrowser/LibraryBrowserItem.swift`). Row ids, titles, title prefixes, indents and the
 section headers are decided there only, so a change to YouTube rows is made once, not per browser.
 A row's `title` is the item's own name; decorations (the downloaded-form markers, `✓` on a subscribed
 search result) go in `titlePrefix`, which only the draw paths read, through the display item's
@@ -373,7 +373,7 @@ YouTube channels appear identically in:
 - **Modern LibraryBrowserView** (right-side tree, expandable channel folders + indented video rows)
 - **Classic PlexBrowserView** (left sidebar + table view, same folder/row structure as radio stations)
 
-Both reuse existing `BrowserSource` / `ModernBrowserSource` enum routing.
+Both reuse the shared `LibraryBrowserSource` enum routing.
 
 ### Casting
 

@@ -331,7 +331,7 @@ class AppStateManager {
         var selectedOutputDeviceUID: String?
         
         // Library browser state
-        var browserBrowseMode: Int?  // Raw value of PlexBrowseMode / ModernBrowseMode
+        var browserBrowseMode: Int?  // Raw value of LibraryBrowseMode
         
         // UI mode the state was saved in (used to skip frame restoration on mode mismatch)
         var uiMode: String?

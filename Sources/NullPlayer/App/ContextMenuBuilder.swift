@@ -5259,7 +5259,7 @@ class MenuActions: NSObject {
         // Set the browser source to Subsonic
         NotificationCenter.default.post(
             name: NSNotification.Name("SetBrowserSource"),
-            object: BrowserSource.subsonic(serverId: serverId)
+            object: LibraryBrowserSource.subsonic(serverId: serverId)
         )
     }
     
@@ -5304,7 +5304,7 @@ class MenuActions: NSObject {
         // Set the browser source to Jellyfin
         NotificationCenter.default.post(
             name: NSNotification.Name("SetBrowserSource"),
-            object: BrowserSource.jellyfin(serverId: serverId)
+            object: LibraryBrowserSource.jellyfin(serverId: serverId)
         )
     }
     
@@ -5364,7 +5364,7 @@ class MenuActions: NSObject {
 
         NotificationCenter.default.post(
             name: NSNotification.Name("SetBrowserSource"),
-            object: BrowserSource.emby(serverId: serverId)
+            object: LibraryBrowserSource.emby(serverId: serverId)
         )
     }
 

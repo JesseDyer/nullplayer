@@ -245,7 +245,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     private var scriptRuntime: WMPScriptRuntime?
     /// What the skin's `mediaCollection`/`playlistCollection` read, and the tracks behind it (W136).
     private let librarySource = WMPLibrarySource()
-    private var libraryBuiltFor: ModernBrowserSource = .local
+    private var libraryBuiltFor: LibraryBrowserSource = .local
     /// The latest library play request; see `fetchLibraryDemands`.
     private var libraryPlayTicket = 0
     private var libraryObservers: [NSObjectProtocol] = []
@@ -394,12 +394,12 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         ) { [weak self] _ in MainActor.assumeIsolated { self?.refreshHostState() } }
         // The catalog is a copy of the browser's selected source (W136), so it is rebuilt when that
         // source changes, when a local rescan lands, and when a server finishes loading its
-        // lists. `BrowserSource` has no notification of its own: the browser writes it to
+        // lists. `LibraryBrowserSource` has no notification of its own: the browser writes it to
         // defaults, and a defaults change is compared against the source last built.
         // Each notification rebuilds only when it is about the selected source: every server
         // announces its own preload, and rebuilding the Plex catalog because Emby finished
         // loading re-listed playlists and refreshed every window for nothing.
-        let sources: [(Notification.Name, (ModernBrowserSource) -> Bool)] = [
+        let sources: [(Notification.Name, (LibraryBrowserSource) -> Bool)] = [
             (MediaLibrary.libraryDidChangeNotification, { if case .local = $0 { true } else { false } }),
             (PlexManager.libraryContentDidPreloadNotification, { if case .plex = $0 { true } else { false } }),
             (SubsonicManager.libraryContentDidPreloadNotification, { if case .subsonic = $0 { true } else { false } }),
@@ -412,7 +412,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, let runtime = self.scriptRuntime,
-                          concerns(ModernBrowserSource.load() ?? .local) else { return }
+                          concerns(LibraryBrowserSource.load() ?? .local) else { return }
                     Task { await self.refreshLibrary(runtime) }
                 }
             })
@@ -422,7 +422,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let runtime = self.scriptRuntime,
-                      (ModernBrowserSource.load() ?? .local) != self.libraryBuiltFor else { return }
+                      (LibraryBrowserSource.load() ?? .local) != self.libraryBuiltFor else { return }
                 Task { await self.refreshLibrary(runtime) }
             }
         })
@@ -485,7 +485,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     /// Hand the script runtime the library the browser's selected source holds (W136). `initial`
     /// is the skin's first load, which has no windows to refresh yet: its `onLoad` is still to run.
     private func refreshLibrary(_ runtime: WMPScriptRuntime, initial: Bool = false) async {
-        libraryBuiltFor = ModernBrowserSource.load() ?? .local
+        libraryBuiltFor = LibraryBrowserSource.load() ?? .local
         let playlistsChanged = await librarySource.rebuild()
         await runtime.setLibrary(librarySource.catalog)
         guard !initial else { return }

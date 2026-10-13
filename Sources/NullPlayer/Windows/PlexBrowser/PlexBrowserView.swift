@@ -3,208 +3,6 @@ import AVFoundation
 import NullPlayerCore
 import SwiftUI
 
-/// Source for browsing content
-enum BrowserSource: Equatable, Codable {
-    case local
-    case plex(serverId: String)
-    case subsonic(serverId: String)
-    case jellyfin(serverId: String)
-    case emby(serverId: String)
-    case radio
-    case youtube
-
-    /// Display name for the source
-    var displayName: String {
-        switch self {
-        case .local:
-            return "LOCAL FILES"
-        case .plex(let serverId):
-            if let server = PlexManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "PLEX: \(server.name)"
-            }
-            return "PLEX"
-        case .subsonic(let serverId):
-            if let server = SubsonicManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "SUBSONIC: \(server.name)"
-            }
-            return "SUBSONIC"
-        case .jellyfin(let serverId):
-            if let server = JellyfinManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "JELLYFIN: \(server.name)"
-            }
-            return "JELLYFIN"
-        case .emby(let serverId):
-            if let server = EmbyManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "EMBY: \(server.name)"
-            }
-            return "EMBY"
-        case .radio:
-            return "INTERNET RADIO"
-        case .youtube:
-            return "YOUTUBE"
-        }
-    }
-
-    /// Short name for compact display
-    var shortName: String {
-        switch self {
-        case .local:
-            return "Local Files"
-        case .plex(let serverId):
-            if let server = PlexManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Plex"
-        case .subsonic(let serverId):
-            if let server = SubsonicManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Subsonic"
-        case .jellyfin(let serverId):
-            if let server = JellyfinManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Jellyfin"
-        case .emby(let serverId):
-            if let server = EmbyManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Emby"
-        case .radio:
-            return "Radio"
-        case .youtube:
-            return "YouTube"
-        }
-    }
-
-    /// Whether this is a Subsonic source
-    var isSubsonic: Bool {
-        if case .subsonic = self { return true }
-        return false
-    }
-    
-    /// Whether this is a Jellyfin source
-    var isJellyfin: Bool {
-        if case .jellyfin = self { return true }
-        return false
-    }
-
-    /// Whether this is an Emby source
-    var isEmby: Bool {
-        if case .emby = self { return true }
-        return false
-    }
-    
-    /// Whether this is a Plex source
-    var isPlex: Bool {
-        if case .plex = self { return true }
-        return false
-    }
-    
-    /// Whether this is a radio source
-    var isRadio: Bool {
-        if case .radio = self { return true }
-        return false
-    }
-
-    /// Whether this is a YouTube source
-    var isYouTube: Bool {
-        if case .youtube = self { return true }
-        return false
-    }
-
-    /// YouTube reuses the Internet Radio tab's UI to list its channels/videos.
-    var usesRadioTab: Bool { isRadio || isYouTube }
-
-    /// Whether this is a remote source (Plex, Subsonic, Jellyfin, or Emby)
-    var isRemote: Bool {
-        switch self {
-        case .local, .radio, .youtube:
-            return false
-        case .plex, .subsonic, .jellyfin, .emby:
-            return true
-        }
-    }
-
-    /// The server of a remote source
-    var serverId: String? {
-        switch self {
-        case .local, .radio, .youtube:
-            return nil
-        case .plex(let id), .subsonic(let id), .jellyfin(let id), .emby(let id):
-            return id
-        }
-    }
-    
-    /// Persistence key
-    private static let userDefaultsKey = "BrowserSource"
-    
-    /// Save to UserDefaults
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)
-        }
-    }
-    
-    /// Load from UserDefaults
-    static func load() -> BrowserSource? {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-              let source = try? JSONDecoder().decode(BrowserSource.self, from: data) else {
-            return nil
-        }
-        return source
-    }
-}
-
-/// Browse mode for the Plex browser
-enum PlexBrowseMode: Int, CaseIterable {
-    case artists = 0
-    case albums = 1
-    case plists = 3
-    case movies = 4
-    case shows = 5
-    case search = 6
-    case radio = 7
-    case history = 8
-    case folders = 9
-
-    var title: String {
-        switch self {
-        case .artists: return "Artists"
-        case .albums: return "Albums"
-        case .folders: return "Folders"
-        case .plists: return "Plists"
-        case .movies: return "Movies"
-        case .shows: return "TV"
-        case .search: return "Search"
-        case .radio: return "Radio"
-        case .history: return "Data"
-        }
-    }
-
-    var isVideoMode: Bool {
-        self == .movies || self == .shows
-    }
-
-    var isMusicMode: Bool {
-        self == .artists || self == .albums || self == .plists || self == .folders
-    }
-
-    var isRadioMode: Bool {
-        self == .radio
-    }
-
-    var isHistoryMode: Bool {
-        self == .history
-    }
-
-    // .folders is excluded: it occupies the same tab slot as .plists and is reached
-    // only by toggling that slot (local source only), never as its own tab.
-    static var allCases: [PlexBrowseMode] {
-        [.artists, .albums, .plists, .movies, .shows, .radio, .search, .history]
-    }
-}
-
 // =============================================================================
 // PLEX BROWSER VIEW - Skinned Plex browser with playlist sprite support
 // =============================================================================
@@ -222,7 +20,7 @@ class PlexBrowserView: NSView {
     weak var controller: PlexBrowserWindowController?
     
     /// Current browse source (local files or Plex server)
-    private var currentSource: BrowserSource = .local {
+    private var currentSource: LibraryBrowserSource = .local {
         didSet {
             currentSource.save()
             onSourceChanged()
@@ -230,10 +28,10 @@ class PlexBrowserView: NSView {
     }
     
     /// Pending source to restore after servers connect
-    private var pendingSourceRestore: BrowserSource?
+    private var pendingSourceRestore: LibraryBrowserSource?
     
     /// Current browse mode
-    private var browseMode: PlexBrowseMode = .artists {
+    private var browseMode: LibraryBrowseMode = .artists {
         didSet {
             guard browseMode != oldValue else { return }
             // A new tab opens Flow or Tiles at its root.
@@ -253,7 +51,7 @@ class PlexBrowserView: NSView {
     var browseModeRawValue: Int {
         get { browseMode.rawValue }
         set {
-            if let mode = PlexBrowseMode(rawValue: newValue) {
+            if let mode = LibraryBrowseMode(rawValue: newValue) {
                 // If restoring .folders mode while non-local source, fall back to .plists
                 var actualMode = mode
                 if mode == .folders, case .local = currentSource {} else if mode == .folders {
@@ -416,7 +214,7 @@ class PlexBrowserView: NSView {
         }
     }
 
-    private func isInternetRadioItem(_ item: PlexDisplayItem) -> Bool {
+    private func isInternetRadioItem(_ item: LibraryBrowserItem) -> Bool {
         guard case .radio = currentSource else { return false }
         if case .radioStation = item.type { return true }
         return false
@@ -440,7 +238,7 @@ class PlexBrowserView: NSView {
         LibraryColumnVisibility.normalizedIds(ids, allIds: allColumns.map { $0.id })
     }
 
-    private func columnGroup(for item: PlexDisplayItem) -> LibraryColumnVisibilityGroup? {
+    private func columnGroup(for item: LibraryBrowserItem) -> LibraryColumnVisibilityGroup? {
         switch item.type {
         case .track, .subsonicTrack, .localTrack, .jellyfinTrack, .embyTrack:
             return .track
@@ -461,14 +259,14 @@ class PlexBrowserView: NSView {
     }
 
     /// Whether a row draws columns rather than a plain title line.
-    private func drawsColumns(_ item: PlexDisplayItem) -> Bool {
+    private func drawsColumns(_ item: LibraryBrowserItem) -> Bool {
         columnGroup(for: item) != nil || isInternetRadioItem(item)
     }
 
     /// The columns a row draws and the group their widths are keyed by (nil = simple list rendering).
     /// Artist, album and track rows all draw the list's one header, Finder-style; radio and
     /// YouTube rows draw their own fixed columns.
-    private func rowColumns(for item: PlexDisplayItem, header: ListLayout.Header?) -> (columns: [BrowserColumn], group: LibraryColumnVisibilityGroup?)? {
+    private func rowColumns(for item: LibraryBrowserItem, header: ListLayout.Header?) -> (columns: [BrowserColumn], group: LibraryColumnVisibilityGroup?)? {
         switch columnGroup(for: item) {
         case .youtube?: return (BrowserColumn.youtubeColumns, .youtube)
         case _?: return header.map { ($0.columns, $0.group) }
@@ -646,7 +444,7 @@ class PlexBrowserView: NSView {
 
         // Sort top-level items only (flat list with no expanded children)
         var sortableIndices: [Int] = []
-        var sortableItems: [PlexDisplayItem] = []
+        var sortableItems: [LibraryBrowserItem] = []
         
         for (index, item) in displayItems.enumerated() {
             if drawsColumns(item) && item.indentLevel == 0 {
@@ -676,7 +474,7 @@ class PlexBrowserView: NSView {
     /// to the build order if any top-level row is not sortable (e.g. a section header) or if a
     /// nested row appears before any leader, since grouping would be ambiguous there.
     private func sortNestedGroupsByColumn(sortColumn: BrowserColumn) {
-        var groups: [[PlexDisplayItem]] = []
+        var groups: [[LibraryBrowserItem]] = []
         for item in displayItems {
             if item.indentLevel == 0 {
                 guard drawsColumns(item) else { needsDisplay = true; return }
@@ -695,7 +493,7 @@ class PlexBrowserView: NSView {
     }
 
     /// Sorts column-capable rows while preserving their current order for equal keys.
-    private func stableColumnSortedItems(_ items: [PlexDisplayItem], sortColumn: BrowserColumn) -> [PlexDisplayItem] {
+    private func stableColumnSortedItems(_ items: [LibraryBrowserItem], sortColumn: BrowserColumn) -> [LibraryBrowserItem] {
         items.enumerated().sorted { lhs, rhs in
             if columnSortAreInOrder(lhs.element, rhs.element, sortColumn: sortColumn, ascending: activeColumnSortAscending) {
                 return true
@@ -708,7 +506,7 @@ class PlexBrowserView: NSView {
     }
 
     /// Sorts expanded row groups by leader while preserving current group order for equal keys.
-    private func stableColumnSortedGroups(_ groups: [[PlexDisplayItem]], sortColumn: BrowserColumn) -> [[PlexDisplayItem]] {
+    private func stableColumnSortedGroups(_ groups: [[LibraryBrowserItem]], sortColumn: BrowserColumn) -> [[LibraryBrowserItem]] {
         groups.enumerated().sorted { lhs, rhs in
             let leftLeader = lhs.element[0]
             let rightLeader = rhs.element[0]
@@ -724,7 +522,7 @@ class PlexBrowserView: NSView {
 
     /// Ordering predicate shared by the flat and nested column-sort paths so both produce
     /// an identical top-level order. `a` and `b` are level-0 rows.
-    private func columnSortAreInOrder(_ a: PlexDisplayItem, _ b: PlexDisplayItem, sortColumn: BrowserColumn, ascending: Bool) -> Bool {
+    private func columnSortAreInOrder(_ a: LibraryBrowserItem, _ b: LibraryBrowserItem, sortColumn: BrowserColumn, ascending: Bool) -> Bool {
         // Date columns: sort by raw date, not formatted string
         if sortColumn.id == "dateAdded" || sortColumn.id == "lastPlayed" || sortColumn.id == "youtubeDate" {
             let aDate = a.columnDateValue(for: sortColumn) ?? .distantPast
@@ -835,7 +633,7 @@ class PlexBrowserView: NSView {
         return true
     }
 
-    private func sortedInternetRadioItems(_ items: [PlexDisplayItem], sortColumn: BrowserColumn, ascending: Bool) -> [PlexDisplayItem] {
+    private func sortedInternetRadioItems(_ items: [LibraryBrowserItem], sortColumn: BrowserColumn, ascending: Bool) -> [LibraryBrowserItem] {
         let ratingsByItemId = Dictionary(uniqueKeysWithValues: items.map { item in
             (item.id, internetRadioRating(for: item))
         })
@@ -850,8 +648,8 @@ class PlexBrowserView: NSView {
     }
 
     private func compareInternetRadioItems(
-        _ lhs: PlexDisplayItem,
-        _ rhs: PlexDisplayItem,
+        _ lhs: LibraryBrowserItem,
+        _ rhs: LibraryBrowserItem,
         sortColumn: BrowserColumn,
         ratingsByItemId: [String: Int]
     ) -> ComparisonResult {
@@ -872,12 +670,12 @@ class PlexBrowserView: NSView {
         }
     }
 
-    private func internetRadioRating(for item: PlexDisplayItem) -> Int {
+    private func internetRadioRating(for item: LibraryBrowserItem) -> Int {
         guard case .radioStation(let station) = item.type else { return 0 }
         return RadioManager.shared.rating(for: station)
     }
 
-    private func internetRadioRating(for item: PlexDisplayItem, ratingsByItemId: [String: Int]) -> Int {
+    private func internetRadioRating(for item: LibraryBrowserItem, ratingsByItemId: [String: Int]) -> Int {
         ratingsByItemId[item.id] ?? 0
     }
     
@@ -906,7 +704,7 @@ class PlexBrowserView: NSView {
     }
     
     /// Current display items
-    private var displayItems: [PlexDisplayItem] = [] {
+    private var displayItems: [LibraryBrowserItem] = [] {
         didSet { artLens.rowsDidChange() }
     }
 
@@ -962,7 +760,7 @@ class PlexBrowserView: NSView {
         get { UserDefaults.standard.object(forKey: "ClassicLocalPlistsSlotShowsFolders") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "ClassicLocalPlistsSlotShowsFolders") }
     }
-    private var effectivePlistsSlotMode: PlexBrowseMode {
+    private var effectivePlistsSlotMode: LibraryBrowseMode {
         guard case .local = currentSource, localPlistsSlotShowsFolders else { return .plists }
         return .folders
     }
@@ -1160,7 +958,7 @@ class PlexBrowserView: NSView {
     
     /// List, Flow or Tiles, and the Flow / Tiles view standing in for the list (see LibraryArtLens).
     /// Classic's taller, freely stretchable window keeps the Flow label under the centred cover.
-    private lazy var artLens = LibraryArtLens<PlexDisplayItem>(
+    private lazy var artLens = LibraryArtLens<LibraryBrowserItem>(
         container: self, flowLabelPlacement: .belowCenteredCover, host: .init(
             rows: { [unowned self] in displayItems },
             isSearch: { [unowned self] in browseMode == .search },
@@ -1353,13 +1151,13 @@ class PlexBrowserView: NSView {
 
     private func tabRowNaturalWidth(textScale: CGFloat) -> CGFloat {
         let style = winampModernStyle
-        var labels = PlexBrowseMode.allCases.map { $0.title }
+        var labels = LibraryBrowseMode.tabs.map { $0.title }
         labels.append("Channels")
         labels.append("Folders")
         let maxLabelWidth = labels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) }.max() ?? 0
         let sortWidth = ClassicLibraryTab.textWidth("Sort", scale: textScale, style: style) + 8
         let perTab = maxLabelWidth + 12  // breathing room so labels don't touch
-        let tabsWidth = perTab * CGFloat(PlexBrowseMode.allCases.count)
+        let tabsWidth = perTab * CGFloat(LibraryBrowseMode.tabs.count)
         let insets = tabItemHorizontalEdgePadding + (tabItemHorizontalEdgePadding + rightEdgeItemPaddingBoost)
         return tabsWidth + sortWidth + insets
     }
@@ -1484,9 +1282,9 @@ class PlexBrowserView: NSView {
              Layout.leftBorder + Layout.rightBorder)
     }
 
-    /// The label shown in each tab slot (some slots are dynamic), in `allCases` order.
+    /// The label shown in each tab slot (some slots are dynamic), in `tabs` order.
     private func currentTabLabels() -> [String] {
-        PlexBrowseMode.allCases.map { mode in
+        LibraryBrowseMode.tabs.map { mode in
             // plists slot shows "Folders" when toggled on a local source.
             if mode == .plists, localPlistsSlotShowsFolders, case .local = currentSource {
                 return "Folders"
@@ -1559,7 +1357,7 @@ class PlexBrowserView: NSView {
         loadVisibleColumns()
 
         // Load saved source
-        if let savedSource = BrowserSource.load() {
+        if let savedSource = LibraryBrowserSource.load() {
             // Validate saved source
             switch savedSource {
             case .local:
@@ -1822,11 +1620,11 @@ class PlexBrowserView: NSView {
         return loadGeneration
     }
     
-    private func isLoadContextActive(_ generation: Int, source expectedSource: BrowserSource) -> Bool {
+    private func isLoadContextActive(_ generation: Int, source expectedSource: LibraryBrowserSource) -> Bool {
         generation == loadGeneration && currentSource == expectedSource
     }
     
-    private func setLoadErrorIfActive(_ message: String, generation: Int, source expectedSource: BrowserSource) {
+    private func setLoadErrorIfActive(_ message: String, generation: Int, source expectedSource: LibraryBrowserSource) {
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = false
         stopLoadingAnimation()
@@ -1834,7 +1632,7 @@ class PlexBrowserView: NSView {
         needsDisplay = true
     }
     
-    private func finishLoadIfActive(generation: Int, source expectedSource: BrowserSource) {
+    private func finishLoadIfActive(generation: Int, source expectedSource: LibraryBrowserSource) {
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = false
         stopLoadingAnimation()
@@ -2202,7 +2000,7 @@ class PlexBrowserView: NSView {
     // MARK: - Art (Flow, Tiles, row thumbnails)
 
     /// A row as the Flow / Tiles views show it.
-    private func artItem(for item: PlexDisplayItem) -> LibraryArtItem {
+    private func artItem(for item: LibraryBrowserItem) -> LibraryArtItem {
         let cacheKey = itemArtwork(for: item).cacheKey
         return LibraryArtItem(id: item.id, title: item.title, subtitle: item.info ?? "",
                               cachedArtwork: { cacheKey.flatMap { Self.artworkCache.object(forKey: NSString(string: $0)) } },
@@ -2212,7 +2010,7 @@ class PlexBrowserView: NSView {
 
     /// Resolve a display item to its artwork cache key and async loader (reusing the per-source
     /// loaders that back `loadArtworkForSelection`).
-    private func itemArtwork(for item: PlexDisplayItem) -> (cacheKey: String?, load: () async -> NSImage?) {
+    private func itemArtwork(for item: LibraryBrowserItem) -> (cacheKey: String?, load: () async -> NSImage?) {
         switch item.type {
         case .album(let album):
             guard let thumb = album.thumb else { return ("plex:\(album.id)", { nil }) }
@@ -2342,7 +2140,7 @@ class PlexBrowserView: NSView {
 
     /// The art for a row's round thumbnail, or nil for rows that never carry art. Cover Flow items
     /// reuse `itemArtwork`'s loaders, keyed within the current server.
-    private func rowThumbnailSource(for item: PlexDisplayItem) -> LibraryRowThumbnails.Source? {
+    private func rowThumbnailSource(for item: LibraryBrowserItem) -> LibraryRowThumbnails.Source? {
         switch item.type {
         case .localFolder: return nil
         case .youtubeChannel(let channel): return .channel(channel)
@@ -2781,7 +2579,7 @@ class PlexBrowserView: NSView {
         let tabsStartX = tabBarRect.minX + tabLeftInset
 
         // Draw tabs, leaving room for the sort indicator.
-        let modes = PlexBrowseMode.allCases
+        let modes = LibraryBrowseMode.tabs
         let tabsWidth = tabBarRect.width - sortWidth - tabLeftInset - tabRightInset
 
         // Content-aware widths and resolved (possibly dynamic) labels, shared with hit-testing.
@@ -3307,7 +3105,7 @@ class PlexBrowserView: NSView {
     }
     
     /// Draw a single row with columns
-    private func drawColumnRow(item: PlexDisplayItem, columns: [BrowserColumn], group: LibraryColumnVisibilityGroup?,
+    private func drawColumnRow(item: LibraryBrowserItem, columns: [BrowserColumn], group: LibraryColumnVisibilityGroup?,
                                in context: CGContext, rect: NSRect, isSelected: Bool, colors: PlaylistColors, indent: CGFloat = 0) {
         let totalWidth = rect.width
         
@@ -3818,16 +3616,8 @@ class PlexBrowserView: NSView {
     }
     
     @objc private func handleSetBrowserSource(_ notification: Notification) {
-        guard let source = notification.object as? BrowserSource else { return }
-        switch source {
-        case .local: currentSource = .local
-        case .plex(let serverId): currentSource = .plex(serverId: serverId)
-        case .subsonic(let serverId): currentSource = .subsonic(serverId: serverId)
-        case .jellyfin(let serverId): currentSource = .jellyfin(serverId: serverId)
-        case .emby(let serverId): currentSource = .emby(serverId: serverId)
-        case .radio: currentSource = .radio
-        case .youtube: currentSource = .youtube
-        }
+        guard let source = notification.object as? LibraryBrowserSource else { return }
+        currentSource = source
     }
 
     /// Load artwork for a track (Plex or local)
@@ -4586,13 +4376,13 @@ class PlexBrowserView: NSView {
     }
     
     /// Check if point is in tab bar and return tab index
-    private func hitTestTabBar(at skinPoint: NSPoint) -> PlexBrowseMode? {
+    private func hitTestTabBar(at skinPoint: NSPoint) -> LibraryBrowseMode? {
         let tabY = Layout.titleBarHeight + Layout.serverBarHeight
         guard skinPoint.y >= tabY && skinPoint.y < tabY + Layout.tabBarHeight else { return nil }
 
         for (index, rect) in tabButtonRects.enumerated()
-        where rect.contains(skinPoint) && index < PlexBrowseMode.allCases.count {
-            return PlexBrowseMode.allCases[index]
+        where rect.contains(skinPoint) && index < LibraryBrowseMode.tabs.count {
+            return LibraryBrowseMode.tabs[index]
         }
         return nil
     }
@@ -5947,7 +5737,7 @@ class PlexBrowserView: NSView {
     }
 
     /// Returns the sort letter for a display item, using the server's index letter for Subsonic artists.
-    private func effectiveSortLetter(for item: PlexDisplayItem) -> String {
+    private func effectiveSortLetter(for item: LibraryBrowserItem) -> String {
         if case .subsonicArtist(let artist) = item.type,
            let normalized = normalizedIndexLetter(artist.indexLetter) {
             return normalized
@@ -6219,7 +6009,7 @@ class PlexBrowserView: NSView {
                 let albumSummaries = albumsByArtist[name] ?? []
                 let stubArtist = Artist(id: name, name: name, albums: [])
                 let count = albumSummaries.count
-                displayItems.append(PlexDisplayItem(id: "local-artist-\(name)", title: name, info: "\(count) \(count == 1 ? "album" : "albums")", indentLevel: 0, hasChildren: count > 0, type: .localArtist(stubArtist)))
+                displayItems.append(LibraryBrowserItem(id: "local-artist-\(name)", title: name, info: "\(count) \(count == 1 ? "album" : "albums")", indentLevel: 0, hasChildren: count > 0, type: .localArtist(stubArtist)))
             }
             needsDisplay = true
             return true
@@ -6233,7 +6023,7 @@ class PlexBrowserView: NSView {
                 let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: [])
                 let displayName: String
                 if let artist = summary.artist, !artist.isEmpty { displayName = "\(artist) - \(summary.name)" } else { displayName = summary.name }
-                displayItems.append(PlexDisplayItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 0, hasChildren: summary.trackCount > 0, type: .localAlbum(album)))
+                displayItems.append(LibraryBrowserItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 0, hasChildren: summary.trackCount > 0, type: .localAlbum(album)))
             }
             needsDisplay = true
             return true
@@ -6390,9 +6180,9 @@ class PlexBrowserView: NSView {
     }
     
     /// Show context menu with a specific item type (used when we've fetched detailed metadata)
-    private func showContextMenu(for itemType: PlexDisplayItem.ItemType, item: PlexDisplayItem, at event: NSEvent) {
+    private func showContextMenu(for itemType: LibraryBrowserItem.ItemType, item: LibraryBrowserItem, at event: NSEvent) {
         // Create a new display item with the detailed type
-        let detailedItem = PlexDisplayItem(
+        let detailedItem = LibraryBrowserItem(
             id: item.id,
             title: item.title,
             info: item.info,
@@ -6404,7 +6194,7 @@ class PlexBrowserView: NSView {
         showContextMenu(for: detailedItem, at: event)
     }
     
-    private func showContextMenu(for item: PlexDisplayItem, at event: NSEvent) {
+    private func showContextMenu(for item: LibraryBrowserItem, at event: NSEvent) {
         let menu = NSMenu()
         if let playable = playable(for: item) {
             TrackVerb.addMenuItems(to: menu, resolve: resolver(for: playable))
@@ -7213,31 +7003,31 @@ class PlexBrowserView: NSView {
     // MARK: - Plex Radio Station Context Menu Actions
     
     @objc private func contextMenuPlayPlexRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? PlexDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .plexRadioStation(let radioType) = item.type else { return }
         playPlexRadioStation(radioType)
     }
 
     @objc private func contextMenuPlaySubsonicRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? PlexDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .subsonicRadioStation(let radioType) = item.type else { return }
         playSubsonicRadioStation(radioType)
     }
 
     @objc private func contextMenuPlayJellyfinRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? PlexDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .jellyfinRadioStation(let radioType) = item.type else { return }
         playJellyfinRadioStation(radioType)
     }
 
     @objc private func contextMenuPlayEmbyRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? PlexDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .embyRadioStation(let radioType) = item.type else { return }
         playEmbyRadioStation(radioType)
     }
 
     @objc private func contextMenuPlayLocalRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? PlexDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .localRadioStation(let radioType) = item.type else { return }
         playLocalRadioStation(radioType)
     }
@@ -7429,7 +7219,7 @@ class PlexBrowserView: NSView {
 
     /// The row as tracks for the play verbs; nil for a row with no basic play menu (radio,
     /// YouTube, containers that only expand).
-    private func playable(for item: PlexDisplayItem) -> LibraryPlayable? {
+    private func playable(for item: LibraryBrowserItem) -> LibraryPlayable? {
         switch item.type {
         case .track(let t): return .plexTrack(t)
         case .album(let a): return .plexAlbum(a)
@@ -7590,7 +7380,7 @@ class PlexBrowserView: NSView {
     }
     
     @objc private func contextMenuToggleExpand(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? PlexDisplayItem else { return }
+        guard let item = sender.representedObject as? LibraryBrowserItem else { return }
         toggleExpand(item)
     }
     
@@ -8369,7 +8159,7 @@ class PlexBrowserView: NSView {
         }
     }
 
-    private func isArtistRow(_ item: PlexDisplayItem) -> Bool {
+    private func isArtistRow(_ item: LibraryBrowserItem) -> Bool {
         switch item.type {
         case .artist, .localArtist, .subsonicArtist, .jellyfinArtist, .embyArtist:
             return true
@@ -8497,7 +8287,7 @@ class PlexBrowserView: NSView {
     
     private func loadPlexData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = BrowserSource.plex(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.plex(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         guard PlexManager.shared.isLinked else {
             displayItems = []
@@ -8536,7 +8326,7 @@ class PlexBrowserView: NSView {
         loadPlexDataForCurrentMode(serverId: serverId, generation: generation, expectedSource: expectedSource)
     }
     
-    private func loadPlexDataForCurrentMode(serverId: String, generation: Int, expectedSource: BrowserSource) {
+    private func loadPlexDataForCurrentMode(serverId: String, generation: Int, expectedSource: LibraryBrowserSource) {
         let plexManager = PlexManager.shared
         plexLoadTask?.cancel()
         plexLoadTask = Task { @MainActor [weak self] in
@@ -8728,7 +8518,7 @@ class PlexBrowserView: NSView {
                 info = nil
             }
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: groupKey,
                 title: artist.title,
                 info: info,
@@ -8741,7 +8531,7 @@ class PlexBrowserView: NSView {
                 // Sort albums within artist
                 let sortedAlbums = sortPlexAlbums(albums)
                 for album in sortedAlbums {
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: album.id,
                         title: album.title,
                         info: album.year.map { String($0) },
@@ -8759,7 +8549,7 @@ class PlexBrowserView: NSView {
                             return ($0.index ?? 0) < ($1.index ?? 0)
                         }
                         for track in sortedTracks {
-                            displayItems.append(PlexDisplayItem(
+                            displayItems.append(LibraryBrowserItem(
                                 id: track.id,
                                 title: track.title,
                                 info: track.formattedDuration,
@@ -8778,9 +8568,9 @@ class PlexBrowserView: NSView {
         displayItems.removeAll()
         for album in sortPlexAlbums(cachedAlbums) {
             let expanded = expandedAlbums.contains(album.id)
-            displayItems.append(PlexDisplayItem(id: album.id, title: "\(album.parentTitle ?? "Unknown") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .album(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "Unknown") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .album(album)))
             if expanded, let tracks = albumTracks[album.id] {
-                for t in tracks { displayItems.append(PlexDisplayItem(id: t.id, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(t))) }
+                for t in tracks { displayItems.append(LibraryBrowserItem(id: t.id, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(t))) }
             }
         }
     }
@@ -8791,7 +8581,7 @@ class PlexBrowserView: NSView {
                 .compactMap { $0 }
                 .joined(separator: " • ")
             
-            return PlexDisplayItem(
+            return LibraryBrowserItem(
                 id: movie.id,
                 title: movie.title,
                 info: info.isEmpty ? nil : info,
@@ -8811,7 +8601,7 @@ class PlexBrowserView: NSView {
                 .compactMap { $0 }
                 .joined(separator: " • ")
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: show.id,
                 title: show.title,
                 info: info,
@@ -8824,7 +8614,7 @@ class PlexBrowserView: NSView {
                 for season in seasons {
                     let seasonExpanded = expandedSeasons.contains(season.id)
                     
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: season.id,
                         title: season.title,
                         info: "\(season.leafCount) episodes",
@@ -8835,7 +8625,7 @@ class PlexBrowserView: NSView {
                     
                     if seasonExpanded, let episodes = seasonEpisodes[season.id] {
                         for episode in episodes {
-                            displayItems.append(PlexDisplayItem(
+                            displayItems.append(LibraryBrowserItem(
                                 id: episode.id,
                                 title: "\(episode.episodeIdentifier) - \(episode.title)",
                                 info: episode.formattedDuration,
@@ -8853,7 +8643,7 @@ class PlexBrowserView: NSView {
     private func buildJellyfinMovieItems() {
         displayItems = cachedJellyfinMovies.map { movie in
             let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return PlexDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .jellyfinMovie(movie))
+            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .jellyfinMovie(movie))
         }
     }
     
@@ -8862,13 +8652,13 @@ class PlexBrowserView: NSView {
         for show in cachedJellyfinShows {
             let expanded = expandedJellyfinShows.contains(show.id)
             let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(PlexDisplayItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinShow(show)))
+            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinShow(show)))
             if expanded, let seasons = jellyfinShowSeasons[show.id] {
                 for season in seasons {
-                    displayItems.append(PlexDisplayItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .jellyfinSeason(season)))
+                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .jellyfinSeason(season)))
                     if expandedJellyfinSeasons.contains(season.id), let episodes = jellyfinSeasonEpisodes[season.id] {
                         for ep in episodes {
-                            displayItems.append(PlexDisplayItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .jellyfinEpisode(ep)))
+                            displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .jellyfinEpisode(ep)))
                         }
                     }
                 }
@@ -8900,7 +8690,7 @@ class PlexBrowserView: NSView {
             let trackCount = playlist.leafCount
             let info = "\(trackCount) \(trackCount == 1 ? "track" : "tracks")"
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: playlist.id,
                 title: playlist.title,
                 info: info,
@@ -8912,7 +8702,7 @@ class PlexBrowserView: NSView {
             // Show tracks if expanded
             if isExpanded, let tracks = plexPlaylistTracks[playlist.id] {
                 for track in tracks {
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: "\(playlist.id)-\(track.id)",
                         title: track.title,
                         info: track.formattedDuration,
@@ -8945,7 +8735,7 @@ class PlexBrowserView: NSView {
             }
             let uniqueArtists = sortPlexArtists(Array(artistsByName.values))
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "header-artists",
                 title: "Artists (\(uniqueArtists.count))",
                 info: nil,
@@ -8959,7 +8749,7 @@ class PlexBrowserView: NSView {
                 let info: String? = artist.albumCount > 0 
                     ? "\(artist.albumCount) \(artist.albumCount == 1 ? "album" : "albums")" 
                     : nil
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: artist.id,
                     title: artist.title,
                     info: info,
@@ -8972,7 +8762,7 @@ class PlexBrowserView: NSView {
                 if isExpanded, let albums = artistAlbumsByName[normalizedName] {
                     for album in sortPlexAlbums(albums) {
                         let albumExpanded = expandedAlbums.contains(album.id)
-                        displayItems.append(PlexDisplayItem(
+                        displayItems.append(LibraryBrowserItem(
                             id: album.id,
                             title: album.title,
                             info: album.year.map { String($0) },
@@ -8991,7 +8781,7 @@ class PlexBrowserView: NSView {
                                 return ($0.index ?? 0) < ($1.index ?? 0)
                             }
                             for track in sortedTracks {
-                                displayItems.append(PlexDisplayItem(
+                                displayItems.append(LibraryBrowserItem(
                                     id: track.id,
                                     title: track.title,
                                     info: track.formattedDuration,
@@ -9018,7 +8808,7 @@ class PlexBrowserView: NSView {
             }
             let sortedAlbums = sortPlexAlbums(uniqueAlbums)
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "header-albums",
                 title: "Albums (\(sortedAlbums.count))",
                 info: nil,
@@ -9028,7 +8818,7 @@ class PlexBrowserView: NSView {
             ))
             for album in sortedAlbums {
                 let isExpanded = expandedAlbums.contains(album.id)
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: album.id,
                     title: "\(album.parentTitle ?? "") - \(album.title)",
                     info: album.year.map { String($0) },
@@ -9047,7 +8837,7 @@ class PlexBrowserView: NSView {
                         return ($0.index ?? 0) < ($1.index ?? 0)
                     }
                     for track in sortedTracks {
-                        displayItems.append(PlexDisplayItem(
+                        displayItems.append(LibraryBrowserItem(
                             id: track.id,
                             title: track.title,
                             info: track.formattedDuration,
@@ -9072,7 +8862,7 @@ class PlexBrowserView: NSView {
             }
             let sortedTracks = sortPlexTracks(uniqueTracks)
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "header-tracks",
                 title: "Tracks (\(sortedTracks.count))",
                 info: nil,
@@ -9081,7 +8871,7 @@ class PlexBrowserView: NSView {
                 type: .header
             ))
             for track in sortedTracks {
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: track.id,
                     title: "\(track.grandparentTitle ?? "") - \(track.title)",
                     info: track.formattedDuration,
@@ -9103,7 +8893,7 @@ class PlexBrowserView: NSView {
                 }
             }
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "header-movies",
                 title: "Movies (\(uniqueMovies.count))",
                 info: nil,
@@ -9115,7 +8905,7 @@ class PlexBrowserView: NSView {
                 let info = [movie.year.map { String($0) }, movie.formattedDuration]
                     .compactMap { $0 }
                     .joined(separator: " • ")
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: movie.id,
                     title: movie.title,
                     info: info.isEmpty ? nil : info,
@@ -9137,7 +8927,7 @@ class PlexBrowserView: NSView {
                 }
             }
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "header-shows",
                 title: "TV Shows (\(uniqueShows.count))",
                 info: nil,
@@ -9147,7 +8937,7 @@ class PlexBrowserView: NSView {
             ))
             for show in uniqueShows {
                 let isExpanded = expandedShows.contains(show.id)
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: show.id,
                     title: show.title,
                     info: "\(show.childCount) seasons",
@@ -9160,7 +8950,7 @@ class PlexBrowserView: NSView {
                 if isExpanded, let seasons = showSeasons[show.id] {
                     for season in seasons {
                         let seasonExpanded = expandedSeasons.contains(season.id)
-                        displayItems.append(PlexDisplayItem(
+                        displayItems.append(LibraryBrowserItem(
                             id: season.id,
                             title: season.title,
                             info: "\(season.leafCount) episodes",
@@ -9172,7 +8962,7 @@ class PlexBrowserView: NSView {
                         // Show episodes if season is expanded
                         if seasonExpanded, let episodes = seasonEpisodes[season.id] {
                             for episode in episodes {
-                                displayItems.append(PlexDisplayItem(
+                                displayItems.append(LibraryBrowserItem(
                                     id: episode.id,
                                     title: "\(episode.episodeIdentifier) - \(episode.title)",
                                     info: episode.formattedDuration,
@@ -9198,7 +8988,7 @@ class PlexBrowserView: NSView {
                 }
             }
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "header-episodes",
                 title: "Episodes (\(uniqueEpisodes.count))",
                 info: nil,
@@ -9207,7 +8997,7 @@ class PlexBrowserView: NSView {
                 type: .header
             ))
             for episode in uniqueEpisodes {
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: episode.id,
                     title: "\(episode.grandparentTitle ?? "") - \(episode.episodeIdentifier) - \(episode.title)",
                     info: episode.formattedDuration,
@@ -9375,7 +9165,7 @@ class PlexBrowserView: NSView {
     }
 
     private func buildYouTubeChannelItems() {
-        displayItems = youtubeRows.channels(YouTubeManager.shared.channels).map { PlexDisplayItem($0) }
+        displayItems = youtubeRows.channels(YouTubeManager.shared.channels).map { LibraryBrowserItem($0) }
     }
 
     /// Search as you type — except a YouTube channel search, a network call that waits for Enter.
@@ -9407,7 +9197,7 @@ class PlexBrowserView: NSView {
     }
 
     private func buildYouTubeSearchItems() {
-        displayItems = youtubeRows.channelSearch(youtubeSearch.results).map { PlexDisplayItem($0) }
+        displayItems = youtubeRows.channelSearch(youtubeSearch.results).map { LibraryBrowserItem($0) }
     }
 
     @objc private func contextMenuSubscribeYouTubeChannel(_ sender: NSMenuItem) {
@@ -9421,7 +9211,7 @@ class PlexBrowserView: NSView {
 
         let matches = RadioManager.shared.searchStations(query: searchQuery)
         for station in matches {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "radio-search-\(station.id.uuidString)",
                 title: station.name,
                 info: RadioManager.shared.normalizedGenre(for: station),
@@ -9437,7 +9227,7 @@ class PlexBrowserView: NSView {
         level: Int,
         childrenByParent: [String: [RadioFolderDescriptor]]
     ) {
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: folder.id,
             title: folder.title,
             info: nil,
@@ -9450,7 +9240,7 @@ class PlexBrowserView: NSView {
         if folder.kind.isStationContainer {
             let stations = RadioManager.shared.stations(inFolder: folder.kind)
             for station in stations {
-                displayItems.append(PlexDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: "radio-station-\(folder.id)-\(station.id.uuidString)",
                     title: station.name,
                     info: RadioManager.shared.normalizedGenre(for: station),
@@ -9588,7 +9378,7 @@ class PlexBrowserView: NSView {
               genres.count, hasJazz ? "yes" : "no", genres.joined(separator: ", "))
         
         // Library Radio
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "plex-radio-library",
             title: "Library Radio",
             info: "Library",
@@ -9596,7 +9386,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .plexRadioStation(.libraryRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "plex-radio-library-sonic",
             title: "Library Radio (Sonic)",
             info: "Library",
@@ -9606,7 +9396,7 @@ class PlexBrowserView: NSView {
         ))
         
         // Popularity - Only the Hits
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "plex-radio-hits",
             title: "Only the Hits",
             info: "Popularity",
@@ -9614,7 +9404,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .plexRadioStation(.hitsRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "plex-radio-hits-sonic",
             title: "Only the Hits (Sonic)",
             info: "Popularity",
@@ -9624,7 +9414,7 @@ class PlexBrowserView: NSView {
         ))
         
         // Popularity - Deep Cuts
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "plex-radio-deepcuts",
             title: "Deep Cuts",
             info: "Popularity",
@@ -9632,7 +9422,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .plexRadioStation(.deepCutsRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "plex-radio-deepcuts-sonic",
             title: "Deep Cuts (Sonic)",
             info: "Popularity",
@@ -9643,7 +9433,7 @@ class PlexBrowserView: NSView {
         
         // Rating stations
         for station in RadioConfig.ratingStations {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "plex-radio-rating-\(station.minRating)",
                 title: "\(station.name) Radio",
                 info: "My Ratings",
@@ -9651,7 +9441,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .plexRadioStation(.ratingRadio(minRating: station.minRating, name: station.name))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "plex-radio-rating-\(station.minRating)-sonic",
                 title: "\(station.name) Radio (Sonic)",
                 info: "My Ratings",
@@ -9663,7 +9453,7 @@ class PlexBrowserView: NSView {
         
         // Genre stations (dynamically loaded)
         for genre in genres {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "plex-radio-genre-\(genre)",
                 title: "\(genre) Radio",
                 info: "Genre",
@@ -9671,7 +9461,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .plexRadioStation(.genreRadio(genre))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "plex-radio-genre-\(genre)-sonic",
                 title: "\(genre) Radio (Sonic)",
                 info: "Genre",
@@ -9683,7 +9473,7 @@ class PlexBrowserView: NSView {
         
         // Decade stations
         for decade in RadioConfig.decades {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "plex-radio-decade-\(decade.name)",
                 title: "\(decade.name) Radio",
                 info: "Decade",
@@ -9691,7 +9481,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .plexRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "plex-radio-decade-\(decade.name)-sonic",
                 title: "\(decade.name) Radio (Sonic)",
                 info: "Decade",
@@ -9704,7 +9494,7 @@ class PlexBrowserView: NSView {
 
     private func buildSubsonicRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "sub-radio-library",
             title: "Library Radio",
             info: "Library",
@@ -9712,7 +9502,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .subsonicRadioStation(.libraryRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "sub-radio-library-sim",
             title: "Library Radio (Similar)",
             info: "Library",
@@ -9720,7 +9510,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .subsonicRadioStation(.librarySimilar)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "sub-radio-starred",
             title: "Starred Radio",
             info: "Starred",
@@ -9728,7 +9518,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .subsonicRadioStation(.starredRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "sub-radio-starred-sim",
             title: "Starred Radio (Similar)",
             info: "Starred",
@@ -9737,7 +9527,7 @@ class PlexBrowserView: NSView {
             type: .subsonicRadioStation(.starredSimilar)
         ))
         for genre in genres {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "sub-radio-genre-\(genre)",
                 title: "\(genre) Radio",
                 info: "Genre",
@@ -9745,7 +9535,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .subsonicRadioStation(.genreRadio(genre))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "sub-radio-genre-\(genre)-sim",
                 title: "\(genre) Radio (Similar)",
                 info: "Genre",
@@ -9755,7 +9545,7 @@ class PlexBrowserView: NSView {
             ))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "sub-radio-decade-\(decade.name)",
                 title: "\(decade.name) Radio",
                 info: "Decade",
@@ -9763,7 +9553,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .subsonicRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "sub-radio-decade-\(decade.name)-sim",
                 title: "\(decade.name) Radio (Similar)",
                 info: "Decade",
@@ -9776,7 +9566,7 @@ class PlexBrowserView: NSView {
 
     private func buildJellyfinRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "jf-radio-library",
             title: "Library Radio",
             info: "Library",
@@ -9784,7 +9574,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .jellyfinRadioStation(.libraryRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "jf-radio-library-mix",
             title: "Library Radio (Instant Mix)",
             info: "Library",
@@ -9792,7 +9582,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .jellyfinRadioStation(.libraryInstantMix)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "jf-radio-fav",
             title: "Favorites Radio",
             info: "Favorites",
@@ -9800,7 +9590,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .jellyfinRadioStation(.favoritesRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "jf-radio-fav-mix",
             title: "Favorites Radio (Instant Mix)",
             info: "Favorites",
@@ -9809,7 +9599,7 @@ class PlexBrowserView: NSView {
             type: .jellyfinRadioStation(.favoritesInstantMix)
         ))
         for genre in genres {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "jf-radio-genre-\(genre)",
                 title: "\(genre) Radio",
                 info: "Genre",
@@ -9817,7 +9607,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .jellyfinRadioStation(.genreRadio(genre))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "jf-radio-genre-\(genre)-mix",
                 title: "\(genre) Radio (Instant Mix)",
                 info: "Genre",
@@ -9827,7 +9617,7 @@ class PlexBrowserView: NSView {
             ))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "jf-radio-decade-\(decade.name)",
                 title: "\(decade.name) Radio",
                 info: "Decade",
@@ -9835,7 +9625,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .jellyfinRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "jf-radio-decade-\(decade.name)-mix",
                 title: "\(decade.name) Radio (Instant Mix)",
                 info: "Decade",
@@ -9848,7 +9638,7 @@ class PlexBrowserView: NSView {
 
     private func buildEmbyRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "emby-radio-library",
             title: "Library Radio",
             info: "Library",
@@ -9856,7 +9646,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .embyRadioStation(.libraryRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "emby-radio-library-mix",
             title: "Library Radio (Instant Mix)",
             info: "Library",
@@ -9864,7 +9654,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .embyRadioStation(.libraryInstantMix)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "emby-radio-fav",
             title: "Favorites Radio",
             info: "Favorites",
@@ -9872,7 +9662,7 @@ class PlexBrowserView: NSView {
             hasChildren: false,
             type: .embyRadioStation(.favoritesRadio)
         ))
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "emby-radio-fav-mix",
             title: "Favorites Radio (Instant Mix)",
             info: "Favorites",
@@ -9881,7 +9671,7 @@ class PlexBrowserView: NSView {
             type: .embyRadioStation(.favoritesInstantMix)
         ))
         for genre in genres {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "emby-radio-genre-\(genre)",
                 title: "\(genre) Radio",
                 info: "Genre",
@@ -9889,7 +9679,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .embyRadioStation(.genreRadio(genre))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "emby-radio-genre-\(genre)-mix",
                 title: "\(genre) Radio (Instant Mix)",
                 info: "Genre",
@@ -9899,7 +9689,7 @@ class PlexBrowserView: NSView {
             ))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "emby-radio-decade-\(decade.name)",
                 title: "\(decade.name) Radio",
                 info: "Decade",
@@ -9907,7 +9697,7 @@ class PlexBrowserView: NSView {
                 hasChildren: false,
                 type: .embyRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))
             ))
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "emby-radio-decade-\(decade.name)-mix",
                 title: "\(decade.name) Radio (Instant Mix)",
                 info: "Decade",
@@ -9920,7 +9710,7 @@ class PlexBrowserView: NSView {
 
     private func buildLocalRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(PlexDisplayItem(
+        displayItems.append(LibraryBrowserItem(
             id: "local-radio-library",
             title: "Library Radio",
             info: "Library",
@@ -9929,7 +9719,7 @@ class PlexBrowserView: NSView {
             type: .localRadioStation(.libraryRadio)
         ))
         for genre in genres {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "local-radio-genre-\(genre)",
                 title: "\(genre) Radio",
                 info: "Genre",
@@ -9939,7 +9729,7 @@ class PlexBrowserView: NSView {
             ))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "local-radio-decade-\(decade.name)",
                 title: "\(decade.name) Radio",
                 info: "Decade",
@@ -9996,7 +9786,7 @@ class PlexBrowserView: NSView {
     /// Load Subsonic data for the current mode
     private func loadSubsonicData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = BrowserSource.subsonic(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.subsonic(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = true
         errorMessage = nil
@@ -10030,7 +9820,7 @@ class PlexBrowserView: NSView {
     }
     
     /// Load Subsonic content for the current browse mode
-    private func loadSubsonicDataForCurrentMode(generation: Int, expectedSource: BrowserSource) {
+    private func loadSubsonicDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
         let manager = SubsonicManager.shared
         
         subsonicLoadTask?.cancel()
@@ -10119,7 +9909,7 @@ class PlexBrowserView: NSView {
             let info = albumCount > 0 ? "\(albumCount) album\(albumCount == 1 ? "" : "s")" : nil
             let isExpanded = expandedSubsonicArtists.contains(artist.id)
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: artist.id,
                 title: artist.name,
                 info: info,
@@ -10133,7 +9923,7 @@ class PlexBrowserView: NSView {
                 if let albums = subsonicArtistAlbums[artist.id] {
                     for album in sortSubsonicAlbums(albums) {
                         let albumExpanded = expandedSubsonicAlbums.contains(album.id)
-                        displayItems.append(PlexDisplayItem(
+                        displayItems.append(LibraryBrowserItem(
                             id: album.id,
                             title: album.name,
                             info: album.year.map { String($0) },
@@ -10151,7 +9941,7 @@ class PlexBrowserView: NSView {
                                 return ($0.track ?? 0) < ($1.track ?? 0)
                             }
                             for song in sortedSongs {
-                                displayItems.append(PlexDisplayItem(
+                                displayItems.append(LibraryBrowserItem(
                                     id: song.id,
                                     title: song.title,
                                     info: formatDuration(song.duration),
@@ -10172,10 +9962,10 @@ class PlexBrowserView: NSView {
         displayItems.removeAll()
         for album in sortSubsonicAlbums(cachedSubsonicAlbums) {
             let expanded = expandedSubsonicAlbums.contains(album.id)
-            displayItems.append(PlexDisplayItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .subsonicAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .subsonicAlbum(album)))
             if expanded, let songs = subsonicAlbumSongs[album.id] {
                 let sorted = songs.sorted { ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(PlexDisplayItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(s))) }
+                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(s))) }
             }
         }
     }
@@ -10191,7 +9981,7 @@ class PlexBrowserView: NSView {
             let songCount = playlist.songCount
             let info = "\(songCount) \(songCount == 1 ? "track" : "tracks")"
 
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: playlist.id,
                 title: playlist.name,
                 info: info,
@@ -10203,7 +9993,7 @@ class PlexBrowserView: NSView {
             // Show tracks if expanded
             if isExpanded, let tracks = subsonicPlaylistTracks[playlist.id] {
                 for track in tracks {
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: "\(playlist.id)-\(track.id)",
                         title: track.title,
                         info: formatDuration(track.duration),
@@ -10222,12 +10012,12 @@ class PlexBrowserView: NSView {
             let key = playlist.url.path
             let expanded = expandedLocalPlaylists.contains(key)
             let info = localPlaylistTracks[key].map { "\($0.count) tracks" }
-            displayItems.append(PlexDisplayItem(id: key, title: playlist.title, info: info, indentLevel: 0, hasChildren: true, type: .localPlaylist(playlist)))
+            displayItems.append(LibraryBrowserItem(id: key, title: playlist.title, info: info, indentLevel: 0, hasChildren: true, type: .localPlaylist(playlist)))
             if expanded, let tracks = localPlaylistTracks[key] {
                 for t in tracks {
                     let duration = t.duration.map { Int($0) }
                     let title = t.title
-                    displayItems.append(PlexDisplayItem(id: "\(key)-\(t.url.absoluteString)", title: title, info: formatDuration(duration), indentLevel: 1, hasChildren: false, type: .localPlaylistTrack(t)))
+                    displayItems.append(LibraryBrowserItem(id: "\(key)-\(t.url.absoluteString)", title: title, info: formatDuration(duration), indentLevel: 1, hasChildren: false, type: .localPlaylistTrack(t)))
                 }
             }
         }
@@ -10252,7 +10042,7 @@ class PlexBrowserView: NSView {
 
     private func loadEmbyData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = BrowserSource.emby(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.emby(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = true
         errorMessage = nil
@@ -10285,7 +10075,7 @@ class PlexBrowserView: NSView {
         loadEmbyDataForCurrentMode(generation: generation, expectedSource: expectedSource)
     }
 
-    private func loadEmbyDataForCurrentMode(generation: Int, expectedSource: BrowserSource) {
+    private func loadEmbyDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
         let manager = EmbyManager.shared
 
         embyLoadTask?.cancel()
@@ -10388,7 +10178,7 @@ class PlexBrowserView: NSView {
 
     private func loadJellyfinData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = BrowserSource.jellyfin(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.jellyfin(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = true
         errorMessage = nil
@@ -10421,7 +10211,7 @@ class PlexBrowserView: NSView {
         loadJellyfinDataForCurrentMode(generation: generation, expectedSource: expectedSource)
     }
     
-    private func loadJellyfinDataForCurrentMode(generation: Int, expectedSource: BrowserSource) {
+    private func loadJellyfinDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
         let manager = JellyfinManager.shared
         
         jellyfinLoadTask?.cancel()
@@ -10558,7 +10348,7 @@ class PlexBrowserView: NSView {
             let info = albumCount > 0 ? "\(albumCount) album\(albumCount == 1 ? "" : "s")" : nil
             let isExpanded = expandedJellyfinArtists.contains(artist.id)
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: artist.id,
                 title: artist.name,
                 info: info,
@@ -10571,7 +10361,7 @@ class PlexBrowserView: NSView {
                 if let albums = jellyfinArtistAlbums[artist.id] {
                     for album in sortJellyfinAlbums(albums) {
                         let albumExpanded = expandedJellyfinAlbums.contains(album.id)
-                        displayItems.append(PlexDisplayItem(
+                        displayItems.append(LibraryBrowserItem(
                             id: album.id,
                             title: album.name,
                             info: album.year.map { String($0) },
@@ -10588,7 +10378,7 @@ class PlexBrowserView: NSView {
                                 return ($0.track ?? 0) < ($1.track ?? 0)
                             }
                             for song in sortedSongs {
-                                displayItems.append(PlexDisplayItem(
+                                displayItems.append(LibraryBrowserItem(
                                     id: song.id,
                                     title: song.title,
                                     info: formatDuration(song.duration),
@@ -10608,10 +10398,10 @@ class PlexBrowserView: NSView {
         displayItems.removeAll()
         for album in sortJellyfinAlbums(cachedJellyfinAlbums) {
             let expanded = expandedJellyfinAlbums.contains(album.id)
-            displayItems.append(PlexDisplayItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .jellyfinAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .jellyfinAlbum(album)))
             if expanded, let songs = jellyfinAlbumSongs[album.id] {
                 let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(PlexDisplayItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(s))) }
+                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(s))) }
             }
         }
     }
@@ -10626,7 +10416,7 @@ class PlexBrowserView: NSView {
             let songCount = playlist.songCount
             let info = "\(songCount) \(songCount == 1 ? "track" : "tracks")"
             
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: playlist.id,
                 title: playlist.name,
                 info: info,
@@ -10637,7 +10427,7 @@ class PlexBrowserView: NSView {
             
             if isExpanded, let tracks = jellyfinPlaylistTracks[playlist.id] {
                 for track in tracks {
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: "\(playlist.id)-\(track.id)",
                         title: track.title,
                         info: formatDuration(track.duration),
@@ -10718,7 +10508,7 @@ class PlexBrowserView: NSView {
             let info = albumCount > 0 ? "\(albumCount) album\(albumCount == 1 ? "" : "s")" : nil
             let isExpanded = expandedEmbyArtists.contains(artist.id)
 
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: artist.id,
                 title: artist.name,
                 info: info,
@@ -10731,7 +10521,7 @@ class PlexBrowserView: NSView {
                 if let albums = embyArtistAlbums[artist.id] {
                     for album in sortEmbyAlbums(albums) {
                         let albumExpanded = expandedEmbyAlbums.contains(album.id)
-                        displayItems.append(PlexDisplayItem(
+                        displayItems.append(LibraryBrowserItem(
                             id: album.id,
                             title: album.name,
                             info: album.year.map { String($0) },
@@ -10748,7 +10538,7 @@ class PlexBrowserView: NSView {
                                 return ($0.track ?? 0) < ($1.track ?? 0)
                             }
                             for song in sortedSongs {
-                                displayItems.append(PlexDisplayItem(
+                                displayItems.append(LibraryBrowserItem(
                                     id: song.id,
                                     title: song.title,
                                     info: formatDuration(song.duration),
@@ -10768,10 +10558,10 @@ class PlexBrowserView: NSView {
         displayItems.removeAll()
         for album in sortEmbyAlbums(cachedEmbyAlbums) {
             let expanded = expandedEmbyAlbums.contains(album.id)
-            displayItems.append(PlexDisplayItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .embyAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .embyAlbum(album)))
             if expanded, let songs = embyAlbumSongs[album.id] {
                 let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(PlexDisplayItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(s))) }
+                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(s))) }
             }
         }
     }
@@ -10786,7 +10576,7 @@ class PlexBrowserView: NSView {
             let songCount = playlist.songCount
             let info = "\(songCount) \(songCount == 1 ? "track" : "tracks")"
 
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: playlist.id,
                 title: playlist.name,
                 info: info,
@@ -10797,7 +10587,7 @@ class PlexBrowserView: NSView {
 
             if isExpanded, let tracks = embyPlaylistTracks[playlist.id] {
                 for track in tracks {
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: "\(playlist.id)-\(track.id)",
                         title: track.title,
                         info: formatDuration(track.duration),
@@ -10813,7 +10603,7 @@ class PlexBrowserView: NSView {
     private func buildEmbyMovieItems() {
         displayItems = cachedEmbyMovies.map { movie in
             let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return PlexDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .embyMovie(movie))
+            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .embyMovie(movie))
         }
     }
 
@@ -10823,14 +10613,14 @@ class PlexBrowserView: NSView {
             let expanded = expandedEmbyShows.contains(show.id)
             let seasonCount = show.childCount
             let info = [show.year.map { String($0) }, seasonCount > 0 ? "\(seasonCount) seasons" : nil].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(PlexDisplayItem(id: show.id, title: show.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: true, type: .embyShow(show)))
+            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: true, type: .embyShow(show)))
             if expanded, let seasons = embyShowSeasons[show.id] {
                 for season in seasons {
                     let episodeCount = season.childCount
-                    displayItems.append(PlexDisplayItem(id: season.id, title: season.title, info: episodeCount > 0 ? "\(episodeCount) episodes" : nil, indentLevel: 1, hasChildren: true, type: .embySeason(season)))
+                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: episodeCount > 0 ? "\(episodeCount) episodes" : nil, indentLevel: 1, hasChildren: true, type: .embySeason(season)))
                     if expandedEmbySeasons.contains(season.id), let episodes = embySeasonEpisodes[season.id] {
                         for ep in episodes {
-                            displayItems.append(PlexDisplayItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .embyEpisode(ep)))
+                            displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .embyEpisode(ep)))
                         }
                     }
                 }
@@ -10851,7 +10641,7 @@ class PlexBrowserView: NSView {
             let albumCount = albumSummaries.count
             let stubArtist = Artist(id: name, name: name, albums: [])
             let isExpanded = expandedLocalArtists.contains(name)
-            displayItems.append(PlexDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "local-artist-\(name)",
                 title: name,
                 info: "\(albumCount) \(albumCount == 1 ? "album" : "albums")",
@@ -10864,7 +10654,7 @@ class PlexBrowserView: NSView {
                     let albumExpanded = expandedLocalAlbums.contains(summary.id)
                     let tracks: [LibraryTrack] = albumExpanded ? store.tracksForAlbum(summary.id) : []
                     let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: tracks)
-                    displayItems.append(PlexDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: "local-album-\(album.id)",
                         title: album.name,
                         info: summary.year.map { String($0) },
@@ -10879,7 +10669,7 @@ class PlexBrowserView: NSView {
                             return ($0.trackNumber ?? 0) < ($1.trackNumber ?? 0)
                         }
                         for track in sortedTracks {
-                            displayItems.append(PlexDisplayItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration, indentLevel: 2, hasChildren: false, type: .localTrack(track)))
+                            displayItems.append(LibraryBrowserItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration, indentLevel: 2, hasChildren: false, type: .localTrack(track)))
                         }
                     }
                 }
@@ -10904,10 +10694,10 @@ class PlexBrowserView: NSView {
             } else {
                 displayName = summary.name
             }
-            displayItems.append(PlexDisplayItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 0, hasChildren: summary.trackCount > 0, type: .localAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 0, hasChildren: summary.trackCount > 0, type: .localAlbum(album)))
             if expanded {
                 let sorted = tracks.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.trackNumber ?? 0) < ($1.trackNumber ?? 0) }
-                for t in sorted { displayItems.append(PlexDisplayItem(id: t.id.uuidString, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
+                for t in sorted { displayItems.append(LibraryBrowserItem(id: t.id.uuidString, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
             }
         }
     }
@@ -11364,38 +11154,38 @@ class PlexBrowserView: NSView {
         // Search artists
         let matchingArtistNames = store.searchArtistNames(query: searchQuery)
         if !matchingArtistNames.isEmpty {
-            displayItems.append(PlexDisplayItem(id: "header-local-artists", title: "Artists (\(matchingArtistNames.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-local-artists", title: "Artists (\(matchingArtistNames.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for name in matchingArtistNames {
                 let stubArtist = Artist(id: name, name: name, albums: [])
                 let albumCount = store.albumsForArtist(name).count
-                displayItems.append(PlexDisplayItem(id: "local-artist-\(name)", title: name, info: "\(albumCount) albums", indentLevel: 1, hasChildren: albumCount > 0, type: .localArtist(stubArtist)))
+                displayItems.append(LibraryBrowserItem(id: "local-artist-\(name)", title: name, info: "\(albumCount) albums", indentLevel: 1, hasChildren: albumCount > 0, type: .localArtist(stubArtist)))
             }
         }
 
         // Search albums
         let matchingAlbums = store.searchAlbumSummaries(query: searchQuery)
         if !matchingAlbums.isEmpty {
-            displayItems.append(PlexDisplayItem(id: "header-local-albums", title: "Albums (\(matchingAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-local-albums", title: "Albums (\(matchingAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for summary in matchingAlbums {
                 let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: [])
                 let displayName: String
                 if let artist = summary.artist, !artist.isEmpty { displayName = "\(artist) - \(summary.name)" } else { displayName = summary.name }
-                displayItems.append(PlexDisplayItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 1, hasChildren: summary.trackCount > 0, type: .localAlbum(album)))
+                displayItems.append(LibraryBrowserItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 1, hasChildren: summary.trackCount > 0, type: .localAlbum(album)))
             }
         }
 
         // Search tracks
         let matchingTracks = store.searchTracks(query: searchQuery, limit: 200, offset: 0)
         if !matchingTracks.isEmpty {
-            displayItems.append(PlexDisplayItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for track in matchingTracks {
-                displayItems.append(PlexDisplayItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(track)))
+                displayItems.append(LibraryBrowserItem(id: track.id.uuidString, title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(track)))
             }
         }
 
         // Search YouTube channels and downloads (tracks already listed above are left out)
         displayItems += youtubeRows.localSearch(query: searchQuery, excluding: Set(matchingTracks.map(\.url)))
-            .map { PlexDisplayItem($0) }
+            .map { LibraryBrowserItem($0) }
     }
     
     /// Build the Folders view: one off-actor depth-first walk of every *expanded* directory,
@@ -11420,7 +11210,7 @@ class PlexBrowserView: NSView {
         localFolderBuildTask?.cancel()
         localFolderBuildTask = Task.detached { [weak self] in
             // Build the ordered item list entirely off the main actor (FS enumeration + DB query)
-            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(PlexDisplayItem.init)
+            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(LibraryBrowserItem.init)
 
             if Task.isCancelled { return }
             await MainActor.run { [weak self] in
@@ -11441,7 +11231,7 @@ class PlexBrowserView: NSView {
         displayItems = cachedLocalMovies.map { movie in
             let info = [movie.year.map { String($0) }, movie.formattedDuration]
                 .compactMap { $0 }.joined(separator: " • ")
-            return PlexDisplayItem(
+            return LibraryBrowserItem(
                 id: movie.id.uuidString,
                 title: movie.title,
                 info: info.isEmpty ? nil : info,
@@ -11453,9 +11243,9 @@ class PlexBrowserView: NSView {
     }
 
     private func buildLocalShowItems() {
-        var items: [PlexDisplayItem] = []
+        var items: [LibraryBrowserItem] = []
         for show in cachedLocalShows {
-            let showItem = PlexDisplayItem(
+            let showItem = LibraryBrowserItem(
                 id: show.id,
                 title: show.title,
                 info: "\(show.episodeCount) episode\(show.episodeCount == 1 ? "" : "s")",
@@ -11468,7 +11258,7 @@ class PlexBrowserView: NSView {
             if expandedLocalShows.contains(show.id) {
                 for season in show.seasons {
                     let seasonId = "\(show.id)|\(season.number)"
-                    let seasonItem = PlexDisplayItem(
+                    let seasonItem = LibraryBrowserItem(
                         id: seasonId,
                         title: "Season \(season.number)",
                         info: "\(season.episodes.count) episode\(season.episodes.count == 1 ? "" : "s")",
@@ -11482,7 +11272,7 @@ class PlexBrowserView: NSView {
                         for ep in season.episodes {
                             let epNum = ep.episodeNumber.map { "E\($0)" } ?? ""
                             let info = [epNum, ep.formattedDuration].filter { !$0.isEmpty }.joined(separator: " • ")
-                            items.append(PlexDisplayItem(
+                            items.append(LibraryBrowserItem(
                                 id: ep.id.uuidString,
                                 title: ep.title,
                                 info: info.isEmpty ? nil : info,
@@ -11669,7 +11459,7 @@ class PlexBrowserView: NSView {
         needsDisplay = true
     }
     
-    private func isExpanded(_ item: PlexDisplayItem) -> Bool {
+    private func isExpanded(_ item: LibraryBrowserItem) -> Bool {
         switch item.type {
         case .artist(let artist):
             // In search mode, use name-based tracking since IDs can vary after deduplication
@@ -11731,7 +11521,7 @@ class PlexBrowserView: NSView {
         }
     }
     
-    private func toggleExpand(_ item: PlexDisplayItem) {
+    private func toggleExpand(_ item: LibraryBrowserItem) {
         switch item.type {
         case .artist(let artist):
             let normalizedName = artist.title.lowercased().trimmingCharacters(in: .whitespaces)
@@ -12374,7 +12164,7 @@ class PlexBrowserView: NSView {
 
     // MARK: - Playback
 
-    private func handleDoubleClick(on item: PlexDisplayItem) {
+    private func handleDoubleClick(on item: LibraryBrowserItem) {
         switch item.type {
         case .track, .album, .plexPlaylist, .localTrack, .localAlbum, .localPlaylist, .localPlaylistTrack,
              .subsonicTrack, .subsonicAlbum, .subsonicPlaylist, .jellyfinTrack, .jellyfinAlbum, .jellyfinPlaylist,
@@ -12655,208 +12445,6 @@ extension PlexBrowserView: NSWindowDelegate {
     }
 }
 
-// MARK: - Display Item
-
-/// Represents an item to display in the Plex browser list
-extension PlexDisplayItem: LibraryArtRow {
-    var isArtItem: Bool { type.isArtItem }
-    var isAlbumItem: Bool { type.isAlbumItem }
-    var isVideoContainer: Bool { type.isVideoContainer }
-}
-
-private struct PlexDisplayItem {
-    let id: String
-    let title: String
-    let info: String?
-    let indentLevel: Int
-    let hasChildren: Bool
-    let type: ItemType
-    var titlePrefix: String? = nil
-    
-    enum ItemType {
-        case artist(PlexArtist)
-        case album(PlexAlbum)
-        case track(PlexTrack)
-        case movie(PlexMovie)
-        case show(PlexShow)
-        case season(PlexSeason)
-        case episode(PlexEpisode)
-        case header
-        // Local content types
-        case localArtist(Artist)
-        case localAlbum(Album)
-        case localTrack(LibraryTrack)
-        case localFolder(url: URL, name: String)
-        case localMovie(LocalVideo)
-        case localShow(LocalShow)
-        case localSeason(LocalSeason, showTitle: String)
-        case localEpisode(LocalEpisode)
-        // Subsonic content types
-        case subsonicArtist(SubsonicArtist)
-        case subsonicAlbum(SubsonicAlbum)
-        case subsonicTrack(SubsonicSong)
-        case subsonicPlaylist(SubsonicPlaylist)
-    // Jellyfin content types
-    case jellyfinArtist(JellyfinArtist)
-    case jellyfinAlbum(JellyfinAlbum)
-    case jellyfinTrack(JellyfinSong)
-    case jellyfinPlaylist(JellyfinPlaylist)
-    case jellyfinMovie(JellyfinMovie)
-    case jellyfinShow(JellyfinShow)
-    case jellyfinSeason(JellyfinSeason)
-    case jellyfinEpisode(JellyfinEpisode)
-    // Emby content types
-    case embyArtist(EmbyArtist)
-    case embyAlbum(EmbyAlbum)
-    case embyTrack(EmbySong)
-    case embyPlaylist(EmbyPlaylist)
-    case embyMovie(EmbyMovie)
-    case embyShow(EmbyShow)
-    case embySeason(EmbySeason)
-    case embyEpisode(EmbyEpisode)
-    // Plex playlist type
-        case plexPlaylist(PlexPlaylist)
-        // Radio station type (Internet Radio - Shoutcast/Icecast)
-        case radioStation(RadioStation)
-        case radioFolder(RadioFolderDescriptor)
-        // YouTube channels and videos
-        case youtubeChannel(YouTubeChannel)
-        case youtubeVideo(YouTubeVideo)
-        // Plex Radio station type (dynamic playlists from Plex library)
-        case plexRadioStation(PlexRadioType)
-        case subsonicRadioStation(SubsonicRadioType)
-        case jellyfinRadioStation(JellyfinRadioType)
-        case embyRadioStation(EmbyRadioType)
-        case localRadioStation(LocalRadioType)
-        case localPlaylist(LocalPlaylist)
-        case localPlaylistTrack(Track)
-
-        var isAlbumItem: Bool {
-            switch self {
-            case .album, .localAlbum, .subsonicAlbum, .jellyfinAlbum, .embyAlbum: return true
-            default: return false
-            }
-        }
-
-        /// Rows shown in Flow and Tiles. Containers (artists, folders, shows, seasons)
-        /// drill in; albums, tracks, movies, and episodes are leaves that play.
-        var isArtItem: Bool {
-            switch self {
-            case .artist, .localArtist, .subsonicArtist, .jellyfinArtist, .embyArtist,
-                 .localFolder,
-                 .track, .localTrack, .subsonicTrack, .jellyfinTrack, .embyTrack,
-                 .movie, .show, .season, .episode,
-                 .localMovie, .localShow, .localSeason, .localEpisode,
-                 .jellyfinMovie, .jellyfinShow, .jellyfinSeason, .jellyfinEpisode,
-                 .embyMovie, .embyShow, .embySeason, .embyEpisode:
-                return true
-            default:
-                return isAlbumItem
-            }
-        }
-
-        /// Movies, shows and seasons: their art is a 2:3 poster. Episodes carry a landscape still.
-        var isPoster: Bool {
-            switch self {
-            case .movie, .show, .season, .localMovie, .localShow, .localSeason,
-                 .jellyfinMovie, .jellyfinShow, .jellyfinSeason, .embyMovie, .embyShow, .embySeason:
-                return true
-            default:
-                return false
-            }
-        }
-
-        /// Search results keep music containers as navigation links, but video containers retain
-        /// their show → season → episode hierarchy inside Flow and Tiles.
-        var isVideoContainer: Bool {
-            switch self {
-            case .show, .season, .localShow, .localSeason,
-                 .jellyfinShow, .jellyfinSeason, .embyShow, .embySeason:
-                return true
-            default:
-                return false
-            }
-        }
-    }
-}
-
-extension PlexDisplayItem {
-    init(_ row: YouTubeRow) {
-        let type: ItemType
-        switch row.kind {
-        case .header: type = .header
-        case .channel(let channel): type = .youtubeChannel(channel)
-        case .video(let video): type = .youtubeVideo(video)
-        }
-        self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
-                  hasChildren: row.hasChildren, type: type, titlePrefix: row.titlePrefix)
-    }
-
-    init(_ row: LocalFolderTree.Row) {
-        let type: ItemType
-        switch row.kind {
-        case .folder(let url): type = .localFolder(url: url, name: row.title)
-        case .track(let track): type = .localTrack(track)
-        }
-        self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
-                  hasChildren: row.hasChildren, type: type)
-    }
-}
-
-/// Types of Plex Radio stations
-enum PlexRadioType: Equatable, Hashable {
-    case libraryRadio
-    case libraryRadioSonic
-    case hitsRadio
-    case hitsRadioSonic
-    case deepCutsRadio
-    case deepCutsRadioSonic
-    case genreRadio(String)
-    case genreRadioSonic(String)
-    case decadeRadio(start: Int, end: Int, name: String)
-    case decadeRadioSonic(start: Int, end: Int, name: String)
-    case ratingRadio(minRating: Double, name: String)
-    case ratingRadioSonic(minRating: Double, name: String)
-    
-    var displayName: String {
-        switch self {
-        case .libraryRadio: return "Library Radio"
-        case .libraryRadioSonic: return "Library Radio (Sonic)"
-        case .hitsRadio: return "Only the Hits"
-        case .hitsRadioSonic: return "Only the Hits (Sonic)"
-        case .deepCutsRadio: return "Deep Cuts"
-        case .deepCutsRadioSonic: return "Deep Cuts (Sonic)"
-        case .genreRadio(let genre): return "\(genre) Radio"
-        case .genreRadioSonic(let genre): return "\(genre) Radio (Sonic)"
-        case .decadeRadio(_, _, let name): return "\(name) Radio"
-        case .decadeRadioSonic(_, _, let name): return "\(name) Radio (Sonic)"
-        case .ratingRadio(_, let name): return "\(name) Radio"
-        case .ratingRadioSonic(_, let name): return "\(name) Radio (Sonic)"
-        }
-    }
-    
-    var category: String {
-        switch self {
-        case .libraryRadio, .libraryRadioSonic: return "Library"
-        case .hitsRadio, .hitsRadioSonic: return "Popularity"
-        case .deepCutsRadio, .deepCutsRadioSonic: return "Popularity"
-        case .genreRadio, .genreRadioSonic: return "Genre"
-        case .decadeRadio, .decadeRadioSonic: return "Decade"
-        case .ratingRadio, .ratingRadioSonic: return "My Ratings"
-        }
-    }
-    
-    var isSonic: Bool {
-        switch self {
-        case .libraryRadioSonic, .hitsRadioSonic, .deepCutsRadioSonic, 
-             .genreRadioSonic, .decadeRadioSonic, .ratingRadioSonic:
-            return true
-        default:
-            return false
-        }
-    }
-}
-
 // MARK: - Column Configuration
 
 /// Column definition for the library browser table view
@@ -12941,9 +12529,7 @@ private struct BrowserColumn {
 
 // MARK: - Column Value Extraction
 
-extension PlexDisplayItem {
-    /// The title as drawn: `titlePrefix` (a YouTube row's markers) ahead of the item's own title.
-    var shownTitle: String { titlePrefix.map { "\($0) \(title)" } ?? title }
+fileprivate extension LibraryBrowserItem {
 
     /// Get the display value for a specific column based on item type
     func columnValue(for column: BrowserColumn) -> String {
@@ -13288,7 +12874,7 @@ extension PlexDisplayItem {
         case "genre":
             return song.genre ?? ""
         case "duration":
-            return PlexDisplayItem.formatDuration(TimeInterval(song.duration))
+            return LibraryBrowserItem.formatDuration(TimeInterval(song.duration))
         case "bitrate":
             return song.bitRate.map { "\($0)k" } ?? ""
         case "sampleRate":

@@ -16,137 +16,8 @@ import NullPlayerCore
 // 5. Uses bottom-left origin coordinates (macOS native - NO coordinate flipping)
 // 6. Uses modern skin palette colors (primaryColor, accentColor, textColor, etc.)
 // 7. Tabs and selections use modern boxed toggle style
-// 8. Re-defines all data models independently
+// 8. Shares its value types (source, tab, row) with the classic view: Windows/LibraryBrowser/
 // =============================================================================
-
-// MARK: - Browser Source
-
-/// Source for browsing content (re-defined independently for modern view)
-enum ModernBrowserSource: Equatable, Codable {
-    case local
-    case plex(serverId: String)
-    case subsonic(serverId: String)
-    case jellyfin(serverId: String)
-    case emby(serverId: String)
-    case radio
-    case youtube
-
-    var displayName: String {
-        switch self {
-        case .local: return "LOCAL FILES"
-        case .plex(let serverId):
-            if let server = PlexManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "PLEX: \(server.name)"
-            }
-            return "PLEX"
-        case .subsonic(let serverId):
-            if let server = SubsonicManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "SUBSONIC: \(server.name)"
-            }
-            return "SUBSONIC"
-        case .jellyfin(let serverId):
-            if let server = JellyfinManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "JELLYFIN: \(server.name)"
-            }
-            return "JELLYFIN"
-        case .emby(let serverId):
-            if let server = EmbyManager.shared.servers.first(where: { $0.id == serverId }) {
-                return "EMBY: \(server.name)"
-            }
-            return "EMBY"
-        case .radio: return "INTERNET RADIO"
-        case .youtube: return "YOUTUBE"
-        }
-    }
-
-    var shortName: String {
-        switch self {
-        case .local: return "Local Files"
-        case .plex(let serverId):
-            if let server = PlexManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Plex"
-        case .subsonic(let serverId):
-            if let server = SubsonicManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Subsonic"
-        case .jellyfin(let serverId):
-            if let server = JellyfinManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Jellyfin"
-        case .emby(let serverId):
-            if let server = EmbyManager.shared.servers.first(where: { $0.id == serverId }) {
-                return server.name
-            }
-            return "Emby"
-        case .radio: return "Radio"
-        case .youtube: return "YouTube"
-        }
-    }
-
-    var isSubsonic: Bool { if case .subsonic = self { return true }; return false }
-    var isJellyfin: Bool { if case .jellyfin = self { return true }; return false }
-    var isEmby: Bool { if case .emby = self { return true }; return false }
-    var isPlex: Bool { if case .plex = self { return true }; return false }
-    var isRadio: Bool { if case .radio = self { return true }; return false }
-    var isYouTube: Bool { if case .youtube = self { return true }; return false }
-    /// YouTube reuses the Internet Radio tab's UI to list its channels/videos.
-    var usesRadioTab: Bool { isRadio || isYouTube }
-    var isRemote: Bool {
-        switch self { case .local, .radio, .youtube: return false; case .plex, .subsonic, .jellyfin, .emby: return true }
-    }
-    var serverId: String? {
-        switch self {
-        case .local, .radio, .youtube: return nil
-        case .plex(let id), .subsonic(let id), .jellyfin(let id), .emby(let id): return id
-        }
-    }
-
-    private static let userDefaultsKey = "BrowserSource"
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)
-        }
-    }
-    static func load() -> ModernBrowserSource? {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-              let source = try? JSONDecoder().decode(ModernBrowserSource.self, from: data) else { return nil }
-        return source
-    }
-}
-
-// MARK: - Browse Mode
-
-enum ModernBrowseMode: Int, CaseIterable {
-    case artists = 0, albums = 1, plists = 3
-    case movies = 4, shows = 5, search = 6, radio = 7, history = 8
-    case folders = 9
-
-    var title: String {
-        switch self {
-        case .artists: return "Artists"
-        case .albums: return "Albums"
-        case .folders: return "Folders"
-        case .plists: return "Plists"
-        case .movies: return "Movies"
-        case .shows: return "TV"
-        case .search: return "Search"
-        case .radio: return "Radio"
-        case .history: return "Data"
-        }
-    }
-    var isVideoMode: Bool { self == .movies || self == .shows }
-    var isMusicMode: Bool { self == .artists || self == .albums || self == .plists || self == .folders }
-    var isRadioMode: Bool { self == .radio }
-    var isHistoryMode: Bool { self == .history }
-
-    static var allCases: [ModernBrowseMode] {
-        [.artists, .albums, .plists, .movies, .shows, .radio, .search, .history]
-    }
-}
 
 // MARK: - Button Type
 
@@ -202,11 +73,11 @@ class ModernLibraryBrowserView: NSView {
     }
     
     // Browse state
-    private var currentSource: ModernBrowserSource = .local {
+    private var currentSource: LibraryBrowserSource = .local {
         didSet { currentSource.save(); onSourceChanged() }
     }
-    private var pendingSourceRestore: ModernBrowserSource?
-    private var browseMode: ModernBrowseMode = .artists {
+    private var pendingSourceRestore: LibraryBrowserSource?
+    private var browseMode: LibraryBrowseMode = .artists {
         didSet {
             guard browseMode != oldValue else { return }
             // A new tab opens Flow or Tiles at its root.
@@ -225,7 +96,7 @@ class ModernLibraryBrowserView: NSView {
     var browseModeRawValue: Int {
         get { browseMode.rawValue }
         set {
-            if let mode = ModernBrowseMode(rawValue: newValue) {
+            if let mode = LibraryBrowseMode(rawValue: newValue) {
                 // If restoring .folders mode while non-local source, fall back to .plists
                 var actualMode = mode
                 if mode == .folders {
@@ -291,7 +162,7 @@ class ModernLibraryBrowserView: NSView {
     private var visibleArtistColumnIds: [String] = ModernBrowserColumn.defaultArtistColumnIds { didSet { saveVisibleColumns() } }
 
     // Display items
-    private var displayItems: [ModernDisplayItem] = [] {
+    private var displayItems: [LibraryBrowserItem] = [] {
         didSet { artLens.rowsDidChange() }
     }
 
@@ -387,7 +258,7 @@ class ModernLibraryBrowserView: NSView {
         set { UserDefaults.standard.set(newValue, forKey: "LocalPlistsSlotShowsFolders") }
     }
 
-    private var effectivePlistsSlotMode: ModernBrowseMode {
+    private var effectivePlistsSlotMode: LibraryBrowseMode {
         if case .local = currentSource, localPlistsSlotShowsFolders {
             return .folders
         }
@@ -561,7 +432,7 @@ class ModernLibraryBrowserView: NSView {
     private var isHighlighted = false
     
     /// List, Flow or Tiles, and the Flow / Tiles view standing in for the list (see LibraryArtLens).
-    private lazy var artLens = LibraryArtLens<ModernDisplayItem>(container: self, host: .init(
+    private lazy var artLens = LibraryArtLens<LibraryBrowserItem>(container: self, host: .init(
         rows: { [unowned self] in displayItems },
         isSearch: { [unowned self] in browseMode == .search },
         selectedIndex: { [unowned self] in selectedIndices.min() },
@@ -688,7 +559,7 @@ class ModernLibraryBrowserView: NSView {
         loadVisibleColumns()
 
         // Load saved source
-        if let savedSource = ModernBrowserSource.load() {
+        if let savedSource = LibraryBrowserSource.load() {
             switch savedSource {
             case .local:
                 currentSource = .local
@@ -1366,9 +1237,9 @@ class ModernLibraryBrowserView: NSView {
 
     // MARK: - Tab Bar Drawing (Modern Boxed Toggle Style)
     
-    /// The label shown in each tab slot (some slots are dynamic), in `allCases` order.
+    /// The label shown in each tab slot (some slots are dynamic), in `tabs` order.
     private func currentTabLabels() -> [String] {
-        ModernBrowseMode.allCases.map { mode in
+        LibraryBrowseMode.tabs.map { mode in
             // plists slot shows "Folders" when toggled on a local source.
             if mode == .plists, localPlistsSlotShowsFolders, case .local = currentSource {
                 return "Folders"
@@ -1511,14 +1382,14 @@ class ModernLibraryBrowserView: NSView {
         let m = ModernSkinElements.sizeMultiplier
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
 
-        var labels = ModernBrowseMode.allCases.map { $0.title }
+        var labels = LibraryBrowseMode.tabs.map { $0.title }
         labels.append("Channels")
         labels.append("Folders")
         let maxLabelWidth = labels.map { $0.size(withAttributes: attrs).width }.max() ?? 0
 
         let sortWidth = "Sort".size(withAttributes: attrs).width + 16 * m
         let perTab = maxLabelWidth + 12 * m
-        return perTab * CGFloat(ModernBrowseMode.allCases.count) + sortWidth
+        return perTab * CGFloat(LibraryBrowseMode.tabs.count) + sortWidth
     }
 
     private func topChromeScale(for skin: ModernSkin) -> CGFloat {
@@ -1558,7 +1429,7 @@ class ModernLibraryBrowserView: NSView {
         
         let tabsWidth = tabBarRect.width - sortWidth
 
-        let modes = ModernBrowseMode.allCases
+        let modes = LibraryBrowseMode.tabs
         // Resolved (possibly dynamic) labels + content-aware widths, shared with hit-testing.
         let labels = currentTabLabels()
         let widths = tabBarWidths(totalWidth: tabsWidth, labels: labels, font: font,
@@ -2185,7 +2056,7 @@ class ModernLibraryBrowserView: NSView {
     
     // MARK: - Column Row Drawing
     
-    private func drawColumnRow(item: ModernDisplayItem, columns: [ModernBrowserColumn], group: LibraryColumnVisibilityGroup?,
+    private func drawColumnRow(item: LibraryBrowserItem, columns: [ModernBrowserColumn], group: LibraryColumnVisibilityGroup?,
                                in context: CGContext, rect: NSRect, isSelected: Bool, skin: ModernSkin, indent: CGFloat = 0) {
         let totalWidth = rect.width
         let textColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textColor
@@ -2487,7 +2358,7 @@ class ModernLibraryBrowserView: NSView {
         }
     }
 
-    private func isInternetRadioItem(_ item: ModernDisplayItem) -> Bool {
+    private func isInternetRadioItem(_ item: LibraryBrowserItem) -> Bool {
         guard case .radio = currentSource else { return false }
         if case .radioStation = item.type { return true }
         return false
@@ -2511,7 +2382,7 @@ class ModernLibraryBrowserView: NSView {
         LibraryColumnVisibility.normalizedIds(ids, allIds: allColumns.map { $0.id })
     }
 
-    private func columnGroup(for item: ModernDisplayItem) -> LibraryColumnVisibilityGroup? {
+    private func columnGroup(for item: LibraryBrowserItem) -> LibraryColumnVisibilityGroup? {
         switch item.type {
         case .track, .subsonicTrack, .localTrack, .jellyfinTrack, .embyTrack:
             return .track
@@ -2532,14 +2403,14 @@ class ModernLibraryBrowserView: NSView {
     }
 
     /// Whether a row draws columns rather than a plain title line.
-    private func drawsColumns(_ item: ModernDisplayItem) -> Bool {
+    private func drawsColumns(_ item: LibraryBrowserItem) -> Bool {
         columnGroup(for: item) != nil || isInternetRadioItem(item)
     }
 
     /// The columns a row draws and the group their widths are keyed by (nil = simple list rendering).
     /// Artist, album and track rows all draw the list's one header, Finder-style; radio and
     /// YouTube rows draw their own fixed columns.
-    private func rowColumns(for item: ModernDisplayItem, header: ListLayout.Header?) -> (columns: [ModernBrowserColumn], group: LibraryColumnVisibilityGroup?)? {
+    private func rowColumns(for item: LibraryBrowserItem, header: ListLayout.Header?) -> (columns: [ModernBrowserColumn], group: LibraryColumnVisibilityGroup?)? {
         switch columnGroup(for: item) {
         case .youtube?: return (ModernBrowserColumn.youtubeColumns, .youtube)
         case _?: return header.map { ($0.columns, $0.group) }
@@ -2696,7 +2567,7 @@ class ModernLibraryBrowserView: NSView {
         }
 
         var sortableIndices: [Int] = []
-        var sortableItems: [ModernDisplayItem] = []
+        var sortableItems: [LibraryBrowserItem] = []
         
         for (index, item) in displayItems.enumerated() {
             if drawsColumns(item) && item.indentLevel == 0 {
@@ -2720,7 +2591,7 @@ class ModernLibraryBrowserView: NSView {
     /// to the build order if any top-level row is not sortable (e.g. a section header) or if a
     /// nested row appears before any leader, since grouping would be ambiguous there.
     private func sortNestedGroupsByColumn(sortColumn: ModernBrowserColumn) {
-        var groups: [[ModernDisplayItem]] = []
+        var groups: [[LibraryBrowserItem]] = []
         for item in displayItems {
             if item.indentLevel == 0 {
                 guard drawsColumns(item) else { needsDisplay = true; return }
@@ -2739,7 +2610,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     /// Sorts column-capable rows while preserving their current order for equal keys.
-    private func stableColumnSortedItems(_ items: [ModernDisplayItem], sortColumn: ModernBrowserColumn) -> [ModernDisplayItem] {
+    private func stableColumnSortedItems(_ items: [LibraryBrowserItem], sortColumn: ModernBrowserColumn) -> [LibraryBrowserItem] {
         items.enumerated().sorted { lhs, rhs in
             if columnSortAreInOrder(lhs.element, rhs.element, sortColumn: sortColumn, ascending: activeColumnSortAscending) {
                 return true
@@ -2752,7 +2623,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     /// Sorts expanded row groups by leader while preserving current group order for equal keys.
-    private func stableColumnSortedGroups(_ groups: [[ModernDisplayItem]], sortColumn: ModernBrowserColumn) -> [[ModernDisplayItem]] {
+    private func stableColumnSortedGroups(_ groups: [[LibraryBrowserItem]], sortColumn: ModernBrowserColumn) -> [[LibraryBrowserItem]] {
         groups.enumerated().sorted { lhs, rhs in
             let leftLeader = lhs.element[0]
             let rightLeader = rhs.element[0]
@@ -2768,7 +2639,7 @@ class ModernLibraryBrowserView: NSView {
 
     /// Ordering predicate shared by the flat and nested column-sort paths so both produce
     /// an identical top-level order. `a` and `b` are level-0 rows.
-    private func columnSortAreInOrder(_ a: ModernDisplayItem, _ b: ModernDisplayItem, sortColumn: ModernBrowserColumn, ascending: Bool) -> Bool {
+    private func columnSortAreInOrder(_ a: LibraryBrowserItem, _ b: LibraryBrowserItem, sortColumn: ModernBrowserColumn, ascending: Bool) -> Bool {
         // Date columns: sort by raw date, not formatted string
         if sortColumn.id == "dateAdded" || sortColumn.id == "lastPlayed" || sortColumn.id == "youtubeDate" {
             let aDate = a.columnDateValue(for: sortColumn) ?? .distantPast
@@ -2868,7 +2739,7 @@ class ModernLibraryBrowserView: NSView {
         return true
     }
 
-    private func sortedInternetRadioItems(_ items: [ModernDisplayItem], sortColumn: ModernBrowserColumn, ascending: Bool) -> [ModernDisplayItem] {
+    private func sortedInternetRadioItems(_ items: [LibraryBrowserItem], sortColumn: ModernBrowserColumn, ascending: Bool) -> [LibraryBrowserItem] {
         let ratingsByItemId = Dictionary(uniqueKeysWithValues: items.map { item in
             (item.id, internetRadioRating(for: item))
         })
@@ -2881,8 +2752,8 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func compareInternetRadioItems(
-        _ lhs: ModernDisplayItem,
-        _ rhs: ModernDisplayItem,
+        _ lhs: LibraryBrowserItem,
+        _ rhs: LibraryBrowserItem,
         sortColumn: ModernBrowserColumn,
         ratingsByItemId: [String: Int]
     ) -> ComparisonResult {
@@ -2903,12 +2774,12 @@ class ModernLibraryBrowserView: NSView {
         }
     }
 
-    private func internetRadioRating(for item: ModernDisplayItem) -> Int {
+    private func internetRadioRating(for item: LibraryBrowserItem) -> Int {
         guard case .radioStation(let station) = item.type else { return 0 }
         return RadioManager.shared.rating(for: station)
     }
 
-    private func internetRadioRating(for item: ModernDisplayItem, ratingsByItemId: [String: Int]) -> Int {
+    private func internetRadioRating(for item: LibraryBrowserItem, ratingsByItemId: [String: Int]) -> Int {
         ratingsByItemId[item.id] ?? 0
     }
     
@@ -2968,14 +2839,14 @@ class ModernLibraryBrowserView: NSView {
         return point.y >= serverBarY && point.y < topChromeBottomY
     }
     
-    private func hitTestTabBar(at point: NSPoint) -> ModernBrowseMode? {
+    private func hitTestTabBar(at point: NSPoint) -> LibraryBrowseMode? {
         let tabBarTopY = topChromeBottomY - Layout.serverBarHeight
         let tabBarBottomY = tabBarTopY - Layout.tabBarHeight
         guard point.y >= tabBarBottomY && point.y < tabBarTopY else { return nil }
 
         for (index, rect) in tabButtonRects.enumerated()
-        where rect.contains(point) && index < ModernBrowseMode.allCases.count {
-            return ModernBrowseMode.allCases[index]
+        where rect.contains(point) && index < LibraryBrowseMode.tabs.count {
+            return LibraryBrowseMode.tabs[index]
         }
         return nil
     }
@@ -3384,7 +3255,7 @@ class ModernLibraryBrowserView: NSView {
             for name in names {
                 let albumSummaries = albumsByArtist[name] ?? []
                 let stubArtist = Artist(id: name, name: name, albums: [])
-                displayItems.append(ModernDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: "local-artist-\(name)",
                     title: name,
                     info: "\(albumSummaries.count) albums",
@@ -3409,7 +3280,7 @@ class ModernLibraryBrowserView: NSView {
                 } else {
                     displayName = summary.name
                 }
-                displayItems.append(ModernDisplayItem(
+                displayItems.append(LibraryBrowserItem(
                     id: "local-album-\(album.id)",
                     title: displayName,
                     info: "\(summary.trackCount) tracks",
@@ -3474,7 +3345,7 @@ class ModernLibraryBrowserView: NSView {
                 }
             }
         case 48: // Tab — cycle browse tabs
-            let allModes = ModernBrowseMode.allCases
+            let allModes = LibraryBrowseMode.tabs
             // Treat .folders as .plists for tab cycling (they occupy the same slot)
             let effectiveMode = browseMode == .folders ? .plists : browseMode
             if let currentIdx = allModes.firstIndex(of: effectiveMode) {
@@ -3596,7 +3467,7 @@ class ModernLibraryBrowserView: NSView {
         }
     }
 
-    private func isArtistRow(_ item: ModernDisplayItem) -> Bool {
+    private func isArtistRow(_ item: LibraryBrowserItem) -> Bool {
         switch item.type {
         case .artist, .localArtist, .subsonicArtist, .jellyfinArtist, .embyArtist:
             return true
@@ -3792,7 +3663,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     /// Returns the sort letter for a display item, using the server's index letter for Subsonic artists.
-    private func effectiveSortLetter(for item: ModernDisplayItem) -> String {
+    private func effectiveSortLetter(for item: LibraryBrowserItem) -> String {
         if case .subsonicArtist(let artist) = item.type,
            let raw = artist.indexLetter,
            let first = raw.trimmingCharacters(in: .whitespaces).first {
@@ -4417,7 +4288,7 @@ class ModernLibraryBrowserView: NSView {
         needsDisplay = true
     }
     
-    private func showContextMenu(for item: ModernDisplayItem, at event: NSEvent) {
+    private func showContextMenu(for item: LibraryBrowserItem, at event: NSEvent) {
         let menu = NSMenu()
         if let playable = playable(for: item) {
             TrackVerb.addMenuItems(to: menu, for: playable)
@@ -4881,7 +4752,7 @@ class ModernLibraryBrowserView: NSView {
         if alert.runModal() == .alertFirstButtonReturn { RadioManager.shared.resetToDefaults(); if case .radio = currentSource { reloadInternetRadioForCurrentMode() } }
     }
     @objc private func contextMenuToggleExpand(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? ModernDisplayItem else { return }; toggleExpand(item)
+        guard let item = sender.representedObject as? LibraryBrowserItem else { return }; toggleExpand(item)
     }
     @objc private func contextMenuShowTags(_ sender: NSMenuItem) {
         guard let track = sender.representedObject as? LibraryTrack else { return }
@@ -5245,27 +5116,27 @@ class ModernLibraryBrowserView: NSView {
         reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuPlayPlexRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? ModernDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .plexRadioStation(let radioType) = item.type else { return }
         playPlexRadioStation(radioType)
     }
     @objc private func contextMenuPlaySubsonicRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? ModernDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .subsonicRadioStation(let radioType) = item.type else { return }
         playSubsonicRadioStation(radioType)
     }
     @objc private func contextMenuPlayJellyfinRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? ModernDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .jellyfinRadioStation(let radioType) = item.type else { return }
         playJellyfinRadioStation(radioType)
     }
     @objc private func contextMenuPlayEmbyRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? ModernDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .embyRadioStation(let radioType) = item.type else { return }
         playEmbyRadioStation(radioType)
     }
     @objc private func contextMenuPlayLocalRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? ModernDisplayItem,
+        guard let item = sender.representedObject as? LibraryBrowserItem,
               case .localRadioStation(let radioType) = item.type else { return }
         playLocalRadioStation(radioType)
     }
@@ -5310,7 +5181,7 @@ class ModernLibraryBrowserView: NSView {
 
     /// The row as tracks for the play verbs; nil for a row with no basic play menu (radio,
     /// YouTube, containers that only expand).
-    private func playable(for item: ModernDisplayItem) -> LibraryPlayable? {
+    private func playable(for item: LibraryBrowserItem) -> LibraryPlayable? {
         switch item.type {
         case .track(let t): return .plexTrack(t)
         case .album(let a): return .plexAlbum(a)
@@ -5606,17 +5477,8 @@ class ModernLibraryBrowserView: NSView {
     }
     
     @objc private func handleSetBrowserSource(_ notification: Notification) {
-        // Map from classic BrowserSource (posted by ContextMenuBuilder) to ModernBrowserSource
-        guard let source = notification.object as? BrowserSource else { return }
-        switch source {
-        case .local: currentSource = .local
-        case .plex(let serverId): currentSource = .plex(serverId: serverId)
-        case .subsonic(let serverId): currentSource = .subsonic(serverId: serverId)
-        case .jellyfin(let serverId): currentSource = .jellyfin(serverId: serverId)
-        case .emby(let serverId): currentSource = .emby(serverId: serverId)
-        case .radio: currentSource = .radio
-        case .youtube: currentSource = .youtube
-        }
+        guard let source = notification.object as? LibraryBrowserSource else { return }
+        currentSource = source
     }
 
     @objc private func windowDidMiniaturize(_ notification: Notification) {
@@ -5660,11 +5522,11 @@ class ModernLibraryBrowserView: NSView {
         return loadGeneration
     }
     
-    private func isLoadContextActive(_ generation: Int, source expectedSource: ModernBrowserSource) -> Bool {
+    private func isLoadContextActive(_ generation: Int, source expectedSource: LibraryBrowserSource) -> Bool {
         generation == loadGeneration && currentSource == expectedSource
     }
     
-    private func setLoadErrorIfActive(_ message: String, generation: Int, source expectedSource: ModernBrowserSource) {
+    private func setLoadErrorIfActive(_ message: String, generation: Int, source expectedSource: LibraryBrowserSource) {
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = false
         stopLoadingAnimation()
@@ -5672,7 +5534,7 @@ class ModernLibraryBrowserView: NSView {
         needsDisplay = true
     }
     
-    private func finishLoadIfActive(generation: Int, source expectedSource: ModernBrowserSource) {
+    private func finishLoadIfActive(generation: Int, source expectedSource: LibraryBrowserSource) {
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = false
         stopLoadingAnimation()
@@ -6079,7 +5941,7 @@ class ModernLibraryBrowserView: NSView {
                     starred: song.starred, playCount: song.playCount,
                     userRating: rating > 0 ? rating : nil
                 )
-                displayItems[index] = ModernDisplayItem(
+                displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .subsonicTrack(updatedSong)
@@ -6104,7 +5966,7 @@ class ModernLibraryBrowserView: NSView {
                     ratingCount: track.ratingCount,
                     userRating: rating > 0 ? Double(rating) : nil
                 )
-                displayItems[index] = ModernDisplayItem(
+                displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .track(updatedTrack)
@@ -6129,7 +5991,7 @@ class ModernLibraryBrowserView: NSView {
                     isFavorite: song.isFavorite, playCount: song.playCount,
                     userRating: rating > 0 ? rating : nil
                 )
-                displayItems[index] = ModernDisplayItem(
+                displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .jellyfinTrack(updatedSong)
@@ -6154,7 +6016,7 @@ class ModernLibraryBrowserView: NSView {
                     isFavorite: song.isFavorite, playCount: song.playCount,
                     userRating: rating > 0 ? rating : nil
                 )
-                displayItems[index] = ModernDisplayItem(
+                displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .embyTrack(updatedSong)
@@ -6168,7 +6030,7 @@ class ModernLibraryBrowserView: NSView {
         for (index, item) in displayItems.enumerated() {
             if case .localTrack(var track) = item.type, track.id == trackId {
                 track.rating = rating >= 0 ? rating : nil
-                displayItems[index] = ModernDisplayItem(
+                displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .localTrack(track)
@@ -6643,7 +6505,7 @@ class ModernLibraryBrowserView: NSView {
     
     private func loadPlexData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = ModernBrowserSource.plex(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.plex(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         guard PlexManager.shared.isLinked else {
             displayItems = []; stopLoadingAnimation(); needsDisplay = true
@@ -6677,7 +6539,7 @@ class ModernLibraryBrowserView: NSView {
         loadPlexDataForCurrentMode(serverId: serverId, generation: generation, expectedSource: expectedSource)
     }
     
-    private func loadPlexDataForCurrentMode(serverId: String, generation: Int, expectedSource: ModernBrowserSource) {
+    private func loadPlexDataForCurrentMode(serverId: String, generation: Int, expectedSource: LibraryBrowserSource) {
         let pm = PlexManager.shared
         plexLoadTask?.cancel()
         plexLoadTask = Task { @MainActor [weak self] in
@@ -6782,7 +6644,7 @@ class ModernLibraryBrowserView: NSView {
     
     private func loadSubsonicData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = ModernBrowserSource.subsonic(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.subsonic(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
         
@@ -6811,7 +6673,7 @@ class ModernLibraryBrowserView: NSView {
         loadSubsonicDataForCurrentMode(generation: generation, expectedSource: expectedSource)
     }
     
-    private func loadSubsonicDataForCurrentMode(generation: Int, expectedSource: ModernBrowserSource) {
+    private func loadSubsonicDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
         let manager = SubsonicManager.shared
         subsonicLoadTask?.cancel()
         subsonicLoadTask = Task { @MainActor [weak self] in
@@ -6890,7 +6752,7 @@ class ModernLibraryBrowserView: NSView {
     
     private func loadJellyfinData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = ModernBrowserSource.jellyfin(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.jellyfin(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
         
@@ -6919,7 +6781,7 @@ class ModernLibraryBrowserView: NSView {
         loadJellyfinDataForCurrentMode(generation: generation, expectedSource: expectedSource)
     }
     
-    private func loadJellyfinDataForCurrentMode(generation: Int, expectedSource: ModernBrowserSource) {
+    private func loadJellyfinDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
         let manager = JellyfinManager.shared
         jellyfinLoadTask?.cancel()
         jellyfinLoadTask = Task { @MainActor [weak self] in
@@ -7041,7 +6903,7 @@ class ModernLibraryBrowserView: NSView {
 
     private func loadEmbyData(serverId: String, generation: Int? = nil) {
         let generation = generation ?? loadGeneration
-        let expectedSource = ModernBrowserSource.emby(serverId: serverId)
+        let expectedSource = LibraryBrowserSource.emby(serverId: serverId)
         guard isLoadContextActive(generation, source: expectedSource) else { return }
         isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
         
@@ -7070,7 +6932,7 @@ class ModernLibraryBrowserView: NSView {
         loadEmbyDataForCurrentMode(generation: generation, expectedSource: expectedSource)
     }
 
-    private func loadEmbyDataForCurrentMode(generation: Int, expectedSource: ModernBrowserSource) {
+    private func loadEmbyDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
         let manager = EmbyManager.shared
         embyLoadTask?.cancel()
         embyLoadTask = Task { @MainActor [weak self] in
@@ -7217,13 +7079,13 @@ class ModernLibraryBrowserView: NSView {
             if let albums = artistAlbums[groupKey] { info = "\(albums.count) album\(albums.count == 1 ? "" : "s")" }
             else if let count = plexArtistAlbumCount(for: artist), count > 0 { info = "\(count) album\(count == 1 ? "" : "s")" }
             else { info = nil }
-            displayItems.append(ModernDisplayItem(id: groupKey, title: artist.title, info: info, indentLevel: 0, hasChildren: true, type: .artist(artist)))
+            displayItems.append(LibraryBrowserItem(id: groupKey, title: artist.title, info: info, indentLevel: 0, hasChildren: true, type: .artist(artist)))
             if expanded, let albums = artistAlbums[groupKey] {
                 for album in sortPlexAlbums(albums) {
-                    displayItems.append(ModernDisplayItem(id: album.id, title: album.title, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album)))
+                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.title, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album)))
                     if expandedAlbums.contains(album.id), let tracks = albumTracks[album.id] {
                         let sorted = tracks.sorted { let d0 = $0.parentIndex ?? 1; let d1 = $1.parentIndex ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.index ?? 0) < ($1.index ?? 0) }
-                        for track in sorted { displayItems.append(ModernDisplayItem(id: track.id, title: track.title, info: track.formattedDuration, indentLevel: 2, hasChildren: false, type: .track(track))) }
+                        for track in sorted { displayItems.append(LibraryBrowserItem(id: track.id, title: track.title, info: track.formattedDuration, indentLevel: 2, hasChildren: false, type: .track(track))) }
                     }
                 }
             }
@@ -7234,9 +7096,9 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for album in sortPlexAlbums(cachedAlbums) {
             let expanded = expandedAlbums.contains(album.id)
-            displayItems.append(ModernDisplayItem(id: album.id, title: "\(album.parentTitle ?? "Unknown") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .album(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "Unknown") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .album(album)))
             if expanded, let tracks = albumTracks[album.id] {
-                for t in tracks { displayItems.append(ModernDisplayItem(id: t.id, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(t))) }
+                for t in tracks { displayItems.append(LibraryBrowserItem(id: t.id, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(t))) }
             }
         }
     }
@@ -7244,7 +7106,7 @@ class ModernLibraryBrowserView: NSView {
     private func buildMovieItems() {
         displayItems = cachedMovies.map { movie in
             let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return ModernDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .movie(movie))
+            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .movie(movie))
         }
     }
     
@@ -7253,12 +7115,12 @@ class ModernLibraryBrowserView: NSView {
         for show in cachedShows {
             let expanded = expandedShows.contains(show.id)
             let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(ModernDisplayItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .show(show)))
+            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .show(show)))
             if expanded, let seasons = showSeasons[show.id] {
                 for season in seasons {
-                    displayItems.append(ModernDisplayItem(id: season.id, title: season.title, info: "\(season.leafCount) episodes", indentLevel: 1, hasChildren: true, type: .season(season)))
+                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.leafCount) episodes", indentLevel: 1, hasChildren: true, type: .season(season)))
                     if expandedSeasons.contains(season.id), let episodes = seasonEpisodes[season.id] {
-                        for ep in episodes { displayItems.append(ModernDisplayItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .episode(ep))) }
+                        for ep in episodes { displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .episode(ep))) }
                     }
                 }
             }
@@ -7268,7 +7130,7 @@ class ModernLibraryBrowserView: NSView {
     private func buildJellyfinMovieItems() {
         displayItems = cachedJellyfinMovies.map { movie in
             let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return ModernDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .jellyfinMovie(movie))
+            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .jellyfinMovie(movie))
         }
     }
     
@@ -7277,12 +7139,12 @@ class ModernLibraryBrowserView: NSView {
         for show in cachedJellyfinShows {
             let expanded = expandedJellyfinShows.contains(show.id)
             let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(ModernDisplayItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinShow(show)))
+            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinShow(show)))
             if expanded, let seasons = jellyfinShowSeasons[show.id] {
                 for season in seasons {
-                    displayItems.append(ModernDisplayItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .jellyfinSeason(season)))
+                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .jellyfinSeason(season)))
                     if expandedJellyfinSeasons.contains(season.id), let episodes = jellyfinSeasonEpisodes[season.id] {
-                        for ep in episodes { displayItems.append(ModernDisplayItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .jellyfinEpisode(ep))) }
+                        for ep in episodes { displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .jellyfinEpisode(ep))) }
                     }
                 }
             }
@@ -7296,9 +7158,9 @@ class ModernLibraryBrowserView: NSView {
         let unique = audio.filter { let n = $0.title.lowercased(); if seen.contains(n) { return false }; seen.insert(n); return true }
         for playlist in sortPlexPlaylists(unique) {
             let expanded = expandedPlexPlaylists.contains(playlist.id)
-            displayItems.append(ModernDisplayItem(id: playlist.id, title: playlist.title, info: "\(playlist.leafCount) tracks", indentLevel: 0, hasChildren: playlist.leafCount > 0, type: .plexPlaylist(playlist)))
+            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.title, info: "\(playlist.leafCount) tracks", indentLevel: 0, hasChildren: playlist.leafCount > 0, type: .plexPlaylist(playlist)))
             if expanded, let tracks = plexPlaylistTracks[playlist.id] {
-                for track in tracks { displayItems.append(ModernDisplayItem(id: "\(playlist.id)-\(track.id)", title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))) }
+                for track in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(track.id)", title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))) }
             }
         }
     }
@@ -7308,36 +7170,36 @@ class ModernLibraryBrowserView: NSView {
         guard let results = searchResults else { return }
         let sortedArtists = sortPlexArtists(results.artists)
         if !sortedArtists.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for artist in sortedArtists { displayItems.append(ModernDisplayItem(id: artist.id, title: artist.title, info: nil, indentLevel: 1, hasChildren: true, type: .artist(artist))) }
+            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            for artist in sortedArtists { displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.title, info: nil, indentLevel: 1, hasChildren: true, type: .artist(artist))) }
         }
         let sortedAlbums = sortPlexAlbums(results.albums)
         if !sortedAlbums.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for album in sortedAlbums { displayItems.append(ModernDisplayItem(id: album.id, title: "\(album.parentTitle ?? "") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album))) }
+            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            for album in sortedAlbums { displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album))) }
         }
         let sortedTracks = sortPlexTracks(results.tracks)
         if !sortedTracks.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-tracks", title: "Tracks (\(sortedTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for track in sortedTracks { displayItems.append(ModernDisplayItem(id: track.id, title: "\(track.grandparentTitle ?? "") - \(track.title)", info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))) }
+            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            for track in sortedTracks { displayItems.append(LibraryBrowserItem(id: track.id, title: "\(track.grandparentTitle ?? "") - \(track.title)", info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))) }
         }
         if !results.movies.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for movie in results.movies {
                 let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(ModernDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .movie(movie)))
+                displayItems.append(LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .movie(movie)))
             }
         }
         if !results.shows.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for show in results.shows {
-                displayItems.append(ModernDisplayItem(id: show.id, title: show.title, info: "\(show.childCount) seasons", indentLevel: 1, hasChildren: true, type: .show(show)))
+                displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: "\(show.childCount) seasons", indentLevel: 1, hasChildren: true, type: .show(show)))
                 if expandedShows.contains(show.id), let seasons = showSeasons[show.id] {
                     for season in seasons {
-                        displayItems.append(ModernDisplayItem(id: season.id, title: season.title, info: "\(season.leafCount) episodes", indentLevel: 2, hasChildren: true, type: .season(season)))
+                        displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.leafCount) episodes", indentLevel: 2, hasChildren: true, type: .season(season)))
                         if expandedSeasons.contains(season.id), let episodes = seasonEpisodes[season.id] {
                             for episode in episodes {
-                                displayItems.append(ModernDisplayItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .episode(episode)))
+                                displayItems.append(LibraryBrowserItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .episode(episode)))
                             }
                         }
                     }
@@ -7351,23 +7213,23 @@ class ModernLibraryBrowserView: NSView {
         guard let results = subsonicSearchResults else { return }
         let sortedArtists = sortSubsonicArtists(results.artists)
         if !sortedArtists.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for artist in sortedArtists {
-                displayItems.append(ModernDisplayItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .subsonicArtist(artist)))
+                displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .subsonicArtist(artist)))
             }
         }
         let sortedAlbums = sortSubsonicAlbums(results.albums)
         if !sortedAlbums.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for album in sortedAlbums {
-                displayItems.append(ModernDisplayItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .subsonicAlbum(album)))
+                displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .subsonicAlbum(album)))
             }
         }
         let sortedSongs = sortSubsonicTracks(results.songs)
         if !sortedSongs.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for song in sortedSongs {
-                displayItems.append(ModernDisplayItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(song)))
+                displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(song)))
             }
         }
     }
@@ -7377,43 +7239,43 @@ class ModernLibraryBrowserView: NSView {
         guard let results = jellyfinSearchResults else { return }
         let sortedArtists = sortJellyfinArtists(results.artists)
         if !sortedArtists.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for artist in sortedArtists {
-                displayItems.append(ModernDisplayItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .jellyfinArtist(artist)))
+                displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .jellyfinArtist(artist)))
             }
         }
         let sortedAlbums = sortJellyfinAlbums(results.albums)
         if !sortedAlbums.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for album in sortedAlbums {
-                displayItems.append(ModernDisplayItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .jellyfinAlbum(album)))
+                displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .jellyfinAlbum(album)))
             }
         }
         let sortedSongs = sortJellyfinTracks(results.songs)
         if !sortedSongs.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for song in sortedSongs {
-                displayItems.append(ModernDisplayItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(song)))
+                displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(song)))
             }
         }
         if !results.movies.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for movie in results.movies {
                 let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(ModernDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .jellyfinMovie(movie)))
+                displayItems.append(LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .jellyfinMovie(movie)))
             }
         }
         if !results.shows.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for show in results.shows {
                 let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(ModernDisplayItem(id: show.id, title: show.title, info: info, indentLevel: 1, hasChildren: true, type: .jellyfinShow(show)))
+                displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 1, hasChildren: true, type: .jellyfinShow(show)))
                 if expandedJellyfinShows.contains(show.id), let seasons = jellyfinShowSeasons[show.id] {
                     for season in seasons {
-                        displayItems.append(ModernDisplayItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 2, hasChildren: true, type: .jellyfinSeason(season)))
+                        displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 2, hasChildren: true, type: .jellyfinSeason(season)))
                         if expandedJellyfinSeasons.contains(season.id), let episodes = jellyfinSeasonEpisodes[season.id] {
                             for episode in episodes {
-                                displayItems.append(ModernDisplayItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .jellyfinEpisode(episode)))
+                                displayItems.append(LibraryBrowserItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .jellyfinEpisode(episode)))
                             }
                         }
                     }
@@ -7427,43 +7289,43 @@ class ModernLibraryBrowserView: NSView {
         guard let results = embySearchResults else { return }
         let sortedArtists = sortEmbyArtists(results.artists)
         if !sortedArtists.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for artist in sortedArtists {
-                displayItems.append(ModernDisplayItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .embyArtist(artist)))
+                displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .embyArtist(artist)))
             }
         }
         let sortedAlbums = sortEmbyAlbums(results.albums)
         if !sortedAlbums.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for album in sortedAlbums {
-                displayItems.append(ModernDisplayItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .embyAlbum(album)))
+                displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .embyAlbum(album)))
             }
         }
         let sortedSongs = sortEmbyTracks(results.songs)
         if !sortedSongs.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for song in sortedSongs {
-                displayItems.append(ModernDisplayItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(song)))
+                displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(song)))
             }
         }
         if !results.movies.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for movie in results.movies {
                 let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(ModernDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .embyMovie(movie)))
+                displayItems.append(LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .embyMovie(movie)))
             }
         }
         if !results.shows.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for show in results.shows {
                 let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(ModernDisplayItem(id: show.id, title: show.title, info: info, indentLevel: 1, hasChildren: true, type: .embyShow(show)))
+                displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 1, hasChildren: true, type: .embyShow(show)))
                 if expandedEmbyShows.contains(show.id), let seasons = embyShowSeasons[show.id] {
                     for season in seasons {
-                        displayItems.append(ModernDisplayItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 2, hasChildren: true, type: .embySeason(season)))
+                        displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 2, hasChildren: true, type: .embySeason(season)))
                         if expandedEmbySeasons.contains(season.id), let episodes = embySeasonEpisodes[season.id] {
                             for episode in episodes {
-                                displayItems.append(ModernDisplayItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .embyEpisode(episode)))
+                                displayItems.append(LibraryBrowserItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .embyEpisode(episode)))
                             }
                         }
                     }
@@ -7506,7 +7368,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func buildYouTubeChannelItems() {
-        displayItems = youtubeRows.channels(YouTubeManager.shared.channels).map { ModernDisplayItem($0) }
+        displayItems = youtubeRows.channels(YouTubeManager.shared.channels).map { LibraryBrowserItem($0) }
     }
 
     /// Search tab (YouTube source): run the typed query as a YouTube channel search, or show
@@ -7533,7 +7395,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func buildYouTubeSearchItems() {
-        displayItems = youtubeRows.channelSearch(youtubeSearch.results).map { ModernDisplayItem($0) }
+        displayItems = youtubeRows.channelSearch(youtubeSearch.results).map { LibraryBrowserItem($0) }
     }
 
     @objc private func contextMenuSubscribeYouTubeChannel(_ sender: NSMenuItem) {
@@ -7548,7 +7410,7 @@ class ModernLibraryBrowserView: NSView {
         let matches = RadioManager.shared.searchStations(query: searchQuery)
         for station in matches {
             displayItems.append(
-                ModernDisplayItem(
+                LibraryBrowserItem(
                     id: "radio-search-\(station.id.uuidString)",
                     title: station.name,
                     info: RadioManager.shared.normalizedGenre(for: station),
@@ -7566,7 +7428,7 @@ class ModernLibraryBrowserView: NSView {
         childrenByParent: [String: [RadioFolderDescriptor]]
     ) {
         displayItems.append(
-            ModernDisplayItem(
+            LibraryBrowserItem(
                 id: folder.id,
                 title: folder.title,
                 info: nil,
@@ -7581,7 +7443,7 @@ class ModernLibraryBrowserView: NSView {
             let stations = RadioManager.shared.stations(inFolder: folder.kind)
             for station in stations {
                 displayItems.append(
-                    ModernDisplayItem(
+                    LibraryBrowserItem(
                         id: "radio-station-\(folder.id)-\(station.id.uuidString)",
                         title: station.name,
                         info: RadioManager.shared.normalizedGenre(for: station),
@@ -7668,60 +7530,60 @@ class ModernLibraryBrowserView: NSView {
 
     private func buildSubsonicRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(ModernDisplayItem(id: "sub-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.libraryRadio)))
-        displayItems.append(ModernDisplayItem(id: "sub-radio-library-sim", title: "Library Radio (Similar)", info: "Library", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.librarySimilar)))
-        displayItems.append(ModernDisplayItem(id: "sub-radio-starred", title: "Starred Radio", info: "Starred", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.starredRadio)))
-        displayItems.append(ModernDisplayItem(id: "sub-radio-starred-sim", title: "Starred Radio (Similar)", info: "Starred", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.starredSimilar)))
+        displayItems.append(LibraryBrowserItem(id: "sub-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.libraryRadio)))
+        displayItems.append(LibraryBrowserItem(id: "sub-radio-library-sim", title: "Library Radio (Similar)", info: "Library", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.librarySimilar)))
+        displayItems.append(LibraryBrowserItem(id: "sub-radio-starred", title: "Starred Radio", info: "Starred", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.starredRadio)))
+        displayItems.append(LibraryBrowserItem(id: "sub-radio-starred-sim", title: "Starred Radio (Similar)", info: "Starred", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.starredSimilar)))
         for genre in genres {
-            displayItems.append(ModernDisplayItem(id: "sub-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.genreRadio(genre))))
-            displayItems.append(ModernDisplayItem(id: "sub-radio-genre-\(genre)-sim", title: "\(genre) Radio (Similar)", info: "Genre", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.genreSimilar(genre))))
+            displayItems.append(LibraryBrowserItem(id: "sub-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.genreRadio(genre))))
+            displayItems.append(LibraryBrowserItem(id: "sub-radio-genre-\(genre)-sim", title: "\(genre) Radio (Similar)", info: "Genre", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.genreSimilar(genre))))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(ModernDisplayItem(id: "sub-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(ModernDisplayItem(id: "sub-radio-decade-\(decade.name)-sim", title: "\(decade.name) Radio (Similar)", info: "Decade", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.decadeSimilar(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "sub-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "sub-radio-decade-\(decade.name)-sim", title: "\(decade.name) Radio (Similar)", info: "Decade", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.decadeSimilar(start: decade.start, end: decade.end, name: decade.name))))
         }
     }
 
     private func buildJellyfinRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(ModernDisplayItem(id: "jf-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.libraryRadio)))
-        displayItems.append(ModernDisplayItem(id: "jf-radio-library-mix", title: "Library Radio (Instant Mix)", info: "Library", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.libraryInstantMix)))
-        displayItems.append(ModernDisplayItem(id: "jf-radio-fav", title: "Favorites Radio", info: "Favorites", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.favoritesRadio)))
-        displayItems.append(ModernDisplayItem(id: "jf-radio-fav-mix", title: "Favorites Radio (Instant Mix)", info: "Favorites", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.favoritesInstantMix)))
+        displayItems.append(LibraryBrowserItem(id: "jf-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.libraryRadio)))
+        displayItems.append(LibraryBrowserItem(id: "jf-radio-library-mix", title: "Library Radio (Instant Mix)", info: "Library", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.libraryInstantMix)))
+        displayItems.append(LibraryBrowserItem(id: "jf-radio-fav", title: "Favorites Radio", info: "Favorites", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.favoritesRadio)))
+        displayItems.append(LibraryBrowserItem(id: "jf-radio-fav-mix", title: "Favorites Radio (Instant Mix)", info: "Favorites", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.favoritesInstantMix)))
         for genre in genres {
-            displayItems.append(ModernDisplayItem(id: "jf-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.genreRadio(genre))))
-            displayItems.append(ModernDisplayItem(id: "jf-radio-genre-\(genre)-mix", title: "\(genre) Radio (Instant Mix)", info: "Genre", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.genreInstantMix(genre))))
+            displayItems.append(LibraryBrowserItem(id: "jf-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.genreRadio(genre))))
+            displayItems.append(LibraryBrowserItem(id: "jf-radio-genre-\(genre)-mix", title: "\(genre) Radio (Instant Mix)", info: "Genre", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.genreInstantMix(genre))))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(ModernDisplayItem(id: "jf-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(ModernDisplayItem(id: "jf-radio-decade-\(decade.name)-mix", title: "\(decade.name) Radio (Instant Mix)", info: "Decade", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.decadeInstantMix(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "jf-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "jf-radio-decade-\(decade.name)-mix", title: "\(decade.name) Radio (Instant Mix)", info: "Decade", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.decadeInstantMix(start: decade.start, end: decade.end, name: decade.name))))
         }
     }
 
     private func buildEmbyRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(ModernDisplayItem(id: "emby-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.libraryRadio)))
-        displayItems.append(ModernDisplayItem(id: "emby-radio-library-mix", title: "Library Radio (Instant Mix)", info: "Library", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.libraryInstantMix)))
-        displayItems.append(ModernDisplayItem(id: "emby-radio-fav", title: "Favorites Radio", info: "Favorites", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.favoritesRadio)))
-        displayItems.append(ModernDisplayItem(id: "emby-radio-fav-mix", title: "Favorites Radio (Instant Mix)", info: "Favorites", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.favoritesInstantMix)))
+        displayItems.append(LibraryBrowserItem(id: "emby-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.libraryRadio)))
+        displayItems.append(LibraryBrowserItem(id: "emby-radio-library-mix", title: "Library Radio (Instant Mix)", info: "Library", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.libraryInstantMix)))
+        displayItems.append(LibraryBrowserItem(id: "emby-radio-fav", title: "Favorites Radio", info: "Favorites", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.favoritesRadio)))
+        displayItems.append(LibraryBrowserItem(id: "emby-radio-fav-mix", title: "Favorites Radio (Instant Mix)", info: "Favorites", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.favoritesInstantMix)))
         for genre in genres {
-            displayItems.append(ModernDisplayItem(id: "emby-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.genreRadio(genre))))
-            displayItems.append(ModernDisplayItem(id: "emby-radio-genre-\(genre)-mix", title: "\(genre) Radio (Instant Mix)", info: "Genre", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.genreInstantMix(genre))))
+            displayItems.append(LibraryBrowserItem(id: "emby-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.genreRadio(genre))))
+            displayItems.append(LibraryBrowserItem(id: "emby-radio-genre-\(genre)-mix", title: "\(genre) Radio (Instant Mix)", info: "Genre", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.genreInstantMix(genre))))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(ModernDisplayItem(id: "emby-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(ModernDisplayItem(id: "emby-radio-decade-\(decade.name)-mix", title: "\(decade.name) Radio (Instant Mix)", info: "Decade", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.decadeInstantMix(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "emby-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "emby-radio-decade-\(decade.name)-mix", title: "\(decade.name) Radio (Instant Mix)", info: "Decade", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.decadeInstantMix(start: decade.start, end: decade.end, name: decade.name))))
         }
     }
 
     private func buildLocalRadioStationItems(genres: [String]) {
         displayItems.removeAll()
-        displayItems.append(ModernDisplayItem(id: "local-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .localRadioStation(.libraryRadio)))
+        displayItems.append(LibraryBrowserItem(id: "local-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .localRadioStation(.libraryRadio)))
         for genre in genres {
-            displayItems.append(ModernDisplayItem(id: "local-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .localRadioStation(.genreRadio(genre))))
+            displayItems.append(LibraryBrowserItem(id: "local-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .localRadioStation(.genreRadio(genre))))
         }
         for decade in RadioConfig.decades {
-            displayItems.append(ModernDisplayItem(id: "local-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .localRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "local-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .localRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
         }
     }
 
@@ -7734,27 +7596,27 @@ class ModernLibraryBrowserView: NSView {
               hasJazz ? "yes" : "no", genres.joined(separator: ", "))
 #endif
         // Library Radio
-        displayItems.append(ModernDisplayItem(id: "plex-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.libraryRadio)))
-        displayItems.append(ModernDisplayItem(id: "plex-radio-library-sonic", title: "Library Radio (Sonic)", info: "Library", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.libraryRadioSonic)))
+        displayItems.append(LibraryBrowserItem(id: "plex-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.libraryRadio)))
+        displayItems.append(LibraryBrowserItem(id: "plex-radio-library-sonic", title: "Library Radio (Sonic)", info: "Library", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.libraryRadioSonic)))
         // Popularity
-        displayItems.append(ModernDisplayItem(id: "plex-radio-hits", title: "Only the Hits", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.hitsRadio)))
-        displayItems.append(ModernDisplayItem(id: "plex-radio-hits-sonic", title: "Only the Hits (Sonic)", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.hitsRadioSonic)))
-        displayItems.append(ModernDisplayItem(id: "plex-radio-deepcuts", title: "Deep Cuts", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.deepCutsRadio)))
-        displayItems.append(ModernDisplayItem(id: "plex-radio-deepcuts-sonic", title: "Deep Cuts (Sonic)", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.deepCutsRadioSonic)))
+        displayItems.append(LibraryBrowserItem(id: "plex-radio-hits", title: "Only the Hits", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.hitsRadio)))
+        displayItems.append(LibraryBrowserItem(id: "plex-radio-hits-sonic", title: "Only the Hits (Sonic)", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.hitsRadioSonic)))
+        displayItems.append(LibraryBrowserItem(id: "plex-radio-deepcuts", title: "Deep Cuts", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.deepCutsRadio)))
+        displayItems.append(LibraryBrowserItem(id: "plex-radio-deepcuts-sonic", title: "Deep Cuts (Sonic)", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.deepCutsRadioSonic)))
         // Rating stations
         for station in RadioConfig.ratingStations {
-            displayItems.append(ModernDisplayItem(id: "plex-radio-rating-\(station.minRating)", title: "\(station.name) Radio", info: "My Ratings", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.ratingRadio(minRating: station.minRating, name: station.name))))
-            displayItems.append(ModernDisplayItem(id: "plex-radio-rating-\(station.minRating)-sonic", title: "\(station.name) Radio (Sonic)", info: "My Ratings", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.ratingRadioSonic(minRating: station.minRating, name: station.name))))
+            displayItems.append(LibraryBrowserItem(id: "plex-radio-rating-\(station.minRating)", title: "\(station.name) Radio", info: "My Ratings", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.ratingRadio(minRating: station.minRating, name: station.name))))
+            displayItems.append(LibraryBrowserItem(id: "plex-radio-rating-\(station.minRating)-sonic", title: "\(station.name) Radio (Sonic)", info: "My Ratings", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.ratingRadioSonic(minRating: station.minRating, name: station.name))))
         }
         // Genre stations
         for genre in genres {
-            displayItems.append(ModernDisplayItem(id: "plex-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.genreRadio(genre))))
-            displayItems.append(ModernDisplayItem(id: "plex-radio-genre-\(genre)-sonic", title: "\(genre) Radio (Sonic)", info: "Genre", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.genreRadioSonic(genre))))
+            displayItems.append(LibraryBrowserItem(id: "plex-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.genreRadio(genre))))
+            displayItems.append(LibraryBrowserItem(id: "plex-radio-genre-\(genre)-sonic", title: "\(genre) Radio (Sonic)", info: "Genre", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.genreRadioSonic(genre))))
         }
         // Decade stations
         for decade in RadioConfig.decades {
-            displayItems.append(ModernDisplayItem(id: "plex-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(ModernDisplayItem(id: "plex-radio-decade-\(decade.name)-sonic", title: "\(decade.name) Radio (Sonic)", info: "Decade", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.decadeRadioSonic(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "plex-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
+            displayItems.append(LibraryBrowserItem(id: "plex-radio-decade-\(decade.name)-sonic", title: "\(decade.name) Radio (Sonic)", info: "Decade", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.decadeRadioSonic(start: decade.start, end: decade.end, name: decade.name))))
         }
     }
     
@@ -7773,7 +7635,7 @@ class ModernLibraryBrowserView: NSView {
             // Build a minimal Artist stub — albums are populated lazily when expanded
             let stubArtist = Artist(id: name, name: name, albums: [])
             let expanded = expandedLocalArtists.contains(name)
-            displayItems.append(ModernDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "local-artist-\(name)",
                 title: name,
                 info: "\(albumCount) albums",
@@ -7792,7 +7654,7 @@ class ModernLibraryBrowserView: NSView {
                         year: summary.year,
                         tracks: tracks
                     )
-                    displayItems.append(ModernDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: "local-album-\(album.id)",
                         title: album.name,
                         info: summary.year.map { String($0) },
@@ -7802,7 +7664,7 @@ class ModernLibraryBrowserView: NSView {
                     ))
                     if albumExpanded {
                         for track in tracks {
-                            displayItems.append(ModernDisplayItem(
+                            displayItems.append(LibraryBrowserItem(
                                 id: track.id.uuidString,
                                 title: track.title,
                                 info: track.formattedDuration,
@@ -7834,7 +7696,7 @@ class ModernLibraryBrowserView: NSView {
             } else {
                 displayName = summary.name
             }
-            displayItems.append(ModernDisplayItem(
+            displayItems.append(LibraryBrowserItem(
                 id: "local-album-\(album.id)",
                 title: displayName,
                 info: "\(summary.trackCount) tracks",
@@ -7844,7 +7706,7 @@ class ModernLibraryBrowserView: NSView {
             ))
             if expanded {
                 for t in tracks {
-                    displayItems.append(ModernDisplayItem(
+                    displayItems.append(LibraryBrowserItem(
                         id: t.id.uuidString,
                         title: t.title,
                         info: t.formattedDuration,
@@ -7879,7 +7741,7 @@ class ModernLibraryBrowserView: NSView {
         localFolderBuildTask?.cancel()
         localFolderBuildTask = Task.detached { [weak self] in
             // Build the ordered item list entirely off the main actor (FS enumeration + DB query)
-            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(ModernDisplayItem.init)
+            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(LibraryBrowserItem.init)
 
             if Task.isCancelled { return }
             await MainActor.run { [weak self] in
@@ -7902,15 +7764,15 @@ class ModernLibraryBrowserView: NSView {
         let store = MediaLibraryStore.shared
         let matchingArtistNames = store.searchArtistNames(query: searchQuery)
         if !matchingArtistNames.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-local-artists", title: "Artists (\(matchingArtistNames.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-local-artists", title: "Artists (\(matchingArtistNames.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for name in matchingArtistNames {
                 let stub = Artist(id: name, name: name, albums: [])
-                displayItems.append(ModernDisplayItem(id: "local-artist-\(name)", title: name, info: nil, indentLevel: 1, hasChildren: true, type: .localArtist(stub)))
+                displayItems.append(LibraryBrowserItem(id: "local-artist-\(name)", title: name, info: nil, indentLevel: 1, hasChildren: true, type: .localArtist(stub)))
             }
         }
         let matchingAlbums = store.searchAlbumSummaries(query: searchQuery)
         if !matchingAlbums.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-local-albums", title: "Albums (\(matchingAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            displayItems.append(LibraryBrowserItem(id: "header-local-albums", title: "Albums (\(matchingAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for summary in matchingAlbums {
                 let displayName: String
                 if let artist = summary.artist, !artist.isEmpty {
@@ -7919,38 +7781,38 @@ class ModernLibraryBrowserView: NSView {
                     displayName = summary.name
                 }
                 let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: [])
-                displayItems.append(ModernDisplayItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 1, hasChildren: false, type: .localAlbum(album)))
+                displayItems.append(LibraryBrowserItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 1, hasChildren: false, type: .localAlbum(album)))
             }
         }
         let matchingTracks = store.searchTracks(query: searchQuery, limit: 200, offset: 0)
         if !matchingTracks.isEmpty {
-            displayItems.append(ModernDisplayItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for t in matchingTracks { displayItems.append(ModernDisplayItem(id: t.id.uuidString, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
+            displayItems.append(LibraryBrowserItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
+            for t in matchingTracks { displayItems.append(LibraryBrowserItem(id: t.id.uuidString, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
         }
         displayItems += youtubeRows.localSearch(query: searchQuery, excluding: Set(matchingTracks.map(\.url)))
-            .map { ModernDisplayItem($0) }
+            .map { LibraryBrowserItem($0) }
     }
     
     private func buildLocalMovieItems() {
         displayItems = cachedLocalMovies
             .sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-            .map { ModernDisplayItem(id: $0.id.uuidString, title: $0.title, info: $0.year.map { String($0) }, indentLevel: 0, hasChildren: false, type: .localMovie($0)) }
+            .map { LibraryBrowserItem(id: $0.id.uuidString, title: $0.title, info: $0.year.map { String($0) }, indentLevel: 0, hasChildren: false, type: .localMovie($0)) }
     }
 
     private func buildLocalShowItems() {
         displayItems.removeAll()
         for show in cachedLocalShows.sorted(by: { compareNameStrings($0.title, $1.title, ascending: true) }) {
             let expanded = expandedLocalShows.contains(show.id)
-            displayItems.append(ModernDisplayItem(id: "local-show-\(show.id)", title: show.title, info: "\(show.episodeCount) episodes", indentLevel: 0, hasChildren: true, type: .localShow(show)))
+            displayItems.append(LibraryBrowserItem(id: "local-show-\(show.id)", title: show.title, info: "\(show.episodeCount) episodes", indentLevel: 0, hasChildren: true, type: .localShow(show)))
             if expanded {
                 for season in show.seasons.sorted(by: { $0.number < $1.number }) {
                     let seasonKey = "\(show.title)|\(season.number)"
                     let seasonExpanded = expandedLocalSeasons.contains(seasonKey)
-                    displayItems.append(ModernDisplayItem(id: "local-season-\(seasonKey)", title: "Season \(season.number)", info: "\(season.episodes.count) episodes", indentLevel: 1, hasChildren: true, type: .localSeason(season, showTitle: show.title)))
+                    displayItems.append(LibraryBrowserItem(id: "local-season-\(seasonKey)", title: "Season \(season.number)", info: "\(season.episodes.count) episodes", indentLevel: 1, hasChildren: true, type: .localSeason(season, showTitle: show.title)))
                     if seasonExpanded {
                         for episode in season.episodes.sorted(by: { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }) {
                             let epTitle = episode.episodeNumber.map { "E\($0): \(episode.title)" } ?? episode.title
-                            displayItems.append(ModernDisplayItem(id: episode.id.uuidString, title: epTitle, info: episode.formattedDuration, indentLevel: 2, hasChildren: false, type: .localEpisode(episode)))
+                            displayItems.append(LibraryBrowserItem(id: episode.id.uuidString, title: epTitle, info: episode.formattedDuration, indentLevel: 2, hasChildren: false, type: .localEpisode(episode)))
                         }
                     }
                 }
@@ -7964,14 +7826,14 @@ class ModernLibraryBrowserView: NSView {
         for artist in sortSubsonicArtists(cachedSubsonicArtists) {
             let info = artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil
             let expanded = expandedSubsonicArtists.contains(artist.id)
-            displayItems.append(ModernDisplayItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .subsonicArtist(artist)))
+            displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .subsonicArtist(artist)))
             if expanded, let albums = subsonicArtistAlbums[artist.id] {
                 for album in sortSubsonicAlbums(albums) {
                     let albumExpanded = expandedSubsonicAlbums.contains(album.id)
-                    displayItems.append(ModernDisplayItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .subsonicAlbum(album)))
+                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .subsonicAlbum(album)))
                     if albumExpanded, let songs = subsonicAlbumSongs[album.id] {
                         let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                        for song in sorted { displayItems.append(ModernDisplayItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .subsonicTrack(song))) }
+                        for song in sorted { displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .subsonicTrack(song))) }
                     }
                 }
             }
@@ -7982,10 +7844,10 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for album in sortSubsonicAlbums(cachedSubsonicAlbums) {
             let expanded = expandedSubsonicAlbums.contains(album.id)
-            displayItems.append(ModernDisplayItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .subsonicAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .subsonicAlbum(album)))
             if expanded, let songs = subsonicAlbumSongs[album.id] {
                 let sorted = songs.sorted { ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(ModernDisplayItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(s))) }
+                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(s))) }
             }
         }
     }
@@ -7994,9 +7856,9 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for playlist in sortSubsonicPlaylists(cachedSubsonicPlaylists) {
             let expanded = expandedSubsonicPlaylists.contains(playlist.id)
-            displayItems.append(ModernDisplayItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .subsonicPlaylist(playlist)))
+            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .subsonicPlaylist(playlist)))
             if expanded, let tracks = subsonicPlaylistTracks[playlist.id] {
-                for t in tracks { displayItems.append(ModernDisplayItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(t))) }
+                for t in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(t))) }
             }
         }
     }
@@ -8007,12 +7869,12 @@ class ModernLibraryBrowserView: NSView {
             let key = playlist.url.path
             let expanded = expandedLocalPlaylists.contains(key)
             let info = localPlaylistTracks[key].map { "\($0.count) tracks" }
-            displayItems.append(ModernDisplayItem(id: key, title: playlist.title, info: info, indentLevel: 0, hasChildren: true, type: .localPlaylist(playlist)))
+            displayItems.append(LibraryBrowserItem(id: key, title: playlist.title, info: info, indentLevel: 0, hasChildren: true, type: .localPlaylist(playlist)))
             if expanded, let tracks = localPlaylistTracks[key] {
                 for t in tracks {
                     let duration = t.duration.map { Int($0) }
                     let title = t.title
-                    displayItems.append(ModernDisplayItem(id: "\(key)-\(t.url.absoluteString)", title: title, info: formatDuration(duration), indentLevel: 1, hasChildren: false, type: .localPlaylistTrack(t)))
+                    displayItems.append(LibraryBrowserItem(id: "\(key)-\(t.url.absoluteString)", title: title, info: formatDuration(duration), indentLevel: 1, hasChildren: false, type: .localPlaylistTrack(t)))
                 }
             }
         }
@@ -8032,14 +7894,14 @@ class ModernLibraryBrowserView: NSView {
         for artist in sortJellyfinArtists(cachedJellyfinArtists) {
             let info = artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil
             let expanded = expandedJellyfinArtists.contains(artist.id)
-            displayItems.append(ModernDisplayItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinArtist(artist)))
+            displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinArtist(artist)))
             if expanded, let albums = jellyfinArtistAlbums[artist.id] {
                 for album in sortJellyfinAlbums(albums) {
                     let albumExpanded = expandedJellyfinAlbums.contains(album.id)
-                    displayItems.append(ModernDisplayItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .jellyfinAlbum(album)))
+                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .jellyfinAlbum(album)))
                     if albumExpanded, let songs = jellyfinAlbumSongs[album.id] {
                         let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                        for song in sorted { displayItems.append(ModernDisplayItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .jellyfinTrack(song))) }
+                        for song in sorted { displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .jellyfinTrack(song))) }
                     }
                 }
             }
@@ -8050,10 +7912,10 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for album in sortJellyfinAlbums(cachedJellyfinAlbums) {
             let expanded = expandedJellyfinAlbums.contains(album.id)
-            displayItems.append(ModernDisplayItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .jellyfinAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .jellyfinAlbum(album)))
             if expanded, let songs = jellyfinAlbumSongs[album.id] {
                 let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(ModernDisplayItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(s))) }
+                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(s))) }
             }
         }
     }
@@ -8062,9 +7924,9 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for playlist in sortJellyfinPlaylists(cachedJellyfinPlaylists) {
             let expanded = expandedJellyfinPlaylists.contains(playlist.id)
-            displayItems.append(ModernDisplayItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .jellyfinPlaylist(playlist)))
+            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .jellyfinPlaylist(playlist)))
             if expanded, let tracks = jellyfinPlaylistTracks[playlist.id] {
-                for t in tracks { displayItems.append(ModernDisplayItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(t))) }
+                for t in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(t))) }
             }
         }
     }
@@ -8076,14 +7938,14 @@ class ModernLibraryBrowserView: NSView {
         for artist in sortEmbyArtists(cachedEmbyArtists) {
             let info = artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil
             let expanded = expandedEmbyArtists.contains(artist.id)
-            displayItems.append(ModernDisplayItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .embyArtist(artist)))
+            displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .embyArtist(artist)))
             if expanded, let albums = embyArtistAlbums[artist.id] {
                 for album in sortEmbyAlbums(albums) {
                     let albumExpanded = expandedEmbyAlbums.contains(album.id)
-                    displayItems.append(ModernDisplayItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .embyAlbum(album)))
+                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .embyAlbum(album)))
                     if albumExpanded, let songs = embyAlbumSongs[album.id] {
                         let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                        for song in sorted { displayItems.append(ModernDisplayItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .embyTrack(song))) }
+                        for song in sorted { displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .embyTrack(song))) }
                     }
                 }
             }
@@ -8094,10 +7956,10 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for album in sortEmbyAlbums(cachedEmbyAlbums) {
             let expanded = expandedEmbyAlbums.contains(album.id)
-            displayItems.append(ModernDisplayItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .embyAlbum(album)))
+            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .embyAlbum(album)))
             if expanded, let songs = embyAlbumSongs[album.id] {
                 let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(ModernDisplayItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(s))) }
+                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(s))) }
             }
         }
     }
@@ -8106,9 +7968,9 @@ class ModernLibraryBrowserView: NSView {
         displayItems.removeAll()
         for playlist in sortEmbyPlaylists(cachedEmbyPlaylists) {
             let expanded = expandedEmbyPlaylists.contains(playlist.id)
-            displayItems.append(ModernDisplayItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .embyPlaylist(playlist)))
+            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .embyPlaylist(playlist)))
             if expanded, let tracks = embyPlaylistTracks[playlist.id] {
-                for t in tracks { displayItems.append(ModernDisplayItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(t))) }
+                for t in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(t))) }
             }
         }
     }
@@ -8116,7 +7978,7 @@ class ModernLibraryBrowserView: NSView {
     private func buildEmbyMovieItems() {
         displayItems = cachedEmbyMovies.map { movie in
             let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return ModernDisplayItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .embyMovie(movie))
+            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .embyMovie(movie))
         }
     }
 
@@ -8125,12 +7987,12 @@ class ModernLibraryBrowserView: NSView {
         for show in cachedEmbyShows {
             let expanded = expandedEmbyShows.contains(show.id)
             let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(ModernDisplayItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .embyShow(show)))
+            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .embyShow(show)))
             if expanded, let seasons = embyShowSeasons[show.id] {
                 for season in seasons {
-                    displayItems.append(ModernDisplayItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .embySeason(season)))
+                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .embySeason(season)))
                     if expandedEmbySeasons.contains(season.id), let episodes = embySeasonEpisodes[season.id] {
-                        for ep in episodes { displayItems.append(ModernDisplayItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .embyEpisode(ep))) }
+                        for ep in episodes { displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .embyEpisode(ep))) }
                     }
                 }
             }
@@ -8656,7 +8518,7 @@ class ModernLibraryBrowserView: NSView {
     
     // MARK: - Expand/Collapse
     
-    private func isExpanded(_ item: ModernDisplayItem) -> Bool {
+    private func isExpanded(_ item: LibraryBrowserItem) -> Bool {
         switch item.type {
         case .artist(let a): return browseMode == .search ? expandedArtistNames.contains(a.title.lowercased()) : expandedArtists.contains(item.id)
         case .album: return expandedAlbums.contains(item.id)
@@ -8688,7 +8550,7 @@ class ModernLibraryBrowserView: NSView {
         }
     }
     
-    private func toggleExpand(_ item: ModernDisplayItem) {
+    private func toggleExpand(_ item: LibraryBrowserItem) {
         switch item.type {
         case .artist(let artist):
             let groupKey = item.id
@@ -9017,7 +8879,7 @@ class ModernLibraryBrowserView: NSView {
     // MARK: - Art (Flow, Tiles, row thumbnails)
 
     /// A row as the Flow / Tiles views show it.
-    private func artItem(for item: ModernDisplayItem) -> LibraryArtItem {
+    private func artItem(for item: LibraryBrowserItem) -> LibraryArtItem {
         let cacheKey = itemArtwork(for: item).cacheKey
         return LibraryArtItem(id: item.id, title: item.title, subtitle: item.info ?? "",
                               cachedArtwork: { cacheKey.flatMap { Self.artworkCache.object(forKey: NSString(string: $0)) } },
@@ -9027,7 +8889,7 @@ class ModernLibraryBrowserView: NSView {
 
     /// Resolve a display item to its artwork cache key and async loader (reusing the per-source
     /// loaders that back `loadArtworkForSelection`).
-    private func itemArtwork(for item: ModernDisplayItem) -> (cacheKey: String?, load: () async -> NSImage?) {
+    private func itemArtwork(for item: LibraryBrowserItem) -> (cacheKey: String?, load: () async -> NSImage?) {
         switch item.type {
         case .album(let album):
             return ("plex:\(album.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: album.id, thumbPath: album.thumb) })
@@ -9136,7 +8998,7 @@ class ModernLibraryBrowserView: NSView {
 
     /// The art for a row's round thumbnail, or nil for rows that never carry art. Cover Flow items
     /// reuse `itemArtwork`'s loaders, keyed within the current server.
-    private func rowThumbnailSource(for item: ModernDisplayItem) -> LibraryRowThumbnails.Source? {
+    private func rowThumbnailSource(for item: LibraryBrowserItem) -> LibraryRowThumbnails.Source? {
         switch item.type {
         case .localFolder: return nil
         case .youtubeChannel(let channel): return .channel(channel)
@@ -9299,7 +9161,7 @@ class ModernLibraryBrowserView: NSView {
         needsDisplay = true
     }
 
-    private func handleDoubleClick(on item: ModernDisplayItem) {
+    private func handleDoubleClick(on item: LibraryBrowserItem) {
         switch item.type {
         case .track, .album, .plexPlaylist, .localTrack, .localAlbum, .localPlaylist, .localPlaylistTrack,
              .subsonicTrack, .subsonicAlbum, .subsonicPlaylist, .jellyfinTrack, .jellyfinAlbum, .jellyfinPlaylist,
@@ -9349,264 +9211,6 @@ class ModernLibraryBrowserView: NSView {
 extension ModernLibraryBrowserView {
     func tagsPanelDidClose(_ panel: TagsPanel) {
         if panel === activeTagsPanel { activeTagsPanel = nil }
-    }
-}
-
-// MARK: - Display Item
-
-extension ModernDisplayItem: LibraryArtRow {
-    var isArtItem: Bool { type.isArtItem }
-    var isAlbumItem: Bool { type.isAlbumItem }
-    var isVideoContainer: Bool { type.isVideoContainer }
-}
-
-private struct ModernDisplayItem {
-    let id: String
-    let title: String
-    let info: String?
-    let indentLevel: Int
-    let hasChildren: Bool
-    let type: ItemType
-    var titlePrefix: String? = nil
-    
-    enum ItemType {
-        case artist(PlexArtist)
-        case album(PlexAlbum)
-        case track(PlexTrack)
-        case movie(PlexMovie)
-        case show(PlexShow)
-        case season(PlexSeason)
-        case episode(PlexEpisode)
-        case header
-        case localArtist(Artist)
-        case localAlbum(Album)
-        case localTrack(LibraryTrack)
-        case localFolder(url: URL, name: String)
-        case localMovie(LocalVideo)
-        case localShow(LocalShow)
-        case localSeason(LocalSeason, showTitle: String)
-        case localEpisode(LocalEpisode)
-        case subsonicArtist(SubsonicArtist)
-        case subsonicAlbum(SubsonicAlbum)
-        case subsonicTrack(SubsonicSong)
-        case subsonicPlaylist(SubsonicPlaylist)
-        case jellyfinArtist(JellyfinArtist)
-        case jellyfinAlbum(JellyfinAlbum)
-        case jellyfinTrack(JellyfinSong)
-        case jellyfinPlaylist(JellyfinPlaylist)
-        case jellyfinMovie(JellyfinMovie)
-        case jellyfinShow(JellyfinShow)
-        case jellyfinSeason(JellyfinSeason)
-        case jellyfinEpisode(JellyfinEpisode)
-        case embyArtist(EmbyArtist)
-        case embyAlbum(EmbyAlbum)
-        case embyTrack(EmbySong)
-        case embyPlaylist(EmbyPlaylist)
-        case embyMovie(EmbyMovie)
-        case embyShow(EmbyShow)
-        case embySeason(EmbySeason)
-        case embyEpisode(EmbyEpisode)
-        case plexPlaylist(PlexPlaylist)
-        case radioStation(RadioStation)
-        case radioFolder(RadioFolderDescriptor)
-        case youtubeChannel(YouTubeChannel)
-        case youtubeVideo(YouTubeVideo)
-        case plexRadioStation(PlexRadioType)
-        case subsonicRadioStation(SubsonicRadioType)
-        case jellyfinRadioStation(JellyfinRadioType)
-        case embyRadioStation(EmbyRadioType)
-        case localRadioStation(LocalRadioType)
-        case localPlaylist(LocalPlaylist)
-        case localPlaylistTrack(Track)
-
-        var isAlbumItem: Bool {
-            switch self {
-            case .album, .localAlbum, .subsonicAlbum, .jellyfinAlbum, .embyAlbum: return true
-            default: return false
-            }
-        }
-
-        /// Rows shown in Flow and Tiles. Containers (artists, folders, shows, seasons)
-        /// drill in; albums, tracks, movies, and episodes are leaves that play.
-        var isArtItem: Bool {
-            switch self {
-            case .artist, .localArtist, .subsonicArtist, .jellyfinArtist, .embyArtist,
-                 .localFolder,
-                 .track, .localTrack, .subsonicTrack, .jellyfinTrack, .embyTrack,
-                 .movie, .show, .season, .episode,
-                 .localMovie, .localShow, .localSeason, .localEpisode,
-                 .jellyfinMovie, .jellyfinShow, .jellyfinSeason, .jellyfinEpisode,
-                 .embyMovie, .embyShow, .embySeason, .embyEpisode:
-                return true
-            default:
-                return isAlbumItem
-            }
-        }
-
-        /// Movies, shows and seasons: their art is a 2:3 poster. Episodes carry a landscape still.
-        var isPoster: Bool {
-            switch self {
-            case .movie, .show, .season, .localMovie, .localShow, .localSeason,
-                 .jellyfinMovie, .jellyfinShow, .jellyfinSeason, .embyMovie, .embyShow, .embySeason:
-                return true
-            default:
-                return false
-            }
-        }
-
-        /// Search results keep music containers as navigation links, but video containers retain
-        /// their show → season → episode hierarchy inside Flow and Tiles.
-        var isVideoContainer: Bool {
-            switch self {
-            case .show, .season, .localShow, .localSeason,
-                 .jellyfinShow, .jellyfinSeason, .embyShow, .embySeason:
-                return true
-            default:
-                return false
-            }
-        }
-    }
-}
-
-extension ModernDisplayItem {
-    init(_ row: YouTubeRow) {
-        let type: ItemType
-        switch row.kind {
-        case .header: type = .header
-        case .channel(let channel): type = .youtubeChannel(channel)
-        case .video(let video): type = .youtubeVideo(video)
-        }
-        self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
-                  hasChildren: row.hasChildren, type: type, titlePrefix: row.titlePrefix)
-    }
-
-    init(_ row: LocalFolderTree.Row) {
-        let type: ItemType
-        switch row.kind {
-        case .folder(let url): type = .localFolder(url: url, name: row.title)
-        case .track(let track): type = .localTrack(track)
-        }
-        self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
-                  hasChildren: row.hasChildren, type: type)
-    }
-}
-
-// MARK: - Radio Type Enums
-
-enum SubsonicRadioType: Equatable, Hashable {
-    case libraryRadio
-    case librarySimilar
-    case genreRadio(String)
-    case genreSimilar(String)
-    case decadeRadio(start: Int, end: Int, name: String)
-    case decadeSimilar(start: Int, end: Int, name: String)
-    case starredRadio
-    case starredSimilar
-
-    var displayName: String {
-        switch self {
-        case .libraryRadio: return "Library Radio"
-        case .librarySimilar: return "Library Radio (Similar)"
-        case .genreRadio(let g): return "\(g) Radio"
-        case .genreSimilar(let g): return "\(g) Radio (Similar)"
-        case .decadeRadio(_, _, let n): return "\(n) Radio"
-        case .decadeSimilar(_, _, let n): return "\(n) Radio (Similar)"
-        case .starredRadio: return "Starred Radio"
-        case .starredSimilar: return "Starred Radio (Similar)"
-        }
-    }
-    var category: String {
-        switch self {
-        case .libraryRadio, .librarySimilar: return "Library"
-        case .genreRadio, .genreSimilar: return "Genre"
-        case .decadeRadio, .decadeSimilar: return "Decade"
-        case .starredRadio, .starredSimilar: return "Starred"
-        }
-    }
-}
-
-enum JellyfinRadioType: Equatable, Hashable {
-    case libraryRadio
-    case libraryInstantMix
-    case genreRadio(String)
-    case genreInstantMix(String)
-    case decadeRadio(start: Int, end: Int, name: String)
-    case decadeInstantMix(start: Int, end: Int, name: String)
-    case favoritesRadio
-    case favoritesInstantMix
-
-    var displayName: String {
-        switch self {
-        case .libraryRadio: return "Library Radio"
-        case .libraryInstantMix: return "Library Radio (Instant Mix)"
-        case .genreRadio(let g): return "\(g) Radio"
-        case .genreInstantMix(let g): return "\(g) Radio (Instant Mix)"
-        case .decadeRadio(_, _, let n): return "\(n) Radio"
-        case .decadeInstantMix(_, _, let n): return "\(n) Radio (Instant Mix)"
-        case .favoritesRadio: return "Favorites Radio"
-        case .favoritesInstantMix: return "Favorites Radio (Instant Mix)"
-        }
-    }
-    var category: String {
-        switch self {
-        case .libraryRadio, .libraryInstantMix: return "Library"
-        case .genreRadio, .genreInstantMix: return "Genre"
-        case .decadeRadio, .decadeInstantMix: return "Decade"
-        case .favoritesRadio, .favoritesInstantMix: return "Favorites"
-        }
-    }
-}
-
-enum EmbyRadioType: Equatable, Hashable {
-    case libraryRadio
-    case libraryInstantMix
-    case genreRadio(String)
-    case genreInstantMix(String)
-    case decadeRadio(start: Int, end: Int, name: String)
-    case decadeInstantMix(start: Int, end: Int, name: String)
-    case favoritesRadio
-    case favoritesInstantMix
-
-    var displayName: String {
-        switch self {
-        case .libraryRadio: return "Library Radio"
-        case .libraryInstantMix: return "Library Radio (Instant Mix)"
-        case .genreRadio(let g): return "\(g) Radio"
-        case .genreInstantMix(let g): return "\(g) Radio (Instant Mix)"
-        case .decadeRadio(_, _, let n): return "\(n) Radio"
-        case .decadeInstantMix(_, _, let n): return "\(n) Radio (Instant Mix)"
-        case .favoritesRadio: return "Favorites Radio"
-        case .favoritesInstantMix: return "Favorites Radio (Instant Mix)"
-        }
-    }
-    var category: String {
-        switch self {
-        case .libraryRadio, .libraryInstantMix: return "Library"
-        case .genreRadio, .genreInstantMix: return "Genre"
-        case .decadeRadio, .decadeInstantMix: return "Decade"
-        case .favoritesRadio, .favoritesInstantMix: return "Favorites"
-        }
-    }
-}
-
-enum LocalRadioType: Equatable, Hashable {
-    case libraryRadio
-    case genreRadio(String)
-    case decadeRadio(start: Int, end: Int, name: String)
-
-    var displayName: String {
-        switch self {
-        case .libraryRadio: return "Library Radio"
-        case .genreRadio(let g): return "\(g) Radio"
-        case .decadeRadio(_, _, let n): return "\(n) Radio"
-        }
-    }
-    var category: String {
-        switch self {
-        case .libraryRadio: return "Library"
-        case .genreRadio: return "Genre"
-        case .decadeRadio: return "Decade"
-        }
     }
 }
 
@@ -9679,9 +9283,7 @@ private struct ModernBrowserColumn {
 
 // MARK: - Column Value Extraction
 
-extension ModernDisplayItem {
-    /// The title as drawn: `titlePrefix` (a YouTube row's markers) ahead of the item's own title.
-    var shownTitle: String { titlePrefix.map { "\($0) \(title)" } ?? title }
+fileprivate extension LibraryBrowserItem {
 
     func columnValue(for column: ModernBrowserColumn) -> String {
         if column.id == "title" { return title }
