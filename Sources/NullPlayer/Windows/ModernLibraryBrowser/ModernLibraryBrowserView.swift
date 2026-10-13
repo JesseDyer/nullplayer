@@ -72,53 +72,9 @@ class ModernLibraryBrowserView: NSView {
         Layout.statusBarHeight + compactFooterHeight
     }
     
-    // Browse state
-    private var currentSource: LibraryBrowserSource = .local {
-        didSet { currentSource.save(); onSourceChanged() }
-    }
-    private var pendingSourceRestore: LibraryBrowserSource?
-    private var browseMode: LibraryBrowseMode = .artists {
-        didSet {
-            guard browseMode != oldValue else { return }
-            // A new tab opens Flow or Tiles at its root.
-            artLens.resetNavigation()
-            if oldValue == .folders, browseMode != .folders {
-                cancelLocalFolderBuild()
-            }
-            if browseMode.isHistoryMode {
-                historyAgent.scheduleRefresh()
-            }
-            updateHistoryHostingVisibility()
-        }
-    }
-    
-    /// Expose browse mode for state save/restore
-    var browseModeRawValue: Int {
-        get { browseMode.rawValue }
-        set {
-            if let mode = LibraryBrowseMode(rawValue: newValue) {
-                // If restoring .folders mode while non-local source, fall back to .plists
-                var actualMode = mode
-                if mode == .folders {
-                    if case .local = currentSource {
-                        actualMode = mode
-                    } else {
-                        actualMode = .plists
-                    }
-                }
-                browseMode = actualMode
-                selectedIndices.removeAll()
-                scrollOffset = 0
-                loadDataForCurrentMode()
-                needsDisplay = true
-            }
-        }
-    }
-    
-    /// The current tab's sort; each tab keeps its own in `LibraryBrowserTabSortStore`.
-    private var tabSort: LibraryBrowserTabSort { LibraryBrowserTabSortStore.shared.sort(for: browseMode.rawValue) }
-    private var currentSort: LibraryBrowserSortOption { tabSort.menuSort }
-    private var searchQuery: String = ""
+    /// The browser's source, tab, rows and caches; this view draws them.
+    let model = LibraryBrowserModel(keyPrefix: "")
+
     private var typeAheadQuery: String = ""
     private var typeAheadTimer: Timer?
 
@@ -137,95 +93,6 @@ class ModernLibraryBrowserView: NSView {
     private var resizingColumnGroup: LibraryColumnVisibilityGroup?
     private var resizeStartX: CGFloat = 0
     private var resizeStartWidth: CGFloat = 0
-    /// Column header sort; overrides `currentSort` when set
-    private var columnSortId: String? { tabSort.columnSortId }
-
-    // YouTube channels keep their own sort state (session-only, default = none → date
-    // order as returned by yt-dlp). This keeps the persisted library column sort from
-    // leaking in and re-ordering videos to A–Z on every rebuild (e.g. after a download).
-    // Only an explicit header click in the YouTube tab sets this.
-    private var youtubeColumnSortId: String? = nil
-    private var youtubeColumnSortAscending: Bool = true
-
-    /// Column sort that applies to the current source. YouTube uses its own session
-    /// state (default date order) instead of the persisted library sort.
-    private var activeColumnSortId: String? {
-        currentSource.isYouTube ? youtubeColumnSortId : columnSortId
-    }
-    private var activeColumnSortAscending: Bool {
-        currentSource.isYouTube ? youtubeColumnSortAscending : tabSort.columnSortAscending
-    }
-    
-    // Visible columns (ordered lists of column IDs; persisted to UserDefaults)
-    private var visibleTrackColumnIds: [String] = ModernBrowserColumn.defaultTrackColumnIds { didSet { saveVisibleColumns() } }
-    private var visibleAlbumColumnIds: [String] = ModernBrowserColumn.defaultAlbumColumnIds { didSet { saveVisibleColumns() } }
-    private var visibleArtistColumnIds: [String] = ModernBrowserColumn.defaultArtistColumnIds { didSet { saveVisibleColumns() } }
-
-    // Display items
-    private var displayItems: [LibraryBrowserItem] = [] {
-        didSet { artLens.rowsDidChange() }
-    }
-
-    // Expanded state
-    private var expandedArtists: Set<String> = []
-    private var expandedAlbums: Set<String> = []
-    private var expandedArtistNames: Set<String> = []
-    private var expandedLocalArtists: Set<String> = []
-    private var expandedLocalAlbums: Set<String> = []
-    private var expandedLocalShows: Set<String> = []
-    private var expandedLocalSeasons: Set<String> = []
-    private var expandedLocalFolders: Set<String> = []
-    /// Bumped on each Folders rebuild; an in-flight off-actor walk discards its result if stale.
-    private var localFolderBuildGeneration = 0
-    /// The in-flight Folders walk, cancelled when a newer rebuild starts (fast-click protection).
-    private var localFolderBuildTask: Task<Void, Never>?
-    private var expandedSubsonicArtists: Set<String> = []
-    private var expandedSubsonicAlbums: Set<String> = []
-    private var expandedSubsonicPlaylists: Set<String> = []
-    private var expandedPlexPlaylists: Set<String> = []
-    private var expandedShows: Set<String> = []
-    private var expandedSeasons: Set<String> = []
-    
-    // Loading state
-    private var isLoading: Bool = false {
-        didSet { artLens.updateVisibility() }
-    }
-    private var errorMessage: String? {
-        didSet { artLens.updateVisibility() }
-    }
-    
-    // Cached data - Plex
-    private var cachedArtists: [PlexArtist] = []
-    private var cachedAlbums: [PlexAlbum] = []
-    private var cachedTracks: [PlexTrack] = []
-    private var artistAlbums: [String: [PlexAlbum]] = [:]
-    private var albumTracks: [String: [PlexTrack]] = [:]
-    private var artistAlbumCounts: [String: Int] = [:]
-    private var plexArtistGroupsByName: [String: [PlexArtist]] = [:]
-    private var plexAlbumsByArtistGroupKey: [String: [PlexAlbum]] = [:]
-    private var plexAlbumCountsByArtistGroupKey: [String: Int] = [:]
-    private var artistAlbumsByName: [String: [PlexAlbum]] = [:]
-    
-    // Cached data - Local
-    // Paginated local data state (replaces full in-memory caches)
-    private var localArtistPageOffset = 0
-    private var localAlbumPageOffset = 0
-    private let localPageSize = 200
-    private var localArtistTotal = 0
-    private var localAlbumTotal = 0
-    private var localArtistLetterOffsets: [String: Int] = [:]
-    private var localAlbumLetterOffsets: [String: Int] = [:]
-    private var cachedLocalMovies: [LocalVideo] = []
-    private var cachedLocalShows: [LocalShow] = []
-    private var localLibraryReloadWorkItem: DispatchWorkItem?
-
-    // Offline volume state (populated by loadLocalData)
-    private var offlineWatchFolders: [WatchFolderSummary] = [] {
-        // The banner (local source, a folder offline) takes list height from Flow / Tiles; the
-        // source half re-lays out in `onSourceChanged`.
-        didSet { needsLayout = true }
-    }
-    private var offlineVolumePrefixes: Set<String> = []
 
     /// Content shown below the compact player bar: the library browser or the play queue.
     /// Only consulted when `compactMode == true`; the full library window is unaffected.
@@ -252,153 +119,21 @@ class ModernLibraryBrowserView: NSView {
     /// Embedded compact-sized play queue, shown in place of the library chrome in queue mode.
     private var compactPlaylistView: ModernPlaylistView?
 
-    // Local Plists slot toggle state (switch between Plists and Folders)
-    private var localPlistsSlotShowsFolders: Bool {
-        get { UserDefaults.standard.object(forKey: "LocalPlistsSlotShowsFolders") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "LocalPlistsSlotShowsFolders") }
-    }
-
-    private var effectivePlistsSlotMode: LibraryBrowseMode {
-        if case .local = currentSource, localPlistsSlotShowsFolders {
-            return .folders
-        }
-        return .plists
-    }
-
-    /// The Radio tab slot toggles between Internet Radio stations and YouTube
-    /// channels (YouTube source only), mirroring the Plists/Folders toggle.
-    /// Defaults to showing channels so the YouTube source opens on "Channels".
-    private var radioSlotShowsChannels: Bool {
-        get { UserDefaults.standard.object(forKey: "RadioSlotShowsChannels") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "RadioSlotShowsChannels") }
-    }
-    /// Whether the Radio tab slot is currently displaying YouTube channels.
-    private var radioSlotShowingChannels: Bool {
-        currentSource.isYouTube && radioSlotShowsChannels
-    }
-    /// Whether the Search tab is showing YouTube channel-search results (YouTube source).
-    private var isYouTubeChannelSearch: Bool {
-        currentSource.isYouTube && browseMode == .search
-    }
-    /// A YouTube channel search typed but not yet run: Enter submits it. Once its results
-    /// are showing, Enter acts on the selected row (subscribe / expand) instead.
-    private var hasUnsubmittedYouTubeSearch: Bool {
-        isYouTubeChannelSearch && youtubeSearch.isUnsubmitted(searchQuery)
-    }
-
-    private var isLocalSource: Bool {
-        if case .local = currentSource { return true }
-        return false
-    }
-
-    private func cancelLocalFolderBuild() {
-        localFolderBuildGeneration &+= 1
-        localFolderBuildTask?.cancel()
-        localFolderBuildTask = nil
-    }
-
-    // Cached data - Local Playlists
-    private var expandedLocalPlaylists: Set<String> = []
-    private var localPlaylistTracks: [String: [Track]] = [:]
-    private var cachedLocalPlaylists: [LocalPlaylist] = []
-
-    // Cached data - Subsonic
-    private var cachedSubsonicArtists: [SubsonicArtist] = []
-    private var cachedSubsonicAlbums: [SubsonicAlbum] = []
-    private var cachedSubsonicPlaylists: [SubsonicPlaylist] = []
-    private var subsonicArtistAlbums: [String: [SubsonicAlbum]] = [:]
-    private var subsonicPlaylistTracks: [String: [SubsonicSong]] = [:]
-    private var subsonicAlbumSongs: [String: [SubsonicSong]] = [:]
-    private var subsonicLoadTask: Task<Void, Never>?
-    private var subsonicExpandTask: Task<Void, Never>?
-    private var plexLoadTask: Task<Void, Never>?
-    private var sourceConnectTask: Task<Void, Never>?
-    
-    // Cached data - Jellyfin
-    private var cachedJellyfinArtists: [JellyfinArtist] = []
-    private var cachedJellyfinAlbums: [JellyfinAlbum] = []
-    private var cachedJellyfinPlaylists: [JellyfinPlaylist] = []
-    private var jellyfinArtistAlbums: [String: [JellyfinAlbum]] = [:]
-    private var jellyfinPlaylistTracks: [String: [JellyfinSong]] = [:]
-    private var jellyfinAlbumSongs: [String: [JellyfinSong]] = [:]
-    private var jellyfinLoadTask: Task<Void, Never>?
-    private var jellyfinAlbumWarmTask: Task<Void, Never>?
-    private var jellyfinExpandTask: Task<Void, Never>?
-    private var expandedJellyfinArtists: Set<String> = []
-    private var expandedJellyfinAlbums: Set<String> = []
-    private var expandedJellyfinPlaylists: Set<String> = []
-    
-    // Cached data - Radio
-    private var cachedRadioStations: [RadioStation] = []
-    private var cachedRadioFolders: [RadioFolderDescriptor] = []
-    private var expandedRadioFolders: Set<String> = []
     private var activeRadioStationSheet: AddRadioStationSheet?
     private var activeYouTubeChannelSheet: AddYouTubeChannelSheet?
 
-    // Cached data - YouTube
-    private var expandedYouTubeChannels: [String: YouTubeChannel] = [:]
     /// A video row's Audio ▸ / Video ▸ menu and its downloads, which drive a per-row spinner.
     private lazy var youtubeVideoActions: YouTubeVideoActions = {
-        let actions = YouTubeVideoActions(search: youtubeSearch)
+        let actions = YouTubeVideoActions(search: model.youtubeSearch)
         actions.onFetchesChanged = { [weak self] in
             guard let self else { return }
             if self.youtubeVideoActions.hasFetchesInFlight { self.startLoadingAnimation() } else { self.stopLoadingAnimation() }
             self.needsDisplay = true
         }
-        actions.onFilesChanged = { [weak self] in self?.rebuildCurrentModeItems() }
+        actions.onFilesChanged = { [weak self] in self?.model.rebuildCurrentModeItems() }
         return actions
     }()
-    /// Search tab (YouTube source): channels found by the last submitted query.
-    private let youtubeSearch = YouTubeChannelSearch()
 
-    // Cached data - Video (Plex)
-    private var cachedMovies: [PlexMovie] = []
-    private var cachedShows: [PlexShow] = []
-    private var showSeasons: [String: [PlexSeason]] = [:]
-    private var seasonEpisodes: [String: [PlexEpisode]] = [:]
-    
-    // Cached data - Video (Jellyfin)
-    private var cachedJellyfinMovies: [JellyfinMovie] = []
-    private var cachedJellyfinShows: [JellyfinShow] = []
-    private var jellyfinShowSeasons: [String: [JellyfinSeason]] = [:]
-    private var jellyfinSeasonEpisodes: [String: [JellyfinEpisode]] = [:]
-    private var expandedJellyfinShows: Set<String> = []
-    private var expandedJellyfinSeasons: Set<String> = []
-
-    // Cached data - Emby
-    private var cachedEmbyArtists: [EmbyArtist] = []
-    private var cachedEmbyAlbums: [EmbyAlbum] = []
-    private var cachedEmbyPlaylists: [EmbyPlaylist] = []
-    private var embyArtistAlbums: [String: [EmbyAlbum]] = [:]
-    private var embyPlaylistTracks: [String: [EmbySong]] = [:]
-    private var embyAlbumSongs: [String: [EmbySong]] = [:]
-    private var embyLoadTask: Task<Void, Never>?
-    private var embyExpandTask: Task<Void, Never>?
-    private var expandedEmbyArtists: Set<String> = []
-    private var expandedEmbyAlbums: Set<String> = []
-    private var expandedEmbyPlaylists: Set<String> = []
-
-    // Cached data - Video (Emby)
-    private var cachedEmbyMovies: [EmbyMovie] = []
-    private var cachedEmbyShows: [EmbyShow] = []
-    private var embyShowSeasons: [String: [EmbySeason]] = [:]
-    private var embySeasonEpisodes: [String: [EmbyEpisode]] = [:]
-    private var expandedEmbyShows: Set<String> = []
-    private var expandedEmbySeasons: Set<String> = []
-
-    // Cached data - Playlists (Plex)
-    private var cachedPlexPlaylists: [PlexPlaylist] = []
-    private var plexPlaylistTracks: [String: [PlexTrack]] = [:]
-    
-    // Search
-    private var searchResults: PlexSearchResults?
-    private var jellyfinSearchResults: JellyfinSearchResults?
-    private var subsonicSearchResults: SubsonicSearchResults?
-    private var embySearchResults: EmbySearchResults?
-    private var pendingScrollToArtistId: String?
-    private var pendingScrollToArtistName: String?
-    private var pendingScrollAttempts = 0
-    private var pendingArtistLoadUnfiltered = false
 
     // Animation
     private var loadingAnimationTimer: Timer?
@@ -433,11 +168,11 @@ class ModernLibraryBrowserView: NSView {
     
     /// List, Flow or Tiles, and the Flow / Tiles view standing in for the list (see LibraryArtLens).
     private lazy var artLens = LibraryArtLens<LibraryBrowserItem>(container: self, host: .init(
-        rows: { [unowned self] in displayItems },
-        isSearch: { [unowned self] in browseMode == .search },
+        rows: { [unowned self] in model.displayItems },
+        isSearch: { [unowned self] in model.browseMode == .search },
         selectedIndex: { [unowned self] in selectedIndices.min() },
         isBlocked: { [unowned self] in
-            isLoading || errorMessage != nil || (currentSource.isPlex && !PlexManager.shared.isLinked)
+            model.isLoading || model.errorMessage != nil || (model.currentSource.isPlex && !PlexManager.shared.isLinked)
         },
         style: { [unowned self] in
             let skin = currentSkin()
@@ -445,17 +180,17 @@ class ModernLibraryBrowserView: NSView {
                                    placeholderFill: skin.surfaceColor, placeholderTextColor: skin.textDimColor)
         },
         item: { [unowned self] in artItem(for: $0) },
-        isExpanded: { [unowned self] in isExpanded($0) },
-        toggleExpand: { [unowned self] in toggleExpand($0) },
+        isExpanded: { [unowned self] in model.isExpanded($0) },
+        toggleExpand: { [unowned self] in model.toggleExpand($0) },
         play: { [unowned self] in handleDoubleClick(on: $0) },
         menu: { [unowned self] row, event in
             // As a right-click on the row in the list: select it, then its menu.
-            if let index = displayItems.firstIndex(where: { $0.id == row.id }) { selectedIndices = [index] }
+            if let index = model.displayItems.firstIndex(where: { $0.id == row.id }) { selectedIndices = [index] }
             showContextMenu(for: row, at: event)
         },
         albumInfo: { [unowned self] in playable(for: $0).flatMap(LibraryAlbumInfo.init) },
         loadNextPage: { [unowned self] in
-            if case .local = currentSource { appendNextLocalPage() }
+            if case .local = model.currentSource { model.appendNextLocalPage() }
         }
     ))
     /// The List / Flow / Tiles buttons in the server bar, as last drawn.
@@ -476,9 +211,7 @@ class ModernLibraryBrowserView: NSView {
     private var currentTrackArtworkLoadTask: Task<Void, Never>?
     private var artworkLoadTask: Task<Void, Never>?
     private var artworkDisplayGeneration = 0
-    private var radioLoadTask: Task<Void, Never>?
     private var radioPlayTask: Task<Void, Never>?
-    private var loadGeneration: Int = 0
     private var isPreparingForUITeardown = false
     private static let artworkCache = NSCache<NSString, NSImage>()
     private let rowThumbnails = LibraryRowThumbnailTracker()
@@ -554,75 +287,7 @@ class ModernLibraryBrowserView: NSView {
         let skin = ModernSkinEngine.shared.currentSkin ?? ModernSkinLoader.shared.loadDefault()
         renderer = ModernSkinRenderer(skin: skin)
         
-        // Load saved column widths and visibility
         loadColumnWidths()
-        loadVisibleColumns()
-
-        // Load saved source
-        if let savedSource = LibraryBrowserSource.load() {
-            switch savedSource {
-            case .local:
-                currentSource = .local
-            case .plex(let serverId):
-                if PlexManager.shared.isLinked {
-                    if PlexManager.shared.servers.contains(where: { $0.id == serverId }) {
-                        currentSource = savedSource
-                    } else if PlexManager.shared.servers.isEmpty {
-                        pendingSourceRestore = savedSource
-                        currentSource = .local
-                    } else if let firstServer = PlexManager.shared.servers.first {
-                        currentSource = .plex(serverId: firstServer.id)
-                    } else {
-                        currentSource = .local
-                    }
-                } else {
-                    currentSource = .local
-                }
-            case .subsonic(let serverId):
-                if SubsonicManager.shared.servers.contains(where: { $0.id == serverId }) {
-                    currentSource = savedSource
-                } else if SubsonicManager.shared.servers.isEmpty {
-                    pendingSourceRestore = savedSource
-                    currentSource = .local
-                } else if let firstServer = SubsonicManager.shared.servers.first {
-                    currentSource = .subsonic(serverId: firstServer.id)
-                } else {
-                    currentSource = .local
-                }
-            case .jellyfin(let serverId):
-                if JellyfinManager.shared.servers.contains(where: { $0.id == serverId }) {
-                    currentSource = savedSource
-                } else if JellyfinManager.shared.servers.isEmpty {
-                    pendingSourceRestore = savedSource
-                    currentSource = .local
-                } else if let firstServer = JellyfinManager.shared.servers.first {
-                    currentSource = .jellyfin(serverId: firstServer.id)
-                } else {
-                    currentSource = .local
-                }
-            case .emby(let serverId):
-                if EmbyManager.shared.servers.contains(where: { $0.id == serverId }) {
-                    currentSource = savedSource
-                } else if EmbyManager.shared.servers.isEmpty {
-                    pendingSourceRestore = savedSource
-                    currentSource = .local
-                } else if let firstServer = EmbyManager.shared.servers.first {
-                    currentSource = .emby(serverId: firstServer.id)
-                } else {
-                    currentSource = .local
-                }
-            case .radio:
-                currentSource = .radio
-            case .youtube:
-                currentSource = .youtube
-            }
-        } else {
-            if PlexManager.shared.isLinked, let firstServer = PlexManager.shared.servers.first {
-                currentSource = .plex(serverId: firstServer.id)
-            } else {
-                currentSource = .local
-            }
-        }
 
         // Register notifications
         NotificationCenter.default.addObserver(self, selector: #selector(modernSkinDidChange),
@@ -631,24 +296,6 @@ class ModernLibraryBrowserView: NSView {
                                                name: .doubleSizeDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(windowLayoutDidChange),
                                                name: .windowLayoutDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexStateDidChange),
-                                               name: PlexManager.accountDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexStateDidChange),
-                                               name: PlexManager.libraryDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexStateDidChange),
-                                               name: PlexManager.connectionStateDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexServerDidChange),
-                                               name: PlexManager.serversDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexContentDidPreload),
-                                               name: PlexManager.libraryContentDidPreloadNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(mediaLibraryDidChange),
-                                               name: MediaLibrary.libraryDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(radioStationsDidChange),
-                                               name: RadioManager.stationsDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(youtubeChannelsDidChange),
-                                               name: YouTubeManager.youtubeChannelsDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(youtubeVideoLimitDidChange),
-                                               name: YouTubeManager.youtubeVideoLimitDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(youtubeUploadsDidChange),
                                                name: YouTubeChannelUploads.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(libraryRowThumbnailDidLoad),
@@ -657,26 +304,7 @@ class ModernLibraryBrowserView: NSView {
                                                name: .audioTrackDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(playHistoryDidChange),
                                                name: MediaLibraryStore.playHistoryDidChangeNotification, object: nil)
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(jellyfinMusicLibraryDidChange),
-                                               name: JellyfinManager.musicLibraryDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(jellyfinVideoLibraryDidChange),
-                                               name: JellyfinManager.videoLibraryDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(embyMusicLibraryDidChange),
-                                               name: EmbyManager.musicLibraryDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(embyVideoLibraryDidChange),
-                                               name: EmbyManager.videoLibraryDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(embyLibraryContentDidPreload),
-                                               name: EmbyManager.libraryContentDidPreloadNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(embyConnectionStateDidChange),
-                                               name: EmbyManager.connectionStateDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(subsonicMusicFolderDidChange),
-                                               name: SubsonicManager.musicFolderDidChangeNotification, object: nil)
-        
-        // External source selection (e.g. Subsonic/Jellyfin menu > Show in Library Browser)
-        NotificationCenter.default.addObserver(self, selector: #selector(handleSetBrowserSource(_:)),
-                                               name: NSNotification.Name("SetBrowserSource"), object: nil)
-        
+
         // Window visibility notifications
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidMiniaturize),
                                                name: NSWindow.didMiniaturizeNotification, object: nil)
@@ -693,7 +321,8 @@ class ModernLibraryBrowserView: NSView {
         registerForDraggedTypes([.fileURL])
         
         // Initial data load
-        reloadData()
+        model.onChange = { [weak self] in self?.modelDidChange($0) }
+        model.reloadData()
         
         // Start server name scroll animation
         startServerNameScroll()
@@ -710,45 +339,72 @@ class ModernLibraryBrowserView: NSView {
         updateCornerMask()
         updateHistoryHostingVisibility()
     }
+
+    /// The model's rows, loading state, source or tab changed.
+    private func modelDidChange(_ change: LibraryBrowserModel.Change) {
+        switch change {
+        case .rows:
+            artLens.rowsDidChange()
+            needsDisplay = true
+        case .loading:
+            artLens.updateVisibility()
+            if model.isLoading { startLoadingAnimation() } else { stopLoadingAnimation() }
+            needsDisplay = true
+        case .rowsReplaced:
+            selectedIndices.removeAll()
+            scrollOffset = 0
+            if model.browseMode.isHistoryMode {
+                historyAgent.scheduleRefresh()
+                updateHistoryHostingVisibility()
+            }
+        case .rebuilt:
+            horizontalScrollOffset = 0
+        case .loaded:
+            // The offline banner (local source, a folder offline) takes list height from Flow / Tiles.
+            needsLayout = true
+        case .reveal(let index):
+            selectedIndices = [index]
+            ensureVisible(index: index)
+            needsDisplay = true
+        case .source:
+            artLens.resetNavigation()
+            needsLayout = true   // the offline banner shows on the local source only
+            selectedIndices.removeAll()
+            scrollOffset = 0
+            startServerNameScroll()
+        case .browseMode:
+            // A new tab opens Flow or Tiles at its root.
+            artLens.resetNavigation()
+            if model.browseMode.isHistoryMode {
+                historyAgent.scheduleRefresh()
+            }
+            updateHistoryHostingVisibility()
+        }
+    }
     
     deinit {
-        localLibraryReloadWorkItem?.cancel()
         NotificationCenter.default.removeObserver(self)
         stopLoadingAnimation(force: true)
         stopServerNameScroll()
         backdropView?.stop()
     }
 
-    /// Synchronously cancel every in-flight task, work item, and timer this view owns so it can
-    /// be deallocated immediately when the controller is torn down for a UI reload — rather than
-    /// being pinned alive (and mutating dead UI state) by a detached `@MainActor` expand/load task
-    /// or a self-retaining repeating timer. `deinit` is deferred by AppKit's autorelease pool, so
-    /// `WindowManager.teardownModeDependentWindows()` calls this *before* closing the window.
+    /// Synchronously cancel every in-flight task, work item, and timer this view and its model
+    /// own so they can be deallocated immediately when the controller is torn down for a UI
+    /// reload — rather than being pinned alive (and mutating dead UI state) by a detached
+    /// `@MainActor` expand/load task or a self-retaining repeating timer. `deinit` is deferred by
+    /// AppKit's autorelease pool, so `WindowManager.teardownModeDependentWindows()` calls this
+    /// *before* closing the window.
     func prepareForUITeardown() {
         isPreparingForUITeardown = true
-        // Async tasks — the detached @MainActor expand/load tasks don't inherit cancellation and
-        // strongly capture self, so an in-flight one would survive teardown without this.
-        for task in [localFolderBuildTask,
-                     subsonicLoadTask, subsonicExpandTask,
-                     plexLoadTask, sourceConnectTask,
-                     jellyfinLoadTask, jellyfinAlbumWarmTask, jellyfinExpandTask,
-                     embyLoadTask, embyExpandTask,
-                     currentTrackArtworkLoadTask, artworkLoadTask,
-                     radioLoadTask, radioPlayTask] {
+        model.cancelAll()
+        for task in [currentTrackArtworkLoadTask, artworkLoadTask, radioPlayTask] {
             task?.cancel()
         }
-        youtubeSearch.cancel()
         youtubeVideoActions.cancel()
-        localFolderBuildTask = nil
-        subsonicLoadTask = nil; subsonicExpandTask = nil
-        plexLoadTask = nil; sourceConnectTask = nil
-        jellyfinLoadTask = nil; jellyfinAlbumWarmTask = nil; jellyfinExpandTask = nil
-        embyLoadTask = nil; embyExpandTask = nil
-        currentTrackArtworkLoadTask = nil; artworkLoadTask = nil
-        radioLoadTask = nil; radioPlayTask = nil
+        currentTrackArtworkLoadTask = nil; artworkLoadTask = nil; radioPlayTask = nil
 
-        // Work items + timers (timers with a target/captured self can also pin the view alive).
-        localLibraryReloadWorkItem?.cancel(); localLibraryReloadWorkItem = nil
+        // Timers (timers with a target/captured self can also pin the view alive).
         typeAheadTimer?.invalidate(); typeAheadTimer = nil
         stopLoadingAnimation(force: true)
         stopServerNameScroll()
@@ -864,13 +520,13 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func updateHistoryHostingVisibility() {
-        if browseMode.isHistoryMode {
+        if model.browseMode.isHistoryMode {
             ensureHistoryHostingView()
         }
         // The embedded queue covers the content region in Playlist mode, so the SwiftUI
         // history subview must stay hidden there regardless of browseMode.
         let inQueueMode = compactMode && compactContentMode == .queue
-        let isVisible = browseMode.isHistoryMode && !inQueueMode
+        let isVisible = model.browseMode.isHistoryMode && !inQueueMode
         historyHostingView?.isHidden = !isVisible
         updateEmbeddedSubviewFrames()
     }
@@ -1187,7 +843,7 @@ class ModernLibraryBrowserView: NSView {
             drawTabBar(in: context, tabBarY: tabBarY, skin: skin)
 
             // Search bar (below tab bar, only in search mode)
-            if browseMode == .search {
+            if model.browseMode == .search {
                 drawSearchBar(in: context, searchBarY: listTopY, skin: skin)
             }
 
@@ -1199,14 +855,14 @@ class ModernLibraryBrowserView: NSView {
                 drawOfflineBanner(in: context, rect: bannerRect, skin: skin)
             }
 
-            if browseMode.isHistoryMode {
+            if model.browseMode.isHistoryMode {
                 drawArtworkBackground(in: context, listRect: listRect, artwork: capturedArtwork)
                 // SwiftUI-hosted history content is rendered via an embedded subview.
-            } else if currentSource.isPlex && !PlexManager.shared.isLinked {
+            } else if model.currentSource.isPlex && !PlexManager.shared.isLinked {
                 drawNotLinkedState(in: context, listRect: listRect, skin: skin)
-            } else if isLoading {
+            } else if model.isLoading {
                 drawLoadingState(in: context, listRect: listRect, skin: skin)
-            } else if let error = errorMessage {
+            } else if let error = model.errorMessage {
                 drawErrorState(in: context, message: error, listRect: listRect, skin: skin)
             } else if artLens.isPresenting {
                 // The Flow / Tiles view renders the art. Draw nothing here: the window
@@ -1241,11 +897,11 @@ class ModernLibraryBrowserView: NSView {
     private func currentTabLabels() -> [String] {
         LibraryBrowseMode.tabs.map { mode in
             // plists slot shows "Folders" when toggled on a local source.
-            if mode == .plists, localPlistsSlotShowsFolders, case .local = currentSource {
+            if mode == .plists, model.localPlistsSlotShowsFolders, case .local = model.currentSource {
                 return "Folders"
             }
             // radio slot shows "Channels" when the YouTube source is displaying channels.
-            if mode == .radio, radioSlotShowingChannels {
+            if mode == .radio, model.radioSlotShowingChannels {
                 return "Channels"
             }
             return mode.title
@@ -1272,25 +928,25 @@ class ModernLibraryBrowserView: NSView {
     /// A source-bar name with the item count appended: "FLAC_LIB (988 items)".
     private func withItemCount(_ name: String) -> String {
         let count: Int
-        switch currentSource {
+        switch model.currentSource {
         case .local:
-            if browseMode == .artists {
-                count = localArtistTotal > 0 ? localArtistTotal : displayItems.count
-            } else if browseMode == .albums {
-                count = localAlbumTotal > 0 ? localAlbumTotal : displayItems.count
+            if model.browseMode == .artists {
+                count = model.localArtistTotal > 0 ? model.localArtistTotal : model.displayItems.count
+            } else if model.browseMode == .albums {
+                count = model.localAlbumTotal > 0 ? model.localAlbumTotal : model.displayItems.count
             } else {
-                count = displayItems.count
+                count = model.displayItems.count
             }
         case .plex:
             switch PlexManager.shared.currentLibrary?.type {
-            case "artist": count = cachedArtists.count
-            case "movie":  count = cachedMovies.count
-            default:       count = displayItems.count
+            case "artist": count = model.plex.artists.count
+            case "movie":  count = model.plex.movies.count
+            default:       count = model.displayItems.count
             }
         case .radio:
-            return "\(name) (\(displayItems.count) stations)"
+            return "\(name) (\(model.displayItems.count) stations)"
         case .subsonic, .jellyfin, .emby, .youtube:
-            count = displayItems.count
+            count = model.displayItems.count
         }
         return "\(name) (\(count) items)"
     }
@@ -1306,7 +962,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private var serverBarContent: ServerBarContent {
-        switch currentSource {
+        switch model.currentSource {
         case .local:
             return .builtIn(name: "Local Files")
         case .radio:
@@ -1444,9 +1100,9 @@ class ModernLibraryBrowserView: NSView {
             tabX += tabWidth
 
             let label = labels[index]
-            var isSelected = mode == browseMode
+            var isSelected = mode == model.browseMode
             // Highlight the plists slot when browseMode is .folders (local source only).
-            if mode == .plists, browseMode == .folders, case .local = currentSource {
+            if mode == .plists, model.browseMode == .folders, case .local = model.currentSource {
                 isSelected = true
             }
             let tabInset = 2 * ModernSkinElements.sizeMultiplier * chromeScale
@@ -1630,7 +1286,7 @@ class ModernLibraryBrowserView: NSView {
                                    height: barRect.height)
 
             // Scan animation: small spinner at center of bar while library is scanning
-            if case .local = currentSource, isLibraryScanning {
+            if case .local = model.currentSource, isLibraryScanning {
                 let cx = barRect.midX
                 let cy = barRect.midY
                 let innerR: CGFloat = 3 * m
@@ -1793,9 +1449,9 @@ class ModernLibraryBrowserView: NSView {
         }
         
         let font = skin.libraryFont(size: 9)
-        let placeholder = currentSource.isYouTube ? "Search YouTube channels — press ↵" : "Type and press ↵ to search..."
-        let displayText = searchQuery.isEmpty ? placeholder : searchQuery
-        let textColor = searchQuery.isEmpty ? skin.textDimColor : skin.textColor
+        let placeholder = model.currentSource.isYouTube ? "Search YouTube channels — press ↵" : "Type and press ↵ to search..."
+        let displayText = model.searchQuery.isEmpty ? placeholder : model.searchQuery
+        let textColor = model.searchQuery.isEmpty ? skin.textDimColor : skin.textColor
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: skin.applyTextOpacity(to: textColor)
@@ -1805,8 +1461,8 @@ class ModernLibraryBrowserView: NSView {
         drawText(displayText, at: NSPoint(x: searchRect.minX + 6, y: textY), withAttributes: attrs, context: context)
         
         // Draw cursor
-        if isFocused && !searchQuery.isEmpty {
-            let cursorX = searchRect.minX + 6 + searchQuery.size(withAttributes: attrs).width + 1
+        if isFocused && !model.searchQuery.isEmpty {
+            let cursorX = searchRect.minX + 6 + model.searchQuery.size(withAttributes: attrs).width + 1
             skin.textColor.setFill()
             context.fill(CGRect(x: cursorX, y: textY, width: 1, height: textSize.height))
         }
@@ -1819,8 +1475,8 @@ class ModernLibraryBrowserView: NSView {
         NSColor.systemOrange.withAlphaComponent(0.18).setFill()
         context.fill(rect)
 
-        let offlineCount = offlineWatchFolders.reduce(0) { $0 + $1.totalCount }
-        let names = offlineWatchFolders.map { $0.url.lastPathComponent }.joined(separator: ", ")
+        let offlineCount = model.offlineWatchFolders.reduce(0) { $0 + $1.totalCount }
+        let names = model.offlineWatchFolders.map { $0.url.lastPathComponent }.joined(separator: ", ")
         let label = "⚠  \"\(names)\" offline — \(offlineCount) track\(offlineCount == 1 ? "" : "s") unavailable"
 
         let font = skin.scaledSystemFont(size: 7.5)
@@ -1837,7 +1493,7 @@ class ModernLibraryBrowserView: NSView {
 
     private func drawListArea(in context: CGContext, layout: ListLayout, skin: ModernSkin, artwork: NSImage?) {
         // An empty list has no columns, so `rows` is the whole list here.
-        if displayItems.isEmpty {
+        if model.displayItems.isEmpty {
             drawEmptyState(in: context, listRect: layout.rows, skin: skin)
             return
         }
@@ -1863,7 +1519,7 @@ class ModernLibraryBrowserView: NSView {
         
         // Draw items (bottom-left origin: item 0 at top of list, so we draw from top down)
         let visibleStart = max(0, Int(scrollOffset / itemHeight))
-        let visibleEnd = min(displayItems.count, visibleStart + Int(listRect.height / itemHeight) + 2)
+        let visibleEnd = min(model.displayItems.count, visibleStart + Int(listRect.height / itemHeight) + 2)
         
         guard visibleStart < visibleEnd else {
             context.restoreGState()
@@ -1882,16 +1538,16 @@ class ModernLibraryBrowserView: NSView {
             if y + itemHeight < listRect.minY || y > listRect.maxY { continue }
             
             let itemRect = NSRect(x: listRect.minX, y: y, width: listRect.width, height: itemHeight)
-            let item = displayItems[index]
+            let item = model.displayItems[index]
             let isSelected = selectedIndices.contains(index)
 
             // Dim tracks/episodes whose file lives on an offline volume
             let isOffline: Bool
             switch item.type {
             case .localTrack(let track):
-                isOffline = offlineVolumePrefixes.contains { track.url.path.hasPrefix($0) }
+                isOffline = model.offlineVolumePrefixes.contains { track.url.path.hasPrefix($0) }
             case .localEpisode(let ep):
-                isOffline = offlineVolumePrefixes.contains { ep.url.path.hasPrefix($0) }
+                isOffline = model.offlineVolumePrefixes.contains { ep.url.path.hasPrefix($0) }
             default:
                 isOffline = false
             }
@@ -1926,7 +1582,7 @@ class ModernLibraryBrowserView: NSView {
                                    radius: spinnerRadius, skin: skin)
                     titleSpinnerInset = spinnerRadius * 2 + 4
                 } else if item.hasChildren {
-                    let expanded = isExpanded(item)
+                    let expanded = model.isExpanded(item)
                     let indicator = expanded ? "▼" : "▶"
                     let indicatorAttrs: [NSAttributedString.Key: Any] = [
                         .foregroundColor: skin.applyTextOpacity(to: skin.textDimColor),
@@ -1959,7 +1615,7 @@ class ModernLibraryBrowserView: NSView {
                         .font: smallFont
                     ]
                     let infoSize = info.size(withAttributes: infoAttrs)
-                    let infoX = browseMode == .radio
+                    let infoX = model.browseMode == .radio
                         ? (itemRect.midX - infoSize.width / 2)
                         : (itemRect.maxX - infoSize.width - 4)
                     drawText(info, at: NSPoint(x: infoX, y: itemRect.midY - infoSize.height / 2), withAttributes: infoAttrs, context: context)
@@ -1968,8 +1624,8 @@ class ModernLibraryBrowserView: NSView {
 
             if isOffline { context.restoreGState() }
         }
-        rowThumbnails.endPass(visible: visibleStart..<visibleEnd, count: displayItems.count) {
-            rowThumbnailSource(for: displayItems[$0])
+        rowThumbnails.endPass(visible: visibleStart..<visibleEnd, count: model.displayItems.count) {
+            rowThumbnailSource(for: model.displayItems[$0])
         }
         
         context.restoreGState()
@@ -2010,9 +1666,9 @@ class ModernLibraryBrowserView: NSView {
         var x = rect.minX + 4 - horizontalScrollOffset
         for (index, column) in columns.enumerated() {
             let width = widthForColumn(column, availableWidth: rect.width, columns: columns, group: group)
-            let isSortColumn = activeColumnSortId == column.id
-            let isCenteredRadioColumn = (browseMode == .radio && column.id == "genre") ||
-                (hasInternetRadioColumns && column.id == "rating")
+            let isSortColumn = model.activeColumnSortId == column.id
+            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == "genre") ||
+                (model.hasInternetRadioColumns && column.id == "rating")
             
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: headerFont,
@@ -2025,7 +1681,7 @@ class ModernLibraryBrowserView: NSView {
             drawText(column.title, at: NSPoint(x: textX, y: textY), withAttributes: attrs, context: context)
             
             if isSortColumn {
-                let indicator = activeColumnSortAscending ? "▲" : "▼"
+                let indicator = model.activeColumnSortAscending ? "▲" : "▼"
                 let indicatorAttrs: [NSAttributedString.Key: Any] = [
                     .font: skin.scaledSystemFont(size: 5.6),
                     .foregroundColor: skin.applyTextOpacity(to: sortedHeaderColor)
@@ -2056,7 +1712,7 @@ class ModernLibraryBrowserView: NSView {
     
     // MARK: - Column Row Drawing
     
-    private func drawColumnRow(item: LibraryBrowserItem, columns: [ModernBrowserColumn], group: LibraryColumnVisibilityGroup?,
+    private func drawColumnRow(item: LibraryBrowserItem, columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
                                in context: CGContext, rect: NSRect, isSelected: Bool, skin: ModernSkin, indent: CGFloat = 0) {
         let totalWidth = rect.width
         let textColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textColor
@@ -2068,7 +1724,7 @@ class ModernLibraryBrowserView: NSView {
         let cells = LibraryColumnVisibility.cellFrames(
             widths: columns.map { widthForColumn($0, availableWidth: totalWidth, columns: columns, group: group) },
             titleIndex: columns.firstIndex { $0.id == "title" }, indent: indent,
-            spansLeadingCells: columnGroup(for: item) != group)
+            spansLeadingCells: model.columnGroup(for: item) != group)
         for (column, cell) in zip(columns, cells) {
             let x = rect.minX + cell.start - horizontalScrollOffset, width = cell.width
             if column.id == "thumbnail" {
@@ -2078,8 +1734,8 @@ class ModernLibraryBrowserView: NSView {
                 continue
             }
             let value = column.id == "title" ? item.shownTitle : item.columnValue(for: column)
-            let isCenteredRadioColumn = (browseMode == .radio && column.id == "genre") ||
-                (isInternetRadioItem(item) && column.id == "rating")
+            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == "genre") ||
+                (model.isInternetRadioItem(item) && column.id == "rating")
             
             let color = column.id == "title" ? textColor : dimColor
             let useFont = column.id == "title" ? font : smallFont
@@ -2216,21 +1872,21 @@ class ModernLibraryBrowserView: NSView {
     private func drawEmptyState(in context: CGContext, listRect: NSRect, skin: ModernSkin) {
         let library = PlexManager.shared.currentLibrary
         let message: String
-        switch browseMode {
+        switch model.browseMode {
         case .artists, .albums:
-            if currentSource.isPlex && library?.isMusicLibrary == true {
-                message = "No \(browseMode.title.lowercased()) found"
-            } else if currentSource.isSubsonic || currentSource.isJellyfin || currentSource.isEmby || (currentSource.isPlex && library?.isMusicLibrary != true) {
-                message = "No \(browseMode.title.lowercased()) found"
+            if model.currentSource.isPlex && library?.isMusicLibrary == true {
+                message = "No \(model.browseMode.title.lowercased()) found"
+            } else if model.currentSource.isSubsonic || model.currentSource.isJellyfin || model.currentSource.isEmby || (model.currentSource.isPlex && library?.isMusicLibrary != true) {
+                message = "No \(model.browseMode.title.lowercased()) found"
             } else {
-                message = "No \(browseMode.title.lowercased()) found"
+                message = "No \(model.browseMode.title.lowercased()) found"
             }
         case .movies: message = "No movies found"
         case .shows: message = "No TV shows found"
         case .folders: message = "No folders found"
         case .plists: message = "No playlists found"
         case .search:
-            message = searchQuery.isEmpty || hasUnsubmittedYouTubeSearch ? "Type and press ↵ to search" : "No results found"
+            message = model.searchQuery.isEmpty || model.hasUnsubmittedYouTubeSearch ? "Type and press ↵ to search" : "No results found"
         case .radio: message = "No radio stations found"
         case .history: message = "No play history recorded yet"
         }
@@ -2259,13 +1915,13 @@ class ModernLibraryBrowserView: NSView {
         let fontSize = min(9 * ModernSkinElements.sizeMultiplier, letterHeight * 0.8)
         
         var availableLetters = Set<String>()
-        if case .local = currentSource, browseMode == .artists {
-            availableLetters = Set(localArtistLetterOffsets.keys)
-        } else if case .local = currentSource, browseMode == .albums {
-            availableLetters = Set(localAlbumLetterOffsets.keys)
+        if case .local = model.currentSource, model.browseMode == .artists {
+            availableLetters = Set(model.localArtistLetterOffsets.keys)
+        } else if case .local = model.currentSource, model.browseMode == .albums {
+            availableLetters = Set(model.localAlbumLetterOffsets.keys)
         } else {
-            for item in displayItems {
-                availableLetters.insert(effectiveSortLetter(for: item))
+            for item in model.displayItems {
+                availableLetters.insert(LibraryBrowserModel.effectiveSortLetter(for: item))
             }
         }
 
@@ -2314,7 +1970,7 @@ class ModernLibraryBrowserView: NSView {
 
         struct Header {
             let rect: NSRect
-            let columns: [ModernBrowserColumn]
+            let columns: [LibraryBrowserColumn]
             /// The group the columns' widths are keyed by; nil for radio's fixed columns.
             let group: LibraryColumnVisibilityGroup?
         }
@@ -2323,17 +1979,17 @@ class ModernLibraryBrowserView: NSView {
     /// The bottom of the tab bar, or of the search bar in search mode.
     private var listTopY: CGFloat {
         topChromeBottomY - Layout.serverBarHeight - Layout.tabBarHeight
-            - (browseMode == .search ? Layout.searchBarHeight : 0)
+            - (model.browseMode == .search ? Layout.searchBarHeight : 0)
     }
 
     private func listLayout() -> ListLayout {
-        let showsBanner = isLocalSource && !offlineWatchFolders.isEmpty
+        let showsBanner = model.isLocalSource && !model.offlineWatchFolders.isEmpty
         let bottomY = contentRegionBottomY + (showsBanner ? Layout.offlineBannerHeight : 0)
         let area = NSRect(x: Layout.borderWidth, y: bottomY,
                           width: bounds.width - Layout.borderWidth * 2, height: listTopY - bottomY)
         // Flow / Tiles draw no column header, so the alphabet index beside them runs full height.
-        let group = currentColumnGroup()
-        let columns = artLens.isPresenting ? [] : headerColumns(for: group)
+        let group = model.currentColumnGroup()
+        let columns = artLens.isPresenting ? [] : model.headerColumns(for: group)
         let headerHeight = columns.isEmpty ? 0 : columnHeaderHeight
         let rows = NSRect(x: area.minX, y: area.minY,
                           width: area.width - Layout.scrollbarWidth - Layout.alphabetWidth,
@@ -2350,71 +2006,14 @@ class ModernLibraryBrowserView: NSView {
 
     // MARK: - Column Support
 
-    private var hasInternetRadioColumns: Bool {
-        guard case .radio = currentSource else { return false }
-        return displayItems.contains {
-            if case .radioStation = $0.type { return true }
-            return false
-        }
-    }
-
-    private func isInternetRadioItem(_ item: LibraryBrowserItem) -> Bool {
-        guard case .radio = currentSource else { return false }
-        if case .radioStation = item.type { return true }
-        return false
-    }
-
-    /// YouTube channel uploads render through the resizable column path (title + time),
-    /// gated on the "Channels" view actually containing video rows.
-    private var hasYouTubeColumns: Bool {
-        guard radioSlotShowingChannels || isYouTubeChannelSearch else { return false }
-        return displayItems.contains {
-            if case .youtubeVideo = $0.type { return true }
-            return false
-        }
-    }
-
-    private func visibleColumns(allColumns: [ModernBrowserColumn], visibleIds: [String]) -> [ModernBrowserColumn] {
-        LibraryColumnVisibility.visibleColumns(allColumns: allColumns, visibleIds: visibleIds) { $0.id }
-    }
-
-    private func normalizedColumnIds(_ ids: [String], allColumns: [ModernBrowserColumn]) -> [String] {
-        LibraryColumnVisibility.normalizedIds(ids, allIds: allColumns.map { $0.id })
-    }
-
-    private func columnGroup(for item: LibraryBrowserItem) -> LibraryColumnVisibilityGroup? {
-        switch item.type {
-        case .track, .subsonicTrack, .localTrack, .jellyfinTrack, .embyTrack:
-            return .track
-        case .album, .subsonicAlbum, .localAlbum, .jellyfinAlbum, .embyAlbum:
-            return .album
-        case .artist, .subsonicArtist, .localArtist, .jellyfinArtist, .embyArtist:
-            return item.indentLevel == 0 ? .artist : nil
-        case .youtubeVideo:
-            return .youtube
-        default:
-            return nil
-        }
-    }
-
-    private func currentColumnGroup() -> LibraryColumnVisibilityGroup? {
-        if hasYouTubeColumns { return .youtube }
-        return LibraryColumnVisibility.headerGroup(displayItems.lazy.map { self.columnGroup(for: $0) })
-    }
-
-    /// Whether a row draws columns rather than a plain title line.
-    private func drawsColumns(_ item: LibraryBrowserItem) -> Bool {
-        columnGroup(for: item) != nil || isInternetRadioItem(item)
-    }
-
     /// The columns a row draws and the group their widths are keyed by (nil = simple list rendering).
     /// Artist, album and track rows all draw the list's one header, Finder-style; radio and
     /// YouTube rows draw their own fixed columns.
-    private func rowColumns(for item: LibraryBrowserItem, header: ListLayout.Header?) -> (columns: [ModernBrowserColumn], group: LibraryColumnVisibilityGroup?)? {
-        switch columnGroup(for: item) {
-        case .youtube?: return (ModernBrowserColumn.youtubeColumns, .youtube)
+    private func rowColumns(for item: LibraryBrowserItem, header: ListLayout.Header?) -> (columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?)? {
+        switch model.columnGroup(for: item) {
+        case .youtube?: return (LibraryBrowserColumn.youtubeColumns, .youtube)
         case _?: return header.map { ($0.columns, $0.group) }
-        case nil: return isInternetRadioItem(item) ? (ModernBrowserColumn.internetRadioColumns, nil) : nil
+        case nil: return model.isInternetRadioItem(item) ? (LibraryBrowserColumn.internetRadioColumns, nil) : nil
         }
     }
     
@@ -2422,7 +2021,7 @@ class ModernLibraryBrowserView: NSView {
         "\(group.rawValue):\(columnId)"
     }
 
-    private func storedColumnWidth(for column: ModernBrowserColumn, group: LibraryColumnVisibilityGroup?) -> CGFloat? {
+    private func storedColumnWidth(for column: LibraryBrowserColumn, group: LibraryColumnVisibilityGroup?) -> CGFloat? {
         guard let group else { return columnWidths[column.id] }
         return columnWidths[columnWidthKey(column.id, group: group)]
     }
@@ -2432,9 +2031,9 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func widthForColumn(
-        _ column: ModernBrowserColumn,
+        _ column: LibraryBrowserColumn,
         availableWidth: CGFloat,
-        columns: [ModernBrowserColumn],
+        columns: [LibraryBrowserColumn],
         group: LibraryColumnVisibilityGroup?
     ) -> CGFloat {
         if column.id == "title" {
@@ -2452,7 +2051,7 @@ class ModernLibraryBrowserView: NSView {
     }
     
     private func totalColumnsWidth(
-        columns: [ModernBrowserColumn],
+        columns: [LibraryBrowserColumn],
         availableWidth: CGFloat,
         group: LibraryColumnVisibilityGroup?
     ) -> CGFloat {
@@ -2485,319 +2084,11 @@ class ModernLibraryBrowserView: NSView {
                 migrated[key] = width
                 continue
             }
-            for group in LibraryColumnVisibilityGroup.allCases where allColumns(for: group).contains(where: { $0.id == key }) {
+            for group in LibraryColumnVisibilityGroup.allCases where LibraryBrowserColumn.all(for: group).contains(where: { $0.id == key }) {
                 migrated[columnWidthKey(key, group: group)] = width
             }
         }
         return migrated
-    }
-    
-    private func saveVisibleColumns() {
-        UserDefaults.standard.set(visibleTrackColumnIds, forKey: "BrowserVisibleTrackColumns")
-        UserDefaults.standard.set(visibleAlbumColumnIds, forKey: "BrowserVisibleAlbumColumns")
-        UserDefaults.standard.set(visibleArtistColumnIds, forKey: "BrowserVisibleArtistColumns")
-    }
-    
-    private func loadVisibleColumns() {
-        if let saved = UserDefaults.standard.stringArray(forKey: "BrowserVisibleTrackColumns") {
-            visibleTrackColumnIds = normalizedColumnIds(saved, allColumns: ModernBrowserColumn.allTrackColumns)
-        }
-        if let saved = UserDefaults.standard.stringArray(forKey: "BrowserVisibleAlbumColumns") {
-            visibleAlbumColumnIds = normalizedColumnIds(saved, allColumns: ModernBrowserColumn.allAlbumColumns)
-        }
-        if let saved = UserDefaults.standard.stringArray(forKey: "BrowserVisibleArtistColumns") {
-            visibleArtistColumnIds = normalizedColumnIds(saved, allColumns: ModernBrowserColumn.allArtistColumns)
-        }
-    }
-    
-    /// The header's columns for the list's column group; radio has its own fixed set and no group.
-    private func headerColumns(for group: LibraryColumnVisibilityGroup?) -> [ModernBrowserColumn] {
-        if hasInternetRadioColumns { return ModernBrowserColumn.internetRadioColumns }
-        guard let group else { return [] }
-        return visibleColumns(allColumns: allColumns(for: group), visibleIds: visibleColumnIds(for: group))
-    }
-    
-    private func applyColumnSort(collapseExpanded: Bool = false) {
-        guard let sortColumnId = activeColumnSortId, !displayItems.isEmpty else {
-            needsDisplay = true
-            return
-        }
-        
-        if collapseExpanded {
-            let hadExpanded = !expandedArtists.isEmpty || !expandedAlbums.isEmpty ||
-                              !expandedArtistNames.isEmpty ||
-                              !expandedLocalArtists.isEmpty || !expandedLocalAlbums.isEmpty ||
-                              !expandedLocalShows.isEmpty || !expandedLocalSeasons.isEmpty ||
-                              !expandedSubsonicArtists.isEmpty || !expandedSubsonicAlbums.isEmpty ||
-                              !expandedSubsonicPlaylists.isEmpty || !expandedPlexPlaylists.isEmpty ||
-                              !expandedShows.isEmpty || !expandedSeasons.isEmpty
-            if hadExpanded {
-                expandedArtists.removeAll(); expandedAlbums.removeAll(); expandedArtistNames.removeAll()
-                expandedLocalArtists.removeAll(); expandedLocalAlbums.removeAll()
-                expandedLocalShows.removeAll(); expandedLocalSeasons.removeAll()
-                expandedSubsonicArtists.removeAll(); expandedSubsonicAlbums.removeAll()
-                expandedSubsonicPlaylists.removeAll(); expandedPlexPlaylists.removeAll()
-                expandedShows.removeAll(); expandedSeasons.removeAll()
-                displayItems = displayItems.filter { $0.indentLevel == 0 }
-            }
-        }
-        
-        guard let sortColumn = ModernBrowserColumn.findColumn(id: sortColumnId) else {
-            needsDisplay = true; return
-        }
-
-        if applyInternetRadioColumnSort(sortColumn: sortColumn, ascending: activeColumnSortAscending) {
-            needsDisplay = true; return
-        }
-
-        if applyYouTubeColumnSort(sortColumn: sortColumn) {
-            needsDisplay = true; return
-        }
-
-        // When rows are expanded, the build order comes from the store (SQLite BINARY
-        // collation), which diverges from the in-memory column sort (LibraryTextSorter:
-        // diacritic-insensitive, numeric, article-stripping) precisely around special
-        // characters / case / leading articles. Re-sort the top-level groups — each level-0
-        // leader plus its contiguous descendants — so expanding a row keeps the same
-        // top-level order instead of snapping back to the raw store order.
-        let hasNestedItems = displayItems.contains { $0.indentLevel > 0 }
-        if hasNestedItems {
-            sortNestedGroupsByColumn(sortColumn: sortColumn)
-            return
-        }
-
-        var sortableIndices: [Int] = []
-        var sortableItems: [LibraryBrowserItem] = []
-        
-        for (index, item) in displayItems.enumerated() {
-            if drawsColumns(item) && item.indentLevel == 0 {
-                sortableIndices.append(index)
-                sortableItems.append(item)
-            }
-        }
-        
-        guard !sortableItems.isEmpty else { needsDisplay = true; return }
-        
-        sortableItems = stableColumnSortedItems(sortableItems, sortColumn: sortColumn)
-
-        for (sortedIndex, originalIndex) in sortableIndices.enumerated() {
-            displayItems[originalIndex] = sortableItems[sortedIndex]
-        }
-        needsDisplay = true
-    }
-
-    /// Reorders the top-level groups in `displayItems` (a level-0 leader plus its contiguous
-    /// descendants) by the active column, keeping each group's internal order intact. Bails
-    /// to the build order if any top-level row is not sortable (e.g. a section header) or if a
-    /// nested row appears before any leader, since grouping would be ambiguous there.
-    private func sortNestedGroupsByColumn(sortColumn: ModernBrowserColumn) {
-        var groups: [[LibraryBrowserItem]] = []
-        for item in displayItems {
-            if item.indentLevel == 0 {
-                guard drawsColumns(item) else { needsDisplay = true; return }
-                groups.append([item])
-            } else if !groups.isEmpty {
-                groups[groups.count - 1].append(item)
-            } else {
-                needsDisplay = true
-                return
-            }
-        }
-
-        groups = stableColumnSortedGroups(groups, sortColumn: sortColumn)
-        displayItems = groups.flatMap { $0 }
-        needsDisplay = true
-    }
-
-    /// Sorts column-capable rows while preserving their current order for equal keys.
-    private func stableColumnSortedItems(_ items: [LibraryBrowserItem], sortColumn: ModernBrowserColumn) -> [LibraryBrowserItem] {
-        items.enumerated().sorted { lhs, rhs in
-            if columnSortAreInOrder(lhs.element, rhs.element, sortColumn: sortColumn, ascending: activeColumnSortAscending) {
-                return true
-            }
-            if columnSortAreInOrder(rhs.element, lhs.element, sortColumn: sortColumn, ascending: activeColumnSortAscending) {
-                return false
-            }
-            return lhs.offset < rhs.offset
-        }.map(\.element)
-    }
-
-    /// Sorts expanded row groups by leader while preserving current group order for equal keys.
-    private func stableColumnSortedGroups(_ groups: [[LibraryBrowserItem]], sortColumn: ModernBrowserColumn) -> [[LibraryBrowserItem]] {
-        groups.enumerated().sorted { lhs, rhs in
-            let leftLeader = lhs.element[0]
-            let rightLeader = rhs.element[0]
-            if columnSortAreInOrder(leftLeader, rightLeader, sortColumn: sortColumn, ascending: activeColumnSortAscending) {
-                return true
-            }
-            if columnSortAreInOrder(rightLeader, leftLeader, sortColumn: sortColumn, ascending: activeColumnSortAscending) {
-                return false
-            }
-            return lhs.offset < rhs.offset
-        }.map(\.element)
-    }
-
-    /// Ordering predicate shared by the flat and nested column-sort paths so both produce
-    /// an identical top-level order. `a` and `b` are level-0 rows.
-    private func columnSortAreInOrder(_ a: LibraryBrowserItem, _ b: LibraryBrowserItem, sortColumn: ModernBrowserColumn, ascending: Bool) -> Bool {
-        // Date columns: sort by raw date, not formatted string
-        if sortColumn.id == "dateAdded" || sortColumn.id == "lastPlayed" || sortColumn.id == "youtubeDate" {
-            let aDate = a.columnDateValue(for: sortColumn) ?? .distantPast
-            let bDate = b.columnDateValue(for: sortColumn) ?? .distantPast
-            return ascending ? aDate < bDate : aDate > bDate
-        }
-
-        let aVal = a.columnValue(for: sortColumn)
-        let bVal = b.columnValue(for: sortColumn)
-
-        if sortColumn.id == "trackNum" || sortColumn.id == "year" || sortColumn.id == "plays" ||
-           sortColumn.id == "albums" || sortColumn.id == "discNum" {
-            let aNum = Int(aVal.components(separatedBy: "-").last ?? aVal) ?? 0
-            let bNum = Int(bVal.components(separatedBy: "-").last ?? bVal) ?? 0
-            return ascending ? aNum < bNum : aNum > bNum
-        }
-        if sortColumn.id == "channels" {
-            let aChannels = LibraryColumnVisibility.channelSortValue(aVal)
-            let bChannels = LibraryColumnVisibility.channelSortValue(bVal)
-            return ascending ? aChannels < bChannels : aChannels > bChannels
-        }
-        if sortColumn.id == "duration" {
-            let aSeconds = parseDuration(aVal)
-            let bSeconds = parseDuration(bVal)
-            return ascending ? aSeconds < bSeconds : aSeconds > bSeconds
-        }
-        if sortColumn.id == "bitrate" || sortColumn.id == "sampleRate" {
-            let cleaned = { (s: String) -> Double in
-                let num = s.replacingOccurrences(of: "k", with: "")
-                return Double(num) ?? 0
-            }
-            return ascending ? cleaned(aVal) < cleaned(bVal) : cleaned(aVal) > cleaned(bVal)
-        }
-        if sortColumn.id == "size" {
-            let aSize = parseSize(aVal)
-            let bSize = parseSize(bVal)
-            return ascending ? aSize < bSize : aSize > bSize
-        }
-        if sortColumn.id == "rating" {
-            let aStars = aVal.filter { $0 == "★" }.count
-            let bStars = bVal.filter { $0 == "★" }.count
-            return ascending ? aStars < bStars : aStars > bStars
-        }
-        return compareNameStrings(aVal, bVal, ascending: ascending)
-    }
-
-    private func applyInternetRadioColumnSort(sortColumn: ModernBrowserColumn, ascending: Bool) -> Bool {
-        guard case .radio = currentSource,
-              ModernBrowserColumn.internetRadioColumns.contains(where: { $0.id == sortColumn.id }),
-              displayItems.contains(where: isInternetRadioItem) else {
-            return false
-        }
-
-        var index = 0
-        var didSort = false
-        while index < displayItems.count {
-            guard isInternetRadioItem(displayItems[index]) else {
-                index += 1
-                continue
-            }
-
-            let start = index
-            while index < displayItems.count, isInternetRadioItem(displayItems[index]) {
-                index += 1
-            }
-
-            let sorted = sortedInternetRadioItems(Array(displayItems[start..<index]), sortColumn: sortColumn, ascending: ascending)
-            displayItems.replaceSubrange(start..<index, with: sorted)
-            didSort = true
-        }
-        return didSort
-    }
-
-    /// Sorts the videos within each expanded YouTube channel (contiguous runs of video rows)
-    /// by the clicked column, leaving the channel leaders in place. Mirrors the internet-radio
-    /// in-place run sort so the "Channels" view supports sortable column headers like other tabs.
-    private func applyYouTubeColumnSort(sortColumn: ModernBrowserColumn) -> Bool {
-        guard radioSlotShowingChannels || isYouTubeChannelSearch,
-              ModernBrowserColumn.youtubeColumns.contains(where: { $0.id == sortColumn.id }) else {
-            return false
-        }
-        guard displayItems.contains(where: { if case .youtubeVideo = $0.type { return true }; return false }) else {
-            // Search results keep YouTube's relevance order under their header row.
-            return isYouTubeChannelSearch
-        }
-
-        var index = 0
-        while index < displayItems.count {
-            guard case .youtubeVideo = displayItems[index].type else { index += 1; continue }
-            let start = index
-            while index < displayItems.count, case .youtubeVideo = displayItems[index].type {
-                index += 1
-            }
-            let sorted = stableColumnSortedItems(Array(displayItems[start..<index]), sortColumn: sortColumn)
-            displayItems.replaceSubrange(start..<index, with: sorted)
-        }
-        return true
-    }
-
-    private func sortedInternetRadioItems(_ items: [LibraryBrowserItem], sortColumn: ModernBrowserColumn, ascending: Bool) -> [LibraryBrowserItem] {
-        let ratingsByItemId = Dictionary(uniqueKeysWithValues: items.map { item in
-            (item.id, internetRadioRating(for: item))
-        })
-
-        return items.enumerated().sorted { lhs, rhs in
-            let comparison = compareInternetRadioItems(lhs.element, rhs.element, sortColumn: sortColumn, ratingsByItemId: ratingsByItemId)
-            if comparison == .orderedSame { return lhs.offset < rhs.offset }
-            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
-        }.map(\.element)
-    }
-
-    private func compareInternetRadioItems(
-        _ lhs: LibraryBrowserItem,
-        _ rhs: LibraryBrowserItem,
-        sortColumn: ModernBrowserColumn,
-        ratingsByItemId: [String: Int]
-    ) -> ComparisonResult {
-        switch sortColumn.id {
-        case "rating":
-            let lhsRating = internetRadioRating(for: lhs, ratingsByItemId: ratingsByItemId)
-            let rhsRating = internetRadioRating(for: rhs, ratingsByItemId: ratingsByItemId)
-            if lhsRating != rhsRating {
-                return lhsRating < rhsRating ? .orderedAscending : .orderedDescending
-            }
-            return LibraryTextSorter.compare(lhs.title, rhs.title, ignoreLeadingArticles: true)
-        case "genre":
-            let genreComparison = LibraryTextSorter.compare(lhs.columnValue(for: sortColumn), rhs.columnValue(for: sortColumn), ignoreLeadingArticles: true)
-            if genreComparison != .orderedSame { return genreComparison }
-            return LibraryTextSorter.compare(lhs.title, rhs.title, ignoreLeadingArticles: true)
-        default:
-            return LibraryTextSorter.compare(lhs.columnValue(for: sortColumn), rhs.columnValue(for: sortColumn), ignoreLeadingArticles: true)
-        }
-    }
-
-    private func internetRadioRating(for item: LibraryBrowserItem) -> Int {
-        guard case .radioStation(let station) = item.type else { return 0 }
-        return RadioManager.shared.rating(for: station)
-    }
-
-    private func internetRadioRating(for item: LibraryBrowserItem, ratingsByItemId: [String: Int]) -> Int {
-        ratingsByItemId[item.id] ?? 0
-    }
-    
-    private func parseDuration(_ str: String) -> Int {
-        let parts = str.split(separator: ":").compactMap { Int($0) }
-        switch parts.count {
-        case 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        case 2: return parts[0] * 60 + parts[1]
-        case 1: return parts[0]
-        default: return 0
-        }
-    }
-    
-    private func parseSize(_ str: String) -> Int64 {
-        let trimmed = str.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasSuffix("G") { return Int64((Double(trimmed.dropLast()) ?? 0) * 1024 * 1024 * 1024) }
-        if trimmed.hasSuffix("M") { return Int64((Double(trimmed.dropLast()) ?? 0) * 1024 * 1024) }
-        return Int64(trimmed) ?? 0
     }
     
     // MARK: - Utility
@@ -2859,7 +2150,7 @@ class ModernLibraryBrowserView: NSView {
     }
     
     private func hitTestSearchBar(at point: NSPoint) -> Bool {
-        guard browseMode == .search else { return false }
+        guard model.browseMode == .search else { return false }
         return point.y >= listTopY && point.y < listTopY + Layout.searchBarHeight
     }
     
@@ -2869,12 +2160,12 @@ class ModernLibraryBrowserView: NSView {
         
         // In bottom-left origin, items are rendered from top down
         let clickedIndex = Int((rows.maxY - point.y + scrollOffset) / itemHeight)
-        return displayItems.indices.contains(clickedIndex) ? clickedIndex : nil
+        return model.displayItems.indices.contains(clickedIndex) ? clickedIndex : nil
     }
 
     private func hitTestInternetRadioRating(at point: NSPoint, itemIndex: Int) -> Int? {
-        guard hasInternetRadioColumns, itemIndex >= 0, itemIndex < displayItems.count else { return nil }
-        let item = displayItems[itemIndex]
+        guard model.hasInternetRadioColumns, itemIndex >= 0, itemIndex < model.displayItems.count else { return nil }
+        let item = model.displayItems[itemIndex]
         let layout = listLayout()
         guard case .radioStation = item.type, let row = rowColumns(for: item, header: layout.header) else { return nil }
 
@@ -2912,7 +2203,7 @@ class ModernLibraryBrowserView: NSView {
     }
     
     private func hitTestColumnResize(at point: NSPoint) -> String? {
-        if hasInternetRadioColumns { return nil }
+        if model.hasInternetRadioColumns { return nil }
         guard let header = columnHeader(at: point), header.columns.count > 1 else { return nil }
         let columns = header.columns
         let group = header.group
@@ -3007,7 +2298,7 @@ class ModernLibraryBrowserView: NSView {
 
         // Server bar (check before content area so ART/VIS/source buttons work)
         if hitTestServerBar(at: point) {
-            if case .plex = currentSource, !PlexManager.shared.isLinked {
+            if case .plex = model.currentSource, !PlexManager.shared.isLinked {
                 controller?.showLinkSheet()
             } else {
                 handleServerBarClick(at: point, event: event)
@@ -3019,29 +2310,9 @@ class ModernLibraryBrowserView: NSView {
         if hitTestSortIndicator(at: point) { showSortMenu(at: event.locationInWindow); return }
         
         // Tab bar
-        if let tabMode = hitTestTabBar(at: point) {
-            // Special handling: double-click .plists slot while local source toggles Folders
-            if event.clickCount == 2 && tabMode == .plists {
-                if case .local = currentSource {
-                    localPlistsSlotShowsFolders.toggle()
-                    browseMode = effectivePlistsSlotMode
-                    selectedIndices.removeAll(); scrollOffset = 0
-                    loadDataForCurrentMode(); window?.makeFirstResponder(self)
-                    return
-                }
-            }
-            // Double-click the radio slot while the YouTube source toggles Radio/Channels.
-            if event.clickCount == 2 && tabMode == .radio && currentSource.isYouTube {
-                radioSlotShowsChannels.toggle()
-                browseMode = .radio
-                selectedIndices.removeAll(); scrollOffset = 0
-                loadDataForCurrentMode(); window?.makeFirstResponder(self)
-                return
-            }
-            // Single-click selects whatever the slot currently shows (Plists or Folders)
-            browseMode = (tabMode == .plists) ? effectivePlistsSlotMode : tabMode
-            selectedIndices.removeAll(); scrollOffset = 0
-            loadDataForCurrentMode(); window?.makeFirstResponder(self)
+        if let slot = hitTestTabBar(at: point) {
+            model.selectTab(slot, doubleClick: event.clickCount == 2)
+            window?.makeFirstResponder(self)
             return
         }
         
@@ -3056,7 +2327,7 @@ class ModernLibraryBrowserView: NSView {
             let columns = header.columns
             let group = resizingColumnGroup
             let headerWidth = header.rect.width
-            resizeStartWidth = widthForColumn(ModernBrowserColumn.findColumn(id: columnId)!, availableWidth: headerWidth, columns: columns, group: group)
+            resizeStartWidth = widthForColumn(LibraryBrowserColumn.findColumn(id: columnId)!, availableWidth: headerWidth, columns: columns, group: group)
             // Freeze the title column's current width so it doesn't flex during resize
             if let group, storedColumnWidth(for: .title, group: group) == nil {
                 let titleWidth = widthForColumn(.title, availableWidth: headerWidth, columns: columns, group: group)
@@ -3068,15 +2339,8 @@ class ModernLibraryBrowserView: NSView {
         
         // Column header click for sorting
         if let columnId = hitTestColumnHeader(at: point) {
-            if currentSource.isYouTube {
-                guard columnId != "thumbnail" else { return }  // an image column has nothing to sort by
-                // YouTube uses its own session sort (not persisted to the library sort).
-                if youtubeColumnSortId == columnId { youtubeColumnSortAscending.toggle() }
-                else { youtubeColumnSortId = columnId; youtubeColumnSortAscending = true }
-            } else {
-                LibraryBrowserTabSortStore.shared.clickColumn(columnId, for: browseMode.rawValue)
-            }
-            applyColumnSort(collapseExpanded: true)
+            model.sortByColumn(columnId)
+            needsDisplay = true
             return
         }
         
@@ -3099,7 +2363,7 @@ class ModernLibraryBrowserView: NSView {
         if let columnId = resizingColumnId, let group = resizingColumnGroup {
             let point = convert(event.locationInWindow, from: nil)
             let deltaX = point.x - resizeStartX
-            let minWidth = ModernBrowserColumn.findColumn(id: columnId)?.minWidth ?? 30
+            let minWidth = LibraryBrowserColumn.findColumn(id: columnId)?.minWidth ?? 30
             setColumnWidth(max(minWidth, resizeStartWidth + deltaX), for: columnId, group: group)
             needsDisplay = true; return
         }
@@ -3170,10 +2434,10 @@ class ModernLibraryBrowserView: NSView {
         
         if let clickedIndex = hitTestListArea(at: point) {
             if !selectedIndices.contains(clickedIndex) { selectedIndices = [clickedIndex]; needsDisplay = true }
-            let item = displayItems[clickedIndex]
+            let item = model.displayItems[clickedIndex]
             showContextMenu(for: item, at: event); return
         }
-        if case .local = currentSource {
+        if case .local = model.currentSource {
             let menu = NSMenu()
             let manageFoldersItem = NSMenuItem(title: "Manage Folders...", action: #selector(manageWatchFolders), keyEquivalent: "")
             manageFoldersItem.target = self; menu.addItem(manageFoldersItem)
@@ -3190,13 +2454,13 @@ class ModernLibraryBrowserView: NSView {
     }
     
     override func scrollWheel(with event: NSEvent) {
-        if browseMode.isHistoryMode {
+        if model.browseMode.isHistoryMode {
             super.scrollWheel(with: event)
             return
         }
         let layout = listLayout()
         let listHeight = layout.rows.height
-        let totalHeight = CGFloat(displayItems.count) * itemHeight
+        let totalHeight = CGFloat(model.displayItems.count) * itemHeight
         let verticalDelta = verticalScrollDelta(from: event)
         // The list with its header and the offline banner: a horizontal scroll moves the header too.
         let dirtyRect = layout.banner.map { layout.area.union($0) } ?? layout.area
@@ -3218,7 +2482,7 @@ class ModernLibraryBrowserView: NSView {
         }
 
         // Trigger next-page load when scrolled near the bottom of a local paginated list
-        if case .local = currentSource { loadNextLocalPageIfNeeded(listHeight: listHeight) }
+        if case .local = model.currentSource { loadNextLocalPageIfNeeded(listHeight: listHeight) }
     }
 
     private func verticalScrollDelta(from event: NSEvent) -> CGFloat {
@@ -3237,63 +2501,9 @@ class ModernLibraryBrowserView: NSView {
 
     private func loadNextLocalPageIfNeeded(listHeight: CGFloat) {
         let threshold = itemHeight * 10   // start loading 10 rows from bottom
-        let loadedHeight = CGFloat(displayItems.count) * itemHeight
+        let loadedHeight = CGFloat(model.displayItems.count) * itemHeight
         guard scrollOffset + listHeight + threshold >= loadedHeight else { return }
-        appendNextLocalPage()
-    }
-
-    @discardableResult
-    private func appendNextLocalPage() -> Bool {
-        switch browseMode {
-        case .artists:
-            let nextOffset = localArtistPageOffset + localPageSize
-            guard nextOffset < localArtistTotal else { return false }
-            localArtistPageOffset = nextOffset
-            let store = MediaLibraryStore.shared
-            let names = store.artistNames(limit: localPageSize, offset: localArtistPageOffset, sort: currentSort)
-            let albumsByArtist = store.albumsForArtistsBatch(names)
-            for name in names {
-                let albumSummaries = albumsByArtist[name] ?? []
-                let stubArtist = Artist(id: name, name: name, albums: [])
-                displayItems.append(LibraryBrowserItem(
-                    id: "local-artist-\(name)",
-                    title: name,
-                    info: "\(albumSummaries.count) albums",
-                    indentLevel: 0,
-                    hasChildren: !albumSummaries.isEmpty,
-                    type: .localArtist(stubArtist)
-                ))
-            }
-            needsDisplay = true
-            return true
-        case .albums:
-            let nextOffset = localAlbumPageOffset + localPageSize
-            guard nextOffset < localAlbumTotal else { return false }
-            localAlbumPageOffset = nextOffset
-            let store = MediaLibraryStore.shared
-            let summaries = store.albumSummaries(limit: localPageSize, offset: localAlbumPageOffset, sort: currentSort)
-            for summary in summaries {
-                let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: [])
-                let displayName: String
-                if let artist = summary.artist, !artist.isEmpty {
-                    displayName = "\(artist) - \(summary.name)"
-                } else {
-                    displayName = summary.name
-                }
-                displayItems.append(LibraryBrowserItem(
-                    id: "local-album-\(album.id)",
-                    title: displayName,
-                    info: "\(summary.trackCount) tracks",
-                    indentLevel: 0,
-                    hasChildren: summary.trackCount > 0,
-                    type: .localAlbum(album)
-                ))
-            }
-            needsDisplay = true
-            return true
-        case .folders, .plists, .movies, .shows, .search, .radio, .history:
-            return false
-        }
+        model.appendNextLocalPage()
     }
 
     // MARK: - Keyboard Events
@@ -3301,41 +2511,41 @@ class ModernLibraryBrowserView: NSView {
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 36: // Enter
-            if browseMode == .search && !searchQuery.isEmpty && (!isYouTubeChannelSearch || hasUnsubmittedYouTubeSearch) {
-                loadDataForCurrentMode()
+            if model.browseMode == .search && !model.searchQuery.isEmpty && (!model.isYouTubeChannelSearch || model.hasUnsubmittedYouTubeSearch) {
+                model.loadDataForCurrentMode()
             } else if event.modifierFlags.contains(.shift) {
                 runVerbOnSelection(.playNext)
             } else if event.modifierFlags.contains(.option) {
                 runVerbOnSelection(.addToQueue)
             } else {
-                if let index = selectedIndices.first, index < displayItems.count { handleDoubleClick(on: displayItems[index]) }
+                if let index = selectedIndices.first, index < model.displayItems.count { handleDoubleClick(on: model.displayItems[index]) }
             }
         case 124: // Right Arrow — expand or move into first child
-            if let index = selectedIndices.first, index < displayItems.count {
-                let item = displayItems[index]
+            if let index = selectedIndices.first, index < model.displayItems.count {
+                let item = model.displayItems[index]
                 if item.hasChildren {
-                    if isExpanded(item) {
+                    if model.isExpanded(item) {
                         // Move to first child
                         let nextIdx = index + 1
-                        if nextIdx < displayItems.count {
+                        if nextIdx < model.displayItems.count {
                             selectedIndices = [nextIdx]; ensureVisible(index: nextIdx); loadArtworkForSelection(); needsDisplay = true
                         }
                     } else {
-                        toggleExpand(item); needsDisplay = true
+                        model.toggleExpand(item); needsDisplay = true
                     }
                 }
             }
         case 123: // Left Arrow — collapse or jump to parent
-            if let index = selectedIndices.first, index < displayItems.count {
-                let item = displayItems[index]
-                if isExpanded(item) {
-                    toggleExpand(item); needsDisplay = true
+            if let index = selectedIndices.first, index < model.displayItems.count {
+                let item = model.displayItems[index]
+                if model.isExpanded(item) {
+                    model.toggleExpand(item); needsDisplay = true
                 } else if item.indentLevel > 0 {
                     // Scan backward for parent (first item with indentLevel == current - 1, skipping .header)
                     let parentLevel = item.indentLevel - 1
                     var parentIdx: Int? = nil
                     for i in stride(from: index - 1, through: 0, by: -1) {
-                        let candidate = displayItems[i]
+                        let candidate = model.displayItems[i]
                         if case .header = candidate.type { continue }
                         if candidate.indentLevel == parentLevel { parentIdx = i; break }
                     }
@@ -3347,21 +2557,21 @@ class ModernLibraryBrowserView: NSView {
         case 48: // Tab — cycle browse tabs
             let allModes = LibraryBrowseMode.tabs
             // Treat .folders as .plists for tab cycling (they occupy the same slot)
-            let effectiveMode = browseMode == .folders ? .plists : browseMode
+            let effectiveMode = model.browseMode == .folders ? .plists : model.browseMode
             if let currentIdx = allModes.firstIndex(of: effectiveMode) {
                 let shift = event.modifierFlags.contains(.shift)
                 let nextIdx = shift
                     ? (currentIdx - 1 + allModes.count) % allModes.count
                     : (currentIdx + 1) % allModes.count
                 let nextMode = allModes[nextIdx]
-                browseMode = nextMode == .plists ? effectivePlistsSlotMode : nextMode
+                model.browseMode = nextMode == .plists ? model.effectivePlistsSlotMode : nextMode
                 selectedIndices.removeAll(); scrollOffset = 0
-                loadDataForCurrentMode()
+                model.loadDataForCurrentMode()
             }
         case 49: // Space — search input when searching, otherwise play/pause
-            if browseMode == .search {
+            if model.browseMode == .search {
                 if let chars = event.characters, !chars.isEmpty {
-                    searchQuery += chars; needsDisplay = true
+                    model.searchQuery += chars; needsDisplay = true
                 }
             } else if WindowManager.shared.isVideoActivePlayback {
                 WindowManager.shared.toggleVideoPlayPause()
@@ -3371,7 +2581,7 @@ class ModernLibraryBrowserView: NSView {
                 WindowManager.shared.audioEngine.play()
             }
         case 125: // Down
-            if let maxIndex = selectedIndices.max(), maxIndex < displayItems.count - 1 {
+            if let maxIndex = selectedIndices.max(), maxIndex < model.displayItems.count - 1 {
                 selectedIndices = [maxIndex + 1]; ensureVisible(index: maxIndex + 1); loadArtworkForSelection(); needsDisplay = true
             }
         case 126: // Up
@@ -3379,14 +2589,14 @@ class ModernLibraryBrowserView: NSView {
                 selectedIndices = [minIndex - 1]; ensureVisible(index: minIndex - 1); loadArtworkForSelection(); needsDisplay = true
             }
         default:
-            if browseMode == .search, let chars = event.characters, !chars.isEmpty {
+            if model.browseMode == .search, let chars = event.characters, !chars.isEmpty {
                 if event.keyCode == 51 {
-                    if !searchQuery.isEmpty { searchQuery.removeLast(); needsDisplay = true }
+                    if !model.searchQuery.isEmpty { model.searchQuery.removeLast(); needsDisplay = true }
                 } else if chars.rangeOfCharacter(from: .alphanumerics) != nil ||
                           chars.rangeOfCharacter(from: .whitespaces) != nil {
-                    searchQuery += chars; needsDisplay = true
+                    model.searchQuery += chars; needsDisplay = true
                 }
-            } else if browseMode != .search, let chars = event.characters, !chars.isEmpty {
+            } else if model.browseMode != .search, let chars = event.characters, !chars.isEmpty {
                 if event.keyCode == 53 { // Escape — clear type-ahead
                     typeAheadQuery = ""; typeAheadTimer?.invalidate(); typeAheadTimer = nil; needsDisplay = true
                 } else if event.keyCode == 51 { // Backspace
@@ -3413,66 +2623,15 @@ class ModernLibraryBrowserView: NSView {
         else if itemBottom > scrollOffset + effectiveHeight { scrollOffset = itemBottom - effectiveHeight }
     }
 
-    /// Returns true if title matches the typeahead query, checking both the display form
-    /// and the canonical form for "Surname, Article" style names (e.g. "Atlas Moth, The" → "The Atlas Moth").
-    private func titleMatchesTypeAhead(_ title: String, query: String) -> Bool {
-        if title.lowercased().hasPrefix(query) { return true }
-        // Also match after stripping leading articles so "The Beatles" matches "beat".
-        let normalized = LibraryTextSorter.normalized(title, ignoreLeadingArticles: true).lowercased()
-        if normalized.hasPrefix(query) { return true }
-        return false
-    }
-
     private func jumpToTypeAhead() {
         let query = typeAheadQuery.lowercased()
         guard !query.isEmpty else { return }
-        if let idx = displayItems.firstIndex(where: { titleMatchesTypeAhead($0.title, query: query) }) {
+        if let idx = model.displayItems.firstIndex(where: { LibraryBrowserModel.titleMatchesTypeAhead($0.title, query: query) }) {
             selectedIndices = [idx]; ensureVisible(index: idx); loadArtworkForSelection(); needsDisplay = true
         }
         typeAheadTimer?.invalidate()
         typeAheadTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
             self?.typeAheadQuery = ""
-        }
-    }
-
-    private func applyPendingArtistScroll() {
-        guard let artistId = pendingScrollToArtistId else { return }
-        let name = pendingScrollToArtistName ?? ""
-        pendingScrollAttempts += 1
-        let idx = pendingArtistIndex(artistId: artistId, name: name)
-        if let idx = idx {
-            selectedIndices = [idx]
-            ensureVisible(index: idx)
-            pendingScrollToArtistId = nil
-            pendingScrollToArtistName = nil
-            pendingScrollAttempts = 0
-            pendingArtistLoadUnfiltered = false
-            needsDisplay = true
-        } else {
-            if pendingScrollAttempts >= 3 {
-                pendingScrollToArtistId = nil
-                pendingScrollToArtistName = nil
-                pendingScrollAttempts = 0
-                pendingArtistLoadUnfiltered = false
-            }
-        }
-    }
-
-    private func pendingArtistIndex(artistId: String, name: String) -> Int? {
-        let titleMatch = !name.isEmpty ? displayItems.firstIndex { item in
-            isArtistRow(item) && item.title.caseInsensitiveCompare(name) == .orderedSame
-        } : nil
-        return titleMatch ?? displayItems.firstIndex { item in
-            isArtistRow(item) && item.id == artistId
-        }
-    }
-
-    private func isArtistRow(_ item: LibraryBrowserItem) -> Bool {
-        switch item.type {
-        case .artist, .localArtist, .subsonicArtist, .jellyfinArtist, .embyArtist:
-            return true
-        default:
-            return false
         }
     }
 
@@ -3501,7 +2660,7 @@ class ModernLibraryBrowserView: NSView {
         }
         if !audioURLs.isEmpty {
             MediaLibrary.shared.addTracks(urls: audioURLs)
-            if case .plex = currentSource { currentSource = .local }
+            if case .plex = model.currentSource { model.currentSource = .local }
         }
         if !videoURLs.isEmpty {
             MediaLibrary.shared.addVideoFiles(urls: videoURLs)
@@ -3523,7 +2682,7 @@ class ModernLibraryBrowserView: NSView {
             return
         }
 
-        switch currentSource {
+        switch model.currentSource {
         case .local:
             if addButtonRect.contains(point) { showAddFilesMenu(at: event) }
             else if sourceButtonRect.contains(point) { showSourceMenu(at: event) }
@@ -3535,12 +2694,12 @@ class ModernLibraryBrowserView: NSView {
             else if sourceButtonRect.contains(point) { showSourceMenu(at: event) }
         case .jellyfin:
             if libraryButtonRect.contains(point) {
-                if browseMode.isVideoMode { showJellyfinVideoLibraryMenu(at: event) }
+                if model.browseMode.isVideoMode { showJellyfinVideoLibraryMenu(at: event) }
                 else { showJellyfinLibraryMenu(at: event) }
             } else if sourceButtonRect.contains(point) { showSourceMenu(at: event) }
         case .emby:
             if libraryButtonRect.contains(point) {
-                if browseMode.isVideoMode { showEmbyVideoLibraryMenu(at: event) }
+                if model.browseMode.isVideoMode { showEmbyVideoLibraryMenu(at: event) }
                 else { showEmbyLibraryMenu(at: event) }
             } else if sourceButtonRect.contains(point) { showSourceMenu(at: event) }
         case .radio:
@@ -3553,91 +2712,11 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func handleRefreshClick() {
-        if browseMode.isHistoryMode {
+        if model.browseMode.isHistoryMode {
             historyAgent.scheduleRefresh()
             return
         }
-        if case .youtube = currentSource {
-            switch browseMode {
-            case .radio:
-                if radioSlotShowsChannels { loadYouTubeChannels() }
-                else { loadRadioStations() }
-            case .search:
-                loadYouTubeSearchResults(force: true)
-            default:
-                isLoading = false
-                errorMessage = nil
-                stopLoadingAnimation()
-                displayItems = []
-                needsDisplay = true
-            }
-            return
-        }
-        if case .radio = currentSource {
-            switch browseMode {
-            case .radio:
-                loadRadioStations()
-            case .search:
-                loadRadioSearchResults()
-            case .history:
-                break
-            default:
-                break
-            }
-            return
-        }
-        if browseMode == .radio {
-            if case .plex = currentSource { loadPlexRadioStations() }
-            else if case .subsonic = currentSource { loadSubsonicRadioStations() }
-            else if case .jellyfin = currentSource { loadJellyfinRadioStations() }
-            else if case .emby = currentSource { loadEmbyRadioStations() }
-            else if case .local = currentSource { loadLocalRadioStations() }
-            return
-        }
-        switch currentSource {
-        case .local: MediaLibrary.shared.rescanWatchFolders(); loadLocalData()
-        case .plex: refreshData()
-        case .subsonic:
-            // Cancel any in-flight load task first to prevent race conditions
-            subsonicLoadTask?.cancel()
-            subsonicLoadTask = nil
-            SubsonicManager.shared.clearCachedContent()
-            // Show loading state immediately, then preload in parallel and refresh
-            isLoading = true; errorMessage = nil; displayItems = []; startLoadingAnimation(); needsDisplay = true
-            Task { @MainActor [weak self] in
-                await SubsonicManager.shared.preloadLibraryContent()
-                guard let self = self, case .subsonic = self.currentSource else { return }
-                self.refreshData()
-            }
-        case .jellyfin:
-            // Cancel any in-flight load task first to prevent race conditions
-            jellyfinLoadTask?.cancel()
-            jellyfinLoadTask = nil
-            jellyfinAlbumWarmTask?.cancel()
-            jellyfinAlbumWarmTask = nil
-            JellyfinManager.shared.clearCachedContent()
-            // Show loading state immediately, then preload in parallel and refresh
-            isLoading = true; errorMessage = nil; displayItems = []; startLoadingAnimation(); needsDisplay = true
-            Task { @MainActor [weak self] in
-                await JellyfinManager.shared.preloadLibraryContent()
-                guard let self = self, case .jellyfin = self.currentSource else { return }
-                self.refreshData()
-            }
-        case .emby:
-            // Cancel any in-flight load task first to prevent race conditions
-            embyExpandTask?.cancel()
-            embyExpandTask = nil
-            EmbyManager.shared.clearCachedContent()
-            // Show loading state immediately, then preload in parallel and refresh
-            isLoading = true; errorMessage = nil; displayItems = []; startLoadingAnimation(); needsDisplay = true
-            Task { @MainActor [weak self] in
-                await EmbyManager.shared.preloadLibraryContent()
-                guard let self = self, case .emby = self.currentSource else { return }
-                self.refreshData()
-            }
-        case .radio: break
-        case .youtube: loadYouTubeChannels()
-        }
+        model.refreshCurrentSource()
     }
     
     // MARK: - Alphabet Click
@@ -3656,50 +2735,17 @@ class ModernLibraryBrowserView: NSView {
         scrollToLetter(alphabetLetters[letterIndex])
     }
     
-    private func sortLetter(for title: String) -> String {
-        let sortTitle = LibraryTextSorter.normalized(title, ignoreLeadingArticles: true).uppercased()
-        guard let firstChar = sortTitle.first else { return "#" }
-        return firstChar.isLetter ? String(firstChar) : "#"
-    }
-
-    /// Returns the sort letter for a display item, using the server's index letter for Subsonic artists.
-    private func effectiveSortLetter(for item: LibraryBrowserItem) -> String {
-        if case .subsonicArtist(let artist) = item.type,
-           let raw = artist.indexLetter,
-           let first = raw.trimmingCharacters(in: .whitespaces).first {
-            return String(first).uppercased()
-        }
-        return sortLetter(for: item.title)
-    }
-
     private func scrollToLetter(_ letter: String) {
-        if artLens.jump(to: { effectiveSortLetter(for: $0) == letter }) { return }
-        if case .local = currentSource {
-            switch browseMode {
-            case .artists:
-                if let dbOffset = localArtistLetterOffsets[letter] {
-                    localArtistPageOffset = dbOffset
-                    buildLocalArtistItems()
-                    scrollOffset = 0
-                    needsDisplay = true
-                }
-                return
-            case .albums:
-                if let dbOffset = localAlbumLetterOffsets[letter] {
-                    localAlbumPageOffset = dbOffset
-                    buildLocalAlbumItems()
-                    scrollOffset = 0
-                    needsDisplay = true
-                }
-                return
-            default:
-                break
-            }
+        if artLens.jump(to: { LibraryBrowserModel.effectiveSortLetter(for: $0) == letter }) { return }
+        // Paged local tabs load the letter's page
+        if let moved = model.showLocalPage(atLetter: letter) {
+            if moved { scrollOffset = 0 }
+            return
         }
-        for (index, item) in displayItems.enumerated() {
-            if effectiveSortLetter(for: item) == letter {
+        for (index, item) in model.displayItems.enumerated() {
+            if LibraryBrowserModel.effectiveSortLetter(for: item) == letter {
                 let effectiveHeight = listLayout().rows.height
-                let maxScroll = max(0, CGFloat(displayItems.count) * itemHeight - effectiveHeight)
+                let maxScroll = max(0, CGFloat(model.displayItems.count) * itemHeight - effectiveHeight)
                 scrollOffset = min(maxScroll, CGFloat(index) * itemHeight)
                 selectedIndices = [index]; needsDisplay = true; return
             }
@@ -3709,25 +2755,25 @@ class ModernLibraryBrowserView: NSView {
     // MARK: - List Click
     
     private func handleListClick(at index: Int, event: NSEvent, point: NSPoint) {
-        let item = displayItems[index]
+        let item = model.displayItems[index]
 
         // In search mode, clicking an artist navigates to the Artists tab
-        if browseMode == .search {
+        if model.browseMode == .search {
             switch item.type {
             case .artist(let artist):
-                navigateToArtistFromSearch(id: artist.id, name: artist.title)
+                model.navigateToArtistFromSearch(id: artist.id, name: artist.title)
                 return
             case .subsonicArtist(let artist):
-                navigateToArtistFromSearch(id: artist.id, name: artist.name)
+                model.navigateToArtistFromSearch(id: artist.id, name: artist.name)
                 return
             case .jellyfinArtist(let artist):
-                navigateToArtistFromSearch(id: artist.id, name: artist.name)
+                model.navigateToArtistFromSearch(id: artist.id, name: artist.name)
                 return
             case .embyArtist(let artist):
-                navigateToArtistFromSearch(id: artist.id, name: artist.name)
+                model.navigateToArtistFromSearch(id: artist.id, name: artist.name)
                 return
             case .localArtist(let artist):
-                navigateToArtistFromSearch(id: item.id, name: artist.name)
+                model.navigateToArtistFromSearch(id: item.id, name: artist.name)
                 return
             default: break
             }
@@ -3738,16 +2784,16 @@ class ModernLibraryBrowserView: NSView {
             let inExpandZone = point.x < Layout.borderWidth + indent + 20
 
             if folder.hasChildren && inExpandZone {
-                toggleExpand(item)
+                model.toggleExpand(item)
                 return
             }
 
             if folder.hasChildren && event.clickCount == 2 {
-                toggleExpand(item)
+                model.toggleExpand(item)
                 return
             }
 
-            if let updatedIndex = displayItems.firstIndex(where: { $0.id == folder.id }) {
+            if let updatedIndex = model.displayItems.firstIndex(where: { $0.id == folder.id }) {
                 selectedIndices = [updatedIndex]
             } else {
                 selectedIndices = [index]
@@ -3770,10 +2816,10 @@ class ModernLibraryBrowserView: NSView {
             let indent = CGFloat(item.indentLevel) * 16
             let inExpandZone = point.x < Layout.borderWidth + indent + 20
             if item.type.isAlbumItem {
-                if event.clickCount == 1 { toggleExpand(item) }
+                if event.clickCount == 1 { model.toggleExpand(item) }
                 // Fall through to selection
             } else if inExpandZone {
-                toggleExpand(item); return
+                model.toggleExpand(item); return
             }
         }
 
@@ -3786,7 +2832,7 @@ class ModernLibraryBrowserView: NSView {
             else { selectedIndices.insert(index) }
         } else {
             selectedIndices = [index]
-            if browseMode == .search,
+            if model.browseMode == .search,
                case .radioStation(let station) = item.type,
                event.clickCount == 1 {
                 playRadioStation(station)
@@ -3804,22 +2850,22 @@ class ModernLibraryBrowserView: NSView {
     private func showSourceMenu(at event: NSEvent) {
         let menu = NSMenu()
         let localItem = NSMenuItem(title: "Local Files", action: #selector(selectLocalSource), keyEquivalent: "")
-        localItem.target = self; if case .local = currentSource { localItem.state = .on }
+        localItem.target = self; if case .local = model.currentSource { localItem.state = .on }
         menu.addItem(localItem)
         menu.addItem(NSMenuItem.separator())
         let radioItem = NSMenuItem(title: "Internet Radio", action: #selector(selectRadioSource), keyEquivalent: "")
-        radioItem.target = self; if case .radio = currentSource { radioItem.state = .on }
+        radioItem.target = self; if case .radio = model.currentSource { radioItem.state = .on }
         menu.addItem(radioItem)
         menu.addItem(NSMenuItem.separator())
         let youtubeItem = NSMenuItem(title: "YouTube", action: #selector(selectYouTubeSource), keyEquivalent: "")
-        youtubeItem.target = self; if case .youtube = currentSource { youtubeItem.state = .on }
+        youtubeItem.target = self; if case .youtube = model.currentSource { youtubeItem.state = .on }
         menu.addItem(youtubeItem)
 
         menu.addItem(NSMenuItem.separator())
         for server in PlexManager.shared.servers {
             let item = NSMenuItem(title: server.name, action: #selector(selectPlexServer(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = server.id
-            if case .plex(let id) = currentSource, id == server.id { item.state = .on }
+            if case .plex(let id) = model.currentSource, id == server.id { item.state = .on }
             menu.addItem(item)
         }
         if PlexManager.shared.servers.isEmpty && !PlexManager.shared.isLinked {
@@ -3831,7 +2877,7 @@ class ModernLibraryBrowserView: NSView {
             for server in SubsonicManager.shared.servers {
                 let item = NSMenuItem(title: "🎵 \(server.name)", action: #selector(selectSubsonicServer(_:)), keyEquivalent: "")
                 item.target = self; item.representedObject = server.id
-                if case .subsonic(let id) = currentSource, id == server.id { item.state = .on }
+                if case .subsonic(let id) = model.currentSource, id == server.id { item.state = .on }
                 menu.addItem(item)
             }
         }
@@ -3840,7 +2886,7 @@ class ModernLibraryBrowserView: NSView {
             for server in JellyfinManager.shared.servers {
                 let item = NSMenuItem(title: "🟣 \(server.name)", action: #selector(selectJellyfinServer(_:)), keyEquivalent: "")
                 item.target = self; item.representedObject = server.id
-                if case .jellyfin(let id) = currentSource, id == server.id { item.state = .on }
+                if case .jellyfin(let id) = model.currentSource, id == server.id { item.state = .on }
                 menu.addItem(item)
             }
         }
@@ -3849,7 +2895,7 @@ class ModernLibraryBrowserView: NSView {
             for server in EmbyManager.shared.servers {
                 let item = NSMenuItem(title: "🔵 \(server.name)", action: #selector(selectEmbyServer(_:)), keyEquivalent: "")
                 item.target = self; item.representedObject = server.id
-                if case .emby(let id) = currentSource, id == server.id { item.state = .on }
+                if case .emby(let id) = model.currentSource, id == server.id { item.state = .on }
                 menu.addItem(item)
             }
         }
@@ -3898,7 +2944,7 @@ class ModernLibraryBrowserView: NSView {
         let libraries = JellyfinManager.shared.videoLibraries
         let currentMovieId = JellyfinManager.shared.currentMovieLibrary?.id
         let currentShowId = JellyfinManager.shared.currentShowLibrary?.id
-        let activeId = browseMode == .shows ? currentShowId : currentMovieId
+        let activeId = model.browseMode == .shows ? currentShowId : currentMovieId
         let allItem = NSMenuItem(title: "All Libraries", action: #selector(selectJellyfinVideoLibraryFromBrowser(_:)), keyEquivalent: "")
         allItem.target = self; allItem.representedObject = Optional<JellyfinMusicLibrary>.none as Any
         allItem.state = activeId == nil ? .on : .off
@@ -3937,7 +2983,7 @@ class ModernLibraryBrowserView: NSView {
         let libraries = EmbyManager.shared.videoLibraries
         let currentMovieId = EmbyManager.shared.currentMovieLibrary?.id
         let currentShowId = EmbyManager.shared.currentShowLibrary?.id
-        let activeId = browseMode == .shows ? currentShowId : currentMovieId
+        let activeId = model.browseMode == .shows ? currentShowId : currentMovieId
         let allItem = NSMenuItem(title: "All Libraries", action: #selector(selectEmbyVideoLibraryFromBrowser(_:)), keyEquivalent: "")
         allItem.target = self; allItem.representedObject = Optional<EmbyMusicLibrary>.none as Any
         allItem.state = activeId == nil ? .on : .off
@@ -3976,7 +3022,7 @@ class ModernLibraryBrowserView: NSView {
         for option in LibraryBrowserSortOption.allCases {
             let item = NSMenuItem(title: option.rawValue, action: #selector(selectSortOption(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = option
-            if option == currentSort { item.state = .on }
+            if option == model.currentSort { item.state = .on }
             menu.addItem(item)
         }
         let menuLocation = NSPoint(x: windowPoint.x, y: windowPoint.y - 5)
@@ -4145,7 +3191,7 @@ class ModernLibraryBrowserView: NSView {
     }
     
     private func showColumnConfigMenu(at event: NSEvent) {
-        if hasInternetRadioColumns {
+        if model.hasInternetRadioColumns {
             guard backdropMenuIsAvailable else { return }
             let menu = NSMenu()
             prependBackdropMenu(to: menu)
@@ -4185,7 +3231,7 @@ class ModernLibraryBrowserView: NSView {
 
     /// Only the header's own group: every row shows those columns, so nothing else is tickable.
     private func columnGroupsForCurrentMenu() -> [LibraryColumnVisibilityGroup] {
-        currentColumnGroup().map { [$0] } ?? []
+        model.currentColumnGroup().map { [$0] } ?? []
     }
 
     private func addColumnVisibilityGroup(_ group: LibraryColumnVisibilityGroup, to menu: NSMenu) {
@@ -4197,9 +3243,9 @@ class ModernLibraryBrowserView: NSView {
         header.isEnabled = false
         menu.addItem(header)
 
-        let visibleIds = Set(visibleColumnIds(for: group))
+        let visibleIds = Set(model.visibleColumnIds(for: group))
         // YouTube's columns are fixed: its section offers only the width reset.
-        let tickableColumns = group == .youtube ? [] : allColumns(for: group)
+        let tickableColumns = group == .youtube ? [] : LibraryBrowserColumn.all(for: group)
         for column in tickableColumns {
             let item = NSMenuItem()
             item.view = ColumnVisibilityCheckboxView(
@@ -4218,51 +3264,10 @@ class ModernLibraryBrowserView: NSView {
         menu.addItem(resetItem)
     }
 
-    private func allColumns(for group: LibraryColumnVisibilityGroup) -> [ModernBrowserColumn] {
-        switch group {
-        case .artist: return ModernBrowserColumn.allArtistColumns
-        case .album: return ModernBrowserColumn.allAlbumColumns
-        case .track: return ModernBrowserColumn.allTrackColumns
-        case .youtube: return ModernBrowserColumn.youtubeColumns
-        }
-    }
-
-    private func defaultColumnIds(for group: LibraryColumnVisibilityGroup) -> [String] {
-        switch group {
-        case .artist: return ModernBrowserColumn.defaultArtistColumnIds
-        case .album: return ModernBrowserColumn.defaultAlbumColumnIds
-        case .track: return ModernBrowserColumn.defaultTrackColumnIds
-        case .youtube: return ModernBrowserColumn.defaultYouTubeColumnIds
-        }
-    }
-
-    private func visibleColumnIds(for group: LibraryColumnVisibilityGroup) -> [String] {
-        switch group {
-        case .artist: return normalizedColumnIds(visibleArtistColumnIds, allColumns: ModernBrowserColumn.allArtistColumns)
-        case .album: return normalizedColumnIds(visibleAlbumColumnIds, allColumns: ModernBrowserColumn.allAlbumColumns)
-        case .track: return normalizedColumnIds(visibleTrackColumnIds, allColumns: ModernBrowserColumn.allTrackColumns)
-        // YouTube columns are fixed (not user-hideable); always the full set.
-        case .youtube: return ModernBrowserColumn.defaultYouTubeColumnIds
-        }
-    }
-
-    private func setVisibleColumnIds(_ ids: [String], for group: LibraryColumnVisibilityGroup) {
-        switch group {
-        case .artist:
-            visibleArtistColumnIds = normalizedColumnIds(ids, allColumns: ModernBrowserColumn.allArtistColumns)
-        case .album:
-            visibleAlbumColumnIds = normalizedColumnIds(ids, allColumns: ModernBrowserColumn.allAlbumColumns)
-        case .track:
-            visibleTrackColumnIds = normalizedColumnIds(ids, allColumns: ModernBrowserColumn.allTrackColumns)
-        case .youtube:
-            break  // fixed column set, nothing to persist
-        }
-    }
-
     private func toggleColumnVisibility(group: LibraryColumnVisibilityGroup, columnId: String, visible: Bool) {
         guard columnId != "title" else { return }
 
-        var ids = visibleColumnIds(for: group)
+        var ids = model.visibleColumnIds(for: group)
         if visible {
             if !ids.contains(columnId) {
                 ids.append(columnId)
@@ -4272,7 +3277,7 @@ class ModernLibraryBrowserView: NSView {
             LibraryBrowserTabSortStore.shared.dropColumn(columnId)
         }
 
-        setVisibleColumnIds(ids, for: group)
+        model.setVisibleColumnIds(ids, for: group)
         clampHorizontalScrollOffset()
         needsDisplay = true
     }
@@ -4281,7 +3286,7 @@ class ModernLibraryBrowserView: NSView {
         guard let rawValue = sender.representedObject as? String,
               let group = LibraryColumnVisibilityGroup(rawValue: rawValue) else { return }
 
-        setVisibleColumnIds(defaultColumnIds(for: group), for: group)
+        model.setVisibleColumnIds(LibraryBrowserColumn.defaultIds(for: group), for: group)
         let prefix = "\(group.rawValue):"
         columnWidths = columnWidths.filter { !$0.key.hasPrefix(prefix) }
         clampHorizontalScrollOffset()
@@ -4306,7 +3311,7 @@ class ModernLibraryBrowserView: NSView {
             let rateItem = NSMenuItem(title: "Rate", action: nil, keyEquivalent: "")
             rateItem.submenu = buildRateSubmenuForPlex(ratingKey: album.id); menu.addItem(rateItem)
         case .artist:
-            let expandItem = NSMenuItem(title: expandedArtists.contains(item.id) ? "Collapse" : "Expand",
+            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand",
                                          action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
             expandItem.target = self; expandItem.representedObject = item; menu.addItem(expandItem)
         case .localTrack(let track):
@@ -4405,7 +3410,7 @@ class ModernLibraryBrowserView: NSView {
         case .radioFolder(let folder):
             if folder.hasChildren {
                 let expandItem = NSMenuItem(
-                    title: expandedRadioFolders.contains(folder.id) ? "Collapse" : "Expand",
+                    title: model.isExpanded(item) ? "Collapse" : "Expand",
                     action: #selector(contextMenuToggleExpand(_:)),
                     keyEquivalent: ""
                 )
@@ -4435,14 +3440,14 @@ class ModernLibraryBrowserView: NSView {
             }
             if menu.items.isEmpty { return }
         case .youtubeChannel(let channel):
-            let expandTitle = expandedYouTubeChannels[channel.id] != nil ? "Collapse" : "Expand"
+            let expandTitle = model.isExpanded(item) ? "Collapse" : "Expand"
             let expandItem = NSMenuItem(title: expandTitle, action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
             expandItem.target = self; expandItem.representedObject = item; menu.addItem(expandItem)
             menu.addItem(NSMenuItem.separator())
             if !YouTubeManager.shared.isSubscribed(channel) {
                 let subscribeItem = NSMenuItem(title: "Subscribe", action: #selector(contextMenuSubscribeYouTubeChannel(_:)), keyEquivalent: "")
                 subscribeItem.target = self; subscribeItem.representedObject = channel; menu.addItem(subscribeItem)
-            } else if isYouTubeChannelSearch {
+            } else if model.isYouTubeChannelSearch {
                 // Refresh/Remove belong to the Channels tab.
                 let subscribedItem = NSMenuItem(title: "Already Subscribed", action: nil, keyEquivalent: "")
                 subscribedItem.isEnabled = false; menu.addItem(subscribedItem)
@@ -4538,9 +3543,9 @@ class ModernLibraryBrowserView: NSView {
 
     // MARK: - @objc Menu Actions
     
-    @objc private func selectLocalSource() { currentSource = .local }
-    @objc private func selectRadioSource() { currentSource = .radio }
-    @objc private func selectYouTubeSource() { currentSource = .youtube }
+    @objc private func selectLocalSource() { model.currentSource = .local }
+    @objc private func selectRadioSource() { model.currentSource = .radio }
+    @objc private func selectYouTubeSource() { model.currentSource = .youtube }
 
     private func showYouTubeAddMenu(at event: NSEvent) {
         let menu = NSMenu()
@@ -4551,95 +3556,43 @@ class ModernLibraryBrowserView: NSView {
     }
     @objc private func selectPlexServer(_ sender: NSMenuItem) {
         guard let serverId = sender.representedObject as? String else { return }
-        currentSource = .plex(serverId: serverId)
+        model.currentSource = .plex(serverId: serverId)
     }
     @objc private func selectSubsonicServer(_ sender: NSMenuItem) {
         guard let serverId = sender.representedObject as? String else { return }
-        currentSource = .subsonic(serverId: serverId)
+        model.currentSource = .subsonic(serverId: serverId)
     }
     @objc private func selectJellyfinServer(_ sender: NSMenuItem) {
         guard let serverId = sender.representedObject as? String else { return }
-        currentSource = .jellyfin(serverId: serverId)
+        model.currentSource = .jellyfin(serverId: serverId)
     }
     @objc private func selectEmbyServer(_ sender: NSMenuItem) {
         guard let serverId = sender.representedObject as? String else { return }
-        currentSource = .emby(serverId: serverId)
+        model.currentSource = .emby(serverId: serverId)
     }
     @objc private func linkPlexAccount() { controller?.showLinkSheet() }
     @objc private func selectSortOption(_ sender: NSMenuItem) {
         guard let option = sender.representedObject as? LibraryBrowserSortOption else { return }
-        LibraryBrowserTabSortStore.shared.setMenuSort(option, for: browseMode.rawValue)
-        localArtistPageOffset = 0; localAlbumPageOffset = 0
-        localArtistLetterOffsets = [:]; localAlbumLetterOffsets = [:]
-        rebuildCurrentModeItems()
-        needsDisplay = true
+        model.selectMenuSort(option)
     }
     @objc private func selectLibrary(_ sender: NSMenuItem) {
         guard let library = sender.representedObject as? PlexLibrary else { return }
-        PlexManager.shared.selectLibrary(library); clearAllCachedData()
-        // Switch browse mode to match the selected library type
-        if library.isMusicLibrary {
-            if browseMode.isVideoMode {
-                browseMode = .artists
-            }
-        } else if library.isMovieLibrary {
-            browseMode = .movies
-        } else if library.isShowLibrary {
-            browseMode = .shows
-        }
-        selectedIndices.removeAll(); scrollOffset = 0
-        reloadData()
+        model.selectPlexLibrary(library)
     }
     @objc private func selectJellyfinMusicLibrary(_ sender: NSMenuItem) {
-        let library = sender.representedObject as? JellyfinMusicLibrary
-        if let library = library {
-            JellyfinManager.shared.selectMusicLibrary(library)
-        } else {
-            JellyfinManager.shared.clearMusicLibrarySelection()
-        }
-        clearAllCachedData(); reloadData()
+        model.selectJellyfinMusicLibrary(sender.representedObject as? JellyfinMusicLibrary)
     }
     @objc private func selectJellyfinVideoLibraryFromBrowser(_ sender: NSMenuItem) {
-        let library = sender.representedObject as? JellyfinMusicLibrary
-        if let library = library {
-            JellyfinManager.shared.selectMovieLibrary(library)
-            JellyfinManager.shared.selectShowLibrary(library)
-        } else {
-            JellyfinManager.shared.selectMovieLibrary(nil)
-            JellyfinManager.shared.selectShowLibrary(nil)
-        }
-        cachedJellyfinMovies = []; cachedJellyfinShows = []
-        reloadData()
+        model.selectJellyfinVideoLibrary(sender.representedObject as? JellyfinMusicLibrary)
     }
     @objc private func selectEmbyMusicLibraryFromBrowser(_ sender: NSMenuItem) {
-        let library = sender.representedObject as? EmbyMusicLibrary
-        if let library = library {
-            EmbyManager.shared.selectMusicLibrary(library)
-        } else {
-            EmbyManager.shared.clearMusicLibrarySelection()
-        }
-        clearAllCachedData(); reloadData()
+        model.selectEmbyMusicLibrary(sender.representedObject as? EmbyMusicLibrary)
     }
     @objc private func selectEmbyVideoLibraryFromBrowser(_ sender: NSMenuItem) {
-        let library = sender.representedObject as? EmbyMusicLibrary
-        if let library = library {
-            EmbyManager.shared.selectMovieLibrary(library)
-            EmbyManager.shared.selectShowLibrary(library)
-        } else {
-            EmbyManager.shared.selectMovieLibrary(nil)
-            EmbyManager.shared.selectShowLibrary(nil)
-        }
-        cachedEmbyMovies = []; cachedEmbyShows = []
-        reloadData()
+        model.selectEmbyVideoLibrary(sender.representedObject as? EmbyMusicLibrary)
     }
     @objc private func selectSubsonicMusicFolder(_ sender: NSMenuItem) {
-        let folder = sender.representedObject as? SubsonicMusicFolder
-        if let folder = folder {
-            SubsonicManager.shared.selectMusicFolder(folder)
-        } else {
-            SubsonicManager.shared.clearMusicFolderSelection()
-        }
-        clearAllCachedData(); reloadData()
+        model.selectSubsonicMusicFolder(sender.representedObject as? SubsonicMusicFolder)
     }
     @objc private func addFiles() {
         let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.allowsMultipleSelection = true
@@ -4668,13 +3621,13 @@ class ModernLibraryBrowserView: NSView {
     /// videos are actually visible. Without this the add succeeds but the user stays
     /// on whatever tab they were on (e.g. Artists), so nothing appears to happen.
     private func revealLocalVideoCategory() {
-        if case .local = currentSource {} else { currentSource = .local }
-        if browseMode != .movies {
-            browseMode = .movies
+        if case .local = model.currentSource {} else { model.currentSource = .local }
+        if model.browseMode != .movies {
+            model.browseMode = .movies
             selectedIndices.removeAll()
             scrollOffset = 0
         }
-        loadDataForCurrentMode()
+        model.loadDataForCurrentMode()
         needsDisplay = true
     }
     @objc private func addWatchFolder() {
@@ -4698,8 +3651,8 @@ class ModernLibraryBrowserView: NSView {
     @objc private func manageWatchFolders() {
         WatchFolderManagerDialog.present { [weak self] in
             guard let self = self else { return }
-            if case .local = self.currentSource {
-                self.loadLocalData()
+            if case .local = self.model.currentSource {
+                self.model.loadLocalData()
             }
         }
     }
@@ -4709,8 +3662,8 @@ class ModernLibraryBrowserView: NSView {
             self?.activeRadioStationSheet = nil
             if let newStation = station {
                 RadioManager.shared.addStation(newStation)
-                if case .radio = self?.currentSource { self?.reloadInternetRadioForCurrentMode() }
-                else { self?.currentSource = .radio }
+                if case .radio = self?.model.currentSource { self?.model.reloadInternetRadioForCurrentMode() }
+                else { self?.model.currentSource = .radio }
             }
         }
     }
@@ -4728,7 +3681,7 @@ class ModernLibraryBrowserView: NSView {
             alert.runModal()
             return
         }
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
 
     @objc private func showAddYouTubeChannelDialog() {
@@ -4737,22 +3690,22 @@ class ModernLibraryBrowserView: NSView {
             self?.activeYouTubeChannelSheet = nil
             guard let self = self else { return }
             if channel != nil {
-                if case .youtube = self.currentSource {
-                    self.rebuildCurrentModeItems()
+                if case .youtube = self.model.currentSource {
+                    self.model.rebuildCurrentModeItems()
                 } else {
-                    self.currentSource = .youtube
+                    self.model.currentSource = .youtube
                 }
             }
         }
     }
-    @objc private func addMissingRadioDefaults() { RadioManager.shared.addMissingDefaults(); if case .radio = currentSource { reloadInternetRadioForCurrentMode() } }
+    @objc private func addMissingRadioDefaults() { RadioManager.shared.addMissingDefaults(); if case .radio = model.currentSource { model.reloadInternetRadioForCurrentMode() } }
     @objc private func resetRadioToDefaults() {
         let alert = NSAlert(); alert.messageText = "Reset to Defaults"; alert.informativeText = "Replace all stations with defaults?"
         alert.addButton(withTitle: "Reset"); alert.addButton(withTitle: "Cancel"); alert.alertStyle = .warning
-        if alert.runModal() == .alertFirstButtonReturn { RadioManager.shared.resetToDefaults(); if case .radio = currentSource { reloadInternetRadioForCurrentMode() } }
+        if alert.runModal() == .alertFirstButtonReturn { RadioManager.shared.resetToDefaults(); if case .radio = model.currentSource { model.reloadInternetRadioForCurrentMode() } }
     }
     @objc private func contextMenuToggleExpand(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem else { return }; toggleExpand(item)
+        guard let item = sender.representedObject as? LibraryBrowserItem else { return }; model.toggleExpand(item)
     }
     @objc private func contextMenuShowTags(_ sender: NSMenuItem) {
         guard let track = sender.representedObject as? LibraryTrack else { return }
@@ -4766,14 +3719,14 @@ class ModernLibraryBrowserView: NSView {
         guard let track = sender.representedObject as? LibraryTrack else { return }
         activeEditTagsPanel?.close()
         let panel = EditTagsPanel(track: track)
-        panel.onSave = { [weak self] in self?.reloadLocalBrowserAfterMetadataEdit() }
+        panel.onSave = { [weak self] in self?.model.reloadLocalBrowserAfterMetadataEdit() }
         activeEditTagsPanel = panel; panel.show()
     }
     @objc private func contextMenuEditAlbumTags(_ sender: NSMenuItem) {
         guard let album = sender.representedObject as? Album else { return }
         activeEditAlbumTagsPanel?.close()
         let panel = EditAlbumTagsPanel(album: album)
-        panel.onSave = { [weak self] in self?.reloadLocalBrowserAfterMetadataEdit() }
+        panel.onSave = { [weak self] in self?.model.reloadLocalBrowserAfterMetadataEdit() }
         activeEditAlbumTagsPanel = panel; panel.show()
     }
     @objc private func contextMenuEditVideoTags(_ sender: NSMenuItem) {
@@ -4783,7 +3736,7 @@ class ModernLibraryBrowserView: NSView {
         else { return }
         activeEditVideoTagsPanel?.close()
         let panel = EditVideoTagsPanel(item: videoItem)
-        panel.onSave = { [weak self] in self?.reloadLocalBrowserAfterMetadataEdit() }
+        panel.onSave = { [weak self] in self?.model.reloadLocalBrowserAfterMetadataEdit() }
         activeEditVideoTagsPanel = panel; panel.show()
     }
     @objc private func contextMenuRemoveLocalTrack(_ sender: NSMenuItem) {
@@ -4794,7 +3747,7 @@ class ModernLibraryBrowserView: NSView {
         } else {
             MediaLibrary.shared.removeTracks(urls: tracksToRemove.map { $0.url })
         }
-        loadLocalData()
+        model.loadLocalData()
     }
     @objc private func contextMenuRemoveLocalAlbum(_ sender: NSMenuItem) {
         guard let album = sender.representedObject as? Album else { return }
@@ -4805,7 +3758,7 @@ class ModernLibraryBrowserView: NSView {
         alert.informativeText = "This will remove \(count) track\(count == 1 ? "" : "s"). Files will not be deleted."
         alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        MediaLibrary.shared.removeTracks(urls: tracks.map { $0.url }); loadLocalData()
+        MediaLibrary.shared.removeTracks(urls: tracks.map { $0.url }); model.loadLocalData()
     }
     @objc private func contextMenuRemoveLocalArtist(_ sender: NSMenuItem) {
         guard let artist = sender.representedObject as? Artist else { return }
@@ -4832,7 +3785,7 @@ class ModernLibraryBrowserView: NSView {
         alert.informativeText = "This will remove \(count) track\(count == 1 ? "" : "s"). Files will not be deleted."
         alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        MediaLibrary.shared.removeTracks(urls: dedupedTrackURLs); loadLocalData()
+        MediaLibrary.shared.removeTracks(urls: dedupedTrackURLs); model.loadLocalData()
     }
     @objc private func contextMenuRemoveLocalMovie(_ sender: NSMenuItem) {
         guard let movie = sender.representedObject as? LocalVideo else { return }
@@ -4842,11 +3795,11 @@ class ModernLibraryBrowserView: NSView {
         } else {
             MediaLibrary.shared.removeMovies(urls: moviesToRemove.map { $0.url })
         }
-        loadLocalData()
+        model.loadLocalData()
     }
     @objc private func contextMenuRemoveLocalEpisode(_ sender: NSMenuItem) {
         guard let episode = sender.representedObject as? LocalEpisode else { return }
-        MediaLibrary.shared.removeEpisode(episode); loadLocalData()
+        MediaLibrary.shared.removeEpisode(episode); model.loadLocalData()
     }
     @objc private func contextMenuRemoveLocalShow(_ sender: NSMenuItem) {
         guard let show = sender.representedObject as? LocalShow else { return }
@@ -4856,7 +3809,7 @@ class ModernLibraryBrowserView: NSView {
         alert.informativeText = "This will remove \(count) episode\(count == 1 ? "" : "s"). Files will not be deleted."
         alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        MediaLibrary.shared.removeShow(title: show.title); loadLocalData()
+        MediaLibrary.shared.removeShow(title: show.title); model.loadLocalData()
     }
     @objc private func contextMenuRemoveLocalSeason(_ sender: NSMenuItem) {
         guard let ref = sender.representedObject as? SeasonRef else { return }
@@ -4866,7 +3819,7 @@ class ModernLibraryBrowserView: NSView {
         alert.informativeText = "This will remove \(count) episode\(count == 1 ? "" : "s"). Files will not be deleted."
         alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        MediaLibrary.shared.removeSeason(showTitle: ref.showTitle, seasonNumber: ref.season.number); loadLocalData()
+        MediaLibrary.shared.removeSeason(showTitle: ref.showTitle, seasonNumber: ref.season.number); model.loadLocalData()
     }
     @objc private func contextMenuShowInFinder(_ sender: NSMenuItem) {
         guard let track = sender.representedObject as? LibraryTrack else { return }
@@ -4877,10 +3830,10 @@ class ModernLibraryBrowserView: NSView {
     /// clicked track is part of it; otherwise fall back to the clicked track.
     private func selectedLocalTracksForContextAction(fallback track: LibraryTrack) -> [LibraryTrack] {
         let selectedTracks = selectedIndices
-            .filter { $0 >= 0 && $0 < displayItems.count }
+            .filter { $0 >= 0 && $0 < model.displayItems.count }
             .sorted()
             .compactMap { index -> LibraryTrack? in
-                guard case .localTrack(let selectedTrack) = displayItems[index].type else { return nil }
+                guard case .localTrack(let selectedTrack) = model.displayItems[index].type else { return nil }
                 return selectedTrack
             }
 
@@ -4897,10 +3850,10 @@ class ModernLibraryBrowserView: NSView {
     /// clicked artist is part of it; otherwise fall back to the clicked artist.
     private func selectedLocalArtistsForContextAction(fallback artist: Artist) -> [Artist] {
         let selectedArtists = selectedIndices
-            .filter { $0 >= 0 && $0 < displayItems.count }
+            .filter { $0 >= 0 && $0 < model.displayItems.count }
             .sorted()
             .compactMap { index -> Artist? in
-                guard case .localArtist(let selectedArtist) = displayItems[index].type else { return nil }
+                guard case .localArtist(let selectedArtist) = model.displayItems[index].type else { return nil }
                 return selectedArtist
             }
 
@@ -4917,10 +3870,10 @@ class ModernLibraryBrowserView: NSView {
     /// clicked movie is part of it; otherwise fall back to the clicked movie.
     private func selectedLocalMoviesForContextAction(fallback movie: LocalVideo) -> [LocalVideo] {
         let selectedMovies = selectedIndices
-            .filter { $0 >= 0 && $0 < displayItems.count }
+            .filter { $0 >= 0 && $0 < model.displayItems.count }
             .sorted()
             .compactMap { index -> LocalVideo? in
-                guard case .localMovie(let selectedMovie) = displayItems[index].type else { return nil }
+                guard case .localMovie(let selectedMovie) = model.displayItems[index].type else { return nil }
                 return selectedMovie
             }
 
@@ -4971,7 +3924,7 @@ class ModernLibraryBrowserView: NSView {
     @objc private func contextMenuPlaySubsonicSongAlbum(_ sender: NSMenuItem) {
         guard let song = sender.representedObject as? SubsonicSong,
               let albumId = song.albumId else { return }
-        if let album = cachedSubsonicAlbums.first(where: { $0.id == albumId }) {
+        if let album = model.subsonic.albums.first(where: { $0.id == albumId }) {
             TrackVerb.play.run(.subsonicAlbum(album))
             return
         }
@@ -4983,7 +3936,7 @@ class ModernLibraryBrowserView: NSView {
     @objc private func contextMenuPlaySubsonicSongArtist(_ sender: NSMenuItem) {
         guard let song = sender.representedObject as? SubsonicSong,
               let artistId = song.artistId else { return }
-        if let artist = cachedSubsonicArtists.first(where: { $0.id == artistId }) {
+        if let artist = model.subsonic.artists.first(where: { $0.id == artistId }) {
             TrackVerb.play.run(.subsonicArtist(artist))
             return
         }
@@ -4995,7 +3948,7 @@ class ModernLibraryBrowserView: NSView {
     @objc private func contextMenuPlayJellyfinSongAlbum(_ sender: NSMenuItem) {
         guard let song = sender.representedObject as? JellyfinSong,
               let albumId = song.albumId else { return }
-        if let album = cachedJellyfinAlbums.first(where: { $0.id == albumId }) {
+        if let album = model.jellyfin.albums.first(where: { $0.id == albumId }) {
             TrackVerb.play.run(.jellyfinAlbum(album))
             return
         }
@@ -5007,7 +3960,7 @@ class ModernLibraryBrowserView: NSView {
     @objc private func contextMenuPlayJellyfinSongArtist(_ sender: NSMenuItem) {
         guard let song = sender.representedObject as? JellyfinSong,
               let artistId = song.artistId else { return }
-        if let artist = cachedJellyfinArtists.first(where: { $0.id == artistId }) {
+        if let artist = model.jellyfin.artists.first(where: { $0.id == artistId }) {
             TrackVerb.play.run(.jellyfinArtist(artist))
             return
         }
@@ -5024,14 +3977,14 @@ class ModernLibraryBrowserView: NSView {
         activeRadioStationSheet = AddRadioStationSheet(station: station)
         activeRadioStationSheet?.showDialog { [weak self] updated in
             self?.activeRadioStationSheet = nil
-            if let u = updated { RadioManager.shared.updateStation(u); self?.reloadInternetRadioForCurrentMode() }
+            if let u = updated { RadioManager.shared.updateStation(u); self?.model.reloadInternetRadioForCurrentMode() }
         }
     }
     @objc private func contextMenuDeleteRadioStation(_ sender: NSMenuItem) {
         guard let station = sender.representedObject as? RadioStation else { return }
         let alert = NSAlert(); alert.messageText = "Delete '\(station.name)'?"; alert.alertStyle = .warning
         alert.addButton(withTitle: "Delete"); alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { RadioManager.shared.removeStation(station); reloadInternetRadioForCurrentMode() }
+        if alert.runModal() == .alertFirstButtonReturn { RadioManager.shared.removeStation(station); model.reloadInternetRadioForCurrentMode() }
     }
     @objc private func contextMenuRenameRadioFolder(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? RadioFolderRenameAction else { return }
@@ -5050,7 +4003,7 @@ class ModernLibraryBrowserView: NSView {
             alert.runModal()
             return
         }
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuDeleteRadioFolder(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? RadioFolderDeleteAction else { return }
@@ -5063,19 +4016,16 @@ class ModernLibraryBrowserView: NSView {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         _ = RadioManager.shared.deleteUserFolder(id: action.folderID)
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuRefreshYouTubeChannel(_ sender: NSMenuItem) {
         guard let channel = sender.representedObject as? YouTubeChannel else { return }
-        expandedYouTubeChannels[channel.id] = channel
-        YouTubeChannelUploads.shared.load([channel], force: true)
+        model.refreshYouTubeChannel(channel)
     }
 
     @objc private func contextMenuRemoveYouTubeChannel(_ sender: NSMenuItem) {
         guard let channel = sender.representedObject as? YouTubeChannel else { return }
-        YouTubeManager.shared.removeChannel(channel)
-        expandedYouTubeChannels.removeValue(forKey: channel.id)
-        rebuildCurrentModeItems()
+        model.removeYouTubeChannel(channel)
     }
 
     @objc private func contextMenuToggleStationFolderMembership(_ sender: NSMenuItem) {
@@ -5085,17 +4035,17 @@ class ModernLibraryBrowserView: NSView {
         } else {
             _ = RadioManager.shared.addStation(action.station, toUserFolderID: action.folderID)
         }
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuAssignStationSmartGenre(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? RadioSmartGenreAction else { return }
         _ = RadioManager.shared.setSmartGenreOverride(action.genre, for: action.station)
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuAssignStationSmartRegion(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? RadioSmartRegionAction else { return }
         _ = RadioManager.shared.setSmartRegionOverride(action.region, for: action.station)
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuCreateRadioFolderAndAddStation(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? RadioFolderStationAction else { return }
@@ -5113,7 +4063,7 @@ class ModernLibraryBrowserView: NSView {
             return
         }
         _ = RadioManager.shared.addStation(action.station, toUserFolderID: folder.id)
-        reloadInternetRadioForCurrentMode()
+        model.reloadInternetRadioForCurrentMode()
     }
     @objc private func contextMenuPlayPlexRadioStation(_ sender: NSMenuItem) {
         guard let item = sender.representedObject as? LibraryBrowserItem,
@@ -5143,7 +4093,7 @@ class ModernLibraryBrowserView: NSView {
     @objc private func contextMenuPlayEmbySongAlbum(_ sender: NSMenuItem) {
         guard let song = sender.representedObject as? EmbySong,
               let albumId = song.albumId else { return }
-        if let album = cachedEmbyAlbums.first(where: { $0.id == albumId }) {
+        if let album = model.emby.albums.first(where: { $0.id == albumId }) {
             TrackVerb.play.run(.embyAlbum(album))
             return
         }
@@ -5155,7 +4105,7 @@ class ModernLibraryBrowserView: NSView {
     @objc private func contextMenuPlayEmbySongArtist(_ sender: NSMenuItem) {
         guard let song = sender.representedObject as? EmbySong,
               let artistId = song.artistId else { return }
-        if let artist = cachedEmbyArtists.first(where: { $0.id == artistId }) {
+        if let artist = model.emby.artists.first(where: { $0.id == artistId }) {
             TrackVerb.play.run(.embyArtist(artist))
             return
         }
@@ -5174,8 +4124,8 @@ class ModernLibraryBrowserView: NSView {
     
     /// Shift+Enter / Option+Enter: the menu's Play Next / Add to Queue on the selected row.
     private func runVerbOnSelection(_ verb: TrackVerb) {
-        guard let index = selectedIndices.first, index < displayItems.count,
-              let playable = playable(for: displayItems[index]) else { return }
+        guard let index = selectedIndices.first, index < model.displayItems.count,
+              let playable = playable(for: model.displayItems[index]) else { return }
         verb.run(playable)
     }
 
@@ -5186,8 +4136,8 @@ class ModernLibraryBrowserView: NSView {
         case .track(let t): return .plexTrack(t)
         case .album(let a): return .plexAlbum(a)
         case .artist(let a):
-            return .plexArtistGroup(members: plexArtistGroup(for: a),
-                                    albums: plexAlbumsByArtistGroupKey[plexArtistGroupKey(for: a)] ?? [])
+            return .plexArtistGroup(members: model.plexArtistGroup(for: a),
+                                    albums: model.plexCountedAlbums(for: a))
         case .plexPlaylist(let p): return .plexPlaylist(p)
         case .localTrack(let t): return .localTrack(t)
         case .localAlbum(let a): return .localAlbum(a)
@@ -5266,7 +4216,7 @@ class ModernLibraryBrowserView: NSView {
 
     @objc private func playHistoryDidChange() {
         Task { @MainActor [weak self] in
-            guard let self, self.browseMode.isHistoryMode else { return }
+            guard let self, self.model.browseMode.isHistoryMode else { return }
             self.historyAgent.scheduleRefresh()
         }
     }
@@ -5298,166 +4248,13 @@ class ModernLibraryBrowserView: NSView {
 
     func skinDidChange() { modernSkinDidChange() }
 
-    @objc private func plexStateDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .plex = self.currentSource else { return }
-            self.artLens.updateVisibility()
-            if case .connecting = PlexManager.shared.connectionState {
-                self.isLoading = true; self.errorMessage = nil; self.needsDisplay = true; return
-            }
-            self.reloadData()
-        }
-    }
-    
-    @objc private func plexServerDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.artLens.updateVisibility()
-            if case .connecting = PlexManager.shared.connectionState { self.needsDisplay = true; return }
-            if !self.currentSource.isPlex && self.pendingSourceRestore == nil { return }
-            
-            if let pending = self.pendingSourceRestore {
-                self.pendingSourceRestore = nil
-                switch pending {
-                case .plex(let serverId):
-                    if PlexManager.shared.servers.contains(where: { $0.id == serverId }) { self.currentSource = pending; return }
-                    else if let first = PlexManager.shared.servers.first { self.currentSource = .plex(serverId: first.id); return }
-                case .subsonic(let serverId):
-                    if SubsonicManager.shared.servers.contains(where: { $0.id == serverId }) { self.currentSource = pending; return }
-                    else if let first = SubsonicManager.shared.servers.first { self.currentSource = .subsonic(serverId: first.id); return }
-                case .jellyfin(let serverId):
-                    if JellyfinManager.shared.servers.contains(where: { $0.id == serverId }) { self.currentSource = pending; return }
-                    else if let first = JellyfinManager.shared.servers.first { self.currentSource = .jellyfin(serverId: first.id); return }
-                case .emby(let serverId):
-                    if EmbyManager.shared.servers.contains(where: { $0.id == serverId }) { self.currentSource = pending; return }
-                    else if let first = EmbyManager.shared.servers.first { self.currentSource = .emby(serverId: first.id); return }
-                case .local: break
-                case .radio: self.currentSource = .radio; return
-                case .youtube: self.currentSource = .youtube; return
-                }
-            }
-            self.clearAllCachedData(); self.reloadData()
-        }
-    }
-    
-    @objc private func plexContentDidPreload() {
-        guard case .plex = currentSource else { return }
-        reloadData()
-    }
-    
-    @objc private func jellyfinMusicLibraryDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .jellyfin = self.currentSource else { return }
-            self.clearAllCachedData(); self.reloadData()
-        }
-    }
-    
-    @objc private func jellyfinVideoLibraryDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .jellyfin = self.currentSource, self.browseMode.isVideoMode else { return }
-            self.cachedJellyfinMovies = []; self.cachedJellyfinShows = []
-            self.reloadData()
-        }
-    }
-
-    @objc private func embyMusicLibraryDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .emby = self.currentSource else { return }
-            self.clearAllCachedData(); self.reloadData()
-        }
-    }
-
-    @objc private func embyVideoLibraryDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .emby = self.currentSource, self.browseMode.isVideoMode else { return }
-            self.cachedEmbyMovies = []; self.cachedEmbyShows = []
-            self.reloadData()
-        }
-    }
-
-    @objc private func embyLibraryContentDidPreload() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .emby = self.currentSource else { return }
-            self.reloadData()
-        }
-    }
-
-    @objc private func embyConnectionStateDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .emby = self.currentSource else { return }
-            self.reloadData()
-        }
-    }
-    
-    @objc private func subsonicMusicFolderDidChange() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, case .subsonic = self.currentSource else { return }
-            self.clearAllCachedData(); self.reloadData()
-        }
-    }
-    
-    @objc private func mediaLibraryDidChange() {
-        guard case .local = currentSource, !browseMode.isRadioMode, !browseMode.isHistoryMode else { return }
-        localLibraryReloadWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self,
-                  case .local = self.currentSource,
-                  !self.browseMode.isRadioMode,
-                  !self.browseMode.isHistoryMode else { return }
-            self.loadLocalData()
-            self.needsDisplay = true
-        }
-        localLibraryReloadWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30, execute: workItem)
-    }
-    
-    private var isShowingInternetRadioContent: Bool {
-        currentSource.isRadio ||
-            (currentSource.isYouTube && browseMode == .radio && !radioSlotShowsChannels)
-    }
-
-    @objc private func radioStationsDidChange() {
-        guard isShowingInternetRadioContent else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            switch self.browseMode {
-            case .radio:
-                self.loadRadioStations()
-            case .search:
-                self.loadRadioSearchResults()
-            default:
-                break
-            }
-            self.needsDisplay = true
-        }
-    }
-
-    @objc private func youtubeChannelsDidChange() {
-        guard case .youtube = currentSource else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.rebuildCurrentModeItems()
-        }
-    }
-
     @objc private func libraryRowThumbnailDidLoad() {
         needsDisplay = true
     }
 
-    /// A larger limit fetches the expanded channels again; a smaller one shows fewer of the cached uploads.
-    @objc private func youtubeVideoLimitDidChange() {
-        YouTubeChannelUploads.shared.load(expandedYouTubeChannels.values)
-    }
-
+    /// A channel's uploads started or finished loading: spin the per-row spinner. The model rebuilds the rows.
     @objc private func youtubeUploadsDidChange() {
         if YouTubeChannelUploads.shared.hasFetchesInFlight { startLoadingAnimation() }
-        if showsYouTubeRows { rebuildCurrentModeItems(); needsDisplay = true }
-    }
-
-    /// The list shows YouTube rows: the YouTube source, or the Local search's channel and video rows.
-    private var showsYouTubeRows: Bool {
-        if case .local = currentSource { return browseMode == .search }
-        return currentSource.isYouTube
     }
 
     @objc private func trackDidChange(_ notification: Notification) {
@@ -5476,11 +4273,6 @@ class ModernLibraryBrowserView: NSView {
         loadArtwork(for: track)
     }
     
-    @objc private func handleSetBrowserSource(_ notification: Notification) {
-        guard let source = notification.object as? LibraryBrowserSource else { return }
-        currentSource = source
-    }
-
     @objc private func windowDidMiniaturize(_ notification: Notification) {
         guard notification.object as? NSWindow == window else { return }
         stopServerNameScroll()
@@ -5503,105 +4295,6 @@ class ModernLibraryBrowserView: NSView {
         backdropView?.reload()
     }
     
-    // MARK: - Source Changed
-    
-    @discardableResult
-    private func invalidateActiveLoads() -> Int {
-        loadGeneration &+= 1
-        sourceConnectTask?.cancel(); sourceConnectTask = nil
-        plexLoadTask?.cancel(); plexLoadTask = nil
-        subsonicLoadTask?.cancel(); subsonicLoadTask = nil
-        jellyfinLoadTask?.cancel(); jellyfinLoadTask = nil
-        embyLoadTask?.cancel(); embyLoadTask = nil
-        radioLoadTask?.cancel(); radioLoadTask = nil
-        jellyfinAlbumWarmTask?.cancel(); jellyfinAlbumWarmTask = nil
-        subsonicExpandTask?.cancel(); subsonicExpandTask = nil
-        jellyfinExpandTask?.cancel(); jellyfinExpandTask = nil
-        embyExpandTask?.cancel(); embyExpandTask = nil
-        youtubeSearch.cancel()
-        return loadGeneration
-    }
-    
-    private func isLoadContextActive(_ generation: Int, source expectedSource: LibraryBrowserSource) -> Bool {
-        generation == loadGeneration && currentSource == expectedSource
-    }
-    
-    private func setLoadErrorIfActive(_ message: String, generation: Int, source expectedSource: LibraryBrowserSource) {
-        guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = false
-        stopLoadingAnimation()
-        errorMessage = message
-        needsDisplay = true
-    }
-    
-    private func finishLoadIfActive(generation: Int, source expectedSource: LibraryBrowserSource) {
-        guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = false
-        stopLoadingAnimation()
-        errorMessage = nil
-        // Apply any active column-header sort so a fresh server load matches what an
-        // expand-driven rebuild produces — otherwise expanding a row would re-order the
-        // list. (Mirrors rebuildCurrentModeItems.)
-        if columnSortId != nil { applyColumnSort() }
-        applyPendingArtistScroll()
-        needsDisplay = true
-    }
-    
-    private func onSourceChanged() {
-        artLens.resetNavigation()
-        needsLayout = true   // the offline banner shows on the local source only
-        invalidateActiveLoads()
-        if browseMode == .folders && !isLocalSource {
-            browseMode = .plists
-        }
-        clearAllCachedData(); clearLocalCachedData()
-        displayItems.removeAll(); selectedIndices.removeAll()
-        scrollOffset = 0; errorMessage = nil; isLoading = false; stopLoadingAnimation()
-        // Internet Radio only has radio/search content, but every library
-        // source supports the Radio tab. Preserve Radio across source changes.
-        // YouTube reuses the Radio tab to list its channels, so force it too.
-        if !browseMode.isHistoryMode, currentSource.usesRadioTab {
-            browseMode = .radio
-        }
-        reloadData()
-        startServerNameScroll()
-    }
-    
-    private func clearLocalCachedData() {
-        localArtistPageOffset = 0; localAlbumPageOffset = 0
-        localArtistTotal = 0; localAlbumTotal = 0
-        cachedLocalMovies = []; cachedLocalShows = []
-        expandedLocalArtists = []; expandedLocalAlbums = []
-        expandedLocalShows = []; expandedLocalSeasons = []
-        expandedLocalFolders = []
-    }
-    
-    private func clearAllCachedData() {
-        jellyfinAlbumWarmTask?.cancel()
-        jellyfinAlbumWarmTask = nil
-        cachedArtists = []; cachedAlbums = []; cachedTracks = []
-        artistAlbums = [:]; albumTracks = [:]; artistAlbumCounts = [:]
-        expandedArtists = []; expandedAlbums = []
-        cachedMovies = []; cachedShows = []; showSeasons = [:]; seasonEpisodes = [:]
-        expandedShows = []; expandedSeasons = []
-        cachedPlexPlaylists = []; plexPlaylistTracks = [:]; expandedPlexPlaylists = []
-        cachedJellyfinArtists = []; cachedJellyfinAlbums = []; cachedJellyfinPlaylists = []
-        jellyfinArtistAlbums = [:]; jellyfinAlbumSongs = [:]; jellyfinPlaylistTracks = [:]
-        expandedJellyfinArtists = []; expandedJellyfinAlbums = []; expandedJellyfinPlaylists = []
-        cachedJellyfinMovies = []; cachedJellyfinShows = []
-        jellyfinShowSeasons = [:]; jellyfinSeasonEpisodes = [:]
-        expandedJellyfinShows = []; expandedJellyfinSeasons = []
-        cachedEmbyArtists = []; cachedEmbyAlbums = []; cachedEmbyPlaylists = []
-        embyArtistAlbums = [:]; embyAlbumSongs = [:]; embyPlaylistTracks = [:]
-        expandedEmbyArtists = []; expandedEmbyAlbums = []; expandedEmbyPlaylists = []
-        cachedEmbyMovies = []; cachedEmbyShows = []
-        embyShowSeasons = [:]; embySeasonEpisodes = [:]
-        expandedEmbyShows = []; expandedEmbySeasons = []
-        cachedRadioStations = []
-        cachedRadioFolders = []
-        searchResults = nil
-    }
-    
     // MARK: - Loading Animation
     
     private func startLoadingAnimation() {
@@ -5609,7 +4302,7 @@ class ModernLibraryBrowserView: NSView {
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.loadingAnimationFrame += 1
-            if self.isLoading {
+            if self.model.isLoading {
                 self.needsDisplay = true
             } else if self.youtubeVideoActions.hasFetchesInFlight || YouTubeChannelUploads.shared.hasFetchesInFlight {
                 // Redraw the list area for the per-row download/channel-load spinner(s)
@@ -5637,7 +4330,7 @@ class ModernLibraryBrowserView: NSView {
         if scanning {
             startLoadingAnimation()
         } else {
-            if !isLoading { stopLoadingAnimation() }
+            if !model.isLoading { stopLoadingAnimation() }
             needsDisplay = true
         }
     }
@@ -5645,7 +4338,7 @@ class ModernLibraryBrowserView: NSView {
     /// Returns the display name of the currently relevant Jellyfin library based on browse mode.
     private var jellyfinCurrentLibraryName: String {
         let mgr = JellyfinManager.shared
-        switch browseMode {
+        switch model.browseMode {
         case .movies: return mgr.currentMovieLibrary?.name ?? "All"
         case .shows:  return mgr.currentShowLibrary?.name ?? "All"
         default:      return mgr.currentMusicLibrary?.name ?? "All"
@@ -5655,7 +4348,7 @@ class ModernLibraryBrowserView: NSView {
     /// Returns the display name of the currently relevant Emby library based on browse mode.
     private var embyCurrentLibraryName: String {
         let mgr = EmbyManager.shared
-        switch browseMode {
+        switch model.browseMode {
         case .movies: return mgr.currentMovieLibrary?.name ?? "All"
         case .shows:  return mgr.currentShowLibrary?.name ?? "All"
         default:      return mgr.currentMusicLibrary?.name ?? "All"
@@ -5927,7 +4620,7 @@ class ModernLibraryBrowserView: NSView {
     
     /// Update cached SubsonicSong rating in displayItems after a rating change
     private func updateCachedSubsonicRating(songId: String, rating: Int) {
-        for (index, item) in displayItems.enumerated() {
+        for (index, item) in model.displayItems.enumerated() {
             if case .subsonicTrack(let song) = item.type, song.id == songId {
                 let updatedSong = SubsonicSong(
                     id: song.id, parent: song.parent, title: song.title,
@@ -5941,7 +4634,7 @@ class ModernLibraryBrowserView: NSView {
                     starred: song.starred, playCount: song.playCount,
                     userRating: rating > 0 ? rating : nil
                 )
-                displayItems[index] = LibraryBrowserItem(
+                model.displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .subsonicTrack(updatedSong)
@@ -5952,7 +4645,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func updateCachedPlexRating(ratingKey: String, rating: Int) {
-        for (index, item) in displayItems.enumerated() {
+        for (index, item) in model.displayItems.enumerated() {
             if case .track(let track) = item.type, track.id == ratingKey {
                 let updatedTrack = PlexTrack(
                     id: track.id, key: track.key, title: track.title,
@@ -5966,7 +4659,7 @@ class ModernLibraryBrowserView: NSView {
                     ratingCount: track.ratingCount,
                     userRating: rating > 0 ? Double(rating) : nil
                 )
-                displayItems[index] = LibraryBrowserItem(
+                model.displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .track(updatedTrack)
@@ -5977,7 +4670,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func updateCachedJellyfinRating(itemId: String, rating: Int) {
-        for (index, item) in displayItems.enumerated() {
+        for (index, item) in model.displayItems.enumerated() {
             if case .jellyfinTrack(let song) = item.type, song.id == itemId {
                 let updatedSong = JellyfinSong(
                     id: song.id, title: song.title, album: song.album,
@@ -5991,7 +4684,7 @@ class ModernLibraryBrowserView: NSView {
                     isFavorite: song.isFavorite, playCount: song.playCount,
                     userRating: rating > 0 ? rating : nil
                 )
-                displayItems[index] = LibraryBrowserItem(
+                model.displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .jellyfinTrack(updatedSong)
@@ -6002,7 +4695,7 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func updateCachedEmbyRating(itemId: String, rating: Int) {
-        for (index, item) in displayItems.enumerated() {
+        for (index, item) in model.displayItems.enumerated() {
             if case .embyTrack(let song) = item.type, song.id == itemId {
                 let updatedSong = EmbySong(
                     id: song.id, title: song.title, album: song.album,
@@ -6016,7 +4709,7 @@ class ModernLibraryBrowserView: NSView {
                     isFavorite: song.isFavorite, playCount: song.playCount,
                     userRating: rating > 0 ? rating : nil
                 )
-                displayItems[index] = LibraryBrowserItem(
+                model.displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .embyTrack(updatedSong)
@@ -6027,10 +4720,10 @@ class ModernLibraryBrowserView: NSView {
     }
 
     private func updateCachedLocalTrackRating(trackId: UUID, rating: Int) {
-        for (index, item) in displayItems.enumerated() {
+        for (index, item) in model.displayItems.enumerated() {
             if case .localTrack(var track) = item.type, track.id == trackId {
                 track.rating = rating >= 0 ? rating : nil
-                displayItems[index] = LibraryBrowserItem(
+                model.displayItems[index] = LibraryBrowserItem(
                     id: item.id, title: item.title, info: item.info,
                     indentLevel: item.indentLevel, hasChildren: item.hasChildren,
                     type: .localTrack(track)
@@ -6218,9 +4911,9 @@ class ModernLibraryBrowserView: NSView {
     
     private func loadArtworkForSelection() {
         guard showsLegacyArtwork else { return }
-        guard let index = selectedIndices.first, index < displayItems.count else { return }
+        guard let index = selectedIndices.first, index < model.displayItems.count else { return }
         
-        let item = displayItems[index]
+        let item = model.displayItems[index]
         artworkLoadTask?.cancel()
         artworkDisplayGeneration &+= 1
         let displayGeneration = artworkDisplayGeneration
@@ -6264,2618 +4957,13 @@ class ModernLibraryBrowserView: NSView {
         }
     }
     
-    // MARK: - Public Methods
-    
-    func reloadData() {
-        let generation = invalidateActiveLoads()
-        loadDataForCurrentMode(generation: generation)
-    }
-    
-    func refreshData() {
-        let generation = invalidateActiveLoads()
-        // Plex caches
-        cachedArtists = []; cachedAlbums = []; cachedTracks = []; artistAlbums = [:]; albumTracks = [:]; artistAlbumCounts = [:]
-        cachedMovies = []; cachedShows = []; showSeasons = [:]; seasonEpisodes = [:]
-        cachedPlexPlaylists = []; plexPlaylistTracks = [:]; searchResults = nil
-        expandedArtists = []; expandedAlbums = []; expandedShows = []; expandedSeasons = []; expandedPlexPlaylists = []
-        // Subsonic caches
-        cachedSubsonicArtists = []; cachedSubsonicAlbums = []; cachedSubsonicPlaylists = []
-        subsonicArtistAlbums = [:]; subsonicPlaylistTracks = [:]; subsonicAlbumSongs = [:]
-        expandedSubsonicArtists = []; expandedSubsonicAlbums = []; expandedSubsonicPlaylists = []
-        // Jellyfin caches
-        cachedJellyfinArtists = []; cachedJellyfinAlbums = []; cachedJellyfinPlaylists = []
-        jellyfinArtistAlbums = [:]; jellyfinPlaylistTracks = [:]; jellyfinAlbumSongs = [:]
-        expandedJellyfinArtists = []; expandedJellyfinAlbums = []; expandedJellyfinPlaylists = []
-        cachedJellyfinMovies = []; cachedJellyfinShows = []
-        jellyfinShowSeasons = [:]; jellyfinSeasonEpisodes = [:]
-        expandedJellyfinShows = []; expandedJellyfinSeasons = []
-        // Common state
-        selectedIndices = []; scrollOffset = 0
-        isLoading = true; errorMessage = nil; displayItems = []; startLoadingAnimation(); needsDisplay = true
-        PlexManager.shared.clearCachedContent()
-        loadDataForCurrentMode(generation: generation)
-    }
-    
-    // MARK: - Data Loading
-
-    private func loadDataForCurrentMode(generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-
-        if browseMode.isHistoryMode {
-            invalidateActiveLoads()
-            displayItems = []
-            isLoading = false
-            errorMessage = nil
-            stopLoadingAnimation()
-            historyAgent.scheduleRefresh()
-            updateHistoryHostingVisibility()
-            needsDisplay = true
-            return
-        }
-        
-        if case .youtube = currentSource {
-            // YouTube content lives only in the Radio tab slot. The slot toggles
-            // between YouTube channels and Internet Radio stations; other tabs are
-            // empty (matching how the Internet Radio source treats its tabs).
-            switch browseMode {
-            case .radio:
-                if radioSlotShowsChannels {
-                    loadYouTubeChannels()
-                } else {
-                    loadRadioStations()
-                }
-            case .search:
-                loadYouTubeSearchResults()
-            default:
-                displayItems = []
-                isLoading = false
-                needsDisplay = true
-            }
-            return
-        }
-
-        if case .radio = currentSource {
-            switch browseMode {
-            case .radio:
-                loadRadioStations()
-            case .search:
-                loadRadioSearchResults()
-            case .history:
-                break
-            default:
-                displayItems = []
-                isLoading = false
-                needsDisplay = true
-            }
-            return
-        }
-
-        if browseMode == .radio {
-            switch currentSource {
-            case .plex:
-                loadPlexRadioStations(generation: generation)
-            case .subsonic:
-                loadSubsonicRadioStations(generation: generation)
-            case .jellyfin:
-                loadJellyfinRadioStations(generation: generation)
-            case .emby:
-                loadEmbyRadioStations(generation: generation)
-            case .local:
-                loadLocalRadioStations()
-            case .radio:
-                displayItems = []
-            case .youtube:
-                displayItems = []
-            }
-            needsDisplay = true
-            return
-        }
-
-        switch currentSource {
-        case .local:
-            loadLocalData()
-        case .plex(let serverId):
-            loadPlexData(serverId: serverId, generation: generation)
-        case .subsonic(let serverId):
-            loadSubsonicData(serverId: serverId, generation: generation)
-        case .jellyfin(let serverId):
-            loadJellyfinData(serverId: serverId, generation: generation)
-        case .emby(let serverId):
-            loadEmbyData(serverId: serverId, generation: generation)
-        case .radio:
-            break
-        case .youtube:
-            break
-        }
-    }
-    
-    // MARK: - Local Data Loading
-    
-    private func loadLocalData() {
-        isLoading = false; errorMessage = nil; stopLoadingAnimation()
-
-        // Check which watch folders are on unavailable volumes
-        let summaries = MediaLibrary.shared.watchFolderSummaries()
-        offlineWatchFolders = summaries.filter { !$0.isAvailable }
-        offlineVolumePrefixes = Set(offlineWatchFolders.map { $0.url.path })
-
-        let library = MediaLibrary.shared
-        let store = MediaLibraryStore.shared
-        switch browseMode {
-        case .artists:
-            if !pendingArtistLoadUnfiltered {
-                localArtistPageOffset = 0
-            }
-            localArtistTotal = store.artistCount()
-            buildLocalArtistItems()
-        case .albums:
-            localAlbumPageOffset = 0
-            localAlbumTotal = store.albumCount()
-            buildLocalAlbumItems()
-        case .folders:
-            buildLocalFolderItems()
-        case .search:
-            buildLocalSearchItems()
-        case .plists:
-            refreshCachedLocalPlaylists()
-            buildLocalPlaylistItems()
-        case .movies:
-            cachedLocalMovies = library.moviesSnapshot
-            buildLocalMovieItems()
-        case .shows:
-            cachedLocalShows = library.allShows()
-            buildLocalShowItems()
-        case .radio: loadLocalRadioStations()
-        case .history: break
-        }
-        // Apply any active column-header sort so a fresh load matches what an expand-driven
-        // rebuild produces — otherwise expanding a row would re-order the list. (Mirrors
-        // rebuildCurrentModeItems.)
-        if columnSortId != nil { applyColumnSort() }
-        applyPendingArtistScroll()
-        needsDisplay = true
-    }
-
-    private func reloadLocalBrowserAfterMetadataEdit() {
-        guard case .local = currentSource else { return }
-
-        clearLocalCachedData()
-        displayItems.removeAll()
-        selectedIndices.removeAll()
-        scrollOffset = 0
-        loadLocalData()
-    }
-
-    // MARK: - Radio Data Loading
-    
-    private func loadRadioStations() {
-        isLoading = false
-        errorMessage = nil
-        stopLoadingAnimation()
-        cachedRadioStations = RadioManager.shared.stations
-        cachedRadioFolders = RadioManager.shared.internetRadioFolderDescriptors()
-        buildRadioStationItems()
-        if columnSortId != nil { applyColumnSort() }
-        needsDisplay = true
-    }
-
-    private func loadRadioSearchResults() {
-        isLoading = false
-        errorMessage = nil
-        stopLoadingAnimation()
-        cachedRadioStations = RadioManager.shared.stations
-        buildRadioSearchItems()
-        if columnSortId != nil { applyColumnSort() }
-        needsDisplay = true
-    }
-
-    private func reloadInternetRadioForCurrentMode() {
-        guard isShowingInternetRadioContent else { return }
-        switch browseMode {
-        case .radio:
-            loadRadioStations()
-        case .search:
-            loadRadioSearchResults()
-        default:
-            isLoading = false
-            errorMessage = nil
-            stopLoadingAnimation()
-            displayItems = []
-            needsDisplay = true
-        }
-    }
-    
-    private func loadPlexRadioStations(generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        guard case .plex = currentSource else { return }
-        let expectedSource = currentSource
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        radioLoadTask?.cancel()
-        radioLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            let genres = await PlexManager.shared.getGenres()
-            guard !Task.isCancelled,
-                  self.isLoadContextActive(generation, source: expectedSource),
-                  self.browseMode == .radio else { return }
-            self.buildPlexRadioStationItems(genres: genres)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioLoadTask = nil
-        }
-    }
-    
-    private func loadPlexData(serverId: String, generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        let expectedSource = LibraryBrowserSource.plex(serverId: serverId)
-        guard isLoadContextActive(generation, source: expectedSource) else { return }
-        guard PlexManager.shared.isLinked else {
-            displayItems = []; stopLoadingAnimation(); needsDisplay = true
-            return
-        }
-        
-        let manager = PlexManager.shared
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        
-        if manager.currentServer?.id != serverId || manager.serverClient == nil {
-            guard let server = manager.servers.first(where: { $0.id == serverId }) else {
-                setLoadErrorIfActive("Server not found", generation: generation, source: expectedSource)
-                return
-            }
-            sourceConnectTask?.cancel()
-            sourceConnectTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                do {
-                    try await manager.connect(to: server)
-                    guard self.isLoadContextActive(generation, source: expectedSource),
-                          manager.currentServer?.id == serverId else { return }
-                    self.loadPlexDataForCurrentMode(serverId: serverId, generation: generation, expectedSource: expectedSource)
-                } catch {
-                    self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-                }
-            }
-            return
-        }
-        
-        loadPlexDataForCurrentMode(serverId: serverId, generation: generation, expectedSource: expectedSource)
-    }
-    
-    private func loadPlexDataForCurrentMode(serverId: String, generation: Int, expectedSource: LibraryBrowserSource) {
-        let pm = PlexManager.shared
-        plexLoadTask?.cancel()
-        plexLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            do {
-                guard self.isLoadContextActive(generation, source: expectedSource),
-                      pm.currentServer?.id == serverId else { return }
-                
-                switch self.browseMode {
-                case .artists:
-                    if self.cachedArtists.isEmpty {
-                        // Keep the coupled caches atomic so a superseded load cannot expose
-                        // artists without albums and permanently skip the index rebuild.
-                        let artists: [PlexArtist]
-                        let albums: [PlexAlbum]
-
-                        if self.pendingArtistLoadUnfiltered {
-                            artists = try await pm.fetchArtists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                            albums = try await pm.fetchAllAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        } else if pm.isContentPreloaded && !pm.cachedArtists.isEmpty {
-                            artists = pm.cachedArtists
-                            albums = pm.cachedAlbums
-                        } else {
-                            artists = try await pm.fetchArtists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                            albums = try await pm.fetchAllAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        self.cachedArtists = artists
-                        self.cachedAlbums = albums
-                    }
-                    self.buildArtistAlbumCounts()
-                    self.pendingArtistLoadUnfiltered = false
-                    self.buildArtistItems()
-                case .albums:
-                    if self.cachedAlbums.isEmpty {
-                        if pm.isContentPreloaded && !pm.cachedAlbums.isEmpty { self.cachedAlbums = pm.cachedAlbums }
-                        else {
-                            // Every album, as the Artists tab and the preload fetch: the tab sorts
-                            // client-side, so a partial fetch would sort only a subset.
-                            self.cachedAlbums = try await pm.fetchAllAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildAlbumItems()
-                case .movies:
-                    if self.cachedMovies.isEmpty {
-                        if pm.isContentPreloaded && !pm.cachedMovies.isEmpty { self.cachedMovies = pm.cachedMovies }
-                        else {
-                            self.cachedMovies = try await pm.fetchAllMovies()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildMovieItems()
-                case .shows:
-                    if self.cachedShows.isEmpty {
-                        if pm.isContentPreloaded && !pm.cachedShows.isEmpty { self.cachedShows = pm.cachedShows }
-                        else {
-                            self.cachedShows = try await pm.fetchAllShows()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildShowItems()
-                case .plists, .folders:
-                    if self.cachedPlexPlaylists.isEmpty {
-                        if !pm.cachedPlaylists.isEmpty { self.cachedPlexPlaylists = pm.cachedPlaylists }
-                        else {
-                            self.cachedPlexPlaylists = try await pm.fetchPlaylists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildPlexPlaylistItems()
-                case .search:
-                    if !self.searchQuery.isEmpty {
-                        self.searchResults = try await pm.searchWithArtistAlbums(query: self.searchQuery)
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        self.buildSearchItems()
-                    } else {
-                        self.displayItems = []
-                    }
-                case .radio:
-                    self.loadPlexRadioStations(generation: generation)
-                    return
-                case .history:
-                    self.displayItems = []
-                }
-                
-                self.finishLoadIfActive(generation: generation, source: expectedSource)
-            } catch is CancellationError {
-            } catch where Task.isCancelled {
-            } catch {
-                self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-            }
-        }
-    }
-    
-    // MARK: - Subsonic Data Loading
-    
-    private func loadSubsonicData(serverId: String, generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        let expectedSource = LibraryBrowserSource.subsonic(serverId: serverId)
-        guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        
-        let manager = SubsonicManager.shared
-        if manager.currentServer?.id != serverId {
-            guard let server = manager.servers.first(where: { $0.id == serverId }) else {
-                setLoadErrorIfActive("Server not found", generation: generation, source: expectedSource)
-                return
-            }
-            sourceConnectTask?.cancel()
-            sourceConnectTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                do {
-                    try await manager.connect(to: server)
-                    guard self.isLoadContextActive(generation, source: expectedSource),
-                          manager.currentServer?.id == serverId else { return }
-                    self.loadSubsonicDataForCurrentMode(generation: generation, expectedSource: expectedSource)
-                } catch {
-                    self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-                }
-            }
-            return
-        }
-        
-        loadSubsonicDataForCurrentMode(generation: generation, expectedSource: expectedSource)
-    }
-    
-    private func loadSubsonicDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
-        let manager = SubsonicManager.shared
-        subsonicLoadTask?.cancel()
-        subsonicLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            do {
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                if manager.isPreloading {
-                    while manager.isPreloading {
-                        try Task.checkCancellation()
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                    }
-                }
-                
-                switch self.browseMode {
-                case .artists:
-                    if self.cachedSubsonicArtists.isEmpty {
-                        if self.pendingArtistLoadUnfiltered {
-                            self.cachedSubsonicArtists = try await manager.fetchArtistsUnfiltered()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        } else if manager.isContentPreloaded && !manager.cachedArtists.isEmpty {
-                            self.cachedSubsonicArtists = manager.cachedArtists
-                            self.cachedSubsonicAlbums = manager.cachedAlbums
-                        } else {
-                            self.cachedSubsonicArtists = try await manager.fetchArtists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                            self.cachedSubsonicAlbums = try await manager.fetchAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.pendingArtistLoadUnfiltered = false
-                    self.buildSubsonicArtistItems()
-                case .albums:
-                    if self.cachedSubsonicAlbums.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedAlbums.isEmpty { self.cachedSubsonicAlbums = manager.cachedAlbums }
-                        else {
-                            self.cachedSubsonicAlbums = try await manager.fetchAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildSubsonicAlbumItems()
-                case .plists, .folders:
-                    if self.cachedSubsonicPlaylists.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedPlaylists.isEmpty { self.cachedSubsonicPlaylists = manager.cachedPlaylists }
-                        else {
-                            self.cachedSubsonicPlaylists = try await manager.fetchPlaylists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildSubsonicPlaylistItems()
-                case .search:
-                    if !self.searchQuery.isEmpty {
-                        self.subsonicSearchResults = try await manager.searchWithArtistAlbums(query: self.searchQuery)
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        self.buildSubsonicSearchItems()
-                    } else { self.displayItems = [] }
-                case .movies, .shows:
-                    self.displayItems = []
-                case .radio:
-                    self.loadSubsonicRadioStations(generation: generation)
-                    return
-                case .history:
-                    self.displayItems = []
-                }
-                
-                self.finishLoadIfActive(generation: generation, source: expectedSource)
-            } catch is CancellationError {
-            } catch where Task.isCancelled {
-            } catch {
-                self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-            }
-        }
-    }
-
-    // MARK: - Jellyfin Data Loading
-    
-    private func loadJellyfinData(serverId: String, generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        let expectedSource = LibraryBrowserSource.jellyfin(serverId: serverId)
-        guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        
-        let manager = JellyfinManager.shared
-        if manager.currentServer?.id != serverId {
-            guard let server = manager.servers.first(where: { $0.id == serverId }) else {
-                setLoadErrorIfActive("Server not found", generation: generation, source: expectedSource)
-                return
-            }
-            sourceConnectTask?.cancel()
-            sourceConnectTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                do {
-                    try await manager.connect(to: server)
-                    guard self.isLoadContextActive(generation, source: expectedSource),
-                          manager.currentServer?.id == serverId else { return }
-                    self.loadJellyfinDataForCurrentMode(generation: generation, expectedSource: expectedSource)
-                } catch {
-                    self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-                }
-            }
-            return
-        }
-        
-        loadJellyfinDataForCurrentMode(generation: generation, expectedSource: expectedSource)
-    }
-    
-    private func loadJellyfinDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
-        let manager = JellyfinManager.shared
-        jellyfinLoadTask?.cancel()
-        jellyfinLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            do {
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                if manager.isPreloading {
-                    let preloadWaitDeadline = Date().addingTimeInterval(2)
-                    while manager.isPreloading {
-                        try Task.checkCancellation()
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        if Date() >= preloadWaitDeadline { break }
-                        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                    }
-                }
-                
-                switch self.browseMode {
-                case .artists:
-                    if self.cachedJellyfinArtists.isEmpty {
-                        if self.pendingArtistLoadUnfiltered {
-                            self.cachedJellyfinArtists = try await manager.fetchArtistsUnfiltered()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        } else if manager.isContentPreloaded && !manager.cachedArtists.isEmpty {
-                            self.cachedJellyfinArtists = manager.cachedArtists
-                            self.cachedJellyfinAlbums = manager.cachedAlbums
-                        } else {
-                            self.cachedJellyfinArtists = try await manager.fetchArtists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                            if let server = manager.currentServer {
-                                self.warmJellyfinAlbumsCache(forServerId: server.id)
-                            }
-                        }
-                    }
-                    self.pendingArtistLoadUnfiltered = false
-                    self.buildJellyfinArtistItems()
-                case .albums:
-                    if self.cachedJellyfinAlbums.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedAlbums.isEmpty { self.cachedJellyfinAlbums = manager.cachedAlbums }
-                        else {
-                            self.cachedJellyfinAlbums = try await manager.fetchAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildJellyfinAlbumItems()
-                case .plists, .folders:
-                    if self.cachedJellyfinPlaylists.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedPlaylists.isEmpty { self.cachedJellyfinPlaylists = manager.cachedPlaylists }
-                        else {
-                            self.cachedJellyfinPlaylists = try await manager.fetchPlaylists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildJellyfinPlaylistItems()
-                case .search:
-                    if !self.searchQuery.isEmpty {
-                        self.jellyfinSearchResults = try await manager.searchWithArtistAlbums(query: self.searchQuery)
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        self.buildJellyfinSearchItems()
-                    } else { self.displayItems = [] }
-                case .movies:
-                    if self.cachedJellyfinMovies.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedMovies.isEmpty { self.cachedJellyfinMovies = manager.cachedMovies }
-                        else {
-                            self.cachedJellyfinMovies = try await manager.fetchMovies()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildJellyfinMovieItems()
-                case .shows:
-                    if self.cachedJellyfinShows.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedShows.isEmpty { self.cachedJellyfinShows = manager.cachedShows }
-                        else {
-                            self.cachedJellyfinShows = try await manager.fetchShows()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildJellyfinShowItems()
-                case .radio:
-                    self.loadJellyfinRadioStations(generation: generation)
-                    return
-                case .history:
-                    self.displayItems = []
-                }
-                
-                self.finishLoadIfActive(generation: generation, source: expectedSource)
-            } catch is CancellationError {
-            } catch where Task.isCancelled {
-            } catch {
-                self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-            }
-        }
-    }
-
-    private func warmJellyfinAlbumsCache(forServerId serverId: String) {
-        guard jellyfinAlbumWarmTask == nil else { return }
-
-        jellyfinAlbumWarmTask = Task.detached { [weak self] in
-            guard let self = self else { return }
-            do {
-                let albums = try await JellyfinManager.shared.fetchAlbums()
-                await MainActor.run {
-                    defer { self.jellyfinAlbumWarmTask = nil }
-                    guard case .jellyfin(let activeServerId) = self.currentSource, activeServerId == serverId else { return }
-                    guard self.cachedJellyfinAlbums.isEmpty else { return }
-                    self.cachedJellyfinAlbums = albums
-                    if self.browseMode == .artists {
-                        self.buildJellyfinArtistItems()
-                        self.needsDisplay = true
-                    }
-                }
-            } catch is CancellationError {
-                await MainActor.run { self.jellyfinAlbumWarmTask = nil }
-            } catch {
-                await MainActor.run { self.jellyfinAlbumWarmTask = nil }
-                NSLog("ModernLibraryBrowser: Jellyfin album cache warm failed: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-        }
-    }
-
-    private func loadEmbyData(serverId: String, generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        let expectedSource = LibraryBrowserSource.emby(serverId: serverId)
-        guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        
-        let manager = EmbyManager.shared
-        if manager.currentServer?.id != serverId {
-            guard let server = manager.servers.first(where: { $0.id == serverId }) else {
-                setLoadErrorIfActive("Server not found", generation: generation, source: expectedSource)
-                return
-            }
-            sourceConnectTask?.cancel()
-            sourceConnectTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                do {
-                    try await manager.connect(to: server)
-                    guard self.isLoadContextActive(generation, source: expectedSource),
-                          manager.currentServer?.id == serverId else { return }
-                    self.loadEmbyDataForCurrentMode(generation: generation, expectedSource: expectedSource)
-                } catch {
-                    self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-                }
-            }
-            return
-        }
-        
-        loadEmbyDataForCurrentMode(generation: generation, expectedSource: expectedSource)
-    }
-
-    private func loadEmbyDataForCurrentMode(generation: Int, expectedSource: LibraryBrowserSource) {
-        let manager = EmbyManager.shared
-        embyLoadTask?.cancel()
-        embyLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            do {
-                guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                if manager.isPreloading {
-                    while manager.isPreloading {
-                        try Task.checkCancellation()
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        try await Task.sleep(nanoseconds: 100_000_000)
-                    }
-                }
-                switch self.browseMode {
-                case .artists:
-                    if self.cachedEmbyArtists.isEmpty {
-                        if self.pendingArtistLoadUnfiltered {
-                            self.cachedEmbyArtists = try await manager.fetchArtistsUnfiltered()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        } else if manager.isContentPreloaded && !manager.cachedArtists.isEmpty {
-                            self.cachedEmbyArtists = manager.cachedArtists; self.cachedEmbyAlbums = manager.cachedAlbums
-                        } else {
-                            self.cachedEmbyArtists = try await manager.fetchArtists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                            self.cachedEmbyAlbums = try await manager.fetchAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.pendingArtistLoadUnfiltered = false
-                    self.buildEmbyArtistItems()
-                case .albums:
-                    if self.cachedEmbyAlbums.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedAlbums.isEmpty { self.cachedEmbyAlbums = manager.cachedAlbums }
-                        else {
-                            self.cachedEmbyAlbums = try await manager.fetchAlbums()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildEmbyAlbumItems()
-                case .plists, .folders:
-                    if self.cachedEmbyPlaylists.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedPlaylists.isEmpty { self.cachedEmbyPlaylists = manager.cachedPlaylists }
-                        else {
-                            self.cachedEmbyPlaylists = try await manager.fetchPlaylists()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildEmbyPlaylistItems()
-                case .search:
-                    if !self.searchQuery.isEmpty {
-                        self.embySearchResults = try await manager.searchWithArtistAlbums(query: self.searchQuery)
-                        guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        self.buildEmbySearchItems()
-                    } else { self.displayItems = [] }
-                case .movies:
-                    if self.cachedEmbyMovies.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedMovies.isEmpty { self.cachedEmbyMovies = manager.cachedMovies }
-                        else {
-                            self.cachedEmbyMovies = try await manager.fetchMovies()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildEmbyMovieItems()
-                case .shows:
-                    if self.cachedEmbyShows.isEmpty {
-                        if manager.isContentPreloaded && !manager.cachedShows.isEmpty { self.cachedEmbyShows = manager.cachedShows }
-                        else {
-                            self.cachedEmbyShows = try await manager.fetchShows()
-                            guard self.isLoadContextActive(generation, source: expectedSource) else { return }
-                        }
-                    }
-                    self.buildEmbyShowItems()
-                case .radio:
-                    self.loadEmbyRadioStations(generation: generation)
-                    return
-                case .history:
-                    self.displayItems = []
-                }
-                self.finishLoadIfActive(generation: generation, source: expectedSource)
-            } catch is CancellationError {
-            } catch where Task.isCancelled {
-            } catch {
-                self.setLoadErrorIfActive(error.localizedDescription, generation: generation, source: expectedSource)
-            }
-        }
-    }
-
-    // MARK: - Build Display Items
-    
-    /// Extract an artist ID from a parentKey path, handling various Plex server formats:
-    /// - "/library/metadata/12345" → "12345"
-    /// - "/library/metadata/12345/children" → "12345"
-    /// - "12345" (bare ID) → "12345"
-    private func extractArtistId(from parentKey: String) -> String? {
-        if parentKey.contains("/library/metadata/") {
-            let stripped = parentKey.replacingOccurrences(of: "/library/metadata/", with: "")
-            let components = stripped.split(separator: "/")
-            if let first = components.first { return String(first) }
-            return nil
-        }
-        let trimmed = parentKey.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty, trimmed.allSatisfy({ $0.isNumber }) { return trimmed }
-        NSLog("ModernLibraryBrowser: Warning - unrecognized parentKey format: %@", parentKey)
-        return nil
-    }
-    
-    private func buildArtistAlbumCounts() {
-        artistAlbumCounts.removeAll()
-        plexArtistGroupsByName = Dictionary(grouping: cachedArtists, by: { PlexIdentity.normalizedName($0.title) })
-        plexAlbumsByArtistGroupKey.removeAll()
-        plexAlbumCountsByArtistGroupKey.removeAll()
-
-        var artistsById: [String: PlexArtist] = [:]
-        for artist in cachedArtists {
-            artistsById[artist.id] = artist
-        }
-        for album in cachedAlbums {
-            if let parentKey = album.parentKey, let artistId = extractArtistId(from: parentKey) {
-                artistAlbumCounts[artistId, default: 0] += 1
-                if let artist = artistsById[artistId] {
-                    plexAlbumsByArtistGroupKey[plexArtistGroupKey(for: artist), default: []].append(album)
-                }
-            }
-        }
-
-        for (groupKey, albums) in plexAlbumsByArtistGroupKey {
-            let deduplicated = PlexIdentity.unique(albums)
-            plexAlbumsByArtistGroupKey[groupKey] = deduplicated
-            plexAlbumCountsByArtistGroupKey[groupKey] = deduplicated.count
-        }
-    }
-    
-    private func buildArtistItems() {
-        if plexArtistGroupsByName.isEmpty && !cachedArtists.isEmpty {
-            buildArtistAlbumCounts()
-        }
-
-        displayItems.removeAll()
-        let sorted = sortPlexArtists(uniquePlexArtistsByName(cachedArtists))
-        for artist in sorted {
-            let groupKey = plexArtistGroupKey(for: artist)
-            let expanded = expandedArtists.contains(groupKey)
-            let info: String?
-            if let albums = artistAlbums[groupKey] { info = "\(albums.count) album\(albums.count == 1 ? "" : "s")" }
-            else if let count = plexArtistAlbumCount(for: artist), count > 0 { info = "\(count) album\(count == 1 ? "" : "s")" }
-            else { info = nil }
-            displayItems.append(LibraryBrowserItem(id: groupKey, title: artist.title, info: info, indentLevel: 0, hasChildren: true, type: .artist(artist)))
-            if expanded, let albums = artistAlbums[groupKey] {
-                for album in sortPlexAlbums(albums) {
-                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.title, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album)))
-                    if expandedAlbums.contains(album.id), let tracks = albumTracks[album.id] {
-                        let sorted = tracks.sorted { let d0 = $0.parentIndex ?? 1; let d1 = $1.parentIndex ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.index ?? 0) < ($1.index ?? 0) }
-                        for track in sorted { displayItems.append(LibraryBrowserItem(id: track.id, title: track.title, info: track.formattedDuration, indentLevel: 2, hasChildren: false, type: .track(track))) }
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildAlbumItems() {
-        displayItems.removeAll()
-        for album in sortPlexAlbums(cachedAlbums) {
-            let expanded = expandedAlbums.contains(album.id)
-            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "Unknown") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .album(album)))
-            if expanded, let tracks = albumTracks[album.id] {
-                for t in tracks { displayItems.append(LibraryBrowserItem(id: t.id, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(t))) }
-            }
-        }
-    }
-    
-    private func buildMovieItems() {
-        displayItems = cachedMovies.map { movie in
-            let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .movie(movie))
-        }
-    }
-    
-    private func buildShowItems() {
-        displayItems.removeAll()
-        for show in cachedShows {
-            let expanded = expandedShows.contains(show.id)
-            let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .show(show)))
-            if expanded, let seasons = showSeasons[show.id] {
-                for season in seasons {
-                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.leafCount) episodes", indentLevel: 1, hasChildren: true, type: .season(season)))
-                    if expandedSeasons.contains(season.id), let episodes = seasonEpisodes[season.id] {
-                        for ep in episodes { displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .episode(ep))) }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func buildJellyfinMovieItems() {
-        displayItems = cachedJellyfinMovies.map { movie in
-            let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .jellyfinMovie(movie))
-        }
-    }
-    
-    private func buildJellyfinShowItems() {
-        displayItems.removeAll()
-        for show in cachedJellyfinShows {
-            let expanded = expandedJellyfinShows.contains(show.id)
-            let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinShow(show)))
-            if expanded, let seasons = jellyfinShowSeasons[show.id] {
-                for season in seasons {
-                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .jellyfinSeason(season)))
-                    if expandedJellyfinSeasons.contains(season.id), let episodes = jellyfinSeasonEpisodes[season.id] {
-                        for ep in episodes { displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .jellyfinEpisode(ep))) }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func buildPlexPlaylistItems() {
-        displayItems.removeAll()
-        let audio = cachedPlexPlaylists.filter { $0.isAudioPlaylist }
-        var seen = Set<String>()
-        let unique = audio.filter { let n = $0.title.lowercased(); if seen.contains(n) { return false }; seen.insert(n); return true }
-        for playlist in sortPlexPlaylists(unique) {
-            let expanded = expandedPlexPlaylists.contains(playlist.id)
-            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.title, info: "\(playlist.leafCount) tracks", indentLevel: 0, hasChildren: playlist.leafCount > 0, type: .plexPlaylist(playlist)))
-            if expanded, let tracks = plexPlaylistTracks[playlist.id] {
-                for track in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(track.id)", title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))) }
-            }
-        }
-    }
-    
-    private func buildSearchItems() {
-        displayItems.removeAll()
-        guard let results = searchResults else { return }
-        let sortedArtists = sortPlexArtists(results.artists)
-        if !sortedArtists.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for artist in sortedArtists { displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.title, info: nil, indentLevel: 1, hasChildren: true, type: .artist(artist))) }
-        }
-        let sortedAlbums = sortPlexAlbums(results.albums)
-        if !sortedAlbums.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for album in sortedAlbums { displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album))) }
-        }
-        let sortedTracks = sortPlexTracks(results.tracks)
-        if !sortedTracks.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for track in sortedTracks { displayItems.append(LibraryBrowserItem(id: track.id, title: "\(track.grandparentTitle ?? "") - \(track.title)", info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))) }
-        }
-        if !results.movies.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for movie in results.movies {
-                let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .movie(movie)))
-            }
-        }
-        if !results.shows.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for show in results.shows {
-                displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: "\(show.childCount) seasons", indentLevel: 1, hasChildren: true, type: .show(show)))
-                if expandedShows.contains(show.id), let seasons = showSeasons[show.id] {
-                    for season in seasons {
-                        displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.leafCount) episodes", indentLevel: 2, hasChildren: true, type: .season(season)))
-                        if expandedSeasons.contains(season.id), let episodes = seasonEpisodes[season.id] {
-                            for episode in episodes {
-                                displayItems.append(LibraryBrowserItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .episode(episode)))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func buildSubsonicSearchItems() {
-        displayItems.removeAll()
-        guard let results = subsonicSearchResults else { return }
-        let sortedArtists = sortSubsonicArtists(results.artists)
-        if !sortedArtists.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for artist in sortedArtists {
-                displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .subsonicArtist(artist)))
-            }
-        }
-        let sortedAlbums = sortSubsonicAlbums(results.albums)
-        if !sortedAlbums.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for album in sortedAlbums {
-                displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .subsonicAlbum(album)))
-            }
-        }
-        let sortedSongs = sortSubsonicTracks(results.songs)
-        if !sortedSongs.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for song in sortedSongs {
-                displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(song)))
-            }
-        }
-    }
-
-    private func buildJellyfinSearchItems() {
-        displayItems.removeAll()
-        guard let results = jellyfinSearchResults else { return }
-        let sortedArtists = sortJellyfinArtists(results.artists)
-        if !sortedArtists.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for artist in sortedArtists {
-                displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .jellyfinArtist(artist)))
-            }
-        }
-        let sortedAlbums = sortJellyfinAlbums(results.albums)
-        if !sortedAlbums.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for album in sortedAlbums {
-                displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .jellyfinAlbum(album)))
-            }
-        }
-        let sortedSongs = sortJellyfinTracks(results.songs)
-        if !sortedSongs.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for song in sortedSongs {
-                displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(song)))
-            }
-        }
-        if !results.movies.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for movie in results.movies {
-                let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .jellyfinMovie(movie)))
-            }
-        }
-        if !results.shows.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for show in results.shows {
-                let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 1, hasChildren: true, type: .jellyfinShow(show)))
-                if expandedJellyfinShows.contains(show.id), let seasons = jellyfinShowSeasons[show.id] {
-                    for season in seasons {
-                        displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 2, hasChildren: true, type: .jellyfinSeason(season)))
-                        if expandedJellyfinSeasons.contains(season.id), let episodes = jellyfinSeasonEpisodes[season.id] {
-                            for episode in episodes {
-                                displayItems.append(LibraryBrowserItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .jellyfinEpisode(episode)))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildEmbySearchItems() {
-        displayItems.removeAll()
-        guard let results = embySearchResults else { return }
-        let sortedArtists = sortEmbyArtists(results.artists)
-        if !sortedArtists.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(sortedArtists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for artist in sortedArtists {
-                displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil, indentLevel: 1, hasChildren: true, type: .embyArtist(artist)))
-            }
-        }
-        let sortedAlbums = sortEmbyAlbums(results.albums)
-        if !sortedAlbums.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(sortedAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for album in sortedAlbums {
-                displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .embyAlbum(album)))
-            }
-        }
-        let sortedSongs = sortEmbyTracks(results.songs)
-        if !sortedSongs.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(sortedSongs.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for song in sortedSongs {
-                displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(song)))
-            }
-        }
-        if !results.movies.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(results.movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for movie in results.movies {
-                let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 1, hasChildren: false, type: .embyMovie(movie)))
-            }
-        }
-        if !results.shows.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(results.shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for show in results.shows {
-                let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-                displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 1, hasChildren: true, type: .embyShow(show)))
-                if expandedEmbyShows.contains(show.id), let seasons = embyShowSeasons[show.id] {
-                    for season in seasons {
-                        displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 2, hasChildren: true, type: .embySeason(season)))
-                        if expandedEmbySeasons.contains(season.id), let episodes = embySeasonEpisodes[season.id] {
-                            for episode in episodes {
-                                displayItems.append(LibraryBrowserItem(id: episode.id, title: "\(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 3, hasChildren: false, type: .embyEpisode(episode)))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildRadioStationItems() {
-        displayItems.removeAll()
-        cachedRadioFolders = RadioManager.shared.internetRadioFolderDescriptors()
-
-        let childrenByParent = Dictionary(grouping: cachedRadioFolders.filter { $0.parentID != nil }) { $0.parentID! }
-        let roots = cachedRadioFolders
-            .filter { $0.parentID == nil }
-            .sorted { lhs, rhs in
-                if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
-                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-            }
-
-        for root in roots {
-            appendRadioFolderRow(root, level: 0, childrenByParent: childrenByParent)
-        }
-    }
-
     // MARK: - YouTube (shares the Radio tab UI as its own source)
-
-    private func loadYouTubeChannels() {
-        isLoading = false
-        errorMessage = nil
-        stopLoadingAnimation()
-        buildYouTubeChannelItems()
-        needsDisplay = true
-        YouTubeManager.shared.backfillMissingAvatars()
-    }
-
-    private var youtubeRows: YouTubeRowBuilder {
-        YouTubeRowBuilder(expanded: Set(expandedYouTubeChannels.keys),
-                          uploads: YouTubeChannelUploads.shared.uploads(of: expandedYouTubeChannels.keys))
-    }
-
-    private func buildYouTubeChannelItems() {
-        displayItems = youtubeRows.channels(YouTubeManager.shared.channels).map { LibraryBrowserItem($0) }
-    }
-
-    /// Search tab (YouTube source): run the typed query as a YouTube channel search, or show
-    /// the results of an unchanged one; `force` (Refresh) re-runs it.
-    private func loadYouTubeSearchResults(force: Bool = false) {
-        errorMessage = nil
-        let started = youtubeSearch.submit(searchQuery, force: force) { [weak self] error in
-            guard let self, self.isYouTubeChannelSearch else { return }
-            self.isLoading = false; self.stopLoadingAnimation()
-            if let error {
-                self.errorMessage = error.localizedDescription
-                self.needsDisplay = true
-            } else {
-                self.rebuildCurrentModeItems()
-            }
-        }
-        guard started else {
-            isLoading = false; stopLoadingAnimation()
-            buildYouTubeSearchItems(); needsDisplay = true
-            return
-        }
-        displayItems = []; selectedIndices.removeAll(); scrollOffset = 0
-        isLoading = true; startLoadingAnimation(); needsDisplay = true
-    }
-
-    private func buildYouTubeSearchItems() {
-        displayItems = youtubeRows.channelSearch(youtubeSearch.results).map { LibraryBrowserItem($0) }
-    }
 
     @objc private func contextMenuSubscribeYouTubeChannel(_ sender: NSMenuItem) {
         guard let channel = sender.representedObject as? YouTubeChannel else { return }
-        youtubeSearch.subscribe(to: channel)
+        model.youtubeSearch.subscribe(to: channel)
     }
 
-    private func buildRadioSearchItems() {
-        displayItems.removeAll()
-        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-
-        let matches = RadioManager.shared.searchStations(query: searchQuery)
-        for station in matches {
-            displayItems.append(
-                LibraryBrowserItem(
-                    id: "radio-search-\(station.id.uuidString)",
-                    title: station.name,
-                    info: RadioManager.shared.normalizedGenre(for: station),
-                    indentLevel: 0,
-                    hasChildren: false,
-                    type: .radioStation(station)
-                )
-            )
-        }
-    }
-
-    private func appendRadioFolderRow(
-        _ folder: RadioFolderDescriptor,
-        level: Int,
-        childrenByParent: [String: [RadioFolderDescriptor]]
-    ) {
-        displayItems.append(
-            LibraryBrowserItem(
-                id: folder.id,
-                title: folder.title,
-                info: nil,
-                indentLevel: level,
-                hasChildren: folder.hasChildren,
-                type: .radioFolder(folder)
-            )
-        )
-
-        guard folder.hasChildren, expandedRadioFolders.contains(folder.id) else { return }
-        if folder.kind.isStationContainer {
-            let stations = RadioManager.shared.stations(inFolder: folder.kind)
-            for station in stations {
-                displayItems.append(
-                    LibraryBrowserItem(
-                        id: "radio-station-\(folder.id)-\(station.id.uuidString)",
-                        title: station.name,
-                        info: RadioManager.shared.normalizedGenre(for: station),
-                        indentLevel: level + 1,
-                        hasChildren: false,
-                        type: .radioStation(station)
-                    )
-                )
-            }
-            return
-        }
-        let children = (childrenByParent[folder.id] ?? []).sorted { lhs, rhs in
-            if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-        }
-        for child in children {
-            appendRadioFolderRow(child, level: level + 1, childrenByParent: childrenByParent)
-        }
-    }
-    
-    private func loadSubsonicRadioStations(generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        guard case .subsonic = currentSource else { return }
-        let expectedSource = currentSource
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        radioLoadTask?.cancel()
-        radioLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            let genres = await SubsonicManager.shared.getGenres()
-            guard !Task.isCancelled,
-                  self.isLoadContextActive(generation, source: expectedSource),
-                  self.browseMode == .radio,
-                  case .subsonic = self.currentSource else { return }
-            self.buildSubsonicRadioStationItems(genres: genres)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioLoadTask = nil
-        }
-    }
-
-    private func loadJellyfinRadioStations(generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        guard case .jellyfin = currentSource else { return }
-        let expectedSource = currentSource
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        radioLoadTask?.cancel()
-        radioLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            let genres = await JellyfinManager.shared.getMusicGenres()
-            guard !Task.isCancelled,
-                  self.isLoadContextActive(generation, source: expectedSource),
-                  self.browseMode == .radio,
-                  case .jellyfin = self.currentSource else { return }
-            self.buildJellyfinRadioStationItems(genres: genres)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioLoadTask = nil
-        }
-    }
-
-    private func loadEmbyRadioStations(generation: Int? = nil) {
-        let generation = generation ?? loadGeneration
-        guard case .emby = currentSource else { return }
-        let expectedSource = currentSource
-        isLoading = true; errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-        radioLoadTask?.cancel()
-        radioLoadTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            let genres = await EmbyManager.shared.getMusicGenres()
-            guard !Task.isCancelled,
-                  self.isLoadContextActive(generation, source: expectedSource),
-                  self.browseMode == .radio,
-                  case .emby = self.currentSource else { return }
-            self.buildEmbyRadioStationItems(genres: genres)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioLoadTask = nil
-        }
-    }
-
-    private func loadLocalRadioStations() {
-        isLoading = false; errorMessage = nil; stopLoadingAnimation()
-        let genres = MediaLibrary.shared.allGenres()
-        buildLocalRadioStationItems(genres: genres)
-        needsDisplay = true
-    }
-
-    private func buildSubsonicRadioStationItems(genres: [String]) {
-        displayItems.removeAll()
-        displayItems.append(LibraryBrowserItem(id: "sub-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.libraryRadio)))
-        displayItems.append(LibraryBrowserItem(id: "sub-radio-library-sim", title: "Library Radio (Similar)", info: "Library", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.librarySimilar)))
-        displayItems.append(LibraryBrowserItem(id: "sub-radio-starred", title: "Starred Radio", info: "Starred", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.starredRadio)))
-        displayItems.append(LibraryBrowserItem(id: "sub-radio-starred-sim", title: "Starred Radio (Similar)", info: "Starred", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.starredSimilar)))
-        for genre in genres {
-            displayItems.append(LibraryBrowserItem(id: "sub-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.genreRadio(genre))))
-            displayItems.append(LibraryBrowserItem(id: "sub-radio-genre-\(genre)-sim", title: "\(genre) Radio (Similar)", info: "Genre", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.genreSimilar(genre))))
-        }
-        for decade in RadioConfig.decades {
-            displayItems.append(LibraryBrowserItem(id: "sub-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(LibraryBrowserItem(id: "sub-radio-decade-\(decade.name)-sim", title: "\(decade.name) Radio (Similar)", info: "Decade", indentLevel: 0, hasChildren: false, type: .subsonicRadioStation(.decadeSimilar(start: decade.start, end: decade.end, name: decade.name))))
-        }
-    }
-
-    private func buildJellyfinRadioStationItems(genres: [String]) {
-        displayItems.removeAll()
-        displayItems.append(LibraryBrowserItem(id: "jf-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.libraryRadio)))
-        displayItems.append(LibraryBrowserItem(id: "jf-radio-library-mix", title: "Library Radio (Instant Mix)", info: "Library", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.libraryInstantMix)))
-        displayItems.append(LibraryBrowserItem(id: "jf-radio-fav", title: "Favorites Radio", info: "Favorites", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.favoritesRadio)))
-        displayItems.append(LibraryBrowserItem(id: "jf-radio-fav-mix", title: "Favorites Radio (Instant Mix)", info: "Favorites", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.favoritesInstantMix)))
-        for genre in genres {
-            displayItems.append(LibraryBrowserItem(id: "jf-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.genreRadio(genre))))
-            displayItems.append(LibraryBrowserItem(id: "jf-radio-genre-\(genre)-mix", title: "\(genre) Radio (Instant Mix)", info: "Genre", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.genreInstantMix(genre))))
-        }
-        for decade in RadioConfig.decades {
-            displayItems.append(LibraryBrowserItem(id: "jf-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(LibraryBrowserItem(id: "jf-radio-decade-\(decade.name)-mix", title: "\(decade.name) Radio (Instant Mix)", info: "Decade", indentLevel: 0, hasChildren: false, type: .jellyfinRadioStation(.decadeInstantMix(start: decade.start, end: decade.end, name: decade.name))))
-        }
-    }
-
-    private func buildEmbyRadioStationItems(genres: [String]) {
-        displayItems.removeAll()
-        displayItems.append(LibraryBrowserItem(id: "emby-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.libraryRadio)))
-        displayItems.append(LibraryBrowserItem(id: "emby-radio-library-mix", title: "Library Radio (Instant Mix)", info: "Library", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.libraryInstantMix)))
-        displayItems.append(LibraryBrowserItem(id: "emby-radio-fav", title: "Favorites Radio", info: "Favorites", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.favoritesRadio)))
-        displayItems.append(LibraryBrowserItem(id: "emby-radio-fav-mix", title: "Favorites Radio (Instant Mix)", info: "Favorites", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.favoritesInstantMix)))
-        for genre in genres {
-            displayItems.append(LibraryBrowserItem(id: "emby-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.genreRadio(genre))))
-            displayItems.append(LibraryBrowserItem(id: "emby-radio-genre-\(genre)-mix", title: "\(genre) Radio (Instant Mix)", info: "Genre", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.genreInstantMix(genre))))
-        }
-        for decade in RadioConfig.decades {
-            displayItems.append(LibraryBrowserItem(id: "emby-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(LibraryBrowserItem(id: "emby-radio-decade-\(decade.name)-mix", title: "\(decade.name) Radio (Instant Mix)", info: "Decade", indentLevel: 0, hasChildren: false, type: .embyRadioStation(.decadeInstantMix(start: decade.start, end: decade.end, name: decade.name))))
-        }
-    }
-
-    private func buildLocalRadioStationItems(genres: [String]) {
-        displayItems.removeAll()
-        displayItems.append(LibraryBrowserItem(id: "local-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .localRadioStation(.libraryRadio)))
-        for genre in genres {
-            displayItems.append(LibraryBrowserItem(id: "local-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .localRadioStation(.genreRadio(genre))))
-        }
-        for decade in RadioConfig.decades {
-            displayItems.append(LibraryBrowserItem(id: "local-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .localRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-        }
-    }
-
-    private func buildPlexRadioStationItems(genres: [String]) {
-        displayItems.removeAll()
-        NSLog("ModernLibraryBrowserView: Building Plex radio station list with %d genres", genres.count)
-#if DEBUG
-        let hasJazz = genres.contains { $0.localizedCaseInsensitiveCompare("Jazz") == .orderedSame }
-        NSLog("ModernLibraryBrowserView: Plex radio station genres contain Jazz=%@; genres=%@",
-              hasJazz ? "yes" : "no", genres.joined(separator: ", "))
-#endif
-        // Library Radio
-        displayItems.append(LibraryBrowserItem(id: "plex-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.libraryRadio)))
-        displayItems.append(LibraryBrowserItem(id: "plex-radio-library-sonic", title: "Library Radio (Sonic)", info: "Library", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.libraryRadioSonic)))
-        // Popularity
-        displayItems.append(LibraryBrowserItem(id: "plex-radio-hits", title: "Only the Hits", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.hitsRadio)))
-        displayItems.append(LibraryBrowserItem(id: "plex-radio-hits-sonic", title: "Only the Hits (Sonic)", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.hitsRadioSonic)))
-        displayItems.append(LibraryBrowserItem(id: "plex-radio-deepcuts", title: "Deep Cuts", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.deepCutsRadio)))
-        displayItems.append(LibraryBrowserItem(id: "plex-radio-deepcuts-sonic", title: "Deep Cuts (Sonic)", info: "Popularity", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.deepCutsRadioSonic)))
-        // Rating stations
-        for station in RadioConfig.ratingStations {
-            displayItems.append(LibraryBrowserItem(id: "plex-radio-rating-\(station.minRating)", title: "\(station.name) Radio", info: "My Ratings", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.ratingRadio(minRating: station.minRating, name: station.name))))
-            displayItems.append(LibraryBrowserItem(id: "plex-radio-rating-\(station.minRating)-sonic", title: "\(station.name) Radio (Sonic)", info: "My Ratings", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.ratingRadioSonic(minRating: station.minRating, name: station.name))))
-        }
-        // Genre stations
-        for genre in genres {
-            displayItems.append(LibraryBrowserItem(id: "plex-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.genreRadio(genre))))
-            displayItems.append(LibraryBrowserItem(id: "plex-radio-genre-\(genre)-sonic", title: "\(genre) Radio (Sonic)", info: "Genre", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.genreRadioSonic(genre))))
-        }
-        // Decade stations
-        for decade in RadioConfig.decades {
-            displayItems.append(LibraryBrowserItem(id: "plex-radio-decade-\(decade.name)", title: "\(decade.name) Radio", info: "Decade", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.decadeRadio(start: decade.start, end: decade.end, name: decade.name))))
-            displayItems.append(LibraryBrowserItem(id: "plex-radio-decade-\(decade.name)-sonic", title: "\(decade.name) Radio (Sonic)", info: "Decade", indentLevel: 0, hasChildren: false, type: .plexRadioStation(.decadeRadioSonic(start: decade.start, end: decade.end, name: decade.name))))
-        }
-    }
-    
-    // Local items
-    private func buildLocalArtistItems() {
-        displayItems.removeAll()
-        let store = MediaLibraryStore.shared
-        if localArtistPageOffset == 0 {
-            localArtistLetterOffsets = store.artistLetterOffsets(sort: currentSort)
-        }
-        let names = store.artistNames(limit: localPageSize, offset: localArtistPageOffset, sort: currentSort)
-        let albumsByArtist = store.albumsForArtistsBatch(names)
-        for name in names {
-            let albumSummaries = albumsByArtist[name] ?? []
-            let albumCount = albumSummaries.count
-            // Build a minimal Artist stub — albums are populated lazily when expanded
-            let stubArtist = Artist(id: name, name: name, albums: [])
-            let expanded = expandedLocalArtists.contains(name)
-            displayItems.append(LibraryBrowserItem(
-                id: "local-artist-\(name)",
-                title: name,
-                info: "\(albumCount) albums",
-                indentLevel: 0,
-                hasChildren: albumCount > 0,
-                type: .localArtist(stubArtist)
-            ))
-            if expanded {
-                for summary in albumSummaries {
-                    let albumExpanded = expandedLocalAlbums.contains(summary.id)
-                    let tracks: [LibraryTrack] = albumExpanded ? store.tracksForAlbum(summary.id) : []
-                    let album = Album(
-                        id: summary.id,
-                        name: summary.name,
-                        artist: summary.artist,
-                        year: summary.year,
-                        tracks: tracks
-                    )
-                    displayItems.append(LibraryBrowserItem(
-                        id: "local-album-\(album.id)",
-                        title: album.name,
-                        info: summary.year.map { String($0) },
-                        indentLevel: 1,
-                        hasChildren: summary.trackCount > 0,
-                        type: .localAlbum(album)
-                    ))
-                    if albumExpanded {
-                        for track in tracks {
-                            displayItems.append(LibraryBrowserItem(
-                                id: track.id.uuidString,
-                                title: track.title,
-                                info: track.formattedDuration,
-                                indentLevel: 2,
-                                hasChildren: false,
-                                type: .localTrack(track)
-                            ))
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func buildLocalAlbumItems() {
-        displayItems.removeAll()
-        let store = MediaLibraryStore.shared
-        if localAlbumPageOffset == 0 {
-            localAlbumLetterOffsets = store.albumLetterOffsets(sort: currentSort)
-        }
-        let summaries = store.albumSummaries(limit: localPageSize, offset: localAlbumPageOffset, sort: currentSort)
-        for summary in summaries {
-            let expanded = expandedLocalAlbums.contains(summary.id)
-            let tracks: [LibraryTrack] = expanded ? store.tracksForAlbum(summary.id) : []
-            let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: tracks)
-            let displayName: String
-            if let artist = summary.artist, !artist.isEmpty {
-                displayName = "\(artist) - \(summary.name)"
-            } else {
-                displayName = summary.name
-            }
-            displayItems.append(LibraryBrowserItem(
-                id: "local-album-\(album.id)",
-                title: displayName,
-                info: "\(summary.trackCount) tracks",
-                indentLevel: 0,
-                hasChildren: summary.trackCount > 0,
-                type: .localAlbum(album)
-            ))
-            if expanded {
-                for t in tracks {
-                    displayItems.append(LibraryBrowserItem(
-                        id: t.id.uuidString,
-                        title: t.title,
-                        info: t.formattedDuration,
-                        indentLevel: 1,
-                        hasChildren: false,
-                        type: .localTrack(t)
-                    ))
-                }
-            }
-        }
-    }
-
-    /// Build the Folders view: one off-actor depth-first walk of every *expanded* directory,
-    /// then a single hop back to the main actor to assign `displayItems`. The generation guard
-    /// discards a walk whose result arrives after a newer rebuild (or a mode switch) started.
-    private func buildLocalFolderItems() {
-        localFolderBuildGeneration &+= 1
-        let gen = localFolderBuildGeneration
-
-        // Snapshot main-actor state before going off-actor (value types are Sendable)
-        let expandedSnapshot = expandedLocalFolders
-
-        // Show the loading spinner (not the empty "No folders found" state) while the
-        // off-actor walk runs — matters for slow network/NAS watch folders.
-        displayItems.removeAll()
-        isLoading = true
-        errorMessage = nil
-        startLoadingAnimation()
-        needsDisplay = true
-
-        // Cancel any walk still running from a previous (faster) click
-        localFolderBuildTask?.cancel()
-        localFolderBuildTask = Task.detached { [weak self] in
-            // Build the ordered item list entirely off the main actor (FS enumeration + DB query)
-            let items = LocalFolderTree.rows(expanded: expandedSnapshot).map(LibraryBrowserItem.init)
-
-            if Task.isCancelled { return }
-            await MainActor.run { [weak self] in
-                guard let self = self,
-                      self.localFolderBuildGeneration == gen,
-                      self.isLocalSource,
-                      self.browseMode == .folders else { return }
-                self.isLoading = false
-                self.stopLoadingAnimation()
-                self.displayItems = items
-                self.needsDisplay = true
-                self.localFolderBuildTask = nil
-            }
-        }
-    }
-
-    private func buildLocalSearchItems() {
-        displayItems.removeAll()
-        guard !searchQuery.isEmpty else { return }
-        let store = MediaLibraryStore.shared
-        let matchingArtistNames = store.searchArtistNames(query: searchQuery)
-        if !matchingArtistNames.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-local-artists", title: "Artists (\(matchingArtistNames.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for name in matchingArtistNames {
-                let stub = Artist(id: name, name: name, albums: [])
-                displayItems.append(LibraryBrowserItem(id: "local-artist-\(name)", title: name, info: nil, indentLevel: 1, hasChildren: true, type: .localArtist(stub)))
-            }
-        }
-        let matchingAlbums = store.searchAlbumSummaries(query: searchQuery)
-        if !matchingAlbums.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-local-albums", title: "Albums (\(matchingAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for summary in matchingAlbums {
-                let displayName: String
-                if let artist = summary.artist, !artist.isEmpty {
-                    displayName = "\(artist) - \(summary.name)"
-                } else {
-                    displayName = summary.name
-                }
-                let album = Album(id: summary.id, name: summary.name, artist: summary.artist, year: summary.year, tracks: [])
-                displayItems.append(LibraryBrowserItem(id: "local-album-\(album.id)", title: displayName, info: "\(summary.trackCount) tracks", indentLevel: 1, hasChildren: false, type: .localAlbum(album)))
-            }
-        }
-        let matchingTracks = store.searchTracks(query: searchQuery, limit: 200, offset: 0)
-        if !matchingTracks.isEmpty {
-            displayItems.append(LibraryBrowserItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for t in matchingTracks { displayItems.append(LibraryBrowserItem(id: t.id.uuidString, title: t.title, info: t.formattedDuration, indentLevel: 1, hasChildren: false, type: .localTrack(t))) }
-        }
-        displayItems += youtubeRows.localSearch(query: searchQuery, excluding: Set(matchingTracks.map(\.url)))
-            .map { LibraryBrowserItem($0) }
-    }
-    
-    private func buildLocalMovieItems() {
-        displayItems = cachedLocalMovies
-            .sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-            .map { LibraryBrowserItem(id: $0.id.uuidString, title: $0.title, info: $0.year.map { String($0) }, indentLevel: 0, hasChildren: false, type: .localMovie($0)) }
-    }
-
-    private func buildLocalShowItems() {
-        displayItems.removeAll()
-        for show in cachedLocalShows.sorted(by: { compareNameStrings($0.title, $1.title, ascending: true) }) {
-            let expanded = expandedLocalShows.contains(show.id)
-            displayItems.append(LibraryBrowserItem(id: "local-show-\(show.id)", title: show.title, info: "\(show.episodeCount) episodes", indentLevel: 0, hasChildren: true, type: .localShow(show)))
-            if expanded {
-                for season in show.seasons.sorted(by: { $0.number < $1.number }) {
-                    let seasonKey = "\(show.title)|\(season.number)"
-                    let seasonExpanded = expandedLocalSeasons.contains(seasonKey)
-                    displayItems.append(LibraryBrowserItem(id: "local-season-\(seasonKey)", title: "Season \(season.number)", info: "\(season.episodes.count) episodes", indentLevel: 1, hasChildren: true, type: .localSeason(season, showTitle: show.title)))
-                    if seasonExpanded {
-                        for episode in season.episodes.sorted(by: { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }) {
-                            let epTitle = episode.episodeNumber.map { "E\($0): \(episode.title)" } ?? episode.title
-                            displayItems.append(LibraryBrowserItem(id: episode.id.uuidString, title: epTitle, info: episode.formattedDuration, indentLevel: 2, hasChildren: false, type: .localEpisode(episode)))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Subsonic items
-    private func buildSubsonicArtistItems() {
-        displayItems.removeAll()
-        for artist in sortSubsonicArtists(cachedSubsonicArtists) {
-            let info = artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil
-            let expanded = expandedSubsonicArtists.contains(artist.id)
-            displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .subsonicArtist(artist)))
-            if expanded, let albums = subsonicArtistAlbums[artist.id] {
-                for album in sortSubsonicAlbums(albums) {
-                    let albumExpanded = expandedSubsonicAlbums.contains(album.id)
-                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .subsonicAlbum(album)))
-                    if albumExpanded, let songs = subsonicAlbumSongs[album.id] {
-                        let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                        for song in sorted { displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .subsonicTrack(song))) }
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildSubsonicAlbumItems() {
-        displayItems.removeAll()
-        for album in sortSubsonicAlbums(cachedSubsonicAlbums) {
-            let expanded = expandedSubsonicAlbums.contains(album.id)
-            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .subsonicAlbum(album)))
-            if expanded, let songs = subsonicAlbumSongs[album.id] {
-                let sorted = songs.sorted { ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(s))) }
-            }
-        }
-    }
-    
-    private func buildSubsonicPlaylistItems() {
-        displayItems.removeAll()
-        for playlist in sortSubsonicPlaylists(cachedSubsonicPlaylists) {
-            let expanded = expandedSubsonicPlaylists.contains(playlist.id)
-            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .subsonicPlaylist(playlist)))
-            if expanded, let tracks = subsonicPlaylistTracks[playlist.id] {
-                for t in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .subsonicTrack(t))) }
-            }
-        }
-    }
-
-    private func buildLocalPlaylistItems() {
-        displayItems.removeAll()
-        for playlist in cachedLocalPlaylists.sorted(by: { $0.title.lowercased() < $1.title.lowercased() }) {
-            let key = playlist.url.path
-            let expanded = expandedLocalPlaylists.contains(key)
-            let info = localPlaylistTracks[key].map { "\($0.count) tracks" }
-            displayItems.append(LibraryBrowserItem(id: key, title: playlist.title, info: info, indentLevel: 0, hasChildren: true, type: .localPlaylist(playlist)))
-            if expanded, let tracks = localPlaylistTracks[key] {
-                for t in tracks {
-                    let duration = t.duration.map { Int($0) }
-                    let title = t.title
-                    displayItems.append(LibraryBrowserItem(id: "\(key)-\(t.url.absoluteString)", title: title, info: formatDuration(duration), indentLevel: 1, hasChildren: false, type: .localPlaylistTrack(t)))
-                }
-            }
-        }
-    }
-
-    private func refreshCachedLocalPlaylists() {
-        cachedLocalPlaylists = MediaLibrary.shared.playlistsSnapshot
-        let validKeys = Set(cachedLocalPlaylists.map { $0.url.path })
-        localPlaylistTracks = localPlaylistTracks.filter { validKeys.contains($0.key) }
-        expandedLocalPlaylists.formIntersection(validKeys)
-    }
-
-    // MARK: - Build Jellyfin Display Items
-    
-    private func buildJellyfinArtistItems() {
-        displayItems.removeAll()
-        for artist in sortJellyfinArtists(cachedJellyfinArtists) {
-            let info = artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil
-            let expanded = expandedJellyfinArtists.contains(artist.id)
-            displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .jellyfinArtist(artist)))
-            if expanded, let albums = jellyfinArtistAlbums[artist.id] {
-                for album in sortJellyfinAlbums(albums) {
-                    let albumExpanded = expandedJellyfinAlbums.contains(album.id)
-                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .jellyfinAlbum(album)))
-                    if albumExpanded, let songs = jellyfinAlbumSongs[album.id] {
-                        let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                        for song in sorted { displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .jellyfinTrack(song))) }
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildJellyfinAlbumItems() {
-        displayItems.removeAll()
-        for album in sortJellyfinAlbums(cachedJellyfinAlbums) {
-            let expanded = expandedJellyfinAlbums.contains(album.id)
-            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .jellyfinAlbum(album)))
-            if expanded, let songs = jellyfinAlbumSongs[album.id] {
-                let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(s))) }
-            }
-        }
-    }
-    
-    private func buildJellyfinPlaylistItems() {
-        displayItems.removeAll()
-        for playlist in sortJellyfinPlaylists(cachedJellyfinPlaylists) {
-            let expanded = expandedJellyfinPlaylists.contains(playlist.id)
-            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .jellyfinPlaylist(playlist)))
-            if expanded, let tracks = jellyfinPlaylistTracks[playlist.id] {
-                for t in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .jellyfinTrack(t))) }
-            }
-        }
-    }
-
-    // MARK: - Build Emby Display Items
-
-    private func buildEmbyArtistItems() {
-        displayItems.removeAll()
-        for artist in sortEmbyArtists(cachedEmbyArtists) {
-            let info = artist.albumCount > 0 ? "\(artist.albumCount) albums" : nil
-            let expanded = expandedEmbyArtists.contains(artist.id)
-            displayItems.append(LibraryBrowserItem(id: artist.id, title: artist.name, info: info, indentLevel: 0, hasChildren: true, type: .embyArtist(artist)))
-            if expanded, let albums = embyArtistAlbums[artist.id] {
-                for album in sortEmbyAlbums(albums) {
-                    let albumExpanded = expandedEmbyAlbums.contains(album.id)
-                    displayItems.append(LibraryBrowserItem(id: album.id, title: album.name, info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .embyAlbum(album)))
-                    if albumExpanded, let songs = embyAlbumSongs[album.id] {
-                        let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                        for song in sorted { displayItems.append(LibraryBrowserItem(id: song.id, title: song.title, info: formatDuration(song.duration), indentLevel: 2, hasChildren: false, type: .embyTrack(song))) }
-                    }
-                }
-            }
-        }
-    }
-
-    private func buildEmbyAlbumItems() {
-        displayItems.removeAll()
-        for album in sortEmbyAlbums(cachedEmbyAlbums) {
-            let expanded = expandedEmbyAlbums.contains(album.id)
-            displayItems.append(LibraryBrowserItem(id: album.id, title: "\(album.artist ?? "Unknown") - \(album.name)", info: album.year.map { String($0) }, indentLevel: 0, hasChildren: true, type: .embyAlbum(album)))
-            if expanded, let songs = embyAlbumSongs[album.id] {
-                let sorted = songs.sorted { let d0 = $0.discNumber ?? 1; let d1 = $1.discNumber ?? 1; if d0 != d1 { return d0 < d1 }; return ($0.track ?? 0) < ($1.track ?? 0) }
-                for s in sorted { displayItems.append(LibraryBrowserItem(id: s.id, title: s.title, info: formatDuration(s.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(s))) }
-            }
-        }
-    }
-
-    private func buildEmbyPlaylistItems() {
-        displayItems.removeAll()
-        for playlist in sortEmbyPlaylists(cachedEmbyPlaylists) {
-            let expanded = expandedEmbyPlaylists.contains(playlist.id)
-            displayItems.append(LibraryBrowserItem(id: playlist.id, title: playlist.name, info: "\(playlist.songCount) tracks", indentLevel: 0, hasChildren: playlist.songCount > 0, type: .embyPlaylist(playlist)))
-            if expanded, let tracks = embyPlaylistTracks[playlist.id] {
-                for t in tracks { displayItems.append(LibraryBrowserItem(id: "\(playlist.id)-\(t.id)", title: t.title, info: formatDuration(t.duration), indentLevel: 1, hasChildren: false, type: .embyTrack(t))) }
-            }
-        }
-    }
-
-    private func buildEmbyMovieItems() {
-        displayItems = cachedEmbyMovies.map { movie in
-            let info = [movie.year.map { String($0) }, movie.formattedDuration].compactMap { $0 }.joined(separator: " • ")
-            return LibraryBrowserItem(id: movie.id, title: movie.title, info: info.isEmpty ? nil : info, indentLevel: 0, hasChildren: false, type: .embyMovie(movie))
-        }
-    }
-
-    private func buildEmbyShowItems() {
-        displayItems.removeAll()
-        for show in cachedEmbyShows {
-            let expanded = expandedEmbyShows.contains(show.id)
-            let info = [show.year.map { String($0) }, "\(show.childCount) seasons"].compactMap { $0 }.joined(separator: " • ")
-            displayItems.append(LibraryBrowserItem(id: show.id, title: show.title, info: info, indentLevel: 0, hasChildren: true, type: .embyShow(show)))
-            if expanded, let seasons = embyShowSeasons[show.id] {
-                for season in seasons {
-                    displayItems.append(LibraryBrowserItem(id: season.id, title: season.title, info: "\(season.childCount) episodes", indentLevel: 1, hasChildren: true, type: .embySeason(season)))
-                    if expandedEmbySeasons.contains(season.id), let episodes = embySeasonEpisodes[season.id] {
-                        for ep in episodes { displayItems.append(LibraryBrowserItem(id: ep.id, title: "\(ep.episodeIdentifier) - \(ep.title)", info: ep.formattedDuration, indentLevel: 2, hasChildren: false, type: .embyEpisode(ep))) }
-                    }
-                }
-            }
-        }
-    }
-
-    private func formatDuration(_ seconds: Int?) -> String? {
-        guard let s = seconds else { return nil }
-        let mins = s / 60; let secs = s % 60; return String(format: "%d:%02d", mins, secs)
-    }
-    
-    // MARK: - Sorting Helpers
-
-    private func compareNameStrings(_ lhs: String, _ rhs: String, ascending: Bool) -> Bool {
-        LibraryTextSorter.areInOrder(lhs, rhs, ascending: ascending, ignoreLeadingArticles: true)
-    }
-    
-    private func sortPlexArtists(_ artists: [PlexArtist]) -> [PlexArtist] {
-        switch currentSort {
-        case .nameAsc: return artists.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return artists.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return artists.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
-        case .dateAddedAsc: return artists.sorted { ($0.addedAt ?? .distantPast) < ($1.addedAt ?? .distantPast) }
-        default: return artists.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        }
-    }
-
-    private func plexArtistGroupKey(for artist: PlexArtist) -> String {
-        "plex-artist-\(PlexIdentity.normalizedName(artist.title))"
-    }
-
-    private func uniquePlexArtistsByName(_ artists: [PlexArtist]) -> [PlexArtist] {
-        var groups = Dictionary(grouping: artists, by: { PlexIdentity.normalizedName($0.title) })
-        if artists.count == cachedArtists.count && !plexArtistGroupsByName.isEmpty {
-            groups = plexArtistGroupsByName
-        }
-        let representatives = groups.values.compactMap { group in
-            // Highest albumCount wins; ties broken by smallest id for a deterministic representative.
-            group.max { lhs, rhs in
-                lhs.albumCount != rhs.albumCount ? lhs.albumCount < rhs.albumCount : lhs.id > rhs.id
-            }
-        }
-        return representatives
-    }
-
-    private func plexArtistGroup(for artist: PlexArtist) -> [PlexArtist] {
-        guard browseMode != .search else { return [artist] }
-        let key = PlexIdentity.normalizedName(artist.title)
-        let matches = plexArtistGroupsByName[key] ?? cachedArtists.filter { PlexIdentity.normalizedName($0.title) == key }
-        return matches.isEmpty ? [artist] : matches
-    }
-
-    private func plexArtistAlbumCount(for artist: PlexArtist) -> Int? {
-        let groupKey = plexArtistGroupKey(for: artist)
-        if let count = plexAlbumCountsByArtistGroupKey[groupKey], count > 0 {
-            return count
-        }
-
-        let group = plexArtistGroup(for: artist)
-        var count = 0
-        var foundCount = false
-        for member in group {
-            if let cached = artistAlbumCounts[member.id], cached > 0 {
-                count += cached
-                foundCount = true
-            } else if member.albumCount > 0 {
-                count += member.albumCount
-                foundCount = true
-            }
-        }
-        return foundCount ? count : nil
-    }
-
-    private func fetchAlbumsForPlexArtistGroup(_ artist: PlexArtist) async throws -> [PlexAlbum] {
-        if let cached = plexAlbumsByArtistGroupKey[plexArtistGroupKey(for: artist)], !cached.isEmpty {
-            return cached
-        }
-        return try await LibraryPlayable.plexAlbums(ofArtistGroup: plexArtistGroup(for: artist))
-    }
-
-    private func sortPlexAlbums(_ albums: [PlexAlbum]) -> [PlexAlbum] {
-        switch currentSort {
-        case .nameAsc: return albums.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return albums.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return albums.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
-        case .dateAddedAsc: return albums.sorted { ($0.addedAt ?? .distantPast) < ($1.addedAt ?? .distantPast) }
-        case .yearDesc: return albums.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return albums.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-    
-    private func sortPlexTracks(_ tracks: [PlexTrack]) -> [PlexTrack] {
-        switch currentSort {
-        case .nameAsc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return tracks.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
-        case .dateAddedAsc: return tracks.sorted { ($0.addedAt ?? .distantPast) < ($1.addedAt ?? .distantPast) }
-        default: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        }
-    }
-
-    private func sortPlexPlaylists(_ playlists: [PlexPlaylist]) -> [PlexPlaylist] {
-        switch currentSort {
-        case .nameAsc: return playlists.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return playlists.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return playlists.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
-        case .dateAddedAsc: return playlists.sorted { ($0.addedAt ?? .distantPast) < ($1.addedAt ?? .distantPast) }
-        default: return playlists.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        }
-    }
-
-    private func subsonicArtistKey(id: String?, name: String?) -> String? {
-        if let id = id, !id.isEmpty { return "id:\(id)" }
-        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
-        return "name:\(name.lowercased())"
-    }
-
-    private func jellyfinArtistKey(id: String?, name: String?) -> String? {
-        if let id = id, !id.isEmpty { return "id:\(id)" }
-        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
-        return "name:\(name.lowercased())"
-    }
-
-    private func embyArtistKey(id: String?, name: String?) -> String? {
-        if let id = id, !id.isEmpty { return "id:\(id)" }
-        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
-        return "name:\(name.lowercased())"
-    }
-
-    private func sortSubsonicArtists(_ artists: [SubsonicArtist]) -> [SubsonicArtist] {
-        var newestAddedByArtist: [String: Date] = [:]
-        var oldestAddedByArtist: [String: Date] = [:]
-        var newestYearByArtist: [String: Int] = [:]
-        var oldestYearByArtist: [String: Int] = [:]
-
-        for album in cachedSubsonicAlbums {
-            guard let key = subsonicArtistKey(id: album.artistId, name: album.artist) else { continue }
-            if let created = album.created {
-                let newestExisting = newestAddedByArtist[key] ?? .distantPast
-                if created > newestExisting { newestAddedByArtist[key] = created }
-
-                let oldestExisting = oldestAddedByArtist[key] ?? .distantFuture
-                if created < oldestExisting { oldestAddedByArtist[key] = created }
-            }
-            if let year = album.year {
-                let newestExisting = newestYearByArtist[key] ?? Int.min
-                if year > newestExisting { newestYearByArtist[key] = year }
-
-                let oldestExisting = oldestYearByArtist[key] ?? Int.max
-                if year < oldestExisting { oldestYearByArtist[key] = year }
-            }
-        }
-
-        switch currentSort {
-        case .nameAsc: return artists.sorted {
-            // Use the server's index letter to match Navidrome's grouping (e.g. "The Atlas Moth" → T)
-            let l0 = $0.indexLetter ?? sortLetter(for: $0.name)
-            let l1 = $1.indexLetter ?? sortLetter(for: $1.name)
-            if l0 != l1 { return l0 < l1 }
-            return compareNameStrings($0.name, $1.name, ascending: true)
-        }
-        case .nameDesc: return artists.sorted {
-            let l0 = $0.indexLetter ?? sortLetter(for: $0.name)
-            let l1 = $1.indexLetter ?? sortLetter(for: $1.name)
-            if l0 != l1 { return l0 > l1 }
-            return compareNameStrings($0.name, $1.name, ascending: false)
-        }
-        case .dateAddedDesc:
-            return artists.sorted {
-                let key0 = subsonicArtistKey(id: $0.id, name: $0.name)
-                let key1 = subsonicArtistKey(id: $1.id, name: $1.name)
-                let d0 = key0.flatMap { newestAddedByArtist[$0] } ?? .distantPast
-                let d1 = key1.flatMap { newestAddedByArtist[$0] } ?? .distantPast
-                if d0 != d1 { return d0 > d1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .dateAddedAsc:
-            return artists.sorted {
-                let key0 = subsonicArtistKey(id: $0.id, name: $0.name)
-                let key1 = subsonicArtistKey(id: $1.id, name: $1.name)
-                let d0 = key0.flatMap { oldestAddedByArtist[$0] } ?? .distantPast
-                let d1 = key1.flatMap { oldestAddedByArtist[$0] } ?? .distantPast
-                if d0 != d1 { return d0 < d1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .yearDesc:
-            return artists.sorted {
-                let key0 = subsonicArtistKey(id: $0.id, name: $0.name)
-                let key1 = subsonicArtistKey(id: $1.id, name: $1.name)
-                let y0 = key0.flatMap { newestYearByArtist[$0] } ?? 0
-                let y1 = key1.flatMap { newestYearByArtist[$0] } ?? 0
-                if y0 != y1 { return y0 > y1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .yearAsc:
-            return artists.sorted {
-                let key0 = subsonicArtistKey(id: $0.id, name: $0.name)
-                let key1 = subsonicArtistKey(id: $1.id, name: $1.name)
-                let y0 = key0.flatMap { oldestYearByArtist[$0] } ?? 0
-                let y1 = key1.flatMap { oldestYearByArtist[$0] } ?? 0
-                if y0 != y1 { return y0 < y1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        }
-    }
-
-    private func sortSubsonicAlbums(_ albums: [SubsonicAlbum]) -> [SubsonicAlbum] {
-        switch currentSort {
-        case .nameAsc: return albums.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return albums.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        case .dateAddedDesc: return albums.sorted { ($0.created ?? .distantPast) > ($1.created ?? .distantPast) }
-        case .dateAddedAsc: return albums.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
-        case .yearDesc: return albums.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return albums.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-
-    private func sortSubsonicPlaylists(_ playlists: [SubsonicPlaylist]) -> [SubsonicPlaylist] {
-        switch currentSort {
-        case .nameAsc: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        case .dateAddedDesc:
-            return playlists.sorted { ($0.changed ?? $0.created ?? .distantPast) > ($1.changed ?? $1.created ?? .distantPast) }
-        case .dateAddedAsc:
-            return playlists.sorted { ($0.changed ?? $0.created ?? .distantPast) < ($1.changed ?? $1.created ?? .distantPast) }
-        default: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        }
-    }
-
-    private func sortSubsonicTracks(_ tracks: [SubsonicSong]) -> [SubsonicSong] {
-        switch currentSort {
-        case .nameAsc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return tracks.sorted { ($0.created ?? .distantPast) > ($1.created ?? .distantPast) }
-        case .dateAddedAsc: return tracks.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
-        case .yearDesc: return tracks.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return tracks.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-
-    private func sortJellyfinArtists(_ artists: [JellyfinArtist]) -> [JellyfinArtist] {
-        var newestAddedByArtist: [String: Date] = [:]
-        var oldestAddedByArtist: [String: Date] = [:]
-        var newestYearByArtist: [String: Int] = [:]
-        var oldestYearByArtist: [String: Int] = [:]
-
-        for album in cachedJellyfinAlbums {
-            guard let key = jellyfinArtistKey(id: album.artistId, name: album.artist) else { continue }
-            if let created = album.created {
-                let newestExisting = newestAddedByArtist[key] ?? .distantPast
-                if created > newestExisting { newestAddedByArtist[key] = created }
-
-                let oldestExisting = oldestAddedByArtist[key] ?? .distantFuture
-                if created < oldestExisting { oldestAddedByArtist[key] = created }
-            }
-            if let year = album.year {
-                let newestExisting = newestYearByArtist[key] ?? Int.min
-                if year > newestExisting { newestYearByArtist[key] = year }
-
-                let oldestExisting = oldestYearByArtist[key] ?? Int.max
-                if year < oldestExisting { oldestYearByArtist[key] = year }
-            }
-        }
-
-        switch currentSort {
-        case .nameAsc: return artists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return artists.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        case .dateAddedDesc:
-            return artists.sorted {
-                let key0 = jellyfinArtistKey(id: $0.id, name: $0.name)
-                let key1 = jellyfinArtistKey(id: $1.id, name: $1.name)
-                let d0 = key0.flatMap { newestAddedByArtist[$0] } ?? .distantPast
-                let d1 = key1.flatMap { newestAddedByArtist[$0] } ?? .distantPast
-                if d0 != d1 { return d0 > d1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .dateAddedAsc:
-            return artists.sorted {
-                let key0 = jellyfinArtistKey(id: $0.id, name: $0.name)
-                let key1 = jellyfinArtistKey(id: $1.id, name: $1.name)
-                let d0 = key0.flatMap { oldestAddedByArtist[$0] } ?? .distantPast
-                let d1 = key1.flatMap { oldestAddedByArtist[$0] } ?? .distantPast
-                if d0 != d1 { return d0 < d1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .yearDesc:
-            return artists.sorted {
-                let key0 = jellyfinArtistKey(id: $0.id, name: $0.name)
-                let key1 = jellyfinArtistKey(id: $1.id, name: $1.name)
-                let y0 = key0.flatMap { newestYearByArtist[$0] } ?? 0
-                let y1 = key1.flatMap { newestYearByArtist[$0] } ?? 0
-                if y0 != y1 { return y0 > y1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .yearAsc:
-            return artists.sorted {
-                let key0 = jellyfinArtistKey(id: $0.id, name: $0.name)
-                let key1 = jellyfinArtistKey(id: $1.id, name: $1.name)
-                let y0 = key0.flatMap { oldestYearByArtist[$0] } ?? 0
-                let y1 = key1.flatMap { oldestYearByArtist[$0] } ?? 0
-                if y0 != y1 { return y0 < y1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        }
-    }
-
-    private func sortJellyfinAlbums(_ albums: [JellyfinAlbum]) -> [JellyfinAlbum] {
-        switch currentSort {
-        case .nameAsc: return albums.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return albums.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        case .dateAddedDesc: return albums.sorted { ($0.created ?? .distantPast) > ($1.created ?? .distantPast) }
-        case .dateAddedAsc: return albums.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
-        case .yearDesc: return albums.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return albums.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-
-    private func sortJellyfinPlaylists(_ playlists: [JellyfinPlaylist]) -> [JellyfinPlaylist] {
-        switch currentSort {
-        case .nameAsc: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        default: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        }
-    }
-
-    private func sortJellyfinTracks(_ tracks: [JellyfinSong]) -> [JellyfinSong] {
-        switch currentSort {
-        case .nameAsc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return tracks.sorted { ($0.created ?? .distantPast) > ($1.created ?? .distantPast) }
-        case .dateAddedAsc: return tracks.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
-        case .yearDesc: return tracks.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return tracks.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-
-    private func sortEmbyArtists(_ artists: [EmbyArtist]) -> [EmbyArtist] {
-        var newestAddedByArtist: [String: Date] = [:]
-        var oldestAddedByArtist: [String: Date] = [:]
-        var newestYearByArtist: [String: Int] = [:]
-        var oldestYearByArtist: [String: Int] = [:]
-
-        for album in cachedEmbyAlbums {
-            guard let key = embyArtistKey(id: album.artistId, name: album.artist) else { continue }
-            if let created = album.created {
-                let newestExisting = newestAddedByArtist[key] ?? .distantPast
-                if created > newestExisting { newestAddedByArtist[key] = created }
-
-                let oldestExisting = oldestAddedByArtist[key] ?? .distantFuture
-                if created < oldestExisting { oldestAddedByArtist[key] = created }
-            }
-            if let year = album.year {
-                let newestExisting = newestYearByArtist[key] ?? Int.min
-                if year > newestExisting { newestYearByArtist[key] = year }
-
-                let oldestExisting = oldestYearByArtist[key] ?? Int.max
-                if year < oldestExisting { oldestYearByArtist[key] = year }
-            }
-        }
-
-        switch currentSort {
-        case .nameAsc: return artists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return artists.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        case .dateAddedDesc:
-            return artists.sorted {
-                let key0 = embyArtistKey(id: $0.id, name: $0.name)
-                let key1 = embyArtistKey(id: $1.id, name: $1.name)
-                let d0 = key0.flatMap { newestAddedByArtist[$0] } ?? .distantPast
-                let d1 = key1.flatMap { newestAddedByArtist[$0] } ?? .distantPast
-                if d0 != d1 { return d0 > d1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .dateAddedAsc:
-            return artists.sorted {
-                let key0 = embyArtistKey(id: $0.id, name: $0.name)
-                let key1 = embyArtistKey(id: $1.id, name: $1.name)
-                let d0 = key0.flatMap { oldestAddedByArtist[$0] } ?? .distantPast
-                let d1 = key1.flatMap { oldestAddedByArtist[$0] } ?? .distantPast
-                if d0 != d1 { return d0 < d1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .yearDesc:
-            return artists.sorted {
-                let key0 = embyArtistKey(id: $0.id, name: $0.name)
-                let key1 = embyArtistKey(id: $1.id, name: $1.name)
-                let y0 = key0.flatMap { newestYearByArtist[$0] } ?? 0
-                let y1 = key1.flatMap { newestYearByArtist[$0] } ?? 0
-                if y0 != y1 { return y0 > y1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        case .yearAsc:
-            return artists.sorted {
-                let key0 = embyArtistKey(id: $0.id, name: $0.name)
-                let key1 = embyArtistKey(id: $1.id, name: $1.name)
-                let y0 = key0.flatMap { oldestYearByArtist[$0] } ?? 0
-                let y1 = key1.flatMap { oldestYearByArtist[$0] } ?? 0
-                if y0 != y1 { return y0 < y1 }
-                return compareNameStrings($0.name, $1.name, ascending: true)
-            }
-        }
-    }
-
-    private func sortEmbyAlbums(_ albums: [EmbyAlbum]) -> [EmbyAlbum] {
-        switch currentSort {
-        case .nameAsc: return albums.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return albums.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        case .dateAddedDesc: return albums.sorted { ($0.created ?? .distantPast) > ($1.created ?? .distantPast) }
-        case .dateAddedAsc: return albums.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
-        case .yearDesc: return albums.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return albums.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-
-    private func sortEmbyPlaylists(_ playlists: [EmbyPlaylist]) -> [EmbyPlaylist] {
-        switch currentSort {
-        case .nameAsc: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        case .nameDesc: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: false) }
-        default: return playlists.sorted { compareNameStrings($0.name, $1.name, ascending: true) }
-        }
-    }
-
-    private func sortEmbyTracks(_ tracks: [EmbySong]) -> [EmbySong] {
-        switch currentSort {
-        case .nameAsc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: true) }
-        case .nameDesc: return tracks.sorted { compareNameStrings($0.title, $1.title, ascending: false) }
-        case .dateAddedDesc: return tracks.sorted { ($0.created ?? .distantPast) > ($1.created ?? .distantPast) }
-        case .dateAddedAsc: return tracks.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
-        case .yearDesc: return tracks.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .yearAsc: return tracks.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
-        }
-    }
-    
-    // MARK: - Rebuild Current Mode Items
-    
-    private func rebuildCurrentModeItems() {
-        horizontalScrollOffset = 0
-        if case .youtube = currentSource {
-            switch browseMode {
-            case .radio:
-                if radioSlotShowsChannels { buildYouTubeChannelItems() }
-                else { buildRadioStationItems() }
-            case .search:
-                buildYouTubeSearchItems()
-            default:
-                displayItems = []
-            }
-            if activeColumnSortId != nil { applyColumnSort() }
-            needsDisplay = true
-            return
-        }
-        if case .radio = currentSource {
-            switch browseMode {
-            case .radio:
-                buildRadioStationItems()
-            case .search:
-                buildRadioSearchItems()
-            default:
-                displayItems = []
-            }
-            if columnSortId != nil { applyColumnSort() }
-            needsDisplay = true
-            return
-        }
-        if browseMode == .radio { needsDisplay = true; return }
-        if case .local = currentSource {
-            switch browseMode {
-            case .artists: buildLocalArtistItems()
-            case .albums: buildLocalAlbumItems()
-            case .folders: buildLocalFolderItems()
-            case .search: buildLocalSearchItems()
-            case .movies: buildLocalMovieItems()
-            case .shows: buildLocalShowItems()
-            case .plists:
-                refreshCachedLocalPlaylists()
-                buildLocalPlaylistItems()
-            case .radio, .history: displayItems = []
-            }
-        } else if case .subsonic = currentSource {
-            switch browseMode {
-            case .artists: buildSubsonicArtistItems()
-            case .albums: buildSubsonicAlbumItems()
-            case .plists: buildSubsonicPlaylistItems()
-            case .search: buildSubsonicSearchItems()
-            default: displayItems = []
-            }
-        } else if case .jellyfin = currentSource {
-            switch browseMode {
-            case .artists: buildJellyfinArtistItems()
-            case .albums: buildJellyfinAlbumItems()
-            case .plists: buildJellyfinPlaylistItems()
-            case .movies: buildJellyfinMovieItems()
-            case .shows: buildJellyfinShowItems()
-            case .search: buildJellyfinSearchItems()
-            default: displayItems = []
-            }
-        } else if case .emby = currentSource {
-            switch browseMode {
-            case .artists: buildEmbyArtistItems()
-            case .albums: buildEmbyAlbumItems()
-            case .plists: buildEmbyPlaylistItems()
-            case .movies: buildEmbyMovieItems()
-            case .shows: buildEmbyShowItems()
-            case .search: buildEmbySearchItems()
-            default: displayItems = []
-            }
-        } else {
-            switch browseMode {
-            case .artists: buildArtistItems()
-            case .albums: buildAlbumItems()
-            case .folders: displayItems = []
-            case .movies: buildMovieItems()
-            case .shows: buildShowItems()
-            case .plists: buildPlexPlaylistItems()
-            case .search: buildSearchItems()
-            case .radio: break
-            case .history: break
-            }
-        }
-        if columnSortId != nil { applyColumnSort() }
-        applyPendingArtistScroll()
-        needsDisplay = true
-    }
-    
-    // MARK: - Expand/Collapse
-    
-    private func isExpanded(_ item: LibraryBrowserItem) -> Bool {
-        switch item.type {
-        case .artist(let a): return browseMode == .search ? expandedArtistNames.contains(a.title.lowercased()) : expandedArtists.contains(item.id)
-        case .album: return expandedAlbums.contains(item.id)
-        case .show: return expandedShows.contains(item.id)
-        case .season: return expandedSeasons.contains(item.id)
-        case .localArtist(let a): return expandedLocalArtists.contains(a.id)
-        case .localAlbum(let a): return expandedLocalAlbums.contains(a.id)
-        case .localFolder(let url, _): return expandedLocalFolders.contains(url.path)
-        case .localShow(let s): return expandedLocalShows.contains(s.id)
-        case .localSeason(let s, let showTitle): return expandedLocalSeasons.contains("\(showTitle)|\(s.number)")
-        case .subsonicArtist(let a): return expandedSubsonicArtists.contains(a.id)
-        case .subsonicAlbum(let a): return expandedSubsonicAlbums.contains(a.id)
-        case .subsonicPlaylist(let p): return expandedSubsonicPlaylists.contains(p.id)
-        case .jellyfinArtist(let a): return expandedJellyfinArtists.contains(a.id)
-        case .jellyfinAlbum(let a): return expandedJellyfinAlbums.contains(a.id)
-        case .jellyfinPlaylist(let p): return expandedJellyfinPlaylists.contains(p.id)
-        case .jellyfinShow(let s): return expandedJellyfinShows.contains(s.id)
-        case .jellyfinSeason(let s): return expandedJellyfinSeasons.contains(s.id)
-        case .embyArtist(let a): return expandedEmbyArtists.contains(a.id)
-        case .embyAlbum(let a): return expandedEmbyAlbums.contains(a.id)
-        case .embyPlaylist(let p): return expandedEmbyPlaylists.contains(p.id)
-        case .embyShow(let s): return expandedEmbyShows.contains(s.id)
-        case .embySeason(let s): return expandedEmbySeasons.contains(s.id)
-        case .plexPlaylist(let p): return expandedPlexPlaylists.contains(p.id)
-        case .radioFolder(let folder): return expandedRadioFolders.contains(folder.id)
-        case .youtubeChannel(let ch): return expandedYouTubeChannels[ch.id] != nil
-        case .localPlaylist(let p): return expandedLocalPlaylists.contains(p.url.path)
-        default: return false
-        }
-    }
-    
-    private func toggleExpand(_ item: LibraryBrowserItem) {
-        switch item.type {
-        case .artist(let artist):
-            let groupKey = item.id
-            if expandedArtists.contains(groupKey) { expandedArtists.remove(groupKey) }
-            else {
-                expandedArtists.insert(groupKey)
-                if artistAlbums[groupKey] == nil {
-                    Task { @MainActor in
-                        do {
-                            NSLog("ModernLibraryBrowser: Fetching albums for artist group '%@' (key=%@)", artist.title, groupKey)
-                            let albums = try await self.fetchAlbumsForPlexArtistGroup(artist)
-                            if albums.isEmpty && (self.plexArtistAlbumCount(for: artist) ?? 0) > 0 {
-                                NSLog("ModernLibraryBrowser: Warning - API returned 0 albums for artist group '%@' (key=%@) - allowing retry", artist.title, groupKey)
-                                expandedArtists.remove(groupKey)
-                            } else {
-                                NSLog("ModernLibraryBrowser: Loaded %d albums for artist group '%@' (key=%@)", albums.count, artist.title, groupKey)
-                                artistAlbums[groupKey] = albums
-                            }
-                            rebuildCurrentModeItems()
-                        } catch {
-                            NSLog("ModernLibraryBrowser: Failed to load albums for artist group '%@' (key=%@): %@", artist.title, groupKey, error.localizedDescription.redactingSensitiveURLQueryItems)
-                            expandedArtists.remove(groupKey)
-                            rebuildCurrentModeItems()
-                        }
-                    }; return
-                }
-            }
-        case .album(let album):
-            if expandedAlbums.contains(album.id) { expandedAlbums.remove(album.id) }
-            else {
-                expandedAlbums.insert(album.id)
-                if albumTracks[album.id] == nil {
-                    Task { @MainActor in
-                        do { let tracks = try await PlexManager.shared.fetchTracks(forAlbum: album); albumTracks[album.id] = tracks; rebuildCurrentModeItems() }
-                        catch {
-                            NSLog("ModernLibraryBrowser: Failed to load tracks for album '%@' (id=%@): %@", album.title, album.id, error.localizedDescription.redactingSensitiveURLQueryItems)
-                            expandedAlbums.remove(album.id)
-                            rebuildCurrentModeItems()
-                        }
-                    }; return
-                }
-            }
-        case .show(let show):
-            if expandedShows.contains(show.id) { expandedShows.remove(show.id) }
-            else {
-                expandedShows.insert(show.id)
-                if showSeasons[show.id] == nil {
-                    Task { @MainActor in
-                        do { let seasons = try await PlexManager.shared.fetchSeasons(forShow: show); showSeasons[show.id] = seasons; rebuildCurrentModeItems() }
-                        catch {
-                            NSLog("ModernLibraryBrowser: Failed to load seasons for show '%@' (id=%@): %@", show.title, show.id, error.localizedDescription.redactingSensitiveURLQueryItems)
-                            expandedShows.remove(show.id)
-                            rebuildCurrentModeItems()
-                        }
-                    }; return
-                }
-            }
-        case .season(let season):
-            if expandedSeasons.contains(season.id) { expandedSeasons.remove(season.id) }
-            else {
-                expandedSeasons.insert(season.id)
-                if seasonEpisodes[season.id] == nil {
-                    Task { @MainActor in
-                        do { let episodes = try await PlexManager.shared.fetchEpisodes(forSeason: season); seasonEpisodes[season.id] = episodes; rebuildCurrentModeItems() }
-                        catch {
-                            NSLog("ModernLibraryBrowser: Failed to load episodes for season '%@' (id=%@): %@", season.title, season.id, error.localizedDescription.redactingSensitiveURLQueryItems)
-                            expandedSeasons.remove(season.id)
-                            rebuildCurrentModeItems()
-                        }
-                    }; return
-                }
-            }
-        case .localArtist(let a):
-            if expandedLocalArtists.contains(a.id) { expandedLocalArtists.remove(a.id) } else { expandedLocalArtists.insert(a.id) }
-        case .localAlbum(let a):
-            if expandedLocalAlbums.contains(a.id) { expandedLocalAlbums.remove(a.id) } else { expandedLocalAlbums.insert(a.id) }
-        case .localFolder(let url, _):
-            let path = url.path
-            if expandedLocalFolders.contains(path) { expandedLocalFolders.remove(path) } else { expandedLocalFolders.insert(path) }
-        case .localShow(let s):
-            if expandedLocalShows.contains(s.id) { expandedLocalShows.remove(s.id) } else { expandedLocalShows.insert(s.id) }
-        case .localSeason(let s, let showTitle):
-            let key = "\(showTitle)|\(s.number)"
-            if expandedLocalSeasons.contains(key) { expandedLocalSeasons.remove(key) } else { expandedLocalSeasons.insert(key) }
-        case .subsonicArtist(let artist):
-            if expandedSubsonicArtists.contains(artist.id) { expandedSubsonicArtists.remove(artist.id) }
-            else {
-                expandedSubsonicArtists.insert(artist.id)
-                if subsonicArtistAlbums[artist.id] == nil {
-                    // Try cached albums first (instant) before falling back to network
-                    let cached = cachedSubsonicAlbums.filter { $0.artistId == artist.id }
-                    if !cached.isEmpty {
-                        subsonicArtistAlbums[artist.id] = cached
-                    } else {
-                        let id = artist.id; subsonicExpandTask?.cancel()
-                        subsonicExpandTask = Task.detached { @MainActor [weak self] in
-                            guard let self = self else { return }
-                            do { let albums = try await SubsonicManager.shared.fetchAlbums(forArtist: artist); subsonicArtistAlbums[id] = albums; rebuildCurrentModeItems() }
-                            catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                        }; return
-                    }
-                }
-            }
-        case .subsonicAlbum(let album):
-            if expandedSubsonicAlbums.contains(album.id) { expandedSubsonicAlbums.remove(album.id) }
-            else {
-                expandedSubsonicAlbums.insert(album.id)
-                if subsonicAlbumSongs[album.id] == nil {
-                    let id = album.id; subsonicExpandTask?.cancel()
-                    subsonicExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let songs = try await SubsonicManager.shared.fetchSongs(forAlbum: album); subsonicAlbumSongs[id] = songs; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .subsonicPlaylist(let playlist):
-            if expandedSubsonicPlaylists.contains(playlist.id) { expandedSubsonicPlaylists.remove(playlist.id) }
-            else {
-                expandedSubsonicPlaylists.insert(playlist.id)
-                if subsonicPlaylistTracks[playlist.id] == nil {
-                    let id = playlist.id; subsonicExpandTask?.cancel()
-                    subsonicExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let (_, tracks) = try await SubsonicManager.shared.serverClient?.fetchPlaylist(id: id) ?? (playlist, []); subsonicPlaylistTracks[id] = tracks; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .jellyfinArtist(let artist):
-            if expandedJellyfinArtists.contains(artist.id) { expandedJellyfinArtists.remove(artist.id) }
-            else {
-                expandedJellyfinArtists.insert(artist.id)
-                if jellyfinArtistAlbums[artist.id] == nil {
-                    // Try cached albums first (instant) before falling back to network
-                    let cached = cachedJellyfinAlbums.filter { $0.artistId == artist.id }
-                    if !cached.isEmpty {
-                        jellyfinArtistAlbums[artist.id] = cached
-                    } else {
-                        let id = artist.id; jellyfinExpandTask?.cancel()
-                        jellyfinExpandTask = Task.detached { @MainActor [weak self] in
-                            guard let self = self else { return }
-                            do { let albums = try await JellyfinManager.shared.fetchAlbums(forArtist: artist); jellyfinArtistAlbums[id] = albums; rebuildCurrentModeItems() }
-                            catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                        }; return
-                    }
-                }
-            }
-        case .jellyfinAlbum(let album):
-            if expandedJellyfinAlbums.contains(album.id) { expandedJellyfinAlbums.remove(album.id) }
-            else {
-                expandedJellyfinAlbums.insert(album.id)
-                if jellyfinAlbumSongs[album.id] == nil {
-                    let id = album.id; jellyfinExpandTask?.cancel()
-                    jellyfinExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let songs = try await JellyfinManager.shared.fetchSongs(forAlbum: album); jellyfinAlbumSongs[id] = songs; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .jellyfinPlaylist(let playlist):
-            if expandedJellyfinPlaylists.contains(playlist.id) { expandedJellyfinPlaylists.remove(playlist.id) }
-            else {
-                expandedJellyfinPlaylists.insert(playlist.id)
-                if jellyfinPlaylistTracks[playlist.id] == nil {
-                    let id = playlist.id; jellyfinExpandTask?.cancel()
-                    jellyfinExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let (_, tracks) = try await JellyfinManager.shared.serverClient?.fetchPlaylist(id: id) ?? (playlist, []); jellyfinPlaylistTracks[id] = tracks; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .jellyfinShow(let show):
-            if expandedJellyfinShows.contains(show.id) { expandedJellyfinShows.remove(show.id) }
-            else {
-                expandedJellyfinShows.insert(show.id)
-                if jellyfinShowSeasons[show.id] == nil {
-                    let id = show.id; jellyfinExpandTask?.cancel()
-                    jellyfinExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let seasons = try await JellyfinManager.shared.fetchSeasons(forShow: show); jellyfinShowSeasons[id] = seasons; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { expandedJellyfinShows.remove(id); rebuildCurrentModeItems(); NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .jellyfinSeason(let season):
-            if expandedJellyfinSeasons.contains(season.id) { expandedJellyfinSeasons.remove(season.id) }
-            else {
-                expandedJellyfinSeasons.insert(season.id)
-                if jellyfinSeasonEpisodes[season.id] == nil {
-                    let id = season.id; jellyfinExpandTask?.cancel()
-                    jellyfinExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let episodes = try await JellyfinManager.shared.fetchEpisodes(forSeason: season); jellyfinSeasonEpisodes[id] = episodes; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { expandedJellyfinSeasons.remove(id); rebuildCurrentModeItems(); NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .embyArtist(let artist):
-            if expandedEmbyArtists.contains(artist.id) { expandedEmbyArtists.remove(artist.id) }
-            else {
-                expandedEmbyArtists.insert(artist.id)
-                if embyArtistAlbums[artist.id] == nil {
-                    let cached = cachedEmbyAlbums.filter { $0.artistId == artist.id }
-                    if !cached.isEmpty {
-                        embyArtistAlbums[artist.id] = cached
-                    } else {
-                        let id = artist.id; embyExpandTask?.cancel()
-                        embyExpandTask = Task.detached { @MainActor [weak self] in
-                            guard let self = self else { return }
-                            do { let albums = try await EmbyManager.shared.fetchAlbums(forArtist: artist); embyArtistAlbums[id] = albums; rebuildCurrentModeItems() }
-                            catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                        }; return
-                    }
-                }
-            }
-        case .embyAlbum(let album):
-            if expandedEmbyAlbums.contains(album.id) { expandedEmbyAlbums.remove(album.id) }
-            else {
-                expandedEmbyAlbums.insert(album.id)
-                if embyAlbumSongs[album.id] == nil {
-                    let id = album.id; embyExpandTask?.cancel()
-                    embyExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let songs = try await EmbyManager.shared.fetchSongs(forAlbum: album); embyAlbumSongs[id] = songs; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .embyPlaylist(let playlist):
-            if expandedEmbyPlaylists.contains(playlist.id) { expandedEmbyPlaylists.remove(playlist.id) }
-            else {
-                expandedEmbyPlaylists.insert(playlist.id)
-                if embyPlaylistTracks[playlist.id] == nil {
-                    let id = playlist.id; embyExpandTask?.cancel()
-                    embyExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let (_, tracks) = try await EmbyManager.shared.serverClient?.fetchPlaylist(id: id) ?? (playlist, []); embyPlaylistTracks[id] = tracks; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .embyShow(let show):
-            if expandedEmbyShows.contains(show.id) { expandedEmbyShows.remove(show.id) }
-            else {
-                expandedEmbyShows.insert(show.id)
-                if embyShowSeasons[show.id] == nil {
-                    let id = show.id; embyExpandTask?.cancel()
-                    embyExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let seasons = try await EmbyManager.shared.fetchSeasons(forShow: show); embyShowSeasons[id] = seasons; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { expandedEmbyShows.remove(id); rebuildCurrentModeItems(); NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .embySeason(let season):
-            if expandedEmbySeasons.contains(season.id) { expandedEmbySeasons.remove(season.id) }
-            else {
-                expandedEmbySeasons.insert(season.id)
-                if embySeasonEpisodes[season.id] == nil {
-                    let id = season.id; embyExpandTask?.cancel()
-                    embyExpandTask = Task.detached { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let episodes = try await EmbyManager.shared.fetchEpisodes(forSeason: season); embySeasonEpisodes[id] = episodes; rebuildCurrentModeItems() }
-                        catch is CancellationError { } catch where Task.isCancelled { } catch { expandedEmbySeasons.remove(id); rebuildCurrentModeItems(); NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .plexPlaylist(let playlist):
-            if expandedPlexPlaylists.contains(playlist.id) { expandedPlexPlaylists.remove(playlist.id) }
-            else {
-                expandedPlexPlaylists.insert(playlist.id)
-                if plexPlaylistTracks[playlist.id] == nil {
-                    let id = playlist.id; let smartContent = playlist.smart ? playlist.content : nil
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        do { let tracks = try await PlexManager.shared.fetchPlaylistTracks(playlistID: id, smartContent: smartContent); plexPlaylistTracks[id] = tracks; rebuildCurrentModeItems() }
-                        catch { NSLog("Failed: %@", String(describing: error).redactingSensitiveURLQueryItems) }
-                    }; return
-                }
-            }
-        case .radioFolder(let folder):
-            if folder.hasChildren {
-                if expandedRadioFolders.contains(folder.id) {
-                    expandedRadioFolders.remove(folder.id)
-                } else {
-                    expandedRadioFolders.insert(folder.id)
-                }
-            }
-        case .localPlaylist(let p):
-            let key = p.url.path
-            if expandedLocalPlaylists.contains(key) {
-                expandedLocalPlaylists.remove(key)
-                rebuildCurrentModeItems()
-            } else {
-                expandedLocalPlaylists.insert(key)
-                if localPlaylistTracks[key] == nil {
-                    let url = p.url
-                    Task.detached { [weak self] in
-                        let tracks = LibraryPlayable.tracks(inPlaylistFile: url)
-                        await MainActor.run { [weak self] in
-                            guard let self else { return }
-                            self.localPlaylistTracks[key] = tracks
-                            self.rebuildCurrentModeItems()
-                        }
-                    }
-                    return
-                }
-                rebuildCurrentModeItems()
-            }
-        case .youtubeChannel(let ch):
-            if expandedYouTubeChannels.removeValue(forKey: ch.id) == nil {
-                expandedYouTubeChannels[ch.id] = ch
-                YouTubeChannelUploads.shared.load([ch])  // rebuilds through youtubeUploadsDidChange
-                return
-            }
-        default: break
-        }
-        rebuildCurrentModeItems(); needsDisplay = true
-    }
-    
-    // MARK: - Playback
-    
     // MARK: - Art (Flow, Tiles, row thumbnails)
 
     /// A row as the Flow / Tiles views show it.
@@ -9008,14 +5096,14 @@ class ModernLibraryBrowserView: NSView {
         default:
             guard item.type.isArtItem else { return nil }
             let (cacheKey, load) = itemArtwork(for: item)
-            return .item(key: cacheKey ?? "item:\(item.id)", server: currentSource.serverId, owner: self, load: load)
+            return .item(key: cacheKey ?? "item:\(item.id)", server: model.currentSource.serverId, owner: self, load: load)
         }
     }
 
     private func playRadioStation(_ station: RadioStation) { RadioManager.shared.play(station: station) }
     private func playPlexRadioStation(_ radioType: PlexRadioType) {
         radioPlayTask?.cancel()
-        isLoading = true; startLoadingAnimation(); needsDisplay = true
+        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
         radioPlayTask = Task { @MainActor [weak self] in
             guard let self = self else { return }
             var tracks: [Track] = []
@@ -9035,18 +5123,18 @@ class ModernLibraryBrowserView: NSView {
             }
             guard !Task.isCancelled else { return }
             guard !tracks.isEmpty else {
-                self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
                 return
             }
             WindowManager.shared.audioEngine.loadTracks(tracks)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
             self.radioPlayTask = nil
         }
     }
     
     private func playSubsonicRadioStation(_ radioType: SubsonicRadioType) {
         radioPlayTask?.cancel()
-        isLoading = true; startLoadingAnimation(); needsDisplay = true
+        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
         radioPlayTask = Task { @MainActor [weak self] in
             guard let self = self else { return }
             var tracks: [Track] = []
@@ -9062,18 +5150,18 @@ class ModernLibraryBrowserView: NSView {
             }
             guard !Task.isCancelled else { return }
             guard !tracks.isEmpty else {
-                self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
                 return
             }
             WindowManager.shared.audioEngine.loadTracks(tracks)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
             self.radioPlayTask = nil
         }
     }
 
     private func playJellyfinRadioStation(_ radioType: JellyfinRadioType) {
         radioPlayTask?.cancel()
-        isLoading = true; startLoadingAnimation(); needsDisplay = true
+        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
         radioPlayTask = Task { @MainActor [weak self] in
             guard let self = self else { return }
             var tracks: [Track] = []
@@ -9089,18 +5177,18 @@ class ModernLibraryBrowserView: NSView {
             }
             guard !Task.isCancelled else { return }
             guard !tracks.isEmpty else {
-                self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
                 return
             }
             WindowManager.shared.audioEngine.loadTracks(tracks)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
             self.radioPlayTask = nil
         }
     }
 
     private func playEmbyRadioStation(_ radioType: EmbyRadioType) {
         radioPlayTask?.cancel()
-        isLoading = true; startLoadingAnimation(); needsDisplay = true
+        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
         radioPlayTask = Task { @MainActor [weak self] in
             guard let self = self else { return }
             var tracks: [Track] = []
@@ -9116,11 +5204,11 @@ class ModernLibraryBrowserView: NSView {
             }
             guard !Task.isCancelled else { return }
             guard !tracks.isEmpty else {
-                self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
                 return
             }
             WindowManager.shared.audioEngine.loadTracks(tracks)
-            self.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
+            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
             self.radioPlayTask = nil
         }
     }
@@ -9137,30 +5225,6 @@ class ModernLibraryBrowserView: NSView {
         }
     }
 
-    private func navigateToArtistFromSearch(id: String, name: String = "") {
-        let artistName = name.isEmpty ? id.replacingOccurrences(of: "local-artist-", with: "") : name
-        pendingScrollToArtistId = id
-        pendingScrollToArtistName = artistName
-        pendingScrollAttempts = 0
-        pendingArtistLoadUnfiltered = true
-        // Clear view-level artist caches to force a fresh fetch that bypasses
-        // folder/library filters (so an artist found via unfiltered search is findable).
-        cachedArtists.removeAll()
-        cachedSubsonicArtists.removeAll()
-        cachedJellyfinArtists.removeAll()
-        cachedEmbyArtists.removeAll()
-        // Switch first so the page offset is computed under the Artists tab's own sort.
-        browseMode = .artists
-        if case .local = currentSource,
-           let artistOffset = MediaLibraryStore.shared.artistOffset(named: artistName, sort: currentSort) {
-            localArtistPageOffset = (artistOffset / localPageSize) * localPageSize
-        }
-        selectedIndices.removeAll()
-        scrollOffset = 0
-        loadDataForCurrentMode()
-        needsDisplay = true
-    }
-
     private func handleDoubleClick(on item: LibraryBrowserItem) {
         switch item.type {
         case .track, .album, .plexPlaylist, .localTrack, .localAlbum, .localPlaylist, .localPlaylistTrack,
@@ -9168,32 +5232,32 @@ class ModernLibraryBrowserView: NSView {
              .embyTrack, .embyAlbum, .embyPlaylist, .movie, .episode, .localMovie, .localEpisode,
              .jellyfinMovie, .jellyfinEpisode, .embyMovie, .embyEpisode:
             if let playable = playable(for: item) { TrackVerb.play.run(playable) }
-        case .artist(let a): if browseMode == .search { navigateToArtistFromSearch(id: a.id, name: a.title) } else { toggleExpand(item) }
-        case .show: toggleExpand(item)
-        case .season: toggleExpand(item)
+        case .artist(let a): if model.browseMode == .search { model.navigateToArtistFromSearch(id: a.id, name: a.title) } else { model.toggleExpand(item) }
+        case .show: model.toggleExpand(item)
+        case .season: model.toggleExpand(item)
         case .header: break
-        case .localArtist(let a): if browseMode == .search { navigateToArtistFromSearch(id: item.id, name: a.name) } else { toggleExpand(item) }
-        case .localFolder: toggleExpand(item)
-        case .localShow: toggleExpand(item)
-        case .localSeason: toggleExpand(item)
-        case .subsonicArtist(let a): if browseMode == .search { navigateToArtistFromSearch(id: a.id, name: a.name) } else { toggleExpand(item) }
-        case .jellyfinArtist(let a): if browseMode == .search { navigateToArtistFromSearch(id: a.id, name: a.name) } else { toggleExpand(item) }
-        case .jellyfinShow: toggleExpand(item)
-        case .jellyfinSeason: toggleExpand(item)
-        case .embyArtist(let a): if browseMode == .search { navigateToArtistFromSearch(id: a.id, name: a.name) } else { toggleExpand(item) }
-        case .embyShow: toggleExpand(item)
-        case .embySeason: toggleExpand(item)
+        case .localArtist(let a): if model.browseMode == .search { model.navigateToArtistFromSearch(id: item.id, name: a.name) } else { model.toggleExpand(item) }
+        case .localFolder: model.toggleExpand(item)
+        case .localShow: model.toggleExpand(item)
+        case .localSeason: model.toggleExpand(item)
+        case .subsonicArtist(let a): if model.browseMode == .search { model.navigateToArtistFromSearch(id: a.id, name: a.name) } else { model.toggleExpand(item) }
+        case .jellyfinArtist(let a): if model.browseMode == .search { model.navigateToArtistFromSearch(id: a.id, name: a.name) } else { model.toggleExpand(item) }
+        case .jellyfinShow: model.toggleExpand(item)
+        case .jellyfinSeason: model.toggleExpand(item)
+        case .embyArtist(let a): if model.browseMode == .search { model.navigateToArtistFromSearch(id: a.id, name: a.name) } else { model.toggleExpand(item) }
+        case .embyShow: model.toggleExpand(item)
+        case .embySeason: model.toggleExpand(item)
         case .radioStation(let s): playRadioStation(s)
         case .radioFolder(let folder):
             if folder.hasChildren {
-                toggleExpand(item)
+                model.toggleExpand(item)
             }
         case .youtubeChannel(let channel):
             // A search result not yet subscribed: double-click / Enter subscribes it.
             if YouTubeManager.shared.isSubscribed(channel) {
-                toggleExpand(item)
+                model.toggleExpand(item)
             } else {
-                youtubeSearch.subscribe(to: channel)
+                model.youtubeSearch.subscribe(to: channel)
             }
         case .youtubeVideo(let video):
             youtubeVideoActions.activate(video, in: self)
@@ -9214,410 +5278,3 @@ extension ModernLibraryBrowserView {
     }
 }
 
-// MARK: - Column Configuration
-
-private struct ModernBrowserColumn {
-    let id: String
-    let title: String
-    let minWidth: CGFloat
-    
-    // Original columns
-    static let trackNumber = ModernBrowserColumn(id: "trackNum", title: "#", minWidth: 30)
-    static let title = ModernBrowserColumn(id: "title", title: "Title", minWidth: 120)
-    static let artist = ModernBrowserColumn(id: "artist", title: "Artist", minWidth: 100)
-    static let album = ModernBrowserColumn(id: "album", title: "Album", minWidth: 100)
-    static let year = ModernBrowserColumn(id: "year", title: "Year", minWidth: 45)
-    static let genre = ModernBrowserColumn(id: "genre", title: "Genre", minWidth: 80)
-    static let duration = ModernBrowserColumn(id: "duration", title: "Time", minWidth: 50)
-    static let bitrate = ModernBrowserColumn(id: "bitrate", title: "Bitrate", minWidth: 55)
-    static let size = ModernBrowserColumn(id: "size", title: "Size", minWidth: 55)
-    static let rating = ModernBrowserColumn(id: "rating", title: "Rating", minWidth: 70)
-    static let playCount = ModernBrowserColumn(id: "plays", title: "Plays", minWidth: 45)
-    static let albums = ModernBrowserColumn(id: "albums", title: "Albums", minWidth: 55)
-    
-    // Additional columns (hidden by default)
-    static let discNumber = ModernBrowserColumn(id: "discNum", title: "Disc", minWidth: 35)
-    static let albumArtist = ModernBrowserColumn(id: "albumArtist", title: "Album Artist", minWidth: 100)
-    static let sampleRate = ModernBrowserColumn(id: "sampleRate", title: "Sample Rate", minWidth: 60)
-    static let channels = ModernBrowserColumn(id: "channels", title: "Channels", minWidth: 50)
-    static let dateAdded = ModernBrowserColumn(id: "dateAdded", title: "Date Added", minWidth: 80)
-    static let lastPlayed = ModernBrowserColumn(id: "lastPlayed", title: "Last Played", minWidth: 80)
-    static let youtubeDate = ModernBrowserColumn(id: "youtubeDate", title: "Date", minWidth: 70)
-    /// Square video thumbnail, drawn as an image rather than text (`drawColumnRow`).
-    static let thumbnail = ModernBrowserColumn(id: "thumbnail", title: "Art", minWidth: 28)
-    static let filePath = ModernBrowserColumn(id: "path", title: "Path", minWidth: 150)
-    
-    // All available columns (superset for each view type)
-    static let allTrackColumns: [ModernBrowserColumn] = [
-        .trackNumber, .title, .artist, .album, .albumArtist, .year, .genre, .duration,
-        .bitrate, .sampleRate, .channels, .size, .rating, .playCount, .discNumber,
-        .dateAdded, .lastPlayed, .filePath
-    ]
-    static let allAlbumColumns: [ModernBrowserColumn] = [.title, .year, .genre, .duration, .rating]
-    static let allArtistColumns: [ModernBrowserColumn] = [.title, .rating, .albums, .genre]
-    
-    // Default visible column IDs (backwards-compatible with the original set)
-    static let defaultTrackColumnIds: [String] = ["trackNum", "title", "artist", "album", "rating", "year", "genre", "duration", "bitrate", "size", "plays"]
-    static let defaultAlbumColumnIds: [String] = ["title", "year", "genre", "duration", "rating"]
-    static let defaultArtistColumnIds: [String] = ["title", "rating", "albums", "genre"]
-    static let internetRadioColumns: [ModernBrowserColumn] = [.title, .genre, .rating]
-    // YouTube channel uploads (Channels view and Search previews): thumbnail + title +
-    // (approximate) date + resizable time.
-    static let youtubeColumns: [ModernBrowserColumn] = [.thumbnail, .title, .youtubeDate, .duration]
-    static let defaultYouTubeColumnIds: [String] = ["thumbnail", "title", "youtubeDate", "duration"]
-    
-    // Legacy arrays kept for backwards compatibility with sort lookup
-    static let trackColumns: [ModernBrowserColumn] = [.trackNumber, .title, .artist, .album, .rating, .year, .genre, .duration, .bitrate, .size, .playCount]
-    static let albumColumns: [ModernBrowserColumn] = [.title, .year, .genre, .duration, .rating]
-    static let artistColumns: [ModernBrowserColumn] = [.title, .rating, .albums, .genre]
-    
-    static func findColumn(id: String) -> ModernBrowserColumn? {
-        if let c = allTrackColumns.first(where: { $0.id == id }) { return c }
-        if let c = allAlbumColumns.first(where: { $0.id == id }) { return c }
-        if let c = allArtistColumns.first(where: { $0.id == id }) { return c }
-        if let c = internetRadioColumns.first(where: { $0.id == id }) { return c }
-        if let c = youtubeColumns.first(where: { $0.id == id }) { return c }
-        return nil
-    }
-}
-
-// MARK: - Column Value Extraction
-
-fileprivate extension LibraryBrowserItem {
-
-    func columnValue(for column: ModernBrowserColumn) -> String {
-        if column.id == "title" { return title }
-        switch type {
-        case .track(let t): return plexTrackValue(t, for: column)
-        case .subsonicTrack(let s): return subsonicTrackValue(s, for: column)
-        case .jellyfinTrack(let s): return jellyfinTrackValue(s, for: column)
-        case .embyTrack(let s): return embyTrackValue(s, for: column)
-        case .localTrack(let t): return localTrackValue(t, for: column)
-        case .album(let a): return plexAlbumValue(a, for: column)
-        case .subsonicAlbum(let a): return subsonicAlbumValue(a, for: column)
-        case .jellyfinAlbum(let a): return jellyfinAlbumValue(a, for: column)
-        case .embyAlbum(let a): return embyAlbumValue(a, for: column)
-        case .localAlbum(let a): return localAlbumValue(a, for: column)
-        case .artist(let a):
-            if column.id == "albums",
-               let info,
-               let first = info.split(separator: " ").first,
-               let count = Int(first) {
-                return String(count)
-            }
-            return plexArtistValue(a, for: column)
-        case .subsonicArtist(let a):
-            if column.id == "albums" { return String(a.albumCount) }
-            if column.id == "rating" { return a.starred != nil ? "★★★★★" : "" }
-            return ""
-        case .jellyfinArtist(let a):
-            if column.id == "albums" { return String(a.albumCount) }
-            if column.id == "rating" { return a.isFavorite ? "★★★★★" : "" }
-            if column.id == "genre" { return a.genre ?? "" }
-            return ""
-        case .embyArtist(let a):
-            if column.id == "albums" { return String(a.albumCount) }
-            if column.id == "rating" { return a.isFavorite ? "★★★★★" : "" }
-            if column.id == "genre" { return a.genre ?? "" }
-            return ""
-        case .localArtist(let a):
-            if column.id == "albums" {
-                if !a.albums.isEmpty { return String(a.albums.count) }
-                if let info,
-                   let first = info.split(separator: " ").first,
-                   let count = Int(first) { return String(count) }
-                return ""
-            }
-            if column.id == "rating" {
-                guard let r = MediaLibrary.shared.artistRating(for: a.id), r > 0 else { return "" }
-                let stars = r / 2; return String(repeating: "★", count: stars) + String(repeating: "☆", count: 5 - stars)
-            }
-            return ""
-        case .radioStation(let station):
-            switch column.id {
-            case "genre":
-                return RadioManager.shared.normalizedGenre(for: station)
-            case "rating":
-                return Self.formatStarRating(RadioManager.shared.rating(for: station))
-            default:
-                return ""
-            }
-        case .youtubeVideo(let video):
-            if column.id == "duration" {
-                return video.formattedDuration ?? ""
-            }
-            if column.id == "youtubeDate" {
-                return video.formattedDate ?? ""
-            }
-            return ""
-        default: return ""
-        }
-    }
-
-    private func plexTrackValue(_ track: PlexTrack, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "trackNum":
-            if let disc = track.parentIndex, disc > 1, let num = track.index { return "\(disc)-\(num)" }
-            return track.index.map { String($0) } ?? ""
-        case "artist": return track.grandparentTitle ?? ""
-        case "album": return track.parentTitle ?? ""
-        case "albumArtist": return track.grandparentTitle ?? ""
-        case "year": return track.parentYear.map { String($0) } ?? ""
-        case "genre": return track.genre ?? ""
-        case "duration": return track.formattedDuration
-        case "bitrate": return track.media.first?.bitrate.map { "\($0)k" } ?? ""
-        case "sampleRate": return track.media.first?.audioSampleRate.map { Self.formatSampleRate($0) } ?? ""
-        case "channels": return track.media.first?.audioChannels.map { Self.formatChannels($0) } ?? ""
-        case "size": return Self.formatFileSize(track.media.first?.parts.first?.size)
-        case "rating": return Self.formatRating(track.userRating)
-        case "plays": return track.ratingCount.map { String($0) } ?? ""
-        case "discNum": return track.parentIndex.map { String($0) } ?? ""
-        case "dateAdded": return track.addedAt.map { Self.formatDate($0) } ?? ""
-        case "lastPlayed": return ""  // Not available in Plex API
-        case "path": return track.media.first?.parts.first?.file ?? ""
-        default: return ""
-        }
-    }
-    
-    private func subsonicTrackValue(_ song: SubsonicSong, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "trackNum":
-            if let disc = song.discNumber, disc > 1, let num = song.track { return "\(disc)-\(num)" }
-            return song.track.map { String($0) } ?? ""
-        case "artist": return song.artist ?? ""
-        case "album": return song.album ?? ""
-        case "albumArtist": return song.albumArtist ?? song.artist ?? ""
-        case "year": return song.year.map { String($0) } ?? ""
-        case "genre": return song.genre ?? ""
-        case "duration": return song.formattedDuration
-        case "bitrate": return song.bitRate.map { "\($0)k" } ?? ""
-        case "sampleRate": return song.samplingRate.map { Self.formatSampleRate($0) } ?? ""
-        case "channels": return ""  // Not available in Subsonic API
-        case "size": return Self.formatFileSize(song.size)
-        case "rating":
-            if let userRating = song.userRating, userRating > 0 {
-                return Self.formatRating(Double(userRating) * 2.0)
-            }
-            return song.starred != nil ? "★★★★★" : Self.formatRating(nil)
-        case "plays": return song.playCount.map { String($0) } ?? ""
-        case "discNum": return song.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return song.created.map { Self.formatDate($0) } ?? ""
-        case "lastPlayed": return ""  // Not available in Subsonic API
-        case "path": return song.path ?? ""
-        default: return ""
-        }
-    }
-    
-    private func localTrackValue(_ track: LibraryTrack, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "trackNum":
-            if let disc = track.discNumber, disc > 1, let num = track.trackNumber { return "\(disc)-\(num)" }
-            return track.trackNumber.map { String($0) } ?? ""
-        case "artist": return track.artist ?? ""
-        case "album": return track.album ?? ""
-        case "albumArtist": return track.albumArtist ?? track.artist ?? ""
-        case "year": return track.year.map { String($0) } ?? ""
-        case "genre": return track.genre ?? ""
-        case "duration": return track.formattedDuration
-        case "bitrate": return track.bitrate.map { "\($0)k" } ?? ""
-        case "sampleRate": return track.sampleRate.map { Self.formatSampleRate($0) } ?? ""
-        case "channels": return track.channels.map { Self.formatChannels($0) } ?? ""
-        case "size": return Self.formatFileSize(track.fileSize)
-        case "rating": return Self.formatRating(track.rating.map { Double($0) })
-        case "plays": return track.playCount > 0 ? String(track.playCount) : ""
-        case "discNum": return track.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return Self.formatDate(track.dateAdded)
-        case "lastPlayed": return track.lastPlayed.map { Self.formatDate($0) } ?? ""
-        case "path": return track.url.path
-        default: return ""
-        }
-    }
-    
-    private func plexAlbumValue(_ album: PlexAlbum, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "genre": return album.genre ?? ""
-        case "duration": return album.formattedDuration
-        default: return ""
-        }
-    }
-    
-    private func subsonicAlbumValue(_ album: SubsonicAlbum, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "genre": return album.genre ?? ""
-        case "duration": return album.formattedDuration
-        case "rating": return album.starred != nil ? "★★★★★" : ""
-        default: return ""
-        }
-    }
-    
-    private func jellyfinTrackValue(_ song: JellyfinSong, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "trackNum":
-            if let disc = song.discNumber, disc > 1, let num = song.track { return "\(disc)-\(num)" }
-            return song.track.map { String($0) } ?? ""
-        case "artist": return song.artist ?? ""
-        case "album": return song.album ?? ""
-        case "albumArtist": return song.albumArtist ?? song.artist ?? ""
-        case "year": return song.year.map { String($0) } ?? ""
-        case "genre": return song.genre ?? ""
-        case "duration": return song.formattedDuration
-        case "bitrate": return song.bitRate.map { "\($0)k" } ?? ""
-        case "sampleRate": return song.sampleRate.map { Self.formatSampleRate($0) } ?? ""
-        case "channels": return song.channels.map { Self.formatChannels($0) } ?? ""
-        case "size": return Self.formatFileSize(song.size)
-        case "rating":
-            if let userRating = song.userRating, userRating > 0 {
-                let stars = userRating / 20
-                let empty = 5 - stars
-                return String(repeating: "★", count: max(0, stars)) + String(repeating: "☆", count: max(0, empty))
-            }
-            return song.isFavorite ? "★" : ""
-        case "plays": return song.playCount.map { String($0) } ?? ""
-        case "discNum": return song.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return song.created.map { Self.formatDate($0) } ?? ""
-        case "lastPlayed": return ""
-        case "path": return song.path ?? ""
-        default: return ""
-        }
-    }
-    
-    private func jellyfinAlbumValue(_ album: JellyfinAlbum, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "genre": return album.genre ?? ""
-        case "duration": return album.formattedDuration
-        case "rating": return album.isFavorite ? "★★★★★" : ""
-        default: return ""
-        }
-    }
-
-    private func embyTrackValue(_ song: EmbySong, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "trackNum":
-            if let disc = song.discNumber, disc > 1, let num = song.track { return "\(disc)-\(num)" }
-            return song.track.map { String($0) } ?? ""
-        case "artist": return song.artist ?? ""
-        case "album": return song.album ?? ""
-        case "albumArtist": return song.albumArtist ?? song.artist ?? ""
-        case "year": return song.year.map { String($0) } ?? ""
-        case "genre": return song.genre ?? ""
-        case "duration": return song.formattedDuration
-        case "bitrate": return song.bitRate.map { "\($0)k" } ?? ""
-        case "sampleRate": return song.sampleRate.map { Self.formatSampleRate($0) } ?? ""
-        case "channels": return song.channels.map { Self.formatChannels($0) } ?? ""
-        case "size": return Self.formatFileSize(song.size)
-        case "rating":
-            if let userRating = song.userRating, userRating > 0 {
-                let stars = userRating / 20
-                let empty = 5 - stars
-                return String(repeating: "★", count: max(0, stars)) + String(repeating: "☆", count: max(0, empty))
-            }
-            return song.isFavorite ? "★" : ""
-        case "plays": return song.playCount.map { String($0) } ?? ""
-        case "discNum": return song.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return song.created.map { Self.formatDate($0) } ?? ""
-        case "lastPlayed": return ""
-        case "path": return song.path ?? ""
-        default: return ""
-        }
-    }
-
-    private func embyAlbumValue(_ album: EmbyAlbum, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "genre": return album.genre ?? ""
-        case "duration": return album.formattedDuration
-        case "rating": return album.isFavorite ? "★★★★★" : ""
-        default: return ""
-        }
-    }
-
-    private func localAlbumValue(_ album: Album, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "duration": return album.formattedDuration
-        case "rating":
-            guard let r = MediaLibrary.shared.albumRating(for: album.id), r > 0 else { return "" }
-            let stars = r / 2; return String(repeating: "★", count: stars) + String(repeating: "☆", count: 5 - stars)
-        default: return ""
-        }
-    }
-    
-    private func plexArtistValue(_ artist: PlexArtist, for column: ModernBrowserColumn) -> String {
-        switch column.id {
-        case "albums": return String(artist.albumCount)
-        case "genre": return artist.genre ?? ""
-        default: return ""
-        }
-    }
-    
-    static func formatFileSize(_ bytes: Int64?) -> String {
-        guard let bytes = bytes, bytes > 0 else { return "" }
-        let mb = Double(bytes) / (1024.0 * 1024.0)
-        if mb >= 1000 { return String(format: "%.1fG", mb / 1024.0) }
-        return String(format: "%.1fM", mb)
-    }
-    
-    private static func formatRating(_ rating: Double?) -> String {
-        let stars = rating.map { max(0, Int($0 / 2.0)) } ?? 0
-        return String(repeating: "★", count: stars) + String(repeating: "☆", count: 5 - stars)
-    }
-
-    private static func formatStarRating(_ rating: Int) -> String {
-        let clamped = min(5, max(0, rating))
-        return String(repeating: "★", count: clamped) + String(repeating: "☆", count: 5 - clamped)
-    }
-    
-    static func formatSampleRate(_ hz: Int) -> String {
-        let khz = Double(hz) / 1000.0
-        if khz == Double(Int(khz)) { return "\(Int(khz))k" }
-        return String(format: "%.1fk", khz)
-    }
-    
-    static func formatChannels(_ count: Int) -> String {
-        switch count {
-        case 1: return "Mono"
-        case 2: return "Stereo"
-        case 6: return "5.1"
-        case 8: return "7.1"
-        default: return "\(count)ch"
-        }
-    }
-    
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-    
-    static func formatDate(_ date: Date) -> String {
-        dateFormatter.string(from: date)
-    }
-    
-    /// Returns the raw sortable date for a column, if applicable
-    func columnDateValue(for column: ModernBrowserColumn) -> Date? {
-        switch column.id {
-        case "dateAdded":
-            switch type {
-            case .localTrack(let t): return t.dateAdded
-            case .track(let t): return t.addedAt
-            case .subsonicTrack(let s): return s.created
-            case .jellyfinTrack(let s): return s.created
-            case .embyTrack(let s): return s.created
-            default: return nil
-            }
-        case "lastPlayed":
-            switch type {
-            case .localTrack(let t): return t.lastPlayed
-            default: return nil
-            }
-        case "youtubeDate":
-            if case .youtubeVideo(let video) = type { return video.publishedAt }
-            return nil
-        default: return nil
-        }
-    }
-}

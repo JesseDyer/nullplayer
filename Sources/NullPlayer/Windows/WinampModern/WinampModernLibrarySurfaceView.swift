@@ -39,8 +39,9 @@ final class WinampModernLibrarySurfaceView: WinampModernLibrarySurface {
     }
 
     var browseModeRawValue: Int {
-        get { browser.browseModeRawValue }
-        set { browser.browseModeRawValue = newValue }
+        // Session save and restore run on the main thread.
+        get { MainActor.assumeIsolated { browser.model.browseMode.rawValue } }
+        set { MainActor.assumeIsolated { browser.model.restoreBrowseMode(rawValue: newValue) } }
     }
 
     func reloadData() {

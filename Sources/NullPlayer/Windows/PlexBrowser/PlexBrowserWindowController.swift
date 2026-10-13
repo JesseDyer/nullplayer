@@ -110,7 +110,7 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
                         NSLog("PlexBrowserWindowController: No servers cached, refreshing...")
                         try await plexManager.refreshServers()
                         await MainActor.run {
-                            self.browserView.reloadData()
+                            self.browserView.model.reloadData()
                         }
                     } catch {
                         NSLog("PlexBrowserWindowController: Failed to refresh servers: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
@@ -256,13 +256,13 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
     }
     
     func reloadData() {
-        browserView.reloadData()
+        browserView.model.reloadData()
     }
     
     /// Current browse mode raw value for state save/restore
     var browseModeRawValue: Int {
-        get { browserView.browseModeRawValue }
-        set { browserView.browseModeRawValue = newValue }
+        get { browserView.model.browseMode.rawValue }
+        set { browserView.model.restoreBrowseMode(rawValue: newValue) }
     }
     
     /// Show the Plex link sheet
@@ -272,7 +272,7 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
         let linkSheet = PlexLinkSheet()
         linkSheet.showAsSheet(from: window) { [weak self] success in
             if success {
-                self?.browserView.reloadData()
+                self?.browserView.model.reloadData()
             }
         }
     }
