@@ -88,7 +88,7 @@ extension LibraryBrowserModel {
         }
         switch sortColumn.id {
         // Date columns: sort by raw date, not formatted string
-        case "dateAdded", "lastPlayed", "youtubeDate":
+        case .dateAdded, .lastPlayed, .youtubeDate:
             return ordered(a.columnDateValue(for: sortColumn) ?? .distantPast, b.columnDateValue(for: sortColumn) ?? .distantPast)
         default:
             break
@@ -96,20 +96,20 @@ extension LibraryBrowserModel {
         let aVal = a.columnValue(for: sortColumn)
         let bVal = b.columnValue(for: sortColumn)
         switch sortColumn.id {
-        case "trackNum", "year", "plays", "albums", "discNum":
+        case .trackNum, .year, .plays, .albums, .discNum:
             // "2-5" (disc-track) sorts by its track number
             let number = { (value: String) in Int(value.components(separatedBy: "-").last ?? value) ?? 0 }
             return ordered(number(aVal), number(bVal))
-        case "channels":
+        case .channels:
             return ordered(LibraryColumnVisibility.channelSortValue(aVal), LibraryColumnVisibility.channelSortValue(bVal))
-        case "duration":
+        case .duration:
             return ordered(Self.parseDuration(aVal), Self.parseDuration(bVal))
-        case "bitrate", "sampleRate":
+        case .bitrate, .sampleRate:
             let number = { (value: String) in Double(value.replacingOccurrences(of: "k", with: "")) ?? 0 }
             return ordered(number(aVal), number(bVal))
-        case "size":
+        case .size:
             return ordered(Self.parseSize(aVal), Self.parseSize(bVal))
-        case "rating":
+        case .rating:
             return ordered(aVal.filter { $0 == "★" }.count, bVal.filter { $0 == "★" }.count)
         default:
             return compareNameStrings(aVal, bVal, ascending: ascending)
@@ -177,14 +177,14 @@ extension LibraryBrowserModel {
     private func compareInternetRadioItems(_ lhs: LibraryBrowserItem, _ rhs: LibraryBrowserItem,
                                            sortColumn: LibraryBrowserColumn, ratings: [String: Int]) -> ComparisonResult {
         switch sortColumn.id {
-        case "rating":
+        case .rating:
             let lhsRating = ratings[lhs.id] ?? 0
             let rhsRating = ratings[rhs.id] ?? 0
             if lhsRating != rhsRating {
                 return lhsRating < rhsRating ? .orderedAscending : .orderedDescending
             }
             return LibraryTextSorter.compare(lhs.title, rhs.title, ignoreLeadingArticles: true)
-        case "genre":
+        case .genre:
             let genreComparison = LibraryTextSorter.compare(lhs.columnValue(for: sortColumn), rhs.columnValue(for: sortColumn), ignoreLeadingArticles: true)
             if genreComparison != .orderedSame { return genreComparison }
             return LibraryTextSorter.compare(lhs.title, rhs.title, ignoreLeadingArticles: true)

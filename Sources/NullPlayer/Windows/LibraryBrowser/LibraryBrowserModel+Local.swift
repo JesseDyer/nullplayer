@@ -69,8 +69,18 @@ extension LibraryBrowserModel {
         guard isLocalSource else { return }
         clearLocalCachedData()
         displayItems.removeAll()
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         loadLocalData()
+    }
+
+    /// After adding videos: open the local Movies tab, so they are in view.
+    func showLocalMovies() {
+        if !isLocalSource { currentSource = .local }
+        if browseMode != .movies {
+            browseMode = .movies
+            rowsReplaced()
+        }
+        loadDataForCurrentMode()
     }
 
     // MARK: - Artists and Albums (paged)

@@ -3,32 +3,39 @@ import NullPlayerCore
 
 /// A column of the library browser's list, shared by the classic and modern views.
 struct LibraryBrowserColumn {
-    let id: String
+    /// A column's identity. The raw value is what the visible-column, width and sort settings save.
+    enum ID: String {
+        case trackNum, title, artist, album, albumArtist, year, genre, duration, bitrate, sampleRate
+        case channels, size, rating, plays, albums, discNum, dateAdded, lastPlayed, youtubeDate
+        case thumbnail, path
+    }
+
+    let id: ID
     let title: String
     let minWidth: CGFloat
 
-    static let trackNumber = LibraryBrowserColumn(id: "trackNum", title: "#", minWidth: 30)
-    static let title = LibraryBrowserColumn(id: "title", title: "Title", minWidth: 120)
-    static let artist = LibraryBrowserColumn(id: "artist", title: "Artist", minWidth: 100)
-    static let album = LibraryBrowserColumn(id: "album", title: "Album", minWidth: 100)
-    static let year = LibraryBrowserColumn(id: "year", title: "Year", minWidth: 45)
-    static let genre = LibraryBrowserColumn(id: "genre", title: "Genre", minWidth: 80)
-    static let duration = LibraryBrowserColumn(id: "duration", title: "Time", minWidth: 50)
-    static let bitrate = LibraryBrowserColumn(id: "bitrate", title: "Bitrate", minWidth: 55)
-    static let size = LibraryBrowserColumn(id: "size", title: "Size", minWidth: 55)
-    static let rating = LibraryBrowserColumn(id: "rating", title: "Rating", minWidth: 70)
-    static let playCount = LibraryBrowserColumn(id: "plays", title: "Plays", minWidth: 45)
-    static let albums = LibraryBrowserColumn(id: "albums", title: "Albums", minWidth: 55)
-    static let discNumber = LibraryBrowserColumn(id: "discNum", title: "Disc", minWidth: 35)
-    static let albumArtist = LibraryBrowserColumn(id: "albumArtist", title: "Album Artist", minWidth: 100)
-    static let sampleRate = LibraryBrowserColumn(id: "sampleRate", title: "Sample Rate", minWidth: 60)
-    static let channels = LibraryBrowserColumn(id: "channels", title: "Channels", minWidth: 50)
-    static let dateAdded = LibraryBrowserColumn(id: "dateAdded", title: "Date Added", minWidth: 80)
-    static let lastPlayed = LibraryBrowserColumn(id: "lastPlayed", title: "Last Played", minWidth: 80)
-    static let youtubeDate = LibraryBrowserColumn(id: "youtubeDate", title: "Date", minWidth: 70)
+    static let trackNumber = LibraryBrowserColumn(id: .trackNum, title: "#", minWidth: 30)
+    static let title = LibraryBrowserColumn(id: .title, title: "Title", minWidth: 120)
+    static let artist = LibraryBrowserColumn(id: .artist, title: "Artist", minWidth: 100)
+    static let album = LibraryBrowserColumn(id: .album, title: "Album", minWidth: 100)
+    static let year = LibraryBrowserColumn(id: .year, title: "Year", minWidth: 45)
+    static let genre = LibraryBrowserColumn(id: .genre, title: "Genre", minWidth: 80)
+    static let duration = LibraryBrowserColumn(id: .duration, title: "Time", minWidth: 50)
+    static let bitrate = LibraryBrowserColumn(id: .bitrate, title: "Bitrate", minWidth: 55)
+    static let size = LibraryBrowserColumn(id: .size, title: "Size", minWidth: 55)
+    static let rating = LibraryBrowserColumn(id: .rating, title: "Rating", minWidth: 70)
+    static let playCount = LibraryBrowserColumn(id: .plays, title: "Plays", minWidth: 45)
+    static let albums = LibraryBrowserColumn(id: .albums, title: "Albums", minWidth: 55)
+    static let discNumber = LibraryBrowserColumn(id: .discNum, title: "Disc", minWidth: 35)
+    static let albumArtist = LibraryBrowserColumn(id: .albumArtist, title: "Album Artist", minWidth: 100)
+    static let sampleRate = LibraryBrowserColumn(id: .sampleRate, title: "Sample Rate", minWidth: 60)
+    static let channels = LibraryBrowserColumn(id: .channels, title: "Channels", minWidth: 50)
+    static let dateAdded = LibraryBrowserColumn(id: .dateAdded, title: "Date Added", minWidth: 80)
+    static let lastPlayed = LibraryBrowserColumn(id: .lastPlayed, title: "Last Played", minWidth: 80)
+    static let youtubeDate = LibraryBrowserColumn(id: .youtubeDate, title: "Date", minWidth: 70)
     /// Square video thumbnail, drawn as an image rather than text (`drawColumnRow`).
-    static let thumbnail = LibraryBrowserColumn(id: "thumbnail", title: "Art", minWidth: 28)
-    static let filePath = LibraryBrowserColumn(id: "path", title: "Path", minWidth: 150)
+    static let thumbnail = LibraryBrowserColumn(id: .thumbnail, title: "Art", minWidth: 28)
+    static let filePath = LibraryBrowserColumn(id: .path, title: "Path", minWidth: 150)
 
     static let allTrackColumns: [LibraryBrowserColumn] = [
         .trackNumber, .title, .artist, .album, .albumArtist, .year, .genre, .duration,
@@ -38,16 +45,16 @@ struct LibraryBrowserColumn {
     static let allAlbumColumns: [LibraryBrowserColumn] = [.title, .year, .genre, .duration, .rating]
     static let allArtistColumns: [LibraryBrowserColumn] = [.title, .rating, .albums, .genre]
 
-    static let defaultTrackColumnIds = ["trackNum", "title", "artist", "album", "rating", "year", "genre", "duration", "bitrate", "size", "plays"]
-    static let defaultAlbumColumnIds = ["title", "year", "genre", "duration", "rating"]
-    static let defaultArtistColumnIds = ["title", "rating", "albums", "genre"]
+    static let defaultTrackColumnIds: [String] = [ID.trackNum, .title, .artist, .album, .rating, .year, .genre, .duration, .bitrate, .size, .plays].map(\.rawValue)
+    static let defaultAlbumColumnIds: [String] = [ID.title, .year, .genre, .duration, .rating].map(\.rawValue)
+    static let defaultArtistColumnIds: [String] = [ID.title, .rating, .albums, .genre].map(\.rawValue)
 
     /// Fixed columns shown for the Internet Radio source.
     static let internetRadioColumns: [LibraryBrowserColumn] = [.title, .genre, .rating]
 
     /// Fixed columns shown for YouTube channel uploads (not user-hideable).
     static let youtubeColumns: [LibraryBrowserColumn] = [.thumbnail, .title, .youtubeDate, .duration]
-    static let defaultYouTubeColumnIds = ["thumbnail", "title", "youtubeDate", "duration"]
+    static let defaultYouTubeColumnIds: [String] = [ID.thumbnail, .title, .youtubeDate, .duration].map(\.rawValue)
 
     static func all(for group: LibraryColumnVisibilityGroup) -> [LibraryBrowserColumn] {
         switch group {
@@ -68,7 +75,7 @@ struct LibraryBrowserColumn {
     }
 
     /// Find a column by ID across all column types
-    static func findColumn(id: String) -> LibraryBrowserColumn? {
+    static func findColumn(id: ID) -> LibraryBrowserColumn? {
         for columns in [allTrackColumns, allAlbumColumns, allArtistColumns, internetRadioColumns, youtubeColumns] {
             if let column = columns.first(where: { $0.id == id }) { return column }
         }
@@ -83,7 +90,7 @@ extension LibraryBrowserItem {
     /// The text a row shows in a column.
     func columnValue(for column: LibraryBrowserColumn) -> String {
         // Title column always uses the display item's title (already set correctly on creation)
-        if column.id == "title" { return title }
+        if column.id == .title { return title }
 
         switch type {
         case .track(let track): return Self.plexTrackValue(track, for: column)
@@ -97,10 +104,10 @@ extension LibraryBrowserItem {
         case .jellyfinAlbum(let album): return Self.jellyfinAlbumValue(album, for: column)
         case .embyAlbum(let album): return Self.embyAlbumValue(album, for: column)
         case .artist(let artist):
-            if column.id == "albums", let count = infoCount { return String(count) }
+            if column.id == .albums, let count = infoCount { return String(count) }
             switch column.id {
-            case "albums": return String(artist.albumCount)
-            case "genre": return artist.genre ?? ""
+            case .albums: return String(artist.albumCount)
+            case .genre: return artist.genre ?? ""
             default: return ""
             }
         case .subsonicArtist(let artist):
@@ -115,20 +122,20 @@ extension LibraryBrowserItem {
         case .localArtist(let artist):
             switch column.id {
             // The row's artist is a stub without albums; its count is in the info text.
-            case "albums": return artist.albums.isEmpty ? infoCount.map(String.init) ?? "" : String(artist.albums.count)
-            case "rating": return Self.formatTenPointRating(MediaLibrary.shared.artistRating(for: artist.id))
+            case .albums: return artist.albums.isEmpty ? infoCount.map(String.init) ?? "" : String(artist.albums.count)
+            case .rating: return Self.formatTenPointRating(MediaLibrary.shared.artistRating(for: artist.id))
             default: return ""
             }
         case .radioStation(let station):
             switch column.id {
-            case "genre": return RadioManager.shared.normalizedGenre(for: station)
-            case "rating": return Self.formatStarRating(RadioManager.shared.rating(for: station))
+            case .genre: return RadioManager.shared.normalizedGenre(for: station)
+            case .rating: return Self.formatStarRating(RadioManager.shared.rating(for: station))
             default: return ""
             }
         case .youtubeVideo(let video):
             switch column.id {
-            case "duration": return video.formattedDuration ?? ""
-            case "youtubeDate": return video.formattedDate ?? ""
+            case .duration: return video.formattedDuration ?? ""
+            case .youtubeDate: return video.formattedDate ?? ""
             default: return ""
             }
         default:
@@ -139,7 +146,7 @@ extension LibraryBrowserItem {
     /// Returns the raw sortable date for a column, if applicable
     func columnDateValue(for column: LibraryBrowserColumn) -> Date? {
         switch column.id {
-        case "dateAdded":
+        case .dateAdded:
             switch type {
             case .localTrack(let t): return t.dateAdded
             case .track(let t): return t.addedAt
@@ -148,10 +155,10 @@ extension LibraryBrowserItem {
             case .embyTrack(let s): return s.created
             default: return nil
             }
-        case "lastPlayed":
+        case .lastPlayed:
             if case .localTrack(let t) = type { return t.lastPlayed }
             return nil
-        case "youtubeDate":
+        case .youtubeDate:
             if case .youtubeVideo(let video) = type { return video.publishedAt }
             return nil
         default:
@@ -168,112 +175,112 @@ extension LibraryBrowserItem {
 
     private static func plexTrackValue(_ track: PlexTrack, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "trackNum": return trackNumber(disc: track.parentIndex, track: track.index)
-        case "artist": return track.grandparentTitle ?? ""
-        case "album": return track.parentTitle ?? ""
-        case "albumArtist": return track.grandparentTitle ?? ""
-        case "year": return track.parentYear.map { String($0) } ?? ""
-        case "genre": return track.genre ?? ""
-        case "duration": return track.formattedDuration
-        case "bitrate": return track.media.first?.bitrate.map { "\($0)k" } ?? ""
-        case "sampleRate": return track.media.first?.audioSampleRate.map { formatSampleRate($0) } ?? ""
-        case "channels": return track.media.first?.audioChannels.map { formatChannels($0) } ?? ""
-        case "size": return formatFileSize(track.media.first?.parts.first?.size)
-        case "rating": return formatRating(track.userRating)
-        case "plays": return track.ratingCount.map { String($0) } ?? ""
-        case "discNum": return track.parentIndex.map { String($0) } ?? ""
-        case "dateAdded": return track.addedAt.map { formatDate($0) } ?? ""
-        case "path": return track.media.first?.parts.first?.file ?? ""
+        case .trackNum: return trackNumber(disc: track.parentIndex, track: track.index)
+        case .artist: return track.grandparentTitle ?? ""
+        case .album: return track.parentTitle ?? ""
+        case .albumArtist: return track.grandparentTitle ?? ""
+        case .year: return track.parentYear.map { String($0) } ?? ""
+        case .genre: return track.genre ?? ""
+        case .duration: return track.formattedDuration
+        case .bitrate: return track.media.first?.bitrate.map { "\($0)k" } ?? ""
+        case .sampleRate: return track.media.first?.audioSampleRate.map { formatSampleRate($0) } ?? ""
+        case .channels: return track.media.first?.audioChannels.map { formatChannels($0) } ?? ""
+        case .size: return formatFileSize(track.media.first?.parts.first?.size)
+        case .rating: return formatRating(track.userRating)
+        case .plays: return track.ratingCount.map { String($0) } ?? ""
+        case .discNum: return track.parentIndex.map { String($0) } ?? ""
+        case .dateAdded: return track.addedAt.map { formatDate($0) } ?? ""
+        case .path: return track.media.first?.parts.first?.file ?? ""
         default: return ""
         }
     }
 
     private static func subsonicTrackValue(_ song: SubsonicSong, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "trackNum": return trackNumber(disc: song.discNumber, track: song.track)
-        case "artist": return song.artist ?? ""
-        case "album": return song.album ?? ""
-        case "albumArtist": return song.albumArtist ?? song.artist ?? ""
-        case "year": return song.year.map { String($0) } ?? ""
-        case "genre": return song.genre ?? ""
-        case "duration": return song.formattedDuration
-        case "bitrate": return song.bitRate.map { "\($0)k" } ?? ""
-        case "sampleRate": return song.samplingRate.map { formatSampleRate($0) } ?? ""
-        case "size": return formatFileSize(song.size)
-        case "rating":
+        case .trackNum: return trackNumber(disc: song.discNumber, track: song.track)
+        case .artist: return song.artist ?? ""
+        case .album: return song.album ?? ""
+        case .albumArtist: return song.albumArtist ?? song.artist ?? ""
+        case .year: return song.year.map { String($0) } ?? ""
+        case .genre: return song.genre ?? ""
+        case .duration: return song.formattedDuration
+        case .bitrate: return song.bitRate.map { "\($0)k" } ?? ""
+        case .sampleRate: return song.samplingRate.map { formatSampleRate($0) } ?? ""
+        case .size: return formatFileSize(song.size)
+        case .rating:
             if let userRating = song.userRating, userRating > 0 { return formatRating(Double(userRating * 2)) }
             return song.starred != nil ? favoriteGlyph : formatRating(nil)
-        case "plays": return song.playCount.map { String($0) } ?? ""
-        case "discNum": return song.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return song.created.map { formatDate($0) } ?? ""
-        case "path": return song.path ?? ""
+        case .plays: return song.playCount.map { String($0) } ?? ""
+        case .discNum: return song.discNumber.map { String($0) } ?? ""
+        case .dateAdded: return song.created.map { formatDate($0) } ?? ""
+        case .path: return song.path ?? ""
         default: return ""
         }
     }
 
     private static func localTrackValue(_ track: LibraryTrack, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "trackNum": return trackNumber(disc: track.discNumber, track: track.trackNumber)
-        case "artist": return track.artist ?? ""
-        case "album": return track.album ?? ""
-        case "albumArtist": return track.albumArtist ?? track.artist ?? ""
-        case "year": return track.year.map { String($0) } ?? ""
-        case "genre": return track.genre ?? ""
-        case "duration": return track.formattedDuration
-        case "bitrate": return track.bitrate.map { "\($0)k" } ?? ""
-        case "sampleRate": return track.sampleRate.map { formatSampleRate($0) } ?? ""
-        case "channels": return track.channels.map { formatChannels($0) } ?? ""
-        case "size": return formatFileSize(track.fileSize)
-        case "rating": return formatRating(track.rating.map { Double($0) })
-        case "plays": return track.playCount > 0 ? String(track.playCount) : ""
-        case "discNum": return track.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return formatDate(track.dateAdded)
-        case "lastPlayed": return track.lastPlayed.map { formatDate($0) } ?? ""
-        case "path": return track.url.path
+        case .trackNum: return trackNumber(disc: track.discNumber, track: track.trackNumber)
+        case .artist: return track.artist ?? ""
+        case .album: return track.album ?? ""
+        case .albumArtist: return track.albumArtist ?? track.artist ?? ""
+        case .year: return track.year.map { String($0) } ?? ""
+        case .genre: return track.genre ?? ""
+        case .duration: return track.formattedDuration
+        case .bitrate: return track.bitrate.map { "\($0)k" } ?? ""
+        case .sampleRate: return track.sampleRate.map { formatSampleRate($0) } ?? ""
+        case .channels: return track.channels.map { formatChannels($0) } ?? ""
+        case .size: return formatFileSize(track.fileSize)
+        case .rating: return formatRating(track.rating.map { Double($0) })
+        case .plays: return track.playCount > 0 ? String(track.playCount) : ""
+        case .discNum: return track.discNumber.map { String($0) } ?? ""
+        case .dateAdded: return formatDate(track.dateAdded)
+        case .lastPlayed: return track.lastPlayed.map { formatDate($0) } ?? ""
+        case .path: return track.url.path
         default: return ""
         }
     }
 
     private static func jellyfinTrackValue(_ song: JellyfinSong, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "trackNum": return trackNumber(disc: song.discNumber, track: song.track)
-        case "artist": return song.artist ?? ""
-        case "album": return song.album ?? ""
-        case "albumArtist": return song.albumArtist ?? song.artist ?? ""
-        case "year": return song.year.map { String($0) } ?? ""
-        case "genre": return song.genre ?? ""
-        case "duration": return formatDuration(TimeInterval(song.duration))
-        case "bitrate": return song.bitRate.map { "\($0)k" } ?? ""
-        case "sampleRate": return song.sampleRate.map { formatSampleRate($0) } ?? ""
-        case "channels": return song.channels.map { formatChannels($0) } ?? ""
-        case "size": return formatFileSize(song.size)
-        case "rating": return percentRating(song.userRating, isFavorite: song.isFavorite)
-        case "plays": return song.playCount.map { String($0) } ?? ""
-        case "discNum": return song.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return song.created.map { formatDate($0) } ?? ""
-        case "path": return song.path ?? ""
+        case .trackNum: return trackNumber(disc: song.discNumber, track: song.track)
+        case .artist: return song.artist ?? ""
+        case .album: return song.album ?? ""
+        case .albumArtist: return song.albumArtist ?? song.artist ?? ""
+        case .year: return song.year.map { String($0) } ?? ""
+        case .genre: return song.genre ?? ""
+        case .duration: return formatDuration(TimeInterval(song.duration))
+        case .bitrate: return song.bitRate.map { "\($0)k" } ?? ""
+        case .sampleRate: return song.sampleRate.map { formatSampleRate($0) } ?? ""
+        case .channels: return song.channels.map { formatChannels($0) } ?? ""
+        case .size: return formatFileSize(song.size)
+        case .rating: return percentRating(song.userRating, isFavorite: song.isFavorite)
+        case .plays: return song.playCount.map { String($0) } ?? ""
+        case .discNum: return song.discNumber.map { String($0) } ?? ""
+        case .dateAdded: return song.created.map { formatDate($0) } ?? ""
+        case .path: return song.path ?? ""
         default: return ""
         }
     }
 
     private static func embyTrackValue(_ song: EmbySong, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "trackNum": return trackNumber(disc: song.discNumber, track: song.track)
-        case "artist": return song.artist ?? ""
-        case "album": return song.album ?? ""
-        case "albumArtist": return song.albumArtist ?? song.artist ?? ""
-        case "year": return song.year.map { String($0) } ?? ""
-        case "genre": return song.genre ?? ""
-        case "duration": return song.formattedDuration
-        case "bitrate": return song.bitRate.map { "\($0)k" } ?? ""
-        case "sampleRate": return song.sampleRate.map { formatSampleRate($0) } ?? ""
-        case "channels": return song.channels.map { formatChannels($0) } ?? ""
-        case "size": return formatFileSize(song.size)
-        case "rating": return percentRating(song.userRating, isFavorite: song.isFavorite)
-        case "plays": return song.playCount.map { String($0) } ?? ""
-        case "discNum": return song.discNumber.map { String($0) } ?? ""
-        case "dateAdded": return song.created.map { formatDate($0) } ?? ""
-        case "path": return song.path ?? ""
+        case .trackNum: return trackNumber(disc: song.discNumber, track: song.track)
+        case .artist: return song.artist ?? ""
+        case .album: return song.album ?? ""
+        case .albumArtist: return song.albumArtist ?? song.artist ?? ""
+        case .year: return song.year.map { String($0) } ?? ""
+        case .genre: return song.genre ?? ""
+        case .duration: return song.formattedDuration
+        case .bitrate: return song.bitRate.map { "\($0)k" } ?? ""
+        case .sampleRate: return song.sampleRate.map { formatSampleRate($0) } ?? ""
+        case .channels: return song.channels.map { formatChannels($0) } ?? ""
+        case .size: return formatFileSize(song.size)
+        case .rating: return percentRating(song.userRating, isFavorite: song.isFavorite)
+        case .plays: return song.playCount.map { String($0) } ?? ""
+        case .discNum: return song.discNumber.map { String($0) } ?? ""
+        case .dateAdded: return song.created.map { formatDate($0) } ?? ""
+        case .path: return song.path ?? ""
         default: return ""
         }
     }
@@ -282,9 +289,9 @@ extension LibraryBrowserItem {
 
     private static func plexAlbumValue(_ album: PlexAlbum, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "genre": return album.genre ?? ""
-        case "duration": return album.formattedDuration
+        case .year: return album.year.map { String($0) } ?? ""
+        case .genre: return album.genre ?? ""
+        case .duration: return album.formattedDuration
         default: return ""
         }
     }
@@ -308,19 +315,19 @@ extension LibraryBrowserItem {
     private static func serverAlbumValue(year: Int?, genre: String?, duration: String, isFavorite: Bool,
                                          for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "year": return year.map { String($0) } ?? ""
-        case "genre": return genre ?? ""
-        case "duration": return duration
-        case "rating": return isFavorite ? "★★★★★" : ""
+        case .year: return year.map { String($0) } ?? ""
+        case .genre: return genre ?? ""
+        case .duration: return duration
+        case .rating: return isFavorite ? "★★★★★" : ""
         default: return ""
         }
     }
 
     private static func localAlbumValue(_ album: Album, for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "year": return album.year.map { String($0) } ?? ""
-        case "duration": return album.formattedDuration
-        case "rating": return formatTenPointRating(MediaLibrary.shared.albumRating(for: album.id))
+        case .year: return album.year.map { String($0) } ?? ""
+        case .duration: return album.formattedDuration
+        case .rating: return formatTenPointRating(MediaLibrary.shared.albumRating(for: album.id))
         default: return ""
         }
     }
@@ -332,9 +339,9 @@ extension LibraryBrowserItem {
     private static func serverArtistValue(albumCount: Int, genre: String?, isFavorite: Bool,
                                           for column: LibraryBrowserColumn) -> String {
         switch column.id {
-        case "albums": return String(albumCount)
-        case "genre": return genre ?? ""
-        case "rating": return isFavorite ? favoriteGlyph : ""
+        case .albums: return String(albumCount)
+        case .genre: return genre ?? ""
+        case .rating: return isFavorite ? favoriteGlyph : ""
         default: return ""
         }
     }

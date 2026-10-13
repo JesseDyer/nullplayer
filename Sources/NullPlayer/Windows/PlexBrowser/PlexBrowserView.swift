@@ -24,7 +24,6 @@ class PlexBrowserView: NSView {
     let model = LibraryBrowserModel(keyPrefix: "Classic")
 
     /// Selected item indices
-    private var selectedIndices: Set<Int> = []
     
     /// Scroll offset
     private var scrollOffset: CGFloat = 0
@@ -69,14 +68,10 @@ class PlexBrowserView: NSView {
         NSFont.systemFont(ofSize: size * contentScale, weight: weight)
     }
     
-    /// Stored column widths (persisted)
-    private var columnWidths: [String: CGFloat] = [:] {
-        didSet { saveColumnWidths() }
-    }
 
 
     /// Column being resized (id) and resize state
-    private var resizingColumnId: String?
+    private var resizingColumnId: LibraryBrowserColumn.ID?
     private var resizingColumnGroup: LibraryColumnVisibilityGroup?
     private var resizingColumnFromLeadingEdge = false
     private var resizeStartX: CGFloat = 0
@@ -142,44 +137,30 @@ class PlexBrowserView: NSView {
         }
     }
     
-    /// Get width for a column (uses stored width or default)
-    private func columnWidthKey(_ columnId: String, group: LibraryColumnVisibilityGroup) -> String {
-        "\(group.rawValue):\(columnId)"
-    }
-
-    private func storedColumnWidth(for column: LibraryBrowserColumn, group: LibraryColumnVisibilityGroup?) -> CGFloat? {
-        guard let group else { return columnWidths[column.id] }
-        return columnWidths[columnWidthKey(column.id, group: group)]
-    }
-
-    private func setColumnWidth(_ width: CGFloat, for columnId: String, group: LibraryColumnVisibilityGroup) {
-        columnWidths[columnWidthKey(columnId, group: group)] = width
-    }
-
     private func widthForColumn(
         _ column: LibraryBrowserColumn,
         availableWidth: CGFloat,
         columns: [LibraryBrowserColumn],
         group: LibraryColumnVisibilityGroup?
     ) -> CGFloat {
-        if column.id == "title" {
+        if column.id == .title {
             // Title column gets remaining space
-            let fixedWidth = columns.filter { $0.id != "title" }.reduce(0) { 
-                $0 + (storedColumnWidth(for: $1, group: group) ?? $1.minWidth)
+            let fixedWidth = columns.filter { $0.id != .title }.reduce(0) { 
+                $0 + (model.storedColumnWidth(for: $1, group: group) ?? $1.minWidth)
             }
             return max(column.minWidth, availableWidth - fixedWidth - 8)
         }
-        return storedColumnWidth(for: column, group: group) ?? column.minWidth
+        return model.storedColumnWidth(for: column, group: group) ?? column.minWidth
     }
     
     /// Calculate total width needed for all columns
     private func totalColumnsWidth(columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?) -> CGFloat {
         var total: CGFloat = 8  // Initial padding
         for column in columns {
-            if column.id == "title" {
+            if column.id == .title {
                 total += column.minWidth  // Title uses minWidth for total calculation
             } else {
-                total += storedColumnWidth(for: column, group: group) ?? column.minWidth
+                total += model.storedColumnWidth(for: column, group: group) ?? column.minWidth
             }
         }
         return total
@@ -191,78 +172,29 @@ class PlexBrowserView: NSView {
         horizontalScrollOffset = max(0, min(horizontalScrollOffset, maxOffset))
     }
     
-    /// Save column widths to UserDefaults
-    private func saveColumnWidths() {
-        UserDefaults.standard.set(columnWidths, forKey: "BrowserColumnWidths")
-    }
     
-    /// Load column widths from UserDefaults
-    private func loadColumnWidths() {
-        if let saved = UserDefaults.standard.dictionary(forKey: "BrowserColumnWidths") as? [String: CGFloat] {
-            columnWidths = migrateColumnWidths(saved)
+
+
+    
+
+    
+    
+
+
+    /// What the rows do and the menus that offer it.
+    private lazy var actions: LibraryBrowserActions = LibraryBrowserActions(model: model, host: .init(
+        view: { [unowned self] in self },
+        presentLinkSheet: { [unowned self] in presentLinkSheet() },
+        ratingStarColor: { NSColor(srgbRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0) },
+        busyChanged: { [unowned self] in
+            updateLoadingAnimation()
+            needsDisplay = true
         }
-    }
-
-    private func migrateColumnWidths(_ saved: [String: CGFloat]) -> [String: CGFloat] {
-        var migrated: [String: CGFloat] = [:]
-        for (key, width) in saved {
-            if key.contains(":") {
-                migrated[key] = width
-                continue
-            }
-            for group in LibraryColumnVisibilityGroup.allCases where LibraryBrowserColumn.all(for: group).contains(where: { $0.id == key }) {
-                migrated[columnWidthKey(key, group: group)] = width
-            }
-        }
-        return migrated
-    }
-
-    
-
-
-    
-
-    
-    
-
-
-    private var radioPlayTask: Task<Void, Never>?
-
-    /// A video row's Audio ▸ / Video ▸ menu and its downloads, which drive a per-row spinner.
-    private lazy var youtubeVideoActions: YouTubeVideoActions = {
-        let actions = YouTubeVideoActions(search: model.youtubeSearch)
-        actions.onFetchesChanged = { [weak self] in
-            guard let self else { return }
-            if self.youtubeVideoActions.hasFetchesInFlight { self.startLoadingAnimation() } else { self.stopLoadingAnimation() }
-            self.needsDisplay = true
-        }
-        actions.onFilesChanged = { [weak self] in self?.model.rebuildCurrentModeItems() }
-        return actions
-    }()
+    ))
 
     private let historyAgent = PlayHistoryAgent()
     private var historyHostingView: NSHostingView<StatsContentView>?
 
-    private struct RadioFolderMembershipAction {
-        let station: RadioStation
-        let folderID: UUID
-    }
-    private struct RadioSmartGenreAction {
-        let station: RadioStation
-        let genre: String?
-    }
-    private struct RadioSmartRegionAction {
-        let station: RadioStation
-        let region: String?
-    }
-    private struct RadioFolderRenameAction { let folderID: UUID }
-    private struct RadioFolderDeleteAction { let folderID: UUID }
-    private struct RadioFolderStationAction { let station: RadioStation }
-    
-    /// Strong reference to prevent deallocation while dialog is open
-    private var activeRadioStationSheet: AddRadioStationSheet?
-    private var activeYouTubeChannelSheet: AddYouTubeChannelSheet?
-    
     
     
     /// Loading animation
@@ -296,7 +228,7 @@ class PlexBrowserView: NSView {
         container: self, flowLabelPlacement: .belowCenteredCover, host: .init(
             rows: { [unowned self] in model.displayItems },
             isSearch: { [unowned self] in model.browseMode == .search },
-            selectedIndex: { [unowned self] in selectedIndices.min() },
+            selectedIndex: { [unowned self] in model.selectedIndices.min() },
             isBlocked: { [unowned self] in
                 model.isLoading || model.errorMessage != nil || (model.currentSource.isPlex && !PlexManager.shared.isLinked)
             },
@@ -312,13 +244,13 @@ class PlexBrowserView: NSView {
             item: { [unowned self] in artItem(for: $0) },
             isExpanded: { [unowned self] in model.isExpanded($0) },
             toggleExpand: { [unowned self] in model.toggleExpand($0) },
-            play: { [unowned self] in handleDoubleClick(on: $0) },
+            play: { [unowned self] in actions.activate($0) },
             menu: { [unowned self] row, event in
                 // As a right-click on the row in the list: select it, then its menu.
-                if let index = model.displayItems.firstIndex(where: { $0.id == row.id }) { selectedIndices = [index] }
+                if let index = model.displayItems.firstIndex(where: { $0.id == row.id }) { model.selectedIndices = [index] }
                 showContextMenu(for: row, at: event)
             },
-            albumInfo: { [unowned self] in playable(for: $0).flatMap(LibraryAlbumInfo.init) },
+            albumInfo: { [unowned self] in actions.playable(for: $0).flatMap(LibraryAlbumInfo.init) },
             loadNextPage: { [unowned self] in
                 if case .local = model.currentSource { model.appendNextLocalPage() }
             }
@@ -335,12 +267,6 @@ class PlexBrowserView: NSView {
     
     /// Button being pressed (for visual feedback)
     private var pressedButton: SkinRenderer.PlexBrowserButtonType?
-    
-    /// Active tags panel (strong reference to prevent premature deallocation)
-    private var activeTagsPanel: TagsPanel?
-    private var activeEditTagsPanel: EditTagsPanel?
-    private var activeEditAlbumTagsPanel: EditAlbumTagsPanel?
-    private var activeEditVideoTagsPanel: EditVideoTagsPanel?
     
     /// Window dragging state
     private var isDraggingWindow = false
@@ -364,7 +290,6 @@ class PlexBrowserView: NSView {
     private var artworkLoadTask: Task<Void, Never>?
     
     /// Static image cache shared across all browser instances
-    private static let artworkCache = NSCache<NSString, NSImage>()
     private let rowThumbnails = LibraryRowThumbnailTracker()
     
     // MARK: - Layout Constants (reference to SkinElements)
@@ -496,34 +421,6 @@ class PlexBrowserView: NSView {
         return tabsWidth + sortWidth + insets
     }
 
-    /// A source-bar name with the item count appended: "FLAC_LIB (988 items)".
-    private func withItemCount(_ name: String) -> String {
-        let count: Int
-        switch model.currentSource {
-        case .local:
-            if model.browseMode == .artists {
-                count = model.localArtistTotal > 0 ? model.localArtistTotal : model.displayItems.count
-            } else if model.browseMode == .albums {
-                count = model.localAlbumTotal > 0 ? model.localAlbumTotal : model.displayItems.count
-            } else {
-                count = model.displayItems.count
-            }
-        case .plex:
-            switch PlexManager.shared.currentLibrary?.type {
-            case "artist": count = model.plex.artists.count
-            case "album":  count = model.plex.albums.count
-            case "movie":  count = model.plex.movies.count
-            case "show":   count = model.plex.shows.count
-            default:       count = model.displayItems.count
-            }
-        case .radio:
-            return "\(name) (\(model.displayItems.count) stations)"
-        case .subsonic, .jellyfin, .emby, .youtube:
-            count = model.displayItems.count
-        }
-        return "\(name) (\(count) items)"
-    }
-
     /// What the source bar shows after "Source:".
     private enum ServerBarContent {
         /// Local Files, Internet Radio or YouTube: the name with its count, then +ADD.
@@ -590,7 +487,7 @@ class PlexBrowserView: NSView {
         let leftWidth: CGFloat
         switch serverBarContent {
         case .builtIn(let name):
-            leftWidth = leadingInset + prefixWidth + textWidth(withItemCount(name)) + 28 + textWidth("+ADD")
+            leftWidth = leadingInset + prefixWidth + textWidth(model.withItemCount(name)) + 28 + textWidth("+ADD")
         case .server(_, let maxChars, _):
             leftWidth = leadingInset + prefixWidth + CGFloat(maxChars) * charWidth + 16 +
                 textWidth("Lib:") + 4 + Self.minLibraryFieldChars * charWidth
@@ -615,21 +512,6 @@ class PlexBrowserView: NSView {
              Layout.leftBorder + Layout.rightBorder)
     }
 
-    /// The label shown in each tab slot (some slots are dynamic), in `tabs` order.
-    private func currentTabLabels() -> [String] {
-        LibraryBrowseMode.tabs.map { mode in
-            // plists slot shows "Folders" when toggled on a local source.
-            if mode == .plists, model.localPlistsSlotShowsFolders, case .local = model.currentSource {
-                return "Folders"
-            }
-            // radio slot shows "Channels" when the YouTube source is displaying channels.
-            if mode == .radio, model.radioSlotShowingChannels {
-                return "Channels"
-            }
-            return mode.title
-        }
-    }
-
     /// Per-tab widths across the tab area (which excludes the Sort indicator). Content-aware:
     /// each tab is sized to its own label plus padding, then leftover space is shared equally
     /// so every tab gets breathing room and short labels (e.g. "TV", "Data") don't hog width.
@@ -638,7 +520,7 @@ class PlexBrowserView: NSView {
                               horizontalScale: CGFloat) -> [CGFloat] {
         let style = winampModernStyle
         let boxPadding = 18 * horizontalScale
-        let natural = currentTabLabels().map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) + boxPadding }
+        let natural = model.tabLabels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) + boxPadding }
         let naturalSum = natural.reduce(0, +)
         if naturalSum > tabsWidth {
             let scale = tabsWidth / naturalSum
@@ -685,7 +567,6 @@ class PlexBrowserView: NSView {
     private func setupView() {
         wantsLayer = true
         
-        loadColumnWidths()
 
         // A `.wal` colour-theme switch recolours this browser (Phase 16). The embedded case is told
         // directly through `applyWinampModernStyle`; a fallback window has no such handle.
@@ -693,12 +574,6 @@ class PlexBrowserView: NSView {
             self,
             selector: #selector(hostedSurfaceStyleDidChange),
             name: .hostedSurfaceStyleDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(youtubeUploadsDidChange),
-            name: YouTubeChannelUploads.didChangeNotification,
             object: nil
         )
         // Redraw when a YouTube row thumbnail / avatar finishes loading
@@ -798,10 +673,9 @@ class PlexBrowserView: NSView {
             needsDisplay = true
         case .loading:
             artLens.updateVisibility()
-            if model.isLoading { startLoadingAnimation() } else { stopLoadingAnimation() }
+            updateLoadingAnimation()
             needsDisplay = true
         case .rowsReplaced:
-            selectedIndices.removeAll()
             scrollOffset = 0
             if model.browseMode.isHistoryMode {
                 historyAgent.scheduleRefresh()
@@ -813,14 +687,15 @@ class PlexBrowserView: NSView {
             // With nothing playing, the artwork background shows the browsed library's art.
             if model.isLocalSource { loadLocalBrowseArtwork() }
         case .reveal(let index):
-            selectedIndices = [index]
             ensureVisible(index: index)
             needsDisplay = true
         case .source:
             artLens.resetNavigation()
-            selectedIndices.removeAll()
             scrollOffset = 0
             startServerNameScroll()
+        case .columns:
+            clampHorizontalScrollOffset()
+            needsDisplay = true
         case .browseMode:
             // A new tab opens Flow or Tiles at its root.
             artLens.resetNavigation()
@@ -847,8 +722,7 @@ class PlexBrowserView: NSView {
     func prepareForUITeardown() {
         model.cancelAll()
         artworkLoadTask?.cancel(); artworkLoadTask = nil
-        radioPlayTask?.cancel(); radioPlayTask = nil
-        youtubeVideoActions.cancel()
+        actions.cancelAll()
 
         // Timers (timers with a target/captured self can also pin the view alive).
         typeAheadTimer?.invalidate(); typeAheadTimer = nil
@@ -1103,14 +977,14 @@ class PlexBrowserView: NSView {
     private func artItem(for item: LibraryBrowserItem) -> LibraryArtItem {
         let cacheKey = itemArtwork(for: item).cacheKey
         return LibraryArtItem(id: item.id, title: item.title, subtitle: item.info ?? "",
-                              cachedArtwork: { cacheKey.flatMap { Self.artworkCache.object(forKey: NSString(string: $0)) } },
+                              cachedArtwork: { cacheKey.flatMap { LibraryArtwork.cache.object(forKey: NSString(string: $0)) } },
                               art: rowThumbnailSource(for: item),
                               artAspect: item.type.isPoster ? LibraryArtItem.posterAspect : 1)
     }
 
     /// Resolve a display item to its artwork cache key and async loader (reusing the per-source
     /// loaders that back `loadArtworkForSelection`).
-    private func itemArtwork(for item: LibraryBrowserItem) -> (cacheKey: String?, load: () async -> NSImage?) {
+    private func itemArtwork(for item: LibraryBrowserItem) -> LibraryArtwork.ItemArtwork {
         switch item.type {
         case .album(let album):
             guard let thumb = album.thumb else { return ("plex:\(album.id)", { nil }) }
@@ -1134,9 +1008,9 @@ class PlexBrowserView: NSView {
             let key = "subsonic:\(coverArt)"
             return (key, { [weak self] in await self?.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: key) })
         case .jellyfinAlbum(let album):
-            return jellyfinArtwork(album.artworkItemId)
+            return LibraryArtwork.jellyfinItem(album.artworkItemId)
         case .embyAlbum(let album):
-            return embyArtwork(album.artworkItemId)
+            return LibraryArtwork.embyItem(album.artworkItemId)
         case .movie(let movie):
             let key = "plex:\(movie.id)"
             return (key, { [weak self] in
@@ -1172,21 +1046,21 @@ class PlexBrowserView: NSView {
         case .localEpisode(let episode):
             return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
         case .jellyfinMovie(let movie):
-            return jellyfinArtwork(movie.artworkItemId)
+            return LibraryArtwork.jellyfinItem(movie.artworkItemId)
         case .jellyfinShow(let show):
-            return jellyfinArtwork(show.artworkItemId)
+            return LibraryArtwork.jellyfinItem(show.artworkItemId)
         case .jellyfinSeason(let season):
-            return jellyfinArtwork(season.artworkItemId)
+            return LibraryArtwork.jellyfinItem(season.artworkItemId)
         case .jellyfinEpisode(let episode):
-            return jellyfinArtwork(episode.artworkItemId)
+            return LibraryArtwork.jellyfinItem(episode.artworkItemId)
         case .embyMovie(let movie):
-            return embyArtwork(movie.artworkItemId)
+            return LibraryArtwork.embyItem(movie.artworkItemId)
         case .embyShow(let show):
-            return embyArtwork(show.artworkItemId)
+            return LibraryArtwork.embyItem(show.artworkItemId)
         case .embySeason(let season):
-            return embyArtwork(season.artworkItemId)
+            return LibraryArtwork.embyItem(season.artworkItemId)
         case .embyEpisode(let episode):
-            return embyArtwork(episode.artworkItemId)
+            return LibraryArtwork.embyItem(episode.artworkItemId)
         case .artist(let artist):
             guard let thumb = artist.thumb else { return ("plex:\(artist.id)", { nil }) }
             let key = "plex:\(artist.id)"
@@ -1204,9 +1078,9 @@ class PlexBrowserView: NSView {
             let key = "subsonic:\(coverArt)"
             return (key, { [weak self] in await self?.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: key) })
         case .jellyfinArtist(let artist):
-            return jellyfinArtwork(artist.artworkItemId)
+            return LibraryArtwork.jellyfinItem(artist.artworkItemId)
         case .embyArtist(let artist):
-            return embyArtwork(artist.artworkItemId)
+            return LibraryArtwork.embyItem(artist.artworkItemId)
         case .track(let track):
             guard let thumb = track.thumb else { return ("plex:\(track.id)", { nil }) }
             let key = "plex:\(track.id)"
@@ -1218,24 +1092,12 @@ class PlexBrowserView: NSView {
             let key = "subsonic:\(coverArt)"
             return (key, { [weak self] in await self?.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: key) })
         case .jellyfinTrack(let song):
-            return jellyfinArtwork(song.artworkItemId)
+            return LibraryArtwork.jellyfinItem(song.artworkItemId)
         case .embyTrack(let song):
-            return embyArtwork(song.artworkItemId)
+            return LibraryArtwork.embyItem(song.artworkItemId)
         default:
             return (nil, { nil })
         }
-    }
-
-    /// A Jellyfin item's art, from its `artworkItemId` (nil when the item has no picture).
-    private func jellyfinArtwork(_ itemId: String?) -> (cacheKey: String?, load: () async -> NSImage?) {
-        guard let itemId else { return (nil, { nil }) }
-        return ("jellyfin:\(itemId)", { [weak self] in await self?.loadJellyfinArtwork(itemId: itemId) })
-    }
-
-    /// An Emby item's art, from its `artworkItemId` (nil when the item has no picture).
-    private func embyArtwork(_ itemId: String?) -> (cacheKey: String?, load: () async -> NSImage?) {
-        guard let itemId else { return (nil, { nil }) }
-        return ("emby:\(itemId)", { [weak self] in await self?.loadEmbyArtwork(itemId: itemId) })
     }
 
     /// The art for a row's round thumbnail, or nil for rows that never carry art. Cover Flow items
@@ -1524,7 +1386,7 @@ class PlexBrowserView: NSView {
 
         switch content {
         case .builtIn(let name):
-            let sourceText = withItemCount(name)
+            let sourceText = model.withItemCount(name)
             drawScaledWhiteSkinText(sourceText, at: NSPoint(x: sourceNameStartX, y: textY), scale: textScale, renderer: renderer, in: context)
             let sourceTextWidth = ClassicLibraryTab.textWidth(sourceText, scale: textScale, style: winampModernStyle)
             sourceButtonRect = NSRect(x: barRect.minX, y: barRect.minY,
@@ -1585,7 +1447,7 @@ class PlexBrowserView: NSView {
             drawScaledSkinText(libLabel, at: NSPoint(x: libraryLabelX, y: textY), scale: textScale, renderer: renderer, in: context)
 
             let libraryX = libraryLabelX + ClassicLibraryTab.textWidth(libLabel, scale: textScale, style: winampModernStyle) + 4 * chromeScale
-            let libraryText = withItemCount(library)
+            let libraryText = model.withItemCount(library)
             // The field grows into the free space before the right cluster; it scrolls when even that is short.
             let libraryNameMaxWidth = max(Self.minLibraryFieldChars * scaledCharWidth, accessoryX - 24 * chromeScale - libraryX)
             libraryNameCycleWidth = drawScrollingText(libraryText, startX: libraryX, textY: textY,
@@ -1683,7 +1545,7 @@ class PlexBrowserView: NSView {
         let tabsWidth = tabBarRect.width - sortWidth - tabLeftInset - tabRightInset
 
         // Content-aware widths and resolved (possibly dynamic) labels, shared with hit-testing.
-        let labels = currentTabLabels()
+        let labels = model.tabLabels
         let tabWidths = tabBarWidths(tabsWidth: tabsWidth, textScale: textScale,
                                      horizontalScale: chromeScale)
 
@@ -2005,7 +1867,7 @@ class PlexBrowserView: NSView {
             
             let itemRect = NSRect(x: listRect.minX, y: y, width: listRect.width, height: itemHeight)
             let item = model.displayItems[index]
-            let isSelected = selectedIndices.contains(index)
+            let isSelected = model.selectedIndices.contains(index)
             
             // On non-Retina displays, fill item background to prevent gaps/lines
             // BUT skip this when artwork background is showing (it already provides a continuous background)
@@ -2149,8 +2011,8 @@ class PlexBrowserView: NSView {
         var x = rect.minX + 4 - horizontalScrollOffset
         for (index, column) in columns.enumerated() {
             let width = widthForColumn(column, availableWidth: totalWidth, columns: columns, group: group)
-            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == "genre") ||
-                (model.hasInternetRadioColumns && column.id == "rating")
+            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
+                (model.hasInternetRadioColumns && column.id == .rating)
             
             // Check if this column is the sort column
             let isSortColumn = model.activeColumnSortId == column.id
@@ -2221,27 +2083,27 @@ class PlexBrowserView: NSView {
         let font = contentFont(ofSize: 10)
         let smallFont = contentFont(ofSize: 9)
         
-        let hasArtColumn = columns.contains { $0.id == "thumbnail" }
+        let hasArtColumn = columns.contains { $0.id == .thumbnail }
         let cells = LibraryColumnVisibility.cellFrames(
             widths: columns.map { widthForColumn($0, availableWidth: totalWidth, columns: columns, group: group) },
-            titleIndex: columns.firstIndex { $0.id == "title" }, indent: indent,
+            titleIndex: columns.firstIndex { $0.id == .title }, indent: indent,
             spansLeadingCells: model.columnGroup(for: item) != group)
         for (column, cell) in zip(columns, cells) {
             let x = rect.minX + cell.start - horizontalScrollOffset, width = cell.width
-            if column.id == "thumbnail" {
+            if column.id == .thumbnail {
                 // Inside the counter-flip (y-up), centred on the row so the flip doesn't move it.
                 if let thumbnail = rowThumbnailSource(for: item) {
                     rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
                 }
                 continue
             }
-            let value = column.id == "title" ? item.shownTitle : item.columnValue(for: column)
-            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == "genre") ||
-                (model.isInternetRadioItem(item) && column.id == "rating")
+            let value = column.id == .title ? item.shownTitle : item.columnValue(for: column)
+            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
+                (model.isInternetRadioItem(item) && column.id == .rating)
             
             // Title column uses normal color/font, others use dim color/smaller font
-            let color = column.id == "title" ? textColor : dimColor
-            let useFont = column.id == "title" ? font : smallFont
+            let color = column.id == .title ? textColor : dimColor
+            let useFont = column.id == .title ? font : smallFont
             
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: useFont,
@@ -2250,15 +2112,15 @@ class PlexBrowserView: NSView {
 
             // Per-row download spinner on the title column of a downloading YouTube video.
             var titleSpinnerInset: CGFloat = 0
-            if column.id == "title", case .youtubeVideo(let video) = item.type,
-               youtubeVideoActions.isFetching(video.videoId) {
+            if column.id == .title, case .youtubeVideo(let video) = item.type,
+               actions.youtubeVideos.isFetching(video.videoId) {
                 let spinnerRadius = min(rect.height * 0.3, 6)
                 let cx = x + 4 + spinnerRadius
                 drawRowSpinner(in: context, center: CGPoint(x: cx, y: rect.midY), radius: spinnerRadius, colors: colors)
                 titleSpinnerInset = spinnerRadius * 2 + 4
             }
             // Round art ahead of the title, unless the row has an Art column to hold it.
-            if column.id == "title", !hasArtColumn, let thumbnail = rowThumbnailSource(for: item) {
+            if column.id == .title, !hasArtColumn, let thumbnail = rowThumbnailSource(for: item) {
                 titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: x + 4 + titleSpinnerInset,
                                                         rowRect: rect, side: rect.height - 2)
             }
@@ -2271,7 +2133,7 @@ class PlexBrowserView: NSView {
             
             // Draw with truncation if needed
             let drawRect = NSRect(x: textX, y: textY, width: maxTextWidth, height: textSize.height)
-            if column.id == "rating" && !isSelected && (value.contains("★") || value.contains("☆")) {
+            if column.id == .rating && !isSelected && (value.contains("★") || value.contains("☆")) {
                 let goldColor = NSColor(calibratedRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0)
                 let emptyColor = dimColor.withAlphaComponent(0.4)
                 let astr = NSMutableAttributedString(string: value, attributes: attrs)
@@ -2354,7 +2216,7 @@ class PlexBrowserView: NSView {
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.loadingAnimationFrame += 1
-            if self.model.isLoading || self.youtubeVideoActions.hasFetchesInFlight || YouTubeChannelUploads.shared.hasFetchesInFlight {
+            if self.actions.rowsAreBusy {
                 // Only redraw the list area where the loading spinner is displayed
                 // This prevents menu items from shimmering on non-Retina displays
                 let area = self.listLayout().area
@@ -2372,8 +2234,12 @@ class PlexBrowserView: NSView {
         loadingAnimationTimer = timer
     }
 
+    /// Run the spinner timer while the rows or the library scan have something in flight.
+    private func updateLoadingAnimation() {
+        if actions.rowsAreBusy || isLibraryScanning { startLoadingAnimation() } else { stopLoadingAnimation() }
+    }
+
     private func stopLoadingAnimation() {
-        guard !isLibraryScanning && !youtubeVideoActions.hasFetchesInFlight && !YouTubeChannelUploads.shared.hasFetchesInFlight else { return }
         loadingAnimationTimer?.invalidate()
         loadingAnimationTimer = nil
         loadingAnimationFrame = 0
@@ -2392,12 +2258,8 @@ class PlexBrowserView: NSView {
         let scanning = MediaLibrary.shared.isScanning
         guard scanning != isLibraryScanning else { return }
         isLibraryScanning = scanning
-        if scanning {
-            startLoadingAnimation()
-        } else {
-            if !model.isLoading { stopLoadingAnimation() }
-            needsDisplay = true
-        }
+        updateLoadingAnimation()
+        if !scanning { needsDisplay = true }
     }
 
     /// Returns the display name of the currently relevant Jellyfin library based on browse mode.
@@ -2582,10 +2444,10 @@ class PlexBrowserView: NSView {
                 image = await self.loadSubsonicArtwork(songId: subsonicId, albumName: track.album)
             } else if track.jellyfinId != nil {
                 // Jellyfin track - load from server
-                if let itemId = track.artworkThumb { image = await self.loadJellyfinArtwork(itemId: itemId) }
+                if let itemId = track.artworkThumb { image = await LibraryArtwork.jellyfin(itemId: itemId) }
             } else if track.embyId != nil {
                 // Emby track - load from server
-                if let itemId = track.artworkThumb { image = await self.loadEmbyArtwork(itemId: itemId) }
+                if let itemId = track.artworkThumb { image = await LibraryArtwork.emby(itemId: itemId) }
             } else if track.url.isFileURL {
                 // Local file - extract embedded artwork
                 image = await self.loadLocalArtwork(url: track.url)
@@ -2602,10 +2464,10 @@ class PlexBrowserView: NSView {
                 }
             } else if RadioManager.shared.isActive {
                 // Internet radio - use station icon URL or favicon fallback
-                image = await self.loadRadioArtwork(for: track)
+                image = await LibraryArtwork.radio(for: track)
             } else if let thumb = track.artworkThumb {
                 // Generic remote artwork URL fallback
-                image = await self.loadRemoteArtwork(urlString: thumb, cacheNamespace: "generic")
+                image = await LibraryArtwork.remote(urlString: thumb, cacheNamespace: "generic")
             }
             
             // Check if task was cancelled
@@ -2636,7 +2498,7 @@ class PlexBrowserView: NSView {
         
         // Check cache first
         let cacheKey = NSString(string: "web:\(searchTerm)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
             return cached
         }
         
@@ -2665,7 +2527,7 @@ class PlexBrowserView: NSView {
                     let (imageData, _) = try await URLSession.shared.data(from: artworkUrl)
                     if let image = NSImage(data: imageData) {
                         // Cache the result
-                        Self.artworkCache.setObject(image, forKey: cacheKey)
+                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
                         NSLog("PlexBrowserView: Loaded web artwork for: %@", searchTerm)
                         return image
                     }
@@ -2686,7 +2548,7 @@ class PlexBrowserView: NSView {
     private func loadPlexArtwork(ratingKey: String, albumName: String? = nil, thumbPath providedThumb: String? = nil) async -> NSImage? {
         // Check cache first
         let cacheKey = NSString(string: "plex:\(ratingKey)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
             return cached
         }
         
@@ -2762,7 +2624,7 @@ class PlexBrowserView: NSView {
             }
             
             // Cache the image
-            Self.artworkCache.setObject(image, forKey: cacheKey)
+            LibraryArtwork.cache.setObject(image, forKey: cacheKey)
             NSLog("PlexBrowserView: Successfully loaded artwork for rating key: %@", ratingKey)
             
             return image
@@ -2776,7 +2638,7 @@ class PlexBrowserView: NSView {
     private func loadSubsonicArtwork(songId: String, albumName: String? = nil) async -> NSImage? {
         // Check cache first
         let cacheKey = NSString(string: "subsonic:\(songId)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
             return cached
         }
         
@@ -2830,7 +2692,7 @@ class PlexBrowserView: NSView {
             }
             
             // Cache the image
-            Self.artworkCache.setObject(image, forKey: cacheKey)
+            LibraryArtwork.cache.setObject(image, forKey: cacheKey)
             
             return image
         } catch {
@@ -2843,7 +2705,7 @@ class PlexBrowserView: NSView {
     private func loadLocalArtwork(url: URL) async -> NSImage? {
         // Check cache first
         let cacheKey = NSString(string: "local:\(url.path)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
             return cached
         }
         
@@ -2859,7 +2721,7 @@ class PlexBrowserView: NSView {
                     if let data = try await item.load(.dataValue),
                        let image = NSImage(data: data) {
                         // Cache the image
-                        Self.artworkCache.setObject(image, forKey: cacheKey)
+                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
                         return image
                     }
                 }
@@ -2871,7 +2733,7 @@ class PlexBrowserView: NSView {
                 if item.commonKey == .commonKeyArtwork {
                     if let data = try await item.load(.dataValue),
                        let image = NSImage(data: data) {
-                        Self.artworkCache.setObject(image, forKey: cacheKey)
+                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
                         return image
                     }
                 }
@@ -2883,7 +2745,7 @@ class PlexBrowserView: NSView {
                 if item.commonKey == .commonKeyArtwork {
                     if let data = try await item.load(.dataValue),
                        let image = NSImage(data: data) {
-                        Self.artworkCache.setObject(image, forKey: cacheKey)
+                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
                         return image
                     }
                 }
@@ -2895,71 +2757,11 @@ class PlexBrowserView: NSView {
         return nil
     }
 
-    private func loadRemoteArtwork(urlString: String, cacheNamespace: String) async -> NSImage? {
-        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let url = URL(string: trimmed),
-              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
-            return nil
-        }
-
-        let cacheKey = NSString(string: "\(cacheNamespace):\(trimmed)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) { return cached }
-
-        do {
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 8
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-            let mime = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
-            let looksLikeIcon = url.path.lowercased().hasSuffix(".ico") || mime.contains("icon")
-            guard mime.contains("image") || looksLikeIcon else { return nil }
-            guard let image = NSImage(data: data) else { return nil }
-            Self.artworkCache.setObject(image, forKey: cacheKey)
-            return image
-        } catch {
-            return nil
-        }
-    }
-
-    private func loadRadioArtwork(for track: Track, station: RadioStation? = nil) async -> NSImage? {
-        if let thumb = track.artworkThumb,
-           let image = await loadRemoteArtwork(urlString: thumb, cacheNamespace: "radio") {
-            return image
-        }
-
-        let activeStation = station ?? RadioManager.shared.currentStation
-        if let iconURL = activeStation?.iconURL?.absoluteString,
-           let image = await loadRemoteArtwork(urlString: iconURL, cacheNamespace: "radio") {
-            return image
-        }
-
-        var hosts = Set<String>()
-        if let host = track.url.host, !host.isEmpty { hosts.insert(host) }
-        if let host = activeStation?.url.host, !host.isEmpty { hosts.insert(host) }
-
-        var candidates: [String] = []
-        for host in hosts {
-            candidates.append("https://\(host)/favicon.ico")
-            if !host.lowercased().hasPrefix("www.") {
-                candidates.append("https://www.\(host)/favicon.ico")
-            }
-            candidates.append("http://\(host)/favicon.ico")
-        }
-
-        for candidate in candidates {
-            if let image = await loadRemoteArtwork(urlString: candidate, cacheNamespace: "radio-favicon") {
-                return image
-            }
-        }
-
-        return nil
-    }
-    
     /// Load artwork based on the currently selected item in the browser
     /// Called when selection changes to show artwork for browsed items (not just playing items)
     private func loadArtworkForSelection() {
         guard WindowManager.shared.showBrowserArtworkBackground else { return }
-        guard let index = selectedIndices.first, index < model.displayItems.count else { return }
+        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
         
         let item = model.displayItems[index]
         
@@ -3002,10 +2804,10 @@ class PlexBrowserView: NSView {
                 }
                 
             case .jellyfinPlaylist(let playlist):
-                image = await self.jellyfinArtwork(playlist.artworkItemId).load()
+                image = await LibraryArtwork.jellyfinItem(playlist.artworkItemId).load()
 
             case .embyPlaylist(let playlist):
-                image = await self.embyArtwork(playlist.artworkItemId).load()
+                image = await LibraryArtwork.embyItem(playlist.artworkItemId).load()
 
             case .plexPlaylist(let playlist):
                 if let thumb = playlist.thumb {
@@ -3022,19 +2824,19 @@ class PlexBrowserView: NSView {
 
             case .radioStation(let station):
                 let radioTrack = station.toTrack()
-                image = await self.loadRadioArtwork(for: radioTrack, station: station)
+                image = await LibraryArtwork.radio(for: radioTrack, station: station)
             case .youtubeVideo(let video):
                 // A download carries its own embedded art; otherwise the 16:9 thumbnail.
                 if let fileURL = YouTubeManager.shared.coverArtFile(for: video.videoId) {
                     image = await self.loadLocalArtwork(url: fileURL)
                 }
                 if image == nil, let thumb = video.thumbnailURL {
-                    image = await self.loadRemoteArtwork(urlString: thumb.absoluteString, cacheNamespace: "youtube")
+                    image = await LibraryArtwork.remote(urlString: thumb.absoluteString, cacheNamespace: "youtube")
                 }
                 image = image?.squareCenterCropped()
             case .youtubeChannel(let channel):
                 if let avatar = channel.avatarURL(side: 512) {
-                    image = await self.loadRemoteArtwork(urlString: avatar.absoluteString, cacheNamespace: "youtube")?.squareCenterCropped()
+                    image = await LibraryArtwork.remote(urlString: avatar.absoluteString, cacheNamespace: "youtube")?.squareCenterCropped()
                 }
             case .localPlaylist, .localPlaylistTrack,
                  .plexRadioStation,
@@ -3063,7 +2865,7 @@ class PlexBrowserView: NSView {
     private func loadPlexArtworkByThumb(thumb: String, cacheKey: String) async -> NSImage? {
         // Check cache first
         let cacheNSKey = NSString(string: cacheKey)
-        if let cached = Self.artworkCache.object(forKey: cacheNSKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheNSKey) {
             return cached
         }
         
@@ -3087,7 +2889,7 @@ class PlexBrowserView: NSView {
                 return nil
             }
             
-            Self.artworkCache.setObject(image, forKey: cacheNSKey)
+            LibraryArtwork.cache.setObject(image, forKey: cacheNSKey)
             return image
         } catch {
             return nil
@@ -3098,7 +2900,7 @@ class PlexBrowserView: NSView {
     private func loadSubsonicArtworkByCoverId(coverArt: String, cacheKey: String) async -> NSImage? {
         // Check cache first
         let cacheNSKey = NSString(string: cacheKey)
-        if let cached = Self.artworkCache.object(forKey: cacheNSKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheNSKey) {
             return cached
         }
         
@@ -3115,38 +2917,11 @@ class PlexBrowserView: NSView {
                 return nil
             }
             
-            Self.artworkCache.setObject(image, forKey: cacheNSKey)
+            LibraryArtwork.cache.setObject(image, forKey: cacheNSKey)
             return image
         } catch {
             return nil
         }
-    }
-    
-    /// Load the Primary image of a Jellyfin item (an `artworkItemId`)
-    private func loadJellyfinArtwork(itemId: String) async -> NSImage? {
-        let cacheKey = NSString(string: "jellyfin:\(itemId)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) { return cached }
-        guard let url = JellyfinManager.shared.imageURL(itemId: itemId, imageTag: nil, size: 400) else { return nil }
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let image = NSImage(data: data) else { return nil }
-            Self.artworkCache.setObject(image, forKey: cacheKey)
-            return image
-        } catch { return nil }
-    }
-
-    private func loadEmbyArtwork(itemId: String) async -> NSImage? {
-        let cacheKey = NSString(string: "emby:\(itemId)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) { return cached }
-        guard let url = EmbyManager.shared.imageURL(itemId: itemId, imageTag: nil, size: 400) else { return nil }
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let image = NSImage(data: data) else { return nil }
-            Self.artworkCache.setObject(image, forKey: cacheKey)
-            return image
-        } catch { return nil }
     }
     
     /// Load movie poster from TMDb (The Movie Database) as fallback
@@ -3159,7 +2934,7 @@ class PlexBrowserView: NSView {
         
         // Check cache first
         let cacheKey = NSString(string: "tmdb:\(searchTerm)")
-        if let cached = Self.artworkCache.object(forKey: cacheKey) {
+        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
             return cached
         }
         
@@ -3199,7 +2974,7 @@ class PlexBrowserView: NSView {
                     let (imageData, _) = try await URLSession.shared.data(from: posterUrl)
                     if let image = NSImage(data: imageData) {
                         // Cache the result
-                        Self.artworkCache.setObject(image, forKey: cacheKey)
+                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
                         NSLog("PlexBrowserView: Loaded TMDb poster for: %@", title)
                         return image
                     }
@@ -3340,7 +3115,7 @@ class PlexBrowserView: NSView {
         var x = rowRect.minX + 4 - horizontalScrollOffset
         for column in row.columns {
             let width = widthForColumn(column, availableWidth: rowRect.width, columns: row.columns, group: row.group)
-            if column.id == "rating" {
+            if column.id == .rating {
                 let cellRect = NSRect(x: x, y: rowRect.minY, width: width, height: rowRect.height)
                 guard cellRect.contains(skinPoint) else { return nil }
                 let innerWidth = max(1, cellRect.width - 8)
@@ -3361,7 +3136,7 @@ class PlexBrowserView: NSView {
     }
     
     /// Check if point hits a column resize handle (returns column id to resize)
-    private func hitTestColumnResize(at skinPoint: NSPoint) -> String? {
+    private func hitTestColumnResize(at skinPoint: NSPoint) -> LibraryBrowserColumn.ID? {
         if model.hasInternetRadioColumns { return nil }
         guard let header = columnHeader(at: skinPoint) else { return nil }
         let columns = header.columns
@@ -3380,10 +3155,10 @@ class PlexBrowserView: NSView {
             // trailing-edge resize behavior.
             if index < columns.count - 1,
                abs(skinPoint.x - separatorX) < hitMargin {
-                if model.hasYouTubeColumns, column.id == "title" {
+                if model.hasYouTubeColumns, column.id == .title {
                     return columns[index + 1].id
                 }
-                if column.id != "title" {
+                if column.id != .title {
                     return column.id
                 }
             }
@@ -3394,7 +3169,7 @@ class PlexBrowserView: NSView {
     }
     
     /// Check if point hits a column header (returns column id for sorting)
-    private func hitTestColumnHeader(at skinPoint: NSPoint) -> String? {
+    private func hitTestColumnHeader(at skinPoint: NSPoint) -> LibraryBrowserColumn.ID? {
         guard let header = columnHeader(at: skinPoint) else { return nil }
         
         // Check if on a resize handle first (don't trigger sort)
@@ -3476,8 +3251,8 @@ class PlexBrowserView: NSView {
         // Check list area for item context menu
         if !model.browseMode.isHistoryMode, let clickedIndex = hitTestListArea(at: skinPoint) {
             // Select the clicked item if not already selected
-            if !selectedIndices.contains(clickedIndex) {
-                selectedIndices = [clickedIndex]
+            if !model.selectedIndices.contains(clickedIndex) {
+                model.selectedIndices = [clickedIndex]
                 needsDisplay = true
             }
             
@@ -3490,11 +3265,7 @@ class PlexBrowserView: NSView {
         }
         
         // Local library empty-space right-click: show Manage Folders
-        if !model.browseMode.isHistoryMode, case .local = model.currentSource {
-            let menu = NSMenu()
-            let manageFoldersItem = NSMenuItem(title: "Manage Folders...", action: #selector(manageWatchFolders), keyEquivalent: "")
-            manageFoldersItem.target = self
-            menu.addItem(manageFoldersItem)
+        if !model.browseMode.isHistoryMode, let menu = actions.emptySpaceMenu() {
             NSMenu.popUpContextMenu(menu, with: event, for: self)
             return
         }
@@ -3503,81 +3274,10 @@ class PlexBrowserView: NSView {
     }
 
     private func showColumnConfigMenu(at event: NSEvent) {
-        if model.hasInternetRadioColumns { return }
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-
-        for group in columnGroupsForCurrentMenu() {
-            addColumnVisibilityGroup(group, to: menu)
-        }
-
+        guard let menu = actions.columnMenu() else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
-    /// Only the header's own group: every row shows those columns, so nothing else is tickable.
-    /// (This browser has never offered the fixed YouTube channel columns.)
-    private func columnGroupsForCurrentMenu() -> [LibraryColumnVisibilityGroup] {
-        guard let group = model.currentColumnGroup(), group != .youtube else { return [] }
-        return [group]
-    }
-
-    private func addColumnVisibilityGroup(_ group: LibraryColumnVisibilityGroup, to menu: NSMenu) {
-        if !menu.items.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        let header = NSMenuItem(title: group.headerTitle, action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
-
-        let visibleIds = Set(model.visibleColumnIds(for: group))
-        for column in LibraryBrowserColumn.all(for: group) {
-            let item = NSMenuItem()
-            item.view = ColumnVisibilityCheckboxView(
-                title: column.title,
-                isChecked: column.id == "title" || visibleIds.contains(column.id),
-                isEnabled: column.id != "title"
-            ) { [weak self] isVisible in
-                self?.toggleColumnVisibility(group: group, columnId: column.id, visible: isVisible)
-            }
-            menu.addItem(item)
-        }
-
-        let resetItem = NSMenuItem(title: group.resetTitle, action: #selector(resetColumnGroup(_:)), keyEquivalent: "")
-        resetItem.target = self
-        resetItem.representedObject = group.rawValue
-        menu.addItem(resetItem)
-    }
-
-    private func toggleColumnVisibility(group: LibraryColumnVisibilityGroup, columnId: String, visible: Bool) {
-        guard columnId != "title" else { return }
-
-        var ids = model.visibleColumnIds(for: group)
-        if visible {
-            if !ids.contains(columnId) {
-                ids.append(columnId)
-            }
-        } else {
-            ids.removeAll { $0 == columnId }
-            LibraryBrowserTabSortStore.shared.dropColumn(columnId)
-        }
-
-        model.setVisibleColumnIds(ids, for: group)
-        clampHorizontalScrollOffset()
-        needsDisplay = true
-    }
-
-    @objc private func resetColumnGroup(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let group = LibraryColumnVisibilityGroup(rawValue: rawValue) else { return }
-
-        model.setVisibleColumnIds(LibraryBrowserColumn.defaultIds(for: group), for: group)
-        let prefix = "\(group.rawValue):"
-        columnWidths = columnWidths.filter { !$0.key.hasPrefix(prefix) }
-        clampHorizontalScrollOffset()
-        needsDisplay = true
-    }
-    
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let skinPoint = convertToSkinCoordinates(point)
@@ -3586,7 +3286,7 @@ class PlexBrowserView: NSView {
         if let header = columnHeader(at: skinPoint), let columnId = hitTestColumnResize(at: skinPoint) {
             resizingColumnId = columnId
             resizingColumnGroup = header.group
-            resizingColumnFromLeadingEdge = model.hasYouTubeColumns && columnId == "duration"
+            resizingColumnFromLeadingEdge = model.hasYouTubeColumns && columnId == .duration
             resizeStartX = skinPoint.x
             resizeStartWidth = widthForColumn(
                 LibraryBrowserColumn.findColumn(id: columnId) ?? .title,
@@ -3631,7 +3331,7 @@ class PlexBrowserView: NSView {
 
         // Check sort indicator (in tab bar area, on the right)
         if hitTestSortIndicator(at: skinPoint) {
-            showSortMenu(at: event.locationInWindow)
+            popDown(actions.sortMenu(), from: event)
             return
         }
         
@@ -3677,736 +3377,21 @@ class PlexBrowserView: NSView {
             return
         }
 
-        switch model.currentSource {
-        case .local:
-            if addButtonRect.contains(skinPoint) { showAddFilesMenu(at: event) }
-            else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        case .plex:
-            if libraryButtonRect.contains(skinPoint) { showLibraryMenu(at: event) }
-            else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        case .subsonic:
-            if libraryButtonRect.contains(skinPoint) { showSubsonicFolderMenu(at: event) }
-            else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        case .jellyfin:
-            if libraryButtonRect.contains(skinPoint) {
-                if model.browseMode.isVideoMode {
-                    showJellyfinVideoLibraryMenu(at: event)
-                } else {
-                    showJellyfinLibraryMenu(at: event)
-                }
-            } else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        case .emby:
-            if libraryButtonRect.contains(skinPoint) {
-                if model.browseMode.isVideoMode {
-                    showEmbyVideoLibraryMenu(at: event)
-                } else {
-                    showEmbyLibraryMenu(at: event)
-                }
-            } else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        case .radio:
-            if addButtonRect.contains(skinPoint) { showRadioAddMenu(at: event) }
-            else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        case .youtube:
-            if addButtonRect.contains(skinPoint) { showYouTubeAddMenu(at: event) }
-            else if sourceButtonRect.contains(skinPoint) { showSourceMenu(at: event) }
-        }
-    }
-    
-
-    /// Show the source selection dropdown menu
-    private func showSourceMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        
-        // Local Files option
-        let localItem = NSMenuItem(title: "Local Files", action: #selector(selectLocalSource), keyEquivalent: "")
-        localItem.target = self
-        if case .local = model.currentSource {
-            localItem.state = .on
-        }
-        menu.addItem(localItem)
-        menu.addItem(NSMenuItem.separator())
-        
-        // Internet Radio option
-        let radioItem = NSMenuItem(title: "Internet Radio", action: #selector(selectRadioSource), keyEquivalent: "")
-        radioItem.target = self
-        if case .radio = model.currentSource {
-            radioItem.state = .on
-        }
-        menu.addItem(radioItem)
-        menu.addItem(NSMenuItem.separator())
-        let youtubeItem = NSMenuItem(title: "YouTube", action: #selector(selectYouTubeSource), keyEquivalent: "")
-        youtubeItem.target = self
-        if case .youtube = model.currentSource {
-            youtubeItem.state = .on
-        }
-        menu.addItem(youtubeItem)
-
-        // Separator
-        menu.addItem(NSMenuItem.separator())
-        
-        // Plex servers
-        let plexServers = PlexManager.shared.servers
-        if plexServers.isEmpty && !PlexManager.shared.isLinked {
-            let linkItem = NSMenuItem(title: "Link Plex Account...", action: #selector(linkPlexAccount), keyEquivalent: "")
-            linkItem.target = self
-            menu.addItem(linkItem)
-        } else {
-            for server in plexServers {
-                let serverItem = NSMenuItem(title: server.name, action: #selector(selectPlexServer(_:)), keyEquivalent: "")
-                serverItem.target = self
-                serverItem.representedObject = server.id
-                if case .plex(let currentServerId) = model.currentSource, currentServerId == server.id {
-                    serverItem.state = .on
-                }
-                menu.addItem(serverItem)
-            }
-        }
-        
-        // Subsonic/Navidrome servers
-        let subsonicServers = SubsonicManager.shared.servers
-        if !subsonicServers.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-            for server in subsonicServers {
-                let serverItem = NSMenuItem(title: "🎵 \(server.name)", action: #selector(selectSubsonicServer(_:)), keyEquivalent: "")
-                serverItem.target = self
-                serverItem.representedObject = server.id
-                if case .subsonic(let currentServerId) = model.currentSource, currentServerId == server.id {
-                    serverItem.state = .on
-                }
-                menu.addItem(serverItem)
-            }
-        } else {
-            menu.addItem(NSMenuItem.separator())
-            let addItem = NSMenuItem(title: "Add Navidrome/Subsonic...", action: #selector(addSubsonicServer), keyEquivalent: "")
-            addItem.target = self
-            menu.addItem(addItem)
-        }
-        
-        // Jellyfin servers
-        let jellyfinServers = JellyfinManager.shared.servers
-        if !jellyfinServers.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-            for server in jellyfinServers {
-                let serverItem = NSMenuItem(title: "🟣 \(server.name)", action: #selector(selectJellyfinServer(_:)), keyEquivalent: "")
-                serverItem.target = self
-                serverItem.representedObject = server.id
-                if case .jellyfin(let currentServerId) = model.currentSource, currentServerId == server.id {
-                    serverItem.state = .on
-                }
-                menu.addItem(serverItem)
-            }
-        } else {
-            menu.addItem(NSMenuItem.separator())
-            let addItem = NSMenuItem(title: "Add Jellyfin Server...", action: #selector(addJellyfinServer), keyEquivalent: "")
-            addItem.target = self
-            menu.addItem(addItem)
-        }
-
-        // Emby servers
-        let embyServers = EmbyManager.shared.servers
-        if !embyServers.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-            for server in embyServers {
-                let serverItem = NSMenuItem(title: "🔵 \(server.name)", action: #selector(selectEmbyServer(_:)), keyEquivalent: "")
-                serverItem.target = self
-                serverItem.representedObject = server.id
-                if case .emby(let currentServerId) = model.currentSource, currentServerId == server.id {
-                    serverItem.state = .on
-                }
-                menu.addItem(serverItem)
-            }
-        } else {
-            menu.addItem(NSMenuItem.separator())
-            let addItem = NSMenuItem(title: "Add Emby Server...", action: #selector(addEmbyServer), keyEquivalent: "")
-            addItem.target = self
-            menu.addItem(addItem)
-        }
-        
-        // Show menu
-        let menuLocation = NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y - 5)
-        menu.popUp(positioning: nil, at: menuLocation, in: window?.contentView)
-    }
-    
-    /// Show the add files/folder menu
-    private func showAddFilesMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        
-        let addFilesItem = NSMenuItem(title: "Add Files...", action: #selector(addFiles), keyEquivalent: "")
-        addFilesItem.target = self
-        menu.addItem(addFilesItem)
-        
-        let addVideoFilesItem = NSMenuItem(title: "Add Video Files...", action: #selector(addVideoFiles), keyEquivalent: "")
-        addVideoFilesItem.target = self
-        menu.addItem(addVideoFilesItem)
-
-        let addFolderItem = NSMenuItem(title: "Add Folder...", action: #selector(addWatchFolder), keyEquivalent: "")
-        addFolderItem.target = self
-        menu.addItem(addFolderItem)
-
-        let menuLocation = NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y - 5)
-        menu.popUp(positioning: nil, at: menuLocation, in: window?.contentView)
-    }
-
-    /// Show the +ADD menu for radio mode
-    private func showRadioAddMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        
-        let addStationItem = NSMenuItem(title: "Add Station...", action: #selector(showAddRadioStationDialog), keyEquivalent: "")
-        addStationItem.target = self
-        menu.addItem(addStationItem)
-
-        let addFolderItem = NSMenuItem(title: "New Folder...", action: #selector(showCreateRadioFolderDialog), keyEquivalent: "")
-        addFolderItem.target = self
-        menu.addItem(addFolderItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let addPlaylistItem = NSMenuItem(title: "Import Playlist URL...", action: #selector(showAddRadioPlaylistDialog), keyEquivalent: "")
-        addPlaylistItem.target = self
-        menu.addItem(addPlaylistItem)
-        
-        let importFileItem = NSMenuItem(title: "Import Playlist File...", action: #selector(importRadioPlaylistFile), keyEquivalent: "")
-        importFileItem.target = self
-        menu.addItem(importFileItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        let addDefaultsItem = NSMenuItem(title: "Add Missing Defaults", action: #selector(addMissingRadioDefaults), keyEquivalent: "")
-        addDefaultsItem.target = self
-        menu.addItem(addDefaultsItem)
-        
-        let resetDefaultsItem = NSMenuItem(title: "Reset to Defaults", action: #selector(resetRadioToDefaults), keyEquivalent: "")
-        resetDefaultsItem.target = self
-        menu.addItem(resetDefaultsItem)
-        
-        let menuLocation = NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y - 5)
-        menu.popUp(positioning: nil, at: menuLocation, in: window?.contentView)
-    }
-
-    private func promptForRadioFolderName(
-        title: String,
-        message: String,
-        confirmTitle: String,
-        defaultValue: String = ""
-    ) -> String? {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: confirmTitle)
-        alert.addButton(withTitle: "Cancel")
-
-        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
-        textField.stringValue = defaultValue
-        alert.accessoryView = textField
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let name = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? nil : name
-    }
-
-    private func buildRadioStationFoldersSubmenu(for station: RadioStation) -> NSMenu {
-        let submenu = NSMenu()
-        let folders = RadioManager.shared.userRadioFolders()
-        if folders.isEmpty {
-            let emptyItem = NSMenuItem(title: "No Folders", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            submenu.addItem(emptyItem)
-        } else {
-            for folder in folders {
-                let item = NSMenuItem(
-                    title: folder.name,
-                    action: #selector(contextMenuToggleStationFolderMembership(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.representedObject = RadioFolderMembershipAction(station: station, folderID: folder.id)
-                item.state = RadioManager.shared.isStation(station, inUserFolderID: folder.id) ? .on : .off
-                submenu.addItem(item)
-            }
-        }
-
-        submenu.addItem(NSMenuItem.separator())
-        let newFolderItem = NSMenuItem(
-            title: "New Folder...",
-            action: #selector(contextMenuCreateRadioFolderAndAddStation(_:)),
-            keyEquivalent: ""
-        )
-        newFolderItem.target = self
-        newFolderItem.representedObject = RadioFolderStationAction(station: station)
-        submenu.addItem(newFolderItem)
-        return submenu
-    }
-
-    private func buildRadioStationSmartFoldersSubmenu(for station: RadioStation) -> NSMenu {
-        let submenu = NSMenu()
-
-        let genreItem = NSMenuItem(title: "By Genre", action: nil, keyEquivalent: "")
-        genreItem.submenu = buildRadioStationSmartGenreSubmenu(for: station)
-        submenu.addItem(genreItem)
-
-        let regionItem = NSMenuItem(title: "By Region", action: nil, keyEquivalent: "")
-        regionItem.submenu = buildRadioStationSmartRegionSubmenu(for: station)
-        submenu.addItem(regionItem)
-
-        return submenu
-    }
-
-    private func buildRadioStationSmartGenreSubmenu(for station: RadioStation) -> NSMenu {
-        let submenu = NSMenu()
-        let manager = RadioManager.shared
-        let baseGenre = (station.genre ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Unknown"
-            : (station.genre ?? "Unknown").trimmingCharacters(in: .whitespacesAndNewlines)
-        let overrideGenre = manager.smartGenreOverride(for: station)
-        let effectiveGenre = manager.normalizedGenre(for: station)
-
-        let autoItem = NSMenuItem(
-            title: "Use Station Genre (\(baseGenre))",
-            action: #selector(contextMenuAssignStationSmartGenre(_:)),
-            keyEquivalent: ""
-        )
-        autoItem.target = self
-        autoItem.representedObject = RadioSmartGenreAction(station: station, genre: nil)
-        autoItem.state = overrideGenre == nil ? .on : .off
-        submenu.addItem(autoItem)
-        submenu.addItem(NSMenuItem.separator())
-
-        for genre in manager.smartGenreOptions(including: station) {
-            let item = NSMenuItem(
-                title: genre,
-                action: #selector(contextMenuAssignStationSmartGenre(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = RadioSmartGenreAction(station: station, genre: genre)
-            item.state = effectiveGenre.localizedCaseInsensitiveCompare(genre) == .orderedSame ? .on : .off
-            submenu.addItem(item)
-        }
-        return submenu
-    }
-
-    private func buildRadioStationSmartRegionSubmenu(for station: RadioStation) -> NSMenu {
-        let submenu = NSMenu()
-        let manager = RadioManager.shared
-        let baseRegion = manager.autoRegion(for: station)
-        let overrideRegion = manager.smartRegionOverride(for: station)
-        let effectiveRegion = manager.effectiveRegion(for: station)
-
-        let autoItem = NSMenuItem(
-            title: "Use Auto Region (\(baseRegion))",
-            action: #selector(contextMenuAssignStationSmartRegion(_:)),
-            keyEquivalent: ""
-        )
-        autoItem.target = self
-        autoItem.representedObject = RadioSmartRegionAction(station: station, region: nil)
-        autoItem.state = overrideRegion == nil ? .on : .off
-        submenu.addItem(autoItem)
-        submenu.addItem(NSMenuItem.separator())
-
-        for region in manager.smartRegionOptions(including: station) {
-            let item = NSMenuItem(
-                title: region,
-                action: #selector(contextMenuAssignStationSmartRegion(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = RadioSmartRegionAction(station: station, region: region)
-            item.state = effectiveRegion.localizedCaseInsensitiveCompare(region) == .orderedSame ? .on : .off
-            submenu.addItem(item)
-        }
-        return submenu
-    }
-    
-    @objc private func showAddRadioPlaylistDialog() {
-        // Show a simple dialog to enter a playlist URL (.m3u, .pls)
-        let alert = NSAlert()
-        alert.messageText = "Import Playlist URL"
-        alert.informativeText = "Enter the URL of a .m3u or .pls playlist file containing radio streams:"
-        alert.addButton(withTitle: "Import")
-        alert.addButton(withTitle: "Cancel")
-        
-        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-        textField.placeholderString = "https://example.com/playlist.m3u"
-        alert.accessoryView = textField
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            let urlString = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !urlString.isEmpty, let url = URL(string: urlString) else {
-                let errorAlert = NSAlert()
-                errorAlert.messageText = "Invalid URL"
-                errorAlert.informativeText = "Please enter a valid URL."
-                errorAlert.runModal()
-                return
-            }
-            
-            // Fetch and parse the playlist
-            fetchAndParsePlaylist(from: url)
-        }
-    }
-    
-    @objc private func importRadioPlaylistFile() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [
-            .init(filenameExtension: "m3u")!,
-            .init(filenameExtension: "m3u8")!,
-            .init(filenameExtension: "pls")!
-        ]
-        panel.message = "Select playlist files containing radio streams"
-        
-        if panel.runModal() == .OK {
-            var totalStations = 0
-            
-            for url in panel.urls {
-                do {
-                    let content = try String(contentsOf: url, encoding: .utf8)
-                    let stations = parsePlaylistContent(content, sourceURL: url)
-                    
-                    for station in stations {
-                        RadioManager.shared.addStation(station)
-                    }
-                    totalStations += stations.count
-                } catch {
-                    NSLog("Failed to read playlist file %@: %@", url.path, error.localizedDescription.redactingSensitiveURLQueryItems)
-                }
-            }
-            
-            if totalStations > 0 {
-                model.reloadInternetRadioForCurrentMode()
-                
-                let successAlert = NSAlert()
-                successAlert.messageText = "Playlist Imported"
-                successAlert.informativeText = "Added \(totalStations) station\(totalStations == 1 ? "" : "s") from the playlist\(panel.urls.count == 1 ? "" : "s")."
-                successAlert.runModal()
-            } else {
-                showPlaylistError("No valid radio streams found in the selected file(s)")
-            }
-        }
-    }
-    
-    private func fetchAndParsePlaylist(from url: URL) {
-        Task { @MainActor in
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                guard let content = String(data: data, encoding: .utf8) else {
-                    showPlaylistError("Could not read playlist content")
-                    return
-                }
-                
-                let stations = parsePlaylistContent(content, sourceURL: url)
-                if stations.isEmpty {
-                    showPlaylistError("No valid streams found in playlist")
-                    return
-                }
-                
-                // Add all stations
-                for station in stations {
-                    RadioManager.shared.addStation(station)
-                }
-                
-                // Reload and show success
-                model.reloadInternetRadioForCurrentMode()
-                
-                let successAlert = NSAlert()
-                successAlert.messageText = "Playlist Added"
-                successAlert.informativeText = "Added \(stations.count) station\(stations.count == 1 ? "" : "s") from the playlist."
-                successAlert.runModal()
-            } catch {
-                showPlaylistError("Failed to fetch playlist: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    private func parsePlaylistContent(_ content: String, sourceURL: URL) -> [RadioStation] {
-        var stations: [RadioStation] = []
-        let lines = content.components(separatedBy: .newlines)
-        
-        // Detect format
-        let isM3U = content.hasPrefix("#EXTM3U") || sourceURL.pathExtension.lowercased() == "m3u" || sourceURL.pathExtension.lowercased() == "m3u8"
-        let isPLS = content.lowercased().contains("[playlist]") || sourceURL.pathExtension.lowercased() == "pls"
-        
-        if isM3U {
-            // Parse M3U format
-            var currentTitle: String?
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.hasPrefix("#EXTINF:") {
-                    // Extract title from #EXTINF:-1,Station Name
-                    if let commaIndex = trimmed.firstIndex(of: ",") {
-                        currentTitle = String(trimmed[trimmed.index(after: commaIndex)...])
-                    }
-                } else if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
-                    if let streamURL = URL(string: trimmed) {
-                        let name = currentTitle ?? streamURL.lastPathComponent
-                        stations.append(RadioStation(name: name, url: streamURL))
-                    }
-                    currentTitle = nil
-                }
-            }
-        } else if isPLS {
-            // Parse PLS format
-            var files: [Int: String] = [:]
-            var titles: [Int: String] = [:]
-            
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.lowercased().hasPrefix("file") {
-                    // File1=http://...
-                    if let equalIndex = trimmed.firstIndex(of: "=") {
-                        let numPart = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 4)..<equalIndex]
-                        if let num = Int(numPart) {
-                            files[num] = String(trimmed[trimmed.index(after: equalIndex)...])
-                        }
-                    }
-                } else if trimmed.lowercased().hasPrefix("title") {
-                    // Title1=Station Name
-                    if let equalIndex = trimmed.firstIndex(of: "=") {
-                        let numPart = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 5)..<equalIndex]
-                        if let num = Int(numPart) {
-                            titles[num] = String(trimmed[trimmed.index(after: equalIndex)...])
-                        }
-                    }
-                }
-            }
-            
-            for (num, urlString) in files {
-                if let url = URL(string: urlString) {
-                    let name = titles[num] ?? url.lastPathComponent
-                    stations.append(RadioStation(name: name, url: url))
-                }
-            }
-        } else {
-            // Try to extract any http URLs
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
-                    if let url = URL(string: trimmed) {
-                        stations.append(RadioStation(name: url.lastPathComponent, url: url))
-                    }
-                }
-            }
-        }
-        
-        return stations
-    }
-    
-    private func showPlaylistError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Playlist Error"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.runModal()
-    }
-    
-    @objc private func addFiles() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.audio, .mp3, .wav, .aiff]
-        panel.message = "Select audio files to add to your library"
-
-        if panel.runModal() == .OK {
-            MediaLibrary.shared.addTracks(urls: panel.urls)
-
-            // Switch to local source if not already
-            if case .plex = model.currentSource {
-                model.currentSource = .local
-            }
+        if addButtonRect.contains(skinPoint), let menu = actions.addMenu() {
+            popDown(menu, from: event)
+        } else if libraryButtonRect.contains(skinPoint), let menu = actions.libraryMenu() {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+        } else if sourceButtonRect.contains(skinPoint) {
+            popDown(actions.sourceMenu(), from: event)
         }
     }
 
-    @objc private func addVideoFiles() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = true
-        var videoTypes: [UTType] = [.movie, .video]
-        for ext in AudioFileValidator.supportedVideoExtensions {
-            if let type = UTType(filenameExtension: ext) { videoTypes.append(type) }
-        }
-        panel.allowedContentTypes = videoTypes
-        panel.message = "Select video files to add to your library"
-        if panel.runModal() == .OK {
-            MediaLibrary.shared.addVideoFiles(urls: panel.urls)
-            revealLocalVideoCategory()
-        }
+    /// A server-bar menu, dropped down from the click.
+    private func popDown(_ menu: NSMenu, from event: NSEvent) {
+        menu.popUp(positioning: nil, at: NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y - 5),
+                   in: window?.contentView)
     }
 
-    private func revealLocalVideoCategory() {
-        if case .local = model.currentSource {} else { model.currentSource = .local }
-        if model.browseMode != .movies {
-            model.browseMode = .movies
-            selectedIndices.removeAll()
-            scrollOffset = 0
-        }
-        model.loadDataForCurrentMode()
-        needsDisplay = true
-    }
-
-    @objc private func selectLocalSource() {
-        model.currentSource = .local
-    }
-
-    @objc private func selectRadioSource() {
-        model.currentSource = .radio
-    }
-
-    @objc private func selectYouTubeSource() {
-        model.currentSource = .youtube
-    }
-
-    private func showYouTubeAddMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        let addItem = NSMenuItem(title: "Add Channel...", action: #selector(showAddYouTubeChannelDialog), keyEquivalent: "")
-        addItem.target = self
-        menu.addItem(addItem)
-        let menuLocation = NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y - 5)
-        menu.popUp(positioning: nil, at: menuLocation, in: window?.contentView)
-    }
-
-
-    @objc private func showAddRadioStationDialog() {
-        activeRadioStationSheet = AddRadioStationSheet(station: nil)
-        activeRadioStationSheet?.showDialog { [weak self] station in
-            self?.activeRadioStationSheet = nil  // Release reference when done
-            if let newStation = station {
-                RadioManager.shared.addStation(newStation)
-                // Switch to radio source if not already
-                if case .radio = self?.model.currentSource {
-                    self?.model.reloadInternetRadioForCurrentMode()
-                } else {
-                    self?.model.currentSource = .radio
-                }
-            }
-        }
-    }
-
-    @objc private func showCreateRadioFolderDialog() {
-        guard let name = promptForRadioFolderName(
-            title: "New Folder",
-            message: "Enter a folder name for Internet Radio:",
-            confirmTitle: "Create"
-        ) else { return }
-        guard RadioManager.shared.createUserFolder(named: name) != nil else {
-            let alert = NSAlert()
-            alert.messageText = "Unable to Create Folder"
-            alert.informativeText = "Use a unique, non-empty folder name."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
-        }
-        model.reloadInternetRadioForCurrentMode()
-    }
-
-    @objc private func showAddYouTubeChannelDialog() {
-        activeYouTubeChannelSheet = AddYouTubeChannelSheet()
-        activeYouTubeChannelSheet?.showDialog { [weak self] channel in
-            self?.activeYouTubeChannelSheet = nil
-            guard let self = self else { return }
-            if channel != nil {
-                if case .youtube = self.model.currentSource {
-                    self.model.rebuildCurrentModeItems()
-                } else {
-                    self.model.currentSource = .youtube
-                }
-            }
-        }
-    }
-
-    @objc private func addMissingRadioDefaults() {
-        RadioManager.shared.addMissingDefaults()
-        if case .radio = model.currentSource {
-            model.reloadInternetRadioForCurrentMode()
-        }
-    }
-    
-    @objc private func resetRadioToDefaults() {
-        // Show confirmation dialog
-        let alert = NSAlert()
-        alert.messageText = "Reset to Defaults"
-        alert.informativeText = "This will remove all your saved radio stations and replace them with the default stations. Are you sure?"
-        alert.addButton(withTitle: "Reset")
-        alert.addButton(withTitle: "Cancel")
-        alert.alertStyle = .warning
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            RadioManager.shared.resetToDefaults()
-            if case .radio = model.currentSource {
-                model.reloadInternetRadioForCurrentMode()
-            }
-        }
-    }
-    
-    @objc private func selectPlexServer(_ sender: NSMenuItem) {
-        guard let serverId = sender.representedObject as? String else { return }
-        model.currentSource = .plex(serverId: serverId)
-    }
-    
-    @objc private func linkPlexAccount() {
-        presentLinkSheet()
-    }
-    
-    @objc private func selectSubsonicServer(_ sender: NSMenuItem) {
-        guard let serverId = sender.representedObject as? String else { return }
-        model.currentSource = .subsonic(serverId: serverId)
-    }
-    
-    @objc private func addSubsonicServer() {
-        WindowManager.shared.showSubsonicLinkSheet()
-    }
-    
-    @objc private func selectJellyfinServer(_ sender: NSMenuItem) {
-        guard let serverId = sender.representedObject as? String else { return }
-        model.currentSource = .jellyfin(serverId: serverId)
-    }
-    
-    @objc private func addJellyfinServer() {
-        WindowManager.shared.showJellyfinLinkSheet()
-    }
-
-    @objc private func selectEmbyServer(_ sender: NSMenuItem) {
-        guard let serverId = sender.representedObject as? String else { return }
-        model.currentSource = .emby(serverId: serverId)
-    }
-
-    @objc private func addEmbyServer() {
-        WindowManager.shared.showEmbyLinkSheet()
-    }
-    
-    @objc private func addWatchFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "Select a folder to add to your library"
-
-        let folderDelegate = TopLevelFolderPickerDelegate()
-        panel.delegate = folderDelegate
-
-        withExtendedLifetime(folderDelegate) {
-            if panel.runModal() == .OK, let url = panel.url {
-                MediaLibrary.shared.addWatchFolder(url)
-                MediaLibrary.shared.scanFolder(url)
-
-                // Switch to local source if not already
-                if case .plex = model.currentSource {
-                    model.currentSource = .local
-                }
-            }
-        }
-    }
-
-    @objc private func manageWatchFolders() {
-        WatchFolderManagerDialog.present { [weak self] in
-            guard let self = self else { return }
-            if case .local = self.model.currentSource {
-                self.model.loadLocalData()
-            }
-        }
-    }
-    
     private func handleRefreshClick() {
         if model.browseMode.isHistoryMode {
             historyAgent.scheduleRefresh()
@@ -4415,25 +3400,8 @@ class PlexBrowserView: NSView {
         model.refreshCurrentSource()
     }
 
-    // MARK: - Sort Menu
-    
-    private func showSortMenu(at windowPoint: NSPoint) {
-        let menu = NSMenu()
-        
-        for option in LibraryBrowserSortOption.allCases {
-            let item = NSMenuItem(title: option.rawValue, action: #selector(selectSortOption(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = option
-            if option == model.currentSort {
-                item.state = .on
-            }
-            menu.addItem(item)
-        }
-        
-        let menuLocation = NSPoint(x: windowPoint.x, y: windowPoint.y - 5)
-        menu.popUp(positioning: nil, at: menuLocation, in: window?.contentView)
-    }
-    
+    // MARK: - List Clicks
+
     private func handleAlphabetClick(at skinPoint: NSPoint) {
         let rect = listLayout().alphabet
         let relativeY = skinPoint.y - rect.minY
@@ -4459,7 +3427,7 @@ class PlexBrowserView: NSView {
                 let listHeight = listLayout().rows.height
                 let maxScroll = max(0, CGFloat(model.displayItems.count) * itemHeight - listHeight)
                 scrollOffset = min(maxScroll, CGFloat(index) * itemHeight)
-                selectedIndices = [index]
+                model.selectedIndices = [index]
                 needsDisplay = true
                 return
             }
@@ -4468,28 +3436,6 @@ class PlexBrowserView: NSView {
     
     private func handleListClick(at index: Int, event: NSEvent, skinPoint: NSPoint) {
         let item = model.displayItems[index]
-
-        if model.browseMode == .search {
-            switch item.type {
-            case .artist(let artist):
-                model.navigateToArtistFromSearch(id: artist.id, name: artist.title)
-                return
-            case .subsonicArtist(let artist):
-                model.navigateToArtistFromSearch(id: artist.id, name: artist.name)
-                return
-            case .jellyfinArtist(let artist):
-                model.navigateToArtistFromSearch(id: artist.id, name: artist.name)
-                return
-            case .embyArtist(let artist):
-                model.navigateToArtistFromSearch(id: artist.id, name: artist.name)
-                return
-            case .localArtist(let artist):
-                model.navigateToArtistFromSearch(id: item.id, name: artist.name)
-                return
-            default:
-                break
-            }
-        }
 
         if case .radioFolder(let folder) = item.type {
             let indent = CGFloat(item.indentLevel) * 16
@@ -4503,9 +3449,9 @@ class PlexBrowserView: NSView {
                 return
             }
             if let updatedIndex = model.displayItems.firstIndex(where: { $0.id == folder.id }) {
-                selectedIndices = [updatedIndex]
+                model.selectedIndices = [updatedIndex]
             } else {
-                selectedIndices = [index]
+                model.selectedIndices = [index]
             }
             needsDisplay = true
             return
@@ -4516,7 +3462,7 @@ class PlexBrowserView: NSView {
             let currentRating = RadioManager.shared.rating(for: station)
             let targetRating = currentRating == clickedStar ? 0 : clickedStar
             RadioManager.shared.setRating(targetRating, for: station)
-            selectedIndices = [index]
+            model.selectedIndices = [index]
             needsDisplay = true
             return
         }
@@ -4536,27 +3482,27 @@ class PlexBrowserView: NSView {
 
         // Handle selection
         if event.modifierFlags.contains(.shift) {
-            if let lastSelected = selectedIndices.max() {
+            if let lastSelected = model.selectedIndices.max() {
                 let start = min(lastSelected, index)
                 let end = max(lastSelected, index)
                 for i in start...end {
-                    selectedIndices.insert(i)
+                    model.selectedIndices.insert(i)
                 }
             } else {
-                selectedIndices.insert(index)
+                model.selectedIndices.insert(index)
             }
             // Load artwork for selection (shift-click multi-select)
             loadArtworkForSelection()
         } else if event.modifierFlags.contains(.command) {
-            if selectedIndices.contains(index) {
-                selectedIndices.remove(index)
+            if model.selectedIndices.contains(index) {
+                model.selectedIndices.remove(index)
             } else {
-                selectedIndices.insert(index)
+                model.selectedIndices.insert(index)
             }
             // Load artwork for selection (cmd-click multi-select)
             loadArtworkForSelection()
         } else {
-            selectedIndices = [index]
+            model.selectedIndices = [index]
             
             // A single click selects; tracks play on double-click, as in the Original browser.
             // Each play is a Play Now that inserts the track, so playing on the single click as
@@ -4571,7 +3517,7 @@ class PlexBrowserView: NSView {
                 break
             case .radioStation(let station):
                 if model.browseMode == .search && event.clickCount == 1 {
-                    playRadioStation(station)
+                    RadioManager.shared.play(station: station)
                 }
             default:
                 // Everything else — tracks included, which play on double-click — loads artwork
@@ -4581,7 +3527,7 @@ class PlexBrowserView: NSView {
         
         // Double-click to play a track, album or show, or expand an artist
         if event.clickCount == 2 {
-            handleDoubleClick(on: item)
+            actions.activate(item)
         }
         
         needsDisplay = true
@@ -4596,7 +3542,7 @@ class PlexBrowserView: NSView {
             let deltaX = resizingColumnFromLeadingEdge ? -rawDeltaX : rawDeltaX
             let minWidth = LibraryBrowserColumn.findColumn(id: columnId)?.minWidth ?? 30
             let newWidth = max(minWidth, resizeStartWidth + deltaX)
-            setColumnWidth(newWidth, for: columnId, group: group)
+            model.setColumnWidth(newWidth, for: columnId, group: group)
             needsDisplay = true
             return
         }
@@ -4671,1809 +3617,20 @@ class PlexBrowserView: NSView {
         guard let items = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else {
             return false
         }
-        
-        var audioURLs: [URL] = []
-        var videoURLs: [URL] = []
-        var playlistURLs: [URL] = []
-        var processedDirectories = false
-        
-        for url in items {
-            if LocalFileDiscovery.isDirectory(url) {
-                // Add folder as watch folder and scan
-                MediaLibrary.shared.addWatchFolder(url)
-                MediaLibrary.shared.scanFolder(url)
-                processedDirectories = true
-            } else if LocalFileDiscovery.isSupportedPlaylistFile(url) {
-                // Playlist file
-                playlistURLs.append(url)
-            } else if LocalFileDiscovery.isSupportedAudioFile(url) {
-                // Audio file
-                audioURLs.append(url)
-            } else if LocalFileDiscovery.isSupportedVideoFile(url) {
-                videoURLs.append(url)
-            }
-        }
-        
-        // Handle playlist files - import as radio stations
-        if !playlistURLs.isEmpty {
-            var totalStations = 0
-            for url in playlistURLs {
-                do {
-                    let content = try String(contentsOf: url, encoding: .utf8)
-                    let stations = parsePlaylistContent(content, sourceURL: url)
-                    
-                    for station in stations {
-                        RadioManager.shared.addStation(station)
-                    }
-                    totalStations += stations.count
-                } catch {
-                    NSLog("Failed to read playlist file %@: %@", url.path, error.localizedDescription.redactingSensitiveURLQueryItems)
-                }
-            }
-            
-            if totalStations > 0 {
-                // Switch to radio source to show added stations
-                if case .radio = model.currentSource {
-                    model.reloadInternetRadioForCurrentMode()
-                } else {
-                    model.currentSource = .radio
-                }
-                
-                let alert = NSAlert()
-                alert.messageText = "Playlist Imported"
-                alert.informativeText = "Added \(totalStations) station\(totalStations == 1 ? "" : "s") from the playlist\(playlistURLs.count == 1 ? "" : "s")."
-                alert.runModal()
-            }
-        }
-        
-        // Handle audio files
-        if !audioURLs.isEmpty {
-            MediaLibrary.shared.addTracks(urls: audioURLs)
-            
-            // Switch to local source to show added content
-            if case .plex = model.currentSource {
-                model.currentSource = .local
-            }
-        }
-
-        if !videoURLs.isEmpty {
-            MediaLibrary.shared.addVideoFiles(urls: videoURLs)
-            revealLocalVideoCategory()
-        }
-        
-        return !audioURLs.isEmpty || !videoURLs.isEmpty || !playlistURLs.isEmpty || processedDirectories
+        return actions.addDroppedItems(items)
     }
     
     // MARK: - Right-Click Context Menu (for list items)
-    
-    // Note: rightMouseDown is now defined in the Mouse Events section above
-    // This section just contains the showContextMenu helper
-    
-    // MARK: Detailed Metadata Fetching for Context Menu
-    
-    /// Fetch detailed movie metadata (with IMDB/TMDB IDs) for context menu
-    private func fetchMovieDetailsForMenu(_ movie: PlexMovie) async -> PlexMovie {
-        // If we already have the IMDB ID, no need to fetch
-        if movie.imdbId != nil {
-            return movie
-        }
-        
-        do {
-            if let detailed = try await PlexManager.shared.fetchMovieDetails(movieID: movie.id) {
-                NSLog("Fetched movie details for %@: imdbId=%@, tmdbId=%@", movie.title, detailed.imdbId ?? "nil", detailed.tmdbId ?? "nil")
-                return detailed
-            }
-        } catch {
-            NSLog("Failed to fetch movie details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        return movie
-    }
-    
-    /// Fetch detailed show metadata (with IMDB/TMDB/TVDB IDs) for context menu
-    private func fetchShowDetailsForMenu(_ show: PlexShow) async -> PlexShow {
-        // If we already have the IMDB ID, no need to fetch
-        if show.imdbId != nil {
-            return show
-        }
-        
-        do {
-            if let detailed = try await PlexManager.shared.fetchShowDetails(showID: show.id) {
-                NSLog("Fetched show details for %@: imdbId=%@, tmdbId=%@", show.title, detailed.imdbId ?? "nil", detailed.tmdbId ?? "nil")
-                return detailed
-            }
-        } catch {
-            NSLog("Failed to fetch show details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        return show
-    }
-    
-    /// Fetch detailed episode metadata (with IMDB ID) for context menu
-    private func fetchEpisodeDetailsForMenu(_ episode: PlexEpisode) async -> PlexEpisode {
-        // If we already have the IMDB ID, no need to fetch
-        if episode.imdbId != nil {
-            return episode
-        }
-        
-        do {
-            if let detailed = try await PlexManager.shared.fetchEpisodeDetails(episodeID: episode.id) {
-                NSLog("Fetched episode details for %@: imdbId=%@", episode.title, detailed.imdbId ?? "nil")
-                return detailed
-            }
-        } catch {
-            NSLog("Failed to fetch episode details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        return episode
-    }
-    
-    /// Show context menu with a specific item type (used when we've fetched detailed metadata)
-    private func showContextMenu(for itemType: LibraryBrowserItem.ItemType, item: LibraryBrowserItem, at event: NSEvent) {
-        // Create a new display item with the detailed type
-        let detailedItem = LibraryBrowserItem(
-            id: item.id,
-            title: item.title,
-            info: item.info,
-            indentLevel: item.indentLevel,
-            hasChildren: item.hasChildren,
-            type: itemType,
-            titlePrefix: item.titlePrefix
-        )
-        showContextMenu(for: detailedItem, at: event)
-    }
-    
+
     private func showContextMenu(for item: LibraryBrowserItem, at event: NSEvent) {
-        let menu = NSMenu()
-        if let playable = playable(for: item) {
-            TrackVerb.addMenuItems(to: menu, resolve: resolver(for: playable))
-            if let level = playable.eqProfileLevel {
-                EQProfileMenu.addAssignItem(to: menu, level: level, resolve: resolver(for: playable))
-            }
-        }
-        
-        NSLog("showContextMenu: item.type = %@, title = %@", String(describing: item.type), item.title)
-        
-        switch item.type {
-        case .track(let track):
-            menu.addItem(NSMenuItem.separator())
-            
-            let radioItem = NSMenuItem(title: "Start Track Radio", action: #selector(contextMenuStartTrackRadio(_:)), keyEquivalent: "")
-            radioItem.target = self
-            radioItem.representedObject = track
-            menu.addItem(radioItem)
-            
-        case .album(let album):
-            menu.addItem(NSMenuItem.separator())
-            
-            let radioItem = NSMenuItem(title: "Start Album Radio", action: #selector(contextMenuStartAlbumRadio(_:)), keyEquivalent: "")
-            radioItem.target = self
-            radioItem.representedObject = album
-            menu.addItem(radioItem)
-            
-        case .artist(let artist):
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-            
-            menu.addItem(NSMenuItem.separator())
-            
-            let radioItem = NSMenuItem(title: "Start Artist Radio", action: #selector(contextMenuStartArtistRadio(_:)), keyEquivalent: "")
-            radioItem.target = self
-            radioItem.representedObject = artist
-            menu.addItem(radioItem)
-            
-        case .movie(let movie):
-            // Cast submenu (for video-capable devices)
-            let videoDevices = CastManager.shared.videoCapableDevices
-            if !videoDevices.isEmpty {
-                menu.addItem(NSMenuItem.separator())
-                
-                let castItem = NSMenuItem(title: "Cast to...", action: nil, keyEquivalent: "")
-                let castMenu = NSMenu()
-                
-                for device in videoDevices {
-                    let deviceItem = NSMenuItem(title: device.name, action: #selector(contextMenuCastMovie(_:)), keyEquivalent: "")
-                    deviceItem.target = self
-                    deviceItem.representedObject = (movie, device)
-                    castMenu.addItem(deviceItem)
-                }
-                
-                castItem.submenu = castMenu
-                menu.addItem(castItem)
-            }
-            
-            // External links submenu
-            menu.addItem(NSMenuItem.separator())
-            
-            let linksItem = NSMenuItem(title: "View Online", action: nil, keyEquivalent: "")
-            let linksMenu = NSMenu()
-            
-            let imdbItem = NSMenuItem(title: "IMDB", action: #selector(contextMenuOpenIMDB(_:)), keyEquivalent: "")
-            imdbItem.target = self
-            imdbItem.representedObject = movie
-            linksMenu.addItem(imdbItem)
-            
-            let tmdbItem = NSMenuItem(title: "TMDB", action: #selector(contextMenuOpenTMDB(_:)), keyEquivalent: "")
-            tmdbItem.target = self
-            tmdbItem.representedObject = movie
-            linksMenu.addItem(tmdbItem)
-            
-            let rtItem = NSMenuItem(title: "Rotten Tomatoes", action: #selector(contextMenuOpenRottenTomatoes(_:)), keyEquivalent: "")
-            rtItem.target = self
-            rtItem.representedObject = movie
-            linksMenu.addItem(rtItem)
-            
-            linksItem.submenu = linksMenu
-            menu.addItem(linksItem)
-            
-        case .show(let show):
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-
-            // External links submenu
-            menu.addItem(NSMenuItem.separator())
-            
-            let linksItem = NSMenuItem(title: "View Online", action: nil, keyEquivalent: "")
-            let linksMenu = NSMenu()
-            
-            let imdbItem = NSMenuItem(title: "IMDB", action: #selector(contextMenuOpenIMDBShow(_:)), keyEquivalent: "")
-            imdbItem.target = self
-            imdbItem.representedObject = show
-            linksMenu.addItem(imdbItem)
-            
-            let tmdbItem = NSMenuItem(title: "TMDB", action: #selector(contextMenuOpenTMDBShow(_:)), keyEquivalent: "")
-            tmdbItem.target = self
-            tmdbItem.representedObject = show
-            linksMenu.addItem(tmdbItem)
-            
-            let rtItem = NSMenuItem(title: "Rotten Tomatoes", action: #selector(contextMenuOpenRottenTomatoesShow(_:)), keyEquivalent: "")
-            rtItem.target = self
-            rtItem.representedObject = show
-            linksMenu.addItem(rtItem)
-            
-            linksItem.submenu = linksMenu
-            menu.addItem(linksItem)
-            
-        case .season:
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-
-        case .episode(let episode):
-            // Cast submenu (for video-capable devices)
-            let videoDevicesEpisode = CastManager.shared.videoCapableDevices
-            if !videoDevicesEpisode.isEmpty {
-                menu.addItem(NSMenuItem.separator())
-                
-                let castItem = NSMenuItem(title: "Cast to...", action: nil, keyEquivalent: "")
-                let castMenu = NSMenu()
-                
-                for device in videoDevicesEpisode {
-                    let deviceItem = NSMenuItem(title: device.name, action: #selector(contextMenuCastEpisode(_:)), keyEquivalent: "")
-                    deviceItem.target = self
-                    deviceItem.representedObject = (episode, device)
-                    castMenu.addItem(deviceItem)
-                }
-                
-                castItem.submenu = castMenu
-                menu.addItem(castItem)
-            }
-            
-            // External links submenu
-            menu.addItem(NSMenuItem.separator())
-            
-            let linksItem = NSMenuItem(title: "View Online", action: nil, keyEquivalent: "")
-            let linksMenu = NSMenu()
-            
-            let imdbItem = NSMenuItem(title: "IMDB", action: #selector(contextMenuOpenIMDBEpisode(_:)), keyEquivalent: "")
-            imdbItem.target = self
-            imdbItem.representedObject = episode
-            linksMenu.addItem(imdbItem)
-            
-            let tmdbItem = NSMenuItem(title: "TMDB", action: #selector(contextMenuOpenTMDBEpisode(_:)), keyEquivalent: "")
-            tmdbItem.target = self
-            tmdbItem.representedObject = episode
-            linksMenu.addItem(tmdbItem)
-            
-            let rtItem = NSMenuItem(title: "Rotten Tomatoes", action: #selector(contextMenuOpenRottenTomatoesEpisode(_:)), keyEquivalent: "")
-            rtItem.target = self
-            rtItem.representedObject = episode
-            linksMenu.addItem(rtItem)
-            
-            linksItem.submenu = linksMenu
-            menu.addItem(linksItem)
-            
-        case .localTrack(let track):
-            menu.addItem(NSMenuItem.separator())
-            
-            let editTagsItem = NSMenuItem(title: "Edit Tags", action: #selector(contextMenuEditTags(_:)), keyEquivalent: "")
-            editTagsItem.target = self
-            editTagsItem.representedObject = track
-            menu.addItem(editTagsItem)
-
-            let tagsItem = NSMenuItem(title: "See Tags", action: #selector(contextMenuShowTags(_:)), keyEquivalent: "")
-            tagsItem.target = self
-            tagsItem.representedObject = track
-            menu.addItem(tagsItem)
-            
-            let finderItem = NSMenuItem(title: "Show in Finder", action: #selector(contextMenuShowInFinder(_:)), keyEquivalent: "")
-            finderItem.target = self
-            finderItem.representedObject = track
-            menu.addItem(finderItem)
-            
-            menu.addItem(NSMenuItem.separator())
-            
-            let removeItem = NSMenuItem(title: "Remove from Library", action: #selector(contextMenuRemoveLocalTrack(_:)), keyEquivalent: "")
-            removeItem.target = self
-            removeItem.representedObject = track
-            menu.addItem(removeItem)
-            
-            let deleteItem = NSMenuItem(title: "Delete File from Disk...", action: #selector(contextMenuDeleteLocalTrack(_:)), keyEquivalent: "")
-            deleteItem.target = self
-            deleteItem.representedObject = track
-            menu.addItem(deleteItem)
-
-        case .localFolder(let url, _):
-            menu.addItem(NSMenuItem.separator())
-
-            let finderItem = NSMenuItem(title: "Show in Finder", action: #selector(contextMenuRevealLocalFolderInFinder(_:)), keyEquivalent: "")
-            finderItem.target = self
-            finderItem.representedObject = url
-            menu.addItem(finderItem)
-
-        case .localAlbum(let album):
-            menu.addItem(NSMenuItem.separator())
-
-            let rateAlbumItem = NSMenuItem(title: "Rate", action: nil, keyEquivalent: "")
-            rateAlbumItem.submenu = buildRateSubmenuForLocalAlbum(albumId: album.id)
-            menu.addItem(rateAlbumItem)
-
-            let editAlbumItem = NSMenuItem(title: "Edit Album Tags", action: #selector(contextMenuEditAlbumTags(_:)), keyEquivalent: "")
-            editAlbumItem.target = self
-            editAlbumItem.representedObject = album
-            menu.addItem(editAlbumItem)
-
-            menu.addItem(NSMenuItem.separator())
-            
-            let removeItem = NSMenuItem(title: "Remove Album from Library", action: #selector(contextMenuRemoveLocalAlbum(_:)), keyEquivalent: "")
-            removeItem.target = self
-            removeItem.representedObject = album
-            menu.addItem(removeItem)
-            
-            let deleteItem = NSMenuItem(title: "Delete Album from Disk...", action: #selector(contextMenuDeleteLocalAlbum(_:)), keyEquivalent: "")
-            deleteItem.target = self
-            deleteItem.representedObject = album
-            menu.addItem(deleteItem)
-            
-        case .localArtist(let artist):
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-            
-            menu.addItem(NSMenuItem.separator())
-
-            let rateArtistItem = NSMenuItem(title: "Rate", action: nil, keyEquivalent: "")
-            rateArtistItem.submenu = buildRateSubmenuForLocalArtist(artistId: artist.id)
-            menu.addItem(rateArtistItem)
-            menu.addItem(NSMenuItem.separator())
-            
-            let removeItem = NSMenuItem(title: "Remove Artist from Library", action: #selector(contextMenuRemoveLocalArtist(_:)), keyEquivalent: "")
-            removeItem.target = self
-            removeItem.representedObject = artist
-            menu.addItem(removeItem)
-            
-            let deleteItem = NSMenuItem(title: "Delete Artist from Disk...", action: #selector(contextMenuDeleteLocalArtist(_:)), keyEquivalent: "")
-            deleteItem.target = self
-            deleteItem.representedObject = artist
-            menu.addItem(deleteItem)
-            
-        case .subsonicArtist:
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-            
-        case .subsonicPlaylist:
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-            
-        case .jellyfinArtist:
-            let expandItem2 = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem2.target = self
-            expandItem2.representedObject = item
-            menu.addItem(expandItem2)
-            
-        case .jellyfinPlaylist:
-            let expandItem3 = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem3.target = self
-            expandItem3.representedObject = item
-            menu.addItem(expandItem3)
-            
-        case .jellyfinShow:
-            let expandItem4 = NSMenuItem(title: "Expand/Collapse", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem4.target = self
-            expandItem4.representedObject = item
-            menu.addItem(expandItem4)
-            
-        case .jellyfinSeason:
-            let expandItem5 = NSMenuItem(title: "Expand/Collapse", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem5.target = self
-            expandItem5.representedObject = item
-            menu.addItem(expandItem5)
-            
-        case .embyArtist:
-            let ex = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: ""); ex.target = self; ex.representedObject = item; menu.addItem(ex)
-        case .embyPlaylist:
-            let ex = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: ""); ex.target = self; ex.representedObject = item; menu.addItem(ex)
-        case .embyShow:
-            let ex = NSMenuItem(title: "Expand/Collapse", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: ""); ex.target = self; ex.representedObject = item; menu.addItem(ex)
-        case .embySeason:
-            let ex = NSMenuItem(title: "Expand/Collapse", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: ""); ex.target = self; ex.representedObject = item; menu.addItem(ex)
-
-        case .plexPlaylist:
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand", action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-            
-        case .radioStation(let station):
-            let playItem = NSMenuItem(title: "Play Station", action: #selector(contextMenuPlayRadioStation(_:)), keyEquivalent: "")
-            playItem.target = self
-            playItem.representedObject = station
-            menu.addItem(playItem)
-            EQProfileMenu.addAssignItem(to: menu, level: .track, tracks: [station.toTrack()])
-            
-            menu.addItem(NSMenuItem.separator())
-            
-            let foldersItem = NSMenuItem(title: "Folders", action: nil, keyEquivalent: "")
-            foldersItem.submenu = buildRadioStationFoldersSubmenu(for: station)
-            menu.addItem(foldersItem)
-
-            let smartFoldersItem = NSMenuItem(title: "Smart Folders", action: nil, keyEquivalent: "")
-            smartFoldersItem.submenu = buildRadioStationSmartFoldersSubmenu(for: station)
-            menu.addItem(smartFoldersItem)
-            
-            menu.addItem(NSMenuItem.separator())
-            
-            let editItem = NSMenuItem(title: "Edit Station...", action: #selector(contextMenuEditRadioStation(_:)), keyEquivalent: "")
-            editItem.target = self
-            editItem.representedObject = station
-            menu.addItem(editItem)
-            
-            let deleteItem = NSMenuItem(title: "Delete Station", action: #selector(contextMenuDeleteRadioStation(_:)), keyEquivalent: "")
-            deleteItem.target = self
-            deleteItem.representedObject = station
-            menu.addItem(deleteItem)
-
-        case .radioFolder(let folder):
-            if folder.hasChildren {
-                let expandItem = NSMenuItem(
-                    title: model.isExpanded(item) ? "Collapse" : "Expand",
-                    action: #selector(contextMenuToggleExpand(_:)),
-                    keyEquivalent: ""
-                )
-                expandItem.target = self
-                expandItem.representedObject = item
-                menu.addItem(expandItem)
-            }
-
-            switch folder.kind {
-            case .manual(let folderID):
-                if !menu.items.isEmpty { menu.addItem(NSMenuItem.separator()) }
-                let renameItem = NSMenuItem(title: "Rename Folder...", action: #selector(contextMenuRenameRadioFolder(_:)), keyEquivalent: "")
-                renameItem.target = self
-                renameItem.representedObject = RadioFolderRenameAction(folderID: folderID)
-                menu.addItem(renameItem)
-
-                let deleteItem = NSMenuItem(title: "Delete Folder", action: #selector(contextMenuDeleteRadioFolder(_:)), keyEquivalent: "")
-                deleteItem.target = self
-                deleteItem.representedObject = RadioFolderDeleteAction(folderID: folderID)
-                menu.addItem(deleteItem)
-            case .userFoldersRoot:
-                if !menu.items.isEmpty { menu.addItem(NSMenuItem.separator()) }
-                let newFolderItem = NSMenuItem(title: "New Folder...", action: #selector(showCreateRadioFolderDialog), keyEquivalent: "")
-                newFolderItem.target = self
-                menu.addItem(newFolderItem)
-            default:
-                break
-            }
-
-            if menu.items.isEmpty { return }
-
-        case .youtubeChannel(let channel):
-            let expandTitle = model.isExpanded(item) ? "Collapse" : "Expand"
-            let expandItem = NSMenuItem(title: expandTitle, action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self; expandItem.representedObject = item; menu.addItem(expandItem)
-            menu.addItem(NSMenuItem.separator())
-            if !YouTubeManager.shared.isSubscribed(channel) {
-                let subscribeItem = NSMenuItem(title: "Subscribe", action: #selector(contextMenuSubscribeYouTubeChannel(_:)), keyEquivalent: "")
-                subscribeItem.target = self; subscribeItem.representedObject = channel; menu.addItem(subscribeItem)
-            } else if model.isYouTubeChannelSearch {
-                // Refresh/Remove belong to the Channels tab.
-                let subscribedItem = NSMenuItem(title: "Already Subscribed", action: nil, keyEquivalent: "")
-                subscribedItem.isEnabled = false; menu.addItem(subscribedItem)
-            } else {
-                let refreshItem = NSMenuItem(title: "Refresh", action: #selector(contextMenuRefreshYouTubeChannel(_:)), keyEquivalent: "")
-                refreshItem.target = self; refreshItem.representedObject = channel; menu.addItem(refreshItem)
-                let removeItem = NSMenuItem(title: "Remove Channel", action: #selector(contextMenuRemoveYouTubeChannel(_:)), keyEquivalent: "")
-                removeItem.target = self; removeItem.representedObject = channel; menu.addItem(removeItem)
-            }
-
-        case .youtubeVideo(let video):
-            youtubeVideoActions.addMenuItems(for: video, to: menu)
-
-        case .plexRadioStation(let radioType):
-            let playItem = NSMenuItem(title: "Play \(radioType.displayName)", action: #selector(contextMenuPlayPlexRadioStation(_:)), keyEquivalent: "")
-            playItem.target = self
-            playItem.representedObject = item
-            menu.addItem(playItem)
-
-        case .subsonicRadioStation:
-            let playItem = NSMenuItem(title: "Play", action: #selector(contextMenuPlaySubsonicRadioStation(_:)), keyEquivalent: "")
-            playItem.target = self
-            playItem.representedObject = item
-            menu.addItem(playItem)
-
-        case .jellyfinRadioStation:
-            let playItem = NSMenuItem(title: "Play", action: #selector(contextMenuPlayJellyfinRadioStation(_:)), keyEquivalent: "")
-            playItem.target = self
-            playItem.representedObject = item
-            menu.addItem(playItem)
-
-        case .embyRadioStation:
-            let playItem = NSMenuItem(title: "Play", action: #selector(contextMenuPlayEmbyRadioStation(_:)), keyEquivalent: "")
-            playItem.target = self
-            playItem.representedObject = item
-            menu.addItem(playItem)
-
-        case .localRadioStation:
-            let playItem = NSMenuItem(title: "Play", action: #selector(contextMenuPlayLocalRadioStation(_:)), keyEquivalent: "")
-            playItem.target = self
-            playItem.representedObject = item
-            menu.addItem(playItem)
-            
-        case .localMovie(let movie):
-            let videoDevices = CastManager.shared.videoCapableDevices
-            if !videoDevices.isEmpty {
-                menu.addItem(NSMenuItem.separator())
-                let castItem = NSMenuItem(title: "Cast to...", action: nil, keyEquivalent: "")
-                let castMenu = NSMenu()
-                for device in videoDevices {
-                    let deviceItem = NSMenuItem(title: device.name, action: #selector(contextMenuCastLocalVideo(_:)), keyEquivalent: "")
-                    deviceItem.target = self
-                    deviceItem.representedObject = (movie.url, movie.title, device) as (URL, String, CastDevice)
-                    castMenu.addItem(deviceItem)
-                }
-                castItem.submenu = castMenu
-                menu.addItem(castItem)
-            }
-            menu.addItem(NSMenuItem.separator())
-            let finderItem = NSMenuItem(title: "Show in Finder", action: #selector(contextMenuShowLocalVideoInFinder(_:)), keyEquivalent: "")
-            finderItem.target = self
-            finderItem.representedObject = movie.url as NSURL
-            menu.addItem(finderItem)
-            menu.addItem(NSMenuItem.separator())
-            let editMovieItem = NSMenuItem(title: "Edit Tags", action: #selector(contextMenuEditVideoTags(_:)), keyEquivalent: "")
-            editMovieItem.target = self
-            editMovieItem.representedObject = movie
-            menu.addItem(editMovieItem)
-
-        case .localShow:
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand",
-                                        action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-
-        case .localSeason:
-            let expandItem = NSMenuItem(title: model.isExpanded(item) ? "Collapse" : "Expand",
-                                        action: #selector(contextMenuToggleExpand(_:)), keyEquivalent: "")
-            expandItem.target = self
-            expandItem.representedObject = item
-            menu.addItem(expandItem)
-
-        case .localEpisode(let episode):
-            let videoDevices = CastManager.shared.videoCapableDevices
-            if !videoDevices.isEmpty {
-                menu.addItem(NSMenuItem.separator())
-                let castItem = NSMenuItem(title: "Cast to...", action: nil, keyEquivalent: "")
-                let castMenu = NSMenu()
-                for device in videoDevices {
-                    let deviceItem = NSMenuItem(title: device.name, action: #selector(contextMenuCastLocalVideo(_:)), keyEquivalent: "")
-                    deviceItem.target = self
-                    deviceItem.representedObject = (episode.url, episode.title, device) as (URL, String, CastDevice)
-                    castMenu.addItem(deviceItem)
-                }
-                castItem.submenu = castMenu
-                menu.addItem(castItem)
-            }
-            menu.addItem(NSMenuItem.separator())
-            let finderItem = NSMenuItem(title: "Show in Finder", action: #selector(contextMenuShowLocalVideoInFinder(_:)), keyEquivalent: "")
-            finderItem.target = self
-            finderItem.representedObject = episode.url as NSURL
-            menu.addItem(finderItem)
-            menu.addItem(NSMenuItem.separator())
-            let editEpisodeItem = NSMenuItem(title: "Edit Tags", action: #selector(contextMenuEditVideoTags(_:)), keyEquivalent: "")
-            editEpisodeItem.target = self
-            editEpisodeItem.representedObject = episode
-            menu.addItem(editEpisodeItem)
-
-        case .subsonicTrack, .subsonicAlbum, .jellyfinTrack, .jellyfinAlbum, .embyTrack, .embyAlbum, .localPlaylist, .localPlaylistTrack,
-             .jellyfinMovie, .jellyfinEpisode, .embyMovie, .embyEpisode:
-            break
-
-        case .header:
-            return
-        }
-
+        guard let menu = actions.contextMenu(for: item) else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
-    private static func goldStarAttributedTitle(_ label: String) -> NSAttributedString {
-        let goldColor = NSColor(srgbRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0)
-        let emptyColor = NSColor.secondaryLabelColor
-        let font = NSFont.menuFont(ofSize: 0)
-        let astr = NSMutableAttributedString(string: label,
-                                             attributes: [.font: font,
-                                                          .foregroundColor: emptyColor])
-        for (i, ch) in label.enumerated() where ch == "★" {
-            astr.addAttribute(.foregroundColor, value: goldColor,
-                              range: NSRange(location: i, length: 1))
-        }
-        return astr
-    }
-
-    private func buildRateSubmenuForLocalAlbum(albumId: String) -> NSMenu {
-        let menu = NSMenu(title: "Rate")
-        for stars in 1...5 {
-            let label = String(repeating: "★", count: stars) + String(repeating: "☆", count: 5 - stars)
-            let item = NSMenuItem(title: label, action: #selector(contextMenuRateLocalAlbum(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = stars * 2
-            item.representedObject = albumId
-            item.attributedTitle = PlexBrowserView.goldStarAttributedTitle(label)
-            menu.addItem(item)
-        }
-        menu.addItem(NSMenuItem.separator())
-
-        let clearItem = NSMenuItem(title: "Clear Rating", action: #selector(contextMenuRateLocalAlbum(_:)), keyEquivalent: "")
-        clearItem.target = self
-        clearItem.tag = -1
-        clearItem.representedObject = albumId
-        menu.addItem(clearItem)
-        return menu
-    }
-
-    private func buildRateSubmenuForLocalArtist(artistId: String) -> NSMenu {
-        let menu = NSMenu(title: "Rate")
-        for stars in 1...5 {
-            let label = String(repeating: "★", count: stars) + String(repeating: "☆", count: 5 - stars)
-            let item = NSMenuItem(title: label, action: #selector(contextMenuRateLocalArtist(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = stars * 2
-            item.representedObject = artistId
-            item.attributedTitle = PlexBrowserView.goldStarAttributedTitle(label)
-            menu.addItem(item)
-        }
-        menu.addItem(NSMenuItem.separator())
-
-        let clearItem = NSMenuItem(title: "Clear Rating", action: #selector(contextMenuRateLocalArtist(_:)), keyEquivalent: "")
-        clearItem.target = self
-        clearItem.tag = -1
-        clearItem.representedObject = artistId
-        menu.addItem(clearItem)
-        return menu
-    }
-
-    @objc private func contextMenuShowTags(_ sender: NSMenuItem) {
-        guard let track = sender.representedObject as? LibraryTrack else { return }
-        // Close any existing tags panel first
-        activeTagsPanel?.close()
-        
-        let tagsPanel = TagsPanel(track: track)
-        tagsPanel.delegate = self
-        activeTagsPanel = tagsPanel
-        tagsPanel.show()
-    }
-
-    @objc private func contextMenuEditTags(_ sender: NSMenuItem) {
-        guard let track = sender.representedObject as? LibraryTrack else { return }
-        activeEditTagsPanel?.close()
-        let panel = EditTagsPanel(track: track)
-        panel.delegate = self
-        panel.onSave = { [weak self] in self?.model.reloadLocalBrowserAfterMetadataEdit() }
-        activeEditTagsPanel = panel
-        panel.show()
-    }
-
-    @objc private func contextMenuEditAlbumTags(_ sender: NSMenuItem) {
-        guard let album = sender.representedObject as? Album else { return }
-        activeEditAlbumTagsPanel?.close()
-        let panel = EditAlbumTagsPanel(album: album)
-        panel.delegate = self
-        panel.onSave = { [weak self] in self?.model.reloadLocalBrowserAfterMetadataEdit() }
-        activeEditAlbumTagsPanel = panel
-        panel.show()
-    }
-
-    @objc private func contextMenuEditVideoTags(_ sender: NSMenuItem) {
-        let videoItem: EditVideoTagsPanel.VideoItem
-        if let movie = sender.representedObject as? LocalVideo {
-            videoItem = .movie(movie)
-        } else if let episode = sender.representedObject as? LocalEpisode {
-            videoItem = .episode(episode)
-        } else {
-            return
-        }
-
-        activeEditVideoTagsPanel?.close()
-        let panel = EditVideoTagsPanel(item: videoItem)
-        panel.delegate = self
-        panel.onSave = { [weak self] in self?.model.reloadLocalBrowserAfterMetadataEdit() }
-        activeEditVideoTagsPanel = panel
-        panel.show()
-    }
-
-    @objc private func contextMenuRateLocalAlbum(_ sender: NSMenuItem) {
-        guard let albumId = sender.representedObject as? String else { return }
-        let rating = sender.tag
-        MediaLibrary.shared.setAlbumRating(albumId: albumId, rating: rating >= 0 ? rating : nil)
-        needsDisplay = true
-    }
-
-    @objc private func contextMenuRateLocalArtist(_ sender: NSMenuItem) {
-        guard let artistId = sender.representedObject as? String else { return }
-        let rating = sender.tag
-        MediaLibrary.shared.setArtistRating(artistId: artistId, rating: rating >= 0 ? rating : nil)
-        needsDisplay = true
-    }
-    
-    @objc private func contextMenuShowInFinder(_ sender: NSMenuItem) {
-        guard let track = sender.representedObject as? LibraryTrack else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([track.url])
-    }
-    
-    @objc private func contextMenuRemoveLocalTrack(_ sender: NSMenuItem) {
-        guard let track = sender.representedObject as? LibraryTrack else { return }
-        let tracksToRemove = selectedLocalTracksForContextAction(fallback: track)
-        if tracksToRemove.count == 1 {
-            MediaLibrary.shared.removeTrack(track)
-        } else {
-            MediaLibrary.shared.removeTracks(urls: tracksToRemove.map { $0.url })
-        }
-    }
-    
-    @objc private func contextMenuDeleteLocalTrack(_ sender: NSMenuItem) {
-        guard let track = sender.representedObject as? LibraryTrack else { return }
-        let tracksToDelete = selectedLocalTracksForContextAction(fallback: track)
-        deleteTracksFromDisk(tracksToDelete)
-    }
-    
-    @objc private func contextMenuRemoveLocalAlbum(_ sender: NSMenuItem) {
-        guard let album = sender.representedObject as? Album else { return }
-        let tracks = LibraryPlayable.libraryTracks(of: album)
-
-        let alert = NSAlert()
-        alert.messageText = "Remove album from library?"
-        alert.informativeText = "This will remove \(tracks.count) tracks from your library. The files will not be deleted from disk."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            MediaLibrary.shared.removeTracks(urls: tracks.map { $0.url })
-        }
-    }
-
-    @objc private func contextMenuDeleteLocalAlbum(_ sender: NSMenuItem) {
-        guard let album = sender.representedObject as? Album else { return }
-        deleteTracksFromDisk(LibraryPlayable.libraryTracks(of: album))
-    }
-
-    @objc private func contextMenuRemoveLocalArtist(_ sender: NSMenuItem) {
-        guard let artist = sender.representedObject as? Artist else { return }
-
-        let artistsToRemove = selectedLocalArtistsForContextAction(fallback: artist)
-        let store = MediaLibraryStore.shared
-        let allTracks = dedupeTracksByURL(
-            artistsToRemove.flatMap { a in
-                store.albumsForArtist(a.name).flatMap { store.tracksForAlbum($0.id) }
-            }
-        )
-        
-        let alert = NSAlert()
-        if artistsToRemove.count == 1 {
-            alert.messageText = "Remove artist from library?"
-        } else {
-            alert.messageText = "Remove \(artistsToRemove.count) artists from library?"
-        }
-        alert.informativeText = "This will remove \(allTracks.count) tracks from your library. The files will not be deleted from disk."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            MediaLibrary.shared.removeTracks(urls: allTracks.map { $0.url })
-        }
-    }
-    
-    // MARK: - Radio Station Context Menu Actions
-    
-    @objc private func contextMenuPlayRadioStation(_ sender: NSMenuItem) {
-        guard let station = sender.representedObject as? RadioStation else { return }
-        playRadioStation(station)
-    }
-    
-    @objc private func contextMenuEditRadioStation(_ sender: NSMenuItem) {
-        guard let station = sender.representedObject as? RadioStation else { return }
-        
-        activeRadioStationSheet = AddRadioStationSheet(station: station)
-        activeRadioStationSheet?.showDialog { [weak self] updatedStation in
-            self?.activeRadioStationSheet = nil  // Release reference when done
-            if let updated = updatedStation {
-                RadioManager.shared.updateStation(updated)
-                self?.model.reloadInternetRadioForCurrentMode()
-            }
-        }
-    }
-    
-    @objc private func contextMenuDeleteRadioStation(_ sender: NSMenuItem) {
-        guard let station = sender.representedObject as? RadioStation else { return }
-        
-        let alert = NSAlert()
-        alert.messageText = "Delete radio station?"
-        alert.informativeText = "Are you sure you want to delete '\(station.name)'?"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            RadioManager.shared.removeStation(station)
-            model.reloadInternetRadioForCurrentMode()
-        }
-    }
-
-    @objc private func contextMenuRenameRadioFolder(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? RadioFolderRenameAction else { return }
-        guard let existing = RadioManager.shared.userRadioFolders().first(where: { $0.id == action.folderID }) else { return }
-        guard let name = promptForRadioFolderName(
-            title: "Rename Folder",
-            message: "Enter a new name:",
-            confirmTitle: "Rename",
-            defaultValue: existing.name
-        ) else { return }
-        guard RadioManager.shared.renameUserFolder(id: action.folderID, to: name) else {
-            let alert = NSAlert()
-            alert.messageText = "Unable to Rename Folder"
-            alert.informativeText = "Use a unique, non-empty folder name."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
-        }
-        model.reloadInternetRadioForCurrentMode()
-    }
-
-    @objc private func contextMenuDeleteRadioFolder(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? RadioFolderDeleteAction else { return }
-        guard let existing = RadioManager.shared.userRadioFolders().first(where: { $0.id == action.folderID }) else { return }
-        let alert = NSAlert()
-        alert.messageText = "Delete Folder?"
-        alert.informativeText = "Delete '\(existing.name)' and its station memberships?"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        _ = RadioManager.shared.deleteUserFolder(id: action.folderID)
-        model.reloadInternetRadioForCurrentMode()
-    }
-
-    @objc private func contextMenuToggleStationFolderMembership(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? RadioFolderMembershipAction else { return }
-        if RadioManager.shared.isStation(action.station, inUserFolderID: action.folderID) {
-            _ = RadioManager.shared.removeStation(action.station, fromUserFolderID: action.folderID)
-        } else {
-            _ = RadioManager.shared.addStation(action.station, toUserFolderID: action.folderID)
-        }
-        model.reloadInternetRadioForCurrentMode()
-    }
-
-    @objc private func contextMenuRefreshYouTubeChannel(_ sender: NSMenuItem) {
-        guard let channel = sender.representedObject as? YouTubeChannel else { return }
-        model.refreshYouTubeChannel(channel)
-    }
-
-    @objc private func contextMenuRemoveYouTubeChannel(_ sender: NSMenuItem) {
-        guard let channel = sender.representedObject as? YouTubeChannel else { return }
-        model.removeYouTubeChannel(channel)
-    }
-
-    @objc private func contextMenuAssignStationSmartGenre(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? RadioSmartGenreAction else { return }
-        _ = RadioManager.shared.setSmartGenreOverride(action.genre, for: action.station)
-        model.reloadInternetRadioForCurrentMode()
-    }
-
-    @objc private func contextMenuAssignStationSmartRegion(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? RadioSmartRegionAction else { return }
-        _ = RadioManager.shared.setSmartRegionOverride(action.region, for: action.station)
-        model.reloadInternetRadioForCurrentMode()
-    }
-
-    @objc private func contextMenuCreateRadioFolderAndAddStation(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? RadioFolderStationAction else { return }
-        guard let name = promptForRadioFolderName(
-            title: "New Folder",
-            message: "Create a folder and add '\(action.station.name)' to it:",
-            confirmTitle: "Create"
-        ) else { return }
-        guard let folder = RadioManager.shared.createUserFolder(named: name) else {
-            let alert = NSAlert()
-            alert.messageText = "Unable to Create Folder"
-            alert.informativeText = "Use a unique, non-empty folder name."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
-        }
-        _ = RadioManager.shared.addStation(action.station, toUserFolderID: folder.id)
-        model.reloadInternetRadioForCurrentMode()
-    }
-    
-    // MARK: - Plex Radio Station Context Menu Actions
-    
-    @objc private func contextMenuPlayPlexRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem,
-              case .plexRadioStation(let radioType) = item.type else { return }
-        playPlexRadioStation(radioType)
-    }
-
-    @objc private func contextMenuPlaySubsonicRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem,
-              case .subsonicRadioStation(let radioType) = item.type else { return }
-        playSubsonicRadioStation(radioType)
-    }
-
-    @objc private func contextMenuPlayJellyfinRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem,
-              case .jellyfinRadioStation(let radioType) = item.type else { return }
-        playJellyfinRadioStation(radioType)
-    }
-
-    @objc private func contextMenuPlayEmbyRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem,
-              case .embyRadioStation(let radioType) = item.type else { return }
-        playEmbyRadioStation(radioType)
-    }
-
-    @objc private func contextMenuPlayLocalRadioStation(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem,
-              case .localRadioStation(let radioType) = item.type else { return }
-        playLocalRadioStation(radioType)
-    }
-    
-    
-    @objc private func contextMenuDeleteLocalArtist(_ sender: NSMenuItem) {
-        guard let artist = sender.representedObject as? Artist else { return }
-
-        let artistsToDelete = selectedLocalArtistsForContextAction(fallback: artist)
-        let store = MediaLibraryStore.shared
-        let allTracks = dedupeTracksByURL(
-            artistsToDelete.flatMap { a in
-                store.albumsForArtist(a.name).flatMap { store.tracksForAlbum($0.id) }
-            }
-        )
-        deleteTracksFromDisk(allTracks)
-    }
-
-    /// For local-track context actions, prefer current multi-selection when the
-    /// clicked track is part of it; otherwise fall back to the clicked track.
-    private func selectedLocalTracksForContextAction(fallback track: LibraryTrack) -> [LibraryTrack] {
-        let selectedTracks = selectedIndices
-            .filter { $0 >= 0 && $0 < model.displayItems.count }
-            .sorted()
-            .compactMap { index -> LibraryTrack? in
-                guard case .localTrack(let selectedTrack) = model.displayItems[index].type else { return nil }
-                return selectedTrack
-            }
-
-        guard selectedTracks.count > 1,
-              selectedTracks.contains(where: { $0.url == track.url }) else {
-            return [track]
-        }
-
-        var seen = Set<URL>()
-        return selectedTracks.filter { seen.insert($0.url).inserted }
-    }
-
-    /// For local-artist context actions, prefer current multi-selection when the
-    /// clicked artist is part of it; otherwise fall back to the clicked artist.
-    private func selectedLocalArtistsForContextAction(fallback artist: Artist) -> [Artist] {
-        let selectedArtists = selectedIndices
-            .filter { $0 >= 0 && $0 < model.displayItems.count }
-            .sorted()
-            .compactMap { index -> Artist? in
-                guard case .localArtist(let selectedArtist) = model.displayItems[index].type else { return nil }
-                return selectedArtist
-            }
-
-        guard selectedArtists.count > 1,
-              selectedArtists.contains(where: { $0.id == artist.id }) else {
-            return [artist]
-        }
-
-        var seen = Set<String>()
-        return selectedArtists.filter { seen.insert($0.id).inserted }
-    }
-
-    private func dedupeTracksByURL(_ tracks: [LibraryTrack]) -> [LibraryTrack] {
-        var seen = Set<URL>()
-        return tracks.filter { seen.insert($0.url).inserted }
-    }
-    
-    /// Helper to delete tracks from disk with confirmation
-    private func deleteTracksFromDisk(_ tracks: [LibraryTrack]) {
-        guard !tracks.isEmpty else { return }
-        
-        let alert = NSAlert()
-        alert.messageText = tracks.count == 1
-            ? "Delete file from disk?"
-            : "Delete \(tracks.count) files from disk?"
-        alert.informativeText = "This will permanently delete the file(s) from your computer. This action cannot be undone."
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        
-        let moveToTrashCheckbox = NSButton(checkboxWithTitle: "Move to Trash instead of deleting permanently", target: nil, action: nil)
-        moveToTrashCheckbox.state = .on
-        alert.accessoryView = moveToTrashCheckbox
-        
-        if alert.runModal() != .alertFirstButtonReturn {
-            return
-        }
-        
-        let useTrash = moveToTrashCheckbox.state == .on
-        var failedFiles: [String] = []
-        var removedTrackURLs: [URL] = []
-        
-        for track in tracks {
-            do {
-                if useTrash {
-                    try FileManager.default.trashItem(at: track.url, resultingItemURL: nil)
-                } else {
-                    try FileManager.default.removeItem(at: track.url)
-                }
-                removedTrackURLs.append(track.url)
-            } catch {
-                failedFiles.append(track.url.lastPathComponent)
-            }
-        }
-
-        if !removedTrackURLs.isEmpty {
-            if removedTrackURLs.count == 1, let firstURL = removedTrackURLs.first,
-               let removedTrack = tracks.first(where: { $0.url == firstURL }) {
-                MediaLibrary.shared.removeTrack(removedTrack)
-            } else {
-                MediaLibrary.shared.removeTracks(urls: removedTrackURLs)
-            }
-        }
-        
-        if !failedFiles.isEmpty {
-            let errorAlert = NSAlert()
-            errorAlert.messageText = "Some files could not be deleted"
-            errorAlert.informativeText = "Failed to delete:\n" + failedFiles.prefix(5).joined(separator: "\n")
-            if failedFiles.count > 5 {
-                errorAlert.informativeText += "\n...and \(failedFiles.count - 5) more"
-            }
-            errorAlert.alertStyle = .warning
-            errorAlert.runModal()
-        }
-    }
-    
-    @objc private func contextMenuShowLocalVideoInFinder(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? NSURL as URL? else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    @objc private func contextMenuCastLocalVideo(_ sender: NSMenuItem) {
-        guard let (url, title, device) = sender.representedObject as? (URL, String, CastDevice) else { return }
-        if WindowManager.shared.isVideoCastingActive {
-            let alert = NSAlert()
-            alert.messageText = "Already Casting"
-            alert.informativeText = "Stop the current cast before starting a new one."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
-        }
-        Task { @MainActor in
-            do {
-                try await CastManager.shared.castLocalVideo(url, title: title, to: device)
-            } catch {
-                let alert = NSAlert()
-                alert.messageText = "Cast Failed"
-                alert.informativeText = error.localizedDescription.redactingSensitiveURLQueryItems
-                alert.alertStyle = .warning
-                alert.runModal()
-            }
-        }
-    }
-
-    // MARK: - Plex Context Menu Actions
-
-    @objc private func contextMenuRevealLocalFolderInFinder(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    // MARK: - Keyboard Shortcut Helpers
-    
     /// Shift+Enter / Option+Enter: the menu's Play Next / Add to Queue on the selected row.
     private func runVerbOnSelection(_ verb: TrackVerb) {
-        guard let index = selectedIndices.first, index < model.displayItems.count,
-              let playable = playable(for: model.displayItems[index]) else { return }
-        verb.run(resolver(for: playable))
-    }
-
-    /// The row's tracks for a play verb, from its menu, Enter or double-click. A server playlist is
-    /// fetched behind the loading screen, which shows the error if the fetch fails.
-    private func resolver(for playable: LibraryPlayable) -> @MainActor () async throws -> [Track] {
-        switch playable {
-        case .plexPlaylist, .subsonicPlaylist, .jellyfinPlaylist, .embyPlaylist:
-            return { [weak self] in
-                guard let self else { throw CancellationError() }
-                model.isLoading = true; model.errorMessage = nil; startLoadingAnimation(); needsDisplay = true
-                defer { model.isLoading = false; stopLoadingAnimation(); needsDisplay = true }
-                do {
-                    return try await playable.tracks()
-                } catch {
-                    model.errorMessage = "Failed to load playlist: \(error.localizedDescription.redactingSensitiveURLQueryItems)"
-                    throw error
-                }
-            }
-        default:
-            return { try await playable.tracks() }
-        }
-    }
-
-    /// The row as tracks for the play verbs; nil for a row with no basic play menu (radio,
-    /// YouTube, containers that only expand).
-    private func playable(for item: LibraryBrowserItem) -> LibraryPlayable? {
-        switch item.type {
-        case .track(let t): return .plexTrack(t)
-        case .album(let a): return .plexAlbum(a)
-        case .artist(let a):
-            return .plexArtistGroup(members: model.plexArtistGroup(for: a),
-                                    albums: model.plexCountedAlbums(for: a))
-        case .plexPlaylist(let p): return .plexPlaylist(p)
-        case .localTrack(let t): return .localTrack(t)
-        case .localAlbum(let a): return .localAlbum(a)
-        case .localArtist(let a): return .localArtist(a)
-        case .localFolder(let url, _): return .localFolder(url)
-        case .localPlaylist(let p): return .localPlaylist(p.url)
-        case .localPlaylistTrack(let t): return .tracks([t])
-        case .subsonicTrack(let s): return .subsonicSong(s)
-        case .subsonicAlbum(let a): return .subsonicAlbum(a)
-        case .subsonicArtist(let a): return .subsonicArtist(a)
-        case .subsonicPlaylist(let p): return .subsonicPlaylist(p)
-        case .jellyfinTrack(let s): return .jellyfinSong(s)
-        case .jellyfinAlbum(let a): return .jellyfinAlbum(a)
-        case .jellyfinArtist(let a): return .jellyfinArtist(a)
-        case .jellyfinPlaylist(let p): return .jellyfinPlaylist(p)
-        case .embyTrack(let s): return .embySong(s)
-        case .embyAlbum(let a): return .embyAlbum(a)
-        case .embyArtist(let a): return .embyArtist(a)
-        case .embyPlaylist(let p): return .embyPlaylist(p)
-        case .movie(let m): return .plexMovie(m)
-        case .episode(let e): return .plexEpisode(e)
-        case .season(let s): return .plexSeason(s)
-        case .show(let s): return .plexShow(s)
-        case .localMovie(let m): return .localMovie(m)
-        case .localEpisode(let e): return .localEpisodes([e])
-        case .localSeason(let s, _): return .localEpisodes(s.episodes)
-        case .localShow(let s): return .localEpisodes(s.episodes)
-        case .jellyfinMovie(let m): return .jellyfinMovie(m)
-        case .jellyfinEpisode(let e): return .jellyfinEpisode(e)
-        case .jellyfinSeason(let s): return .jellyfinSeason(s)
-        case .jellyfinShow(let s): return .jellyfinShow(s)
-        case .embyMovie(let m): return .embyMovie(m)
-        case .embyEpisode(let e): return .embyEpisode(e)
-        case .embySeason(let s): return .embySeason(s)
-        case .embyShow(let s): return .embyShow(s)
-        case .header, .radioStation, .radioFolder, .youtubeChannel, .youtubeVideo, .plexRadioStation,
-             .subsonicRadioStation, .jellyfinRadioStation, .embyRadioStation, .localRadioStation:
-            return nil
-        }
-    }
-
-    // MARK: - Plex Radio Actions
-    
-    @objc private func contextMenuStartTrackRadio(_ sender: NSMenuItem) {
-        NSLog("contextMenuStartTrackRadio called, representedObject type: %@", String(describing: type(of: sender.representedObject)))
-        guard let track = sender.representedObject as? PlexTrack else {
-            NSLog("contextMenuStartTrackRadio: representedObject is NOT a PlexTrack, it's: %@", String(describing: sender.representedObject))
-            return
-        }
-        NSLog("contextMenuStartTrackRadio: Starting radio for track: %@", track.title)
-        startTrackRadio(track)
-    }
-    
-    @objc private func contextMenuStartAlbumRadio(_ sender: NSMenuItem) {
-        guard let album = sender.representedObject as? PlexAlbum else { return }
-        startAlbumRadio(album)
-    }
-    
-    @objc private func contextMenuStartArtistRadio(_ sender: NSMenuItem) {
-        guard let artist = sender.representedObject as? PlexArtist else { return }
-        startArtistRadio(artist)
-    }
-    
-    /// Start a track radio - plays similar tracks based on the seed track
-    private func startTrackRadio(_ track: PlexTrack) {
-        NSLog("startTrackRadio called for: %@ (id: %@)", track.title, track.id)
-        
-        Task { @MainActor in
-            NSLog("startTrackRadio: Creating radio playlist...")
-            let tracks = await PlexManager.shared.createTrackRadio(from: track, limit: RadioPlaybackOptions.playlistLength)
-            
-            NSLog("startTrackRadio: Got %d tracks from PlexManager", tracks.count)
-            
-            if tracks.isEmpty {
-                NSLog("Track Radio: No similar tracks found for '%@'", track.title)
-                // Could show an alert here if desired
-                return
-            }
-            
-            // Clear current playlist, load radio tracks, and start playing
-            NSLog("startTrackRadio: Loading tracks into audio engine...")
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            NSLog("Track Radio started with %d tracks", tracks.count)
-        }
-    }
-    
-    /// Start an album radio - plays tracks similar to the album's content
-    private func startAlbumRadio(_ album: PlexAlbum) {
-        NSLog("Starting Album Radio for: %@", album.title)
-        
-        Task { @MainActor in
-            let tracks = await PlexManager.shared.createAlbumRadio(from: album, limit: RadioPlaybackOptions.playlistLength)
-            
-            if tracks.isEmpty {
-                NSLog("Album Radio: No similar tracks found for '%@'", album.title)
-                return
-            }
-            
-            // Clear current playlist, load radio tracks, and start playing
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            NSLog("Album Radio started with %d tracks", tracks.count)
-        }
-    }
-    
-    /// Start an artist radio - plays tracks from similar artists
-    private func startArtistRadio(_ artist: PlexArtist) {
-        NSLog("Starting Artist Radio for: %@", artist.title)
-        
-        Task { @MainActor in
-            let tracks = await PlexManager.shared.createArtistRadio(from: artist, limit: RadioPlaybackOptions.playlistLength)
-            
-            if tracks.isEmpty {
-                NSLog("Artist Radio: No similar tracks found for '%@'", artist.title)
-                return
-            }
-            
-            // Clear current playlist, load radio tracks, and start playing
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            NSLog("Artist Radio started with %d tracks", tracks.count)
-        }
-    }
-    
-    /// Start a library radio - plays random sonically diverse tracks from the library
-    private func startLibraryRadio() {
-        guard let library = PlexManager.shared.currentLibrary else { return }
-        NSLog("Starting Library Radio for: %@", library.title)
-        
-        Task { @MainActor in
-            let tracks = await PlexManager.shared.createLibraryRadio()
-            guard !tracks.isEmpty else { return }
-            
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            NSLog("Library Radio started with %d tracks", tracks.count)
-        }
-    }
-    
-    @objc private func contextMenuToggleExpand(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? LibraryBrowserItem else { return }
-        model.toggleExpand(item)
-    }
-    
-    @objc private func contextMenuCastMovie(_ sender: NSMenuItem) {
-        NSLog("PlexBrowserView: contextMenuCastMovie ENTER")
-        guard let (movie, device) = sender.representedObject as? (PlexMovie, CastDevice) else {
-            NSLog("PlexBrowserView: Failed to get movie/device from menu item")
-            return
-        }
-        
-        NSLog("PlexBrowserView: Casting movie '%@' to device '%@' (type: %@)", movie.title, device.name, device.type.rawValue)
-        
-        // Prevent dual casting - check if already casting
-        if WindowManager.shared.isVideoCastingActive {
-            NSLog("PlexBrowserView: Cannot cast - already casting")
-            let alert = NSAlert()
-            alert.messageText = "Already Casting"
-            alert.informativeText = "Stop the current cast before starting a new one."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
-        }
-        
-        Task { @MainActor in
-            NSLog("PlexBrowserView: Starting cast Task")
-            do {
-                try await CastManager.shared.castPlexMovie(movie, to: device)
-                NSLog("PlexBrowserView: Cast movie '%@' to %@ - SUCCESS", movie.title, device.name)
-            } catch {
-                NSLog("PlexBrowserView: Failed to cast movie: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-                let alert = NSAlert()
-                alert.messageText = "Cast Failed"
-                alert.informativeText = error.localizedDescription.redactingSensitiveURLQueryItems
-                alert.alertStyle = .warning
-                alert.runModal()
-            }
-        }
-        NSLog("PlexBrowserView: contextMenuCastMovie EXIT (Task launched)")
-    }
-    
-    @objc private func contextMenuCastEpisode(_ sender: NSMenuItem) {
-        guard let (episode, device) = sender.representedObject as? (PlexEpisode, CastDevice) else { return }
-        
-        // Prevent dual casting - check if already casting
-        if WindowManager.shared.isVideoCastingActive {
-            NSLog("PlexBrowserView: Cannot cast - already casting")
-            let alert = NSAlert()
-            alert.messageText = "Already Casting"
-            alert.informativeText = "Stop the current cast before starting a new one."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
-        }
-        
-        Task {
-            do {
-                try await CastManager.shared.castPlexEpisode(episode, to: device)
-                NSLog("PlexBrowserView: Cast episode '%@' to %@", episode.title, device.name)
-            } catch {
-                NSLog("PlexBrowserView: Failed to cast episode: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-                await MainActor.run {
-                    let alert = NSAlert()
-                    alert.messageText = "Cast Failed"
-                    alert.informativeText = error.localizedDescription.redactingSensitiveURLQueryItems
-                    alert.alertStyle = .warning
-                    alert.runModal()
-                }
-            }
-        }
-    }
-    
-    // MARK: - External Links Context Menu Actions
-    
-    @objc private func contextMenuOpenIMDB(_ sender: NSMenuItem) {
-        guard let movie = sender.representedObject as? PlexMovie else { return }
-        
-        // If we already have the IMDB ID, open directly
-        if let imdbId = movie.imdbId {
-            if let url = URL(string: "https://www.imdb.com/title/\(imdbId)/") {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        
-        // Fetch detailed metadata to get IMDB ID
-        Task { @MainActor in
-            do {
-                if let detailed = try await PlexManager.shared.fetchMovieDetails(movieID: movie.id),
-                   let imdbId = detailed.imdbId,
-                   let url = URL(string: "https://www.imdb.com/title/\(imdbId)/") {
-                    NSWorkspace.shared.open(url)
-                    return
-                }
-            } catch {
-                NSLog("Failed to fetch movie details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-            // Fallback to search if fetch fails
-            if let url = movie.imdbURL {
-                NSWorkspace.shared.open(url)
-            }
-        }
-    }
-    
-    @objc private func contextMenuOpenTMDB(_ sender: NSMenuItem) {
-        guard let movie = sender.representedObject as? PlexMovie else { return }
-        
-        if let tmdbId = movie.tmdbId {
-            if let url = URL(string: "https://www.themoviedb.org/movie/\(tmdbId)") {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        
-        Task { @MainActor in
-            do {
-                if let detailed = try await PlexManager.shared.fetchMovieDetails(movieID: movie.id),
-                   let tmdbId = detailed.tmdbId,
-                   let url = URL(string: "https://www.themoviedb.org/movie/\(tmdbId)") {
-                    NSWorkspace.shared.open(url)
-                    return
-                }
-            } catch {
-                NSLog("Failed to fetch movie details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-            if let url = movie.tmdbURL {
-                NSWorkspace.shared.open(url)
-            }
-        }
-    }
-    
-    @objc private func contextMenuOpenRottenTomatoes(_ sender: NSMenuItem) {
-        guard let movie = sender.representedObject as? PlexMovie,
-              let url = movie.rottenTomatoesSearchURL else { return }
-        NSWorkspace.shared.open(url)
-    }
-    
-    @objc private func contextMenuOpenIMDBShow(_ sender: NSMenuItem) {
-        guard let show = sender.representedObject as? PlexShow else { return }
-        
-        if let imdbId = show.imdbId {
-            if let url = URL(string: "https://www.imdb.com/title/\(imdbId)/") {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        
-        Task { @MainActor in
-            do {
-                if let detailed = try await PlexManager.shared.fetchShowDetails(showID: show.id),
-                   let imdbId = detailed.imdbId,
-                   let url = URL(string: "https://www.imdb.com/title/\(imdbId)/") {
-                    NSWorkspace.shared.open(url)
-                    return
-                }
-            } catch {
-                NSLog("Failed to fetch show details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-            if let url = show.imdbURL {
-                NSWorkspace.shared.open(url)
-            }
-        }
-    }
-    
-    @objc private func contextMenuOpenTMDBShow(_ sender: NSMenuItem) {
-        guard let show = sender.representedObject as? PlexShow else { return }
-        
-        if let tmdbId = show.tmdbId {
-            if let url = URL(string: "https://www.themoviedb.org/tv/\(tmdbId)") {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        
-        Task { @MainActor in
-            do {
-                if let detailed = try await PlexManager.shared.fetchShowDetails(showID: show.id),
-                   let tmdbId = detailed.tmdbId,
-                   let url = URL(string: "https://www.themoviedb.org/tv/\(tmdbId)") {
-                    NSWorkspace.shared.open(url)
-                    return
-                }
-            } catch {
-                NSLog("Failed to fetch show details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-            if let url = show.tmdbURL {
-                NSWorkspace.shared.open(url)
-            }
-        }
-    }
-    
-    @objc private func contextMenuOpenRottenTomatoesShow(_ sender: NSMenuItem) {
-        guard let show = sender.representedObject as? PlexShow,
-              let url = show.rottenTomatoesSearchURL else { return }
-        NSWorkspace.shared.open(url)
-    }
-    
-    @objc private func contextMenuOpenIMDBEpisode(_ sender: NSMenuItem) {
-        guard let episode = sender.representedObject as? PlexEpisode else { return }
-        
-        if let imdbId = episode.imdbId {
-            if let url = URL(string: "https://www.imdb.com/title/\(imdbId)/") {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        
-        Task { @MainActor in
-            do {
-                if let detailed = try await PlexManager.shared.fetchEpisodeDetails(episodeID: episode.id),
-                   let imdbId = detailed.imdbId,
-                   let url = URL(string: "https://www.imdb.com/title/\(imdbId)/") {
-                    NSWorkspace.shared.open(url)
-                    return
-                }
-            } catch {
-                NSLog("Failed to fetch episode details: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-            if let url = episode.imdbURL {
-                NSWorkspace.shared.open(url)
-            }
-        }
-    }
-    
-    @objc private func contextMenuOpenTMDBEpisode(_ sender: NSMenuItem) {
-        guard let episode = sender.representedObject as? PlexEpisode else { return }
-        
-        // Episodes don't have individual TMDB IDs, use search
-        if let url = episode.tmdbSearchURL {
-            NSWorkspace.shared.open(url)
-        }
-    }
-    
-    @objc private func contextMenuOpenRottenTomatoesEpisode(_ sender: NSMenuItem) {
-        guard let episode = sender.representedObject as? PlexEpisode,
-              let url = episode.rottenTomatoesSearchURL else { return }
-        NSWorkspace.shared.open(url)
-    }
-    
-    // MARK: - Server/Library Selection Menus
-    
-    private func showServerMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        
-        let servers = PlexManager.shared.servers
-        if servers.isEmpty {
-            let noServers = NSMenuItem(title: "No servers available", action: nil, keyEquivalent: "")
-            noServers.isEnabled = false
-            menu.addItem(noServers)
-        } else {
-            for server in servers {
-                let item = NSMenuItem(title: server.name, action: #selector(selectServer(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = server.id
-                item.state = server.id == PlexManager.shared.currentServer?.id ? .on : .off
-                menu.addItem(item)
-            }
-        }
-        
-        menu.addItem(NSMenuItem.separator())
-        
-        let refreshItem = NSMenuItem(title: "Refresh Servers", action: #selector(refreshServers), keyEquivalent: "")
-        refreshItem.target = self
-        menu.addItem(refreshItem)
-        
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-    
-    private func showLibraryMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        
-        let libraries = PlexManager.shared.availableLibraries
-        let currentLibraryId = PlexManager.shared.currentLibrary?.id
-        
-        if libraries.isEmpty {
-            let noLibraries = NSMenuItem(title: "No libraries available", action: nil, keyEquivalent: "")
-            noLibraries.isEnabled = false
-            menu.addItem(noLibraries)
-        } else {
-            for library in libraries {
-                // Show library type in parentheses
-                let typeLabel: String
-                if library.isMusicLibrary {
-                    typeLabel = "Music"
-                } else if library.isMovieLibrary {
-                    typeLabel = "Movies"
-                } else if library.isShowLibrary {
-                    typeLabel = "TV Shows"
-                } else {
-                    typeLabel = library.type
-                }
-                
-                let item = NSMenuItem(title: "\(library.title) (\(typeLabel))", action: #selector(selectLibrary(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = library
-                item.state = library.id == currentLibraryId ? .on : .off
-                menu.addItem(item)
-            }
-        }
-        
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private func showSubsonicFolderMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        let folders = SubsonicManager.shared.musicFolders
-        let currentId = SubsonicManager.shared.currentMusicFolder?.id
-
-        let allItem = NSMenuItem(title: "All Folders", action: #selector(selectSubsonicMusicFolder(_:)), keyEquivalent: "")
-        allItem.target = self
-        allItem.representedObject = Optional<SubsonicMusicFolder>.none as Any
-        allItem.state = currentId == nil ? .on : .off
-        menu.addItem(allItem)
-
-        if !folders.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        for folder in folders {
-            let item = NSMenuItem(title: folder.name, action: #selector(selectSubsonicMusicFolder(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = folder
-            item.state = folder.id == currentId ? .on : .off
-            menu.addItem(item)
-        }
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private func showJellyfinLibraryMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        let libraries = JellyfinManager.shared.musicLibraries
-        let currentId = JellyfinManager.shared.currentMusicLibrary?.id
-
-        let allItem = NSMenuItem(title: "All Libraries", action: #selector(selectJellyfinMusicLibrary(_:)), keyEquivalent: "")
-        allItem.target = self
-        allItem.representedObject = Optional<JellyfinMusicLibrary>.none as Any
-        allItem.state = currentId == nil ? .on : .off
-        menu.addItem(allItem)
-
-        if !libraries.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        for library in libraries {
-            let item = NSMenuItem(title: "\(library.name) (Music)", action: #selector(selectJellyfinMusicLibrary(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = library
-            item.state = library.id == currentId ? .on : .off
-            menu.addItem(item)
-        }
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private func showJellyfinVideoLibraryMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        let libraries = JellyfinManager.shared.videoLibraries
-        let currentMovieId = JellyfinManager.shared.currentMovieLibrary?.id
-        let currentShowId = JellyfinManager.shared.currentShowLibrary?.id
-        let activeId = model.browseMode == .shows ? currentShowId : currentMovieId
-
-        let allItem = NSMenuItem(title: "All Libraries", action: #selector(selectJellyfinVideoLibraryFromBrowser(_:)), keyEquivalent: "")
-        allItem.target = self
-        allItem.representedObject = Optional<JellyfinMusicLibrary>.none as Any
-        allItem.state = activeId == nil ? .on : .off
-        menu.addItem(allItem)
-
-        if !libraries.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        for library in libraries {
-            let typeLabel = library.collectionType == "tvshows" ? "TV Shows" : "Movies"
-            let item = NSMenuItem(title: "\(library.name) (\(typeLabel))", action: #selector(selectJellyfinVideoLibraryFromBrowser(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = library
-            item.state = library.id == activeId ? .on : .off
-            menu.addItem(item)
-        }
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private func showEmbyLibraryMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        let libraries = EmbyManager.shared.musicLibraries
-        let currentId = EmbyManager.shared.currentMusicLibrary?.id
-
-        let allItem = NSMenuItem(title: "All Libraries", action: #selector(selectEmbyMusicLibraryFromBrowser(_:)), keyEquivalent: "")
-        allItem.target = self
-        allItem.representedObject = Optional<EmbyMusicLibrary>.none as Any
-        allItem.state = currentId == nil ? .on : .off
-        menu.addItem(allItem)
-
-        if !libraries.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        for library in libraries {
-            let item = NSMenuItem(title: "\(library.name) (Music)", action: #selector(selectEmbyMusicLibraryFromBrowser(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = library
-            item.state = library.id == currentId ? .on : .off
-            menu.addItem(item)
-        }
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private func showEmbyVideoLibraryMenu(at event: NSEvent) {
-        let menu = NSMenu()
-        let libraries = EmbyManager.shared.videoLibraries
-        let currentMovieId = EmbyManager.shared.currentMovieLibrary?.id
-        let currentShowId = EmbyManager.shared.currentShowLibrary?.id
-        let activeId = model.browseMode == .shows ? currentShowId : currentMovieId
-
-        let allItem = NSMenuItem(title: "All Libraries", action: #selector(selectEmbyVideoLibraryFromBrowser(_:)), keyEquivalent: "")
-        allItem.target = self
-        allItem.representedObject = Optional<EmbyMusicLibrary>.none as Any
-        allItem.state = activeId == nil ? .on : .off
-        menu.addItem(allItem)
-
-        if !libraries.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        for library in libraries {
-            let typeLabel = library.collectionType == "tvshows" ? "TV Shows" : "Movies"
-            let item = NSMenuItem(title: "\(library.name) (\(typeLabel))", action: #selector(selectEmbyVideoLibraryFromBrowser(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = library
-            item.state = library.id == activeId ? .on : .off
-            menu.addItem(item)
-        }
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-    
-    @objc private func selectServer(_ sender: NSMenuItem) {
-        guard let serverID = sender.representedObject as? String,
-              let server = PlexManager.shared.servers.first(where: { $0.id == serverID }) else {
-            return
-        }
-        model.currentSource = .plex(serverId: server.id)
-    }
-    
-    @objc private func selectSortOption(_ sender: NSMenuItem) {
-        guard let option = sender.representedObject as? LibraryBrowserSortOption else { return }
-        model.selectMenuSort(option)
-    }
-
-    @objc private func selectLibrary(_ sender: NSMenuItem) {
-        guard let library = sender.representedObject as? PlexLibrary else { return }
-        model.selectPlexLibrary(library)
-    }
-
-    @objc private func selectSubsonicMusicFolder(_ sender: NSMenuItem) {
-        model.selectSubsonicMusicFolder(sender.representedObject as? SubsonicMusicFolder)
-    }
-
-    @objc private func selectJellyfinMusicLibrary(_ sender: NSMenuItem) {
-        model.selectJellyfinMusicLibrary(sender.representedObject as? JellyfinMusicLibrary)
-    }
-
-    @objc private func selectJellyfinVideoLibraryFromBrowser(_ sender: NSMenuItem) {
-        model.selectJellyfinVideoLibrary(sender.representedObject as? JellyfinMusicLibrary)
-    }
-
-    @objc private func selectEmbyMusicLibraryFromBrowser(_ sender: NSMenuItem) {
-        model.selectEmbyMusicLibrary(sender.representedObject as? EmbyMusicLibrary)
-    }
-
-    @objc private func selectEmbyVideoLibraryFromBrowser(_ sender: NSMenuItem) {
-        model.selectEmbyVideoLibrary(sender.representedObject as? EmbyMusicLibrary)
-    }
-
-    @objc private func refreshServers() {
-        Task { @MainActor in
-            do {
-                try await PlexManager.shared.refreshServers()
-                needsDisplay = true
-            } catch {
-                NSLog("Failed to refresh servers: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            }
-        }
+        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
+        actions.run(verb, on: model.displayItems[index])
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -6547,22 +3704,22 @@ class PlexBrowserView: NSView {
             } else if event.modifierFlags.contains(.option) {
                 runVerbOnSelection(.addToQueue)
             } else {
-                if let index = selectedIndices.first, index < model.displayItems.count {
-                    handleDoubleClick(on: model.displayItems[index])
+                if let index = model.selectedIndices.first, index < model.displayItems.count {
+                    actions.activate(model.displayItems[index])
                 }
             }
             
         case 125: // Down arrow
-            if let maxIndex = selectedIndices.max(), maxIndex < model.displayItems.count - 1 {
-                selectedIndices = [maxIndex + 1]
+            if let maxIndex = model.selectedIndices.max(), maxIndex < model.displayItems.count - 1 {
+                model.selectedIndices = [maxIndex + 1]
                 ensureVisible(index: maxIndex + 1)
                 loadArtworkForSelection()
                 needsDisplay = true
             }
             
         case 126: // Up arrow
-            if let minIndex = selectedIndices.min(), minIndex > 0 {
-                selectedIndices = [minIndex - 1]
+            if let minIndex = model.selectedIndices.min(), minIndex > 0 {
+                model.selectedIndices = [minIndex - 1]
                 ensureVisible(index: minIndex - 1)
                 loadArtworkForSelection()
                 needsDisplay = true
@@ -6607,7 +3764,7 @@ class PlexBrowserView: NSView {
         let query = typeAheadQuery.lowercased()
         guard !query.isEmpty else { return }
         if let idx = model.displayItems.firstIndex(where: { LibraryBrowserModel.titleMatchesTypeAhead($0.title, query: query) }) {
-            selectedIndices = [idx]; ensureVisible(index: idx); loadArtworkForSelection(); needsDisplay = true
+            model.selectedIndices = [idx]; ensureVisible(index: idx); loadArtworkForSelection(); needsDisplay = true
         }
         typeAheadTimer?.invalidate()
         typeAheadTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
@@ -6622,19 +3779,11 @@ class PlexBrowserView: NSView {
         if model.isYouTubeChannelSearch { needsDisplay = true } else { model.loadDataForCurrentMode() }
     }
 
-    @objc private func contextMenuSubscribeYouTubeChannel(_ sender: NSMenuItem) {
-        guard let channel = sender.representedObject as? YouTubeChannel else { return }
-        model.youtubeSearch.subscribe(to: channel)
-    }
-
     @objc private func libraryRowThumbnailDidLoad() {
         needsDisplay = true
     }
 
     /// A channel's uploads started or finished loading: spin the per-row spinner. The model rebuilds the rows.
-    @objc private func youtubeUploadsDidChange() {
-        if YouTubeChannelUploads.shared.hasFetchesInFlight { startLoadingAnimation() }
-    }
 
     // MARK: - Browse Artwork
 
@@ -6693,287 +3842,4 @@ class PlexBrowserView: NSView {
             }
         }
     }
-    
-    // MARK: - Playback
-
-    private func handleDoubleClick(on item: LibraryBrowserItem) {
-        switch item.type {
-        case .track, .album, .plexPlaylist, .localTrack, .localAlbum, .localPlaylist, .localPlaylistTrack,
-             .subsonicTrack, .subsonicAlbum, .subsonicPlaylist, .jellyfinTrack, .jellyfinAlbum, .jellyfinPlaylist,
-             .embyTrack, .embyAlbum, .embyPlaylist, .movie, .episode, .localMovie, .localEpisode,
-             .jellyfinMovie, .jellyfinEpisode, .embyMovie, .embyEpisode:
-            if let playable = playable(for: item) { TrackVerb.play.run(resolver(for: playable)) }
-
-        case .artist(let artist):
-            if model.browseMode == .search { model.navigateToArtistFromSearch(id: artist.id, name: artist.title) } else { model.toggleExpand(item) }
-            
-        case .show:
-            model.toggleExpand(item)
-            
-        case .season:
-            model.toggleExpand(item)
-            
-        case .header:
-            break
-            
-        case .localArtist(let artist):
-            if model.browseMode == .search { model.navigateToArtistFromSearch(id: item.id, name: artist.name) } else { model.toggleExpand(item) }
-
-        case .localFolder:
-            model.toggleExpand(item)
-
-        case .localShow:
-            model.toggleExpand(item)
-
-        case .localSeason:
-            model.toggleExpand(item)
-
-        case .subsonicArtist(let artist):
-            if model.browseMode == .search { model.navigateToArtistFromSearch(id: artist.id, name: artist.name) } else { model.toggleExpand(item) }
-            
-        case .jellyfinArtist(let artist):
-            if model.browseMode == .search { model.navigateToArtistFromSearch(id: artist.id, name: artist.name) } else { model.toggleExpand(item) }
-            
-        case .jellyfinShow:
-            model.toggleExpand(item)
-            
-        case .jellyfinSeason:
-            model.toggleExpand(item)
-            
-        case .embyArtist(let artist):
-            if model.browseMode == .search { model.navigateToArtistFromSearch(id: artist.id, name: artist.name) } else { model.toggleExpand(item) }
-
-        case .embyShow:
-            model.toggleExpand(item)
-
-        case .embySeason:
-            model.toggleExpand(item)
-
-        case .radioStation(let station):
-            playRadioStation(station)
-
-        case .radioFolder(let folder):
-            if folder.hasChildren {
-                model.toggleExpand(item)
-            }
-
-        case .youtubeChannel(let channel):
-            // A search result not yet subscribed: double-click / Enter subscribes it.
-            if YouTubeManager.shared.isSubscribed(channel) {
-                model.toggleExpand(item)
-            } else {
-                model.youtubeSearch.subscribe(to: channel)
-            }
-        case .youtubeVideo(let video):
-            youtubeVideoActions.activate(video, in: self)
-
-        case .plexRadioStation(let radioType):
-            playPlexRadioStation(radioType)
-        case .subsonicRadioStation(let radioType):
-            playSubsonicRadioStation(radioType)
-        case .jellyfinRadioStation(let radioType):
-            playJellyfinRadioStation(radioType)
-        case .embyRadioStation(let radioType):
-            playEmbyRadioStation(radioType)
-        case .localRadioStation(let radioType):
-            playLocalRadioStation(radioType)
-        }
-    }
-
-    // MARK: - Radio Playback
-    
-    private func playRadioStation(_ station: RadioStation) {
-        NSLog("playRadioStation: %@", station.name)
-        RadioManager.shared.play(station: station)
-    }
-    
-    /// Play a Plex Radio station (dynamic playlist from Plex library)
-    private func playPlexRadioStation(_ radioType: PlexRadioType) {
-        NSLog("playPlexRadioStation: %@", radioType.displayName)
-        radioPlayTask?.cancel()
-        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
-        radioPlayTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            var tracks: [Track] = []
-            switch radioType {
-            case .libraryRadio:
-                tracks = await PlexManager.shared.createLibraryRadio()
-            case .libraryRadioSonic:
-                tracks = await PlexManager.shared.createLibraryRadioSonic()
-            case .hitsRadio:
-                tracks = await PlexManager.shared.createHitsRadio()
-            case .hitsRadioSonic:
-                tracks = await PlexManager.shared.createHitsRadioSonic()
-            case .deepCutsRadio:
-                tracks = await PlexManager.shared.createDeepCutsRadio()
-            case .deepCutsRadioSonic:
-                tracks = await PlexManager.shared.createDeepCutsRadioSonic()
-            case .genreRadio(let genre):
-                tracks = await PlexManager.shared.createGenreRadio(genre: genre)
-            case .genreRadioSonic(let genre):
-                tracks = await PlexManager.shared.createGenreRadioSonic(genre: genre)
-            case .decadeRadio(let start, let end, _):
-                tracks = await PlexManager.shared.createDecadeRadio(startYear: start, endYear: end)
-            case .decadeRadioSonic(let start, let end, _):
-                tracks = await PlexManager.shared.createDecadeRadioSonic(startYear: start, endYear: end)
-            case .ratingRadio(let minRating, _):
-                tracks = await PlexManager.shared.createRatingRadio(minRating: minRating)
-            case .ratingRadioSonic(let minRating, _):
-                tracks = await PlexManager.shared.createRatingRadioSonic(minRating: minRating)
-            }
-            guard !Task.isCancelled else { return }
-            guard !tracks.isEmpty else {
-                NSLog("%@: No tracks found", radioType.displayName)
-                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-                return
-            }
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            NSLog("%@ started with %d tracks", radioType.displayName, tracks.count)
-            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioPlayTask = nil
-        }
-    }
-
-    private func playSubsonicRadioStation(_ radioType: SubsonicRadioType) {
-        radioPlayTask?.cancel()
-        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
-        radioPlayTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            var tracks: [Track] = []
-            switch radioType {
-            case .libraryRadio:
-                tracks = await SubsonicManager.shared.createLibraryRadio()
-            case .librarySimilar:
-                tracks = await SubsonicManager.shared.createLibraryRadioSimilar()
-            case .genreRadio(let genre):
-                tracks = await SubsonicManager.shared.createGenreRadio(genre: genre)
-            case .genreSimilar(let genre):
-                tracks = await SubsonicManager.shared.createGenreRadioSimilar(genre: genre)
-            case .decadeRadio(let start, let end, _):
-                tracks = await SubsonicManager.shared.createDecadeRadio(start: start, end: end)
-            case .decadeSimilar(let start, let end, _):
-                tracks = await SubsonicManager.shared.createDecadeRadioSimilar(start: start, end: end)
-            case .starredRadio:
-                tracks = await SubsonicManager.shared.createRatingRadio()
-            case .starredSimilar:
-                tracks = await SubsonicManager.shared.createRatingRadioSimilar()
-            }
-            guard !Task.isCancelled else { return }
-            guard !tracks.isEmpty else {
-                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-                return
-            }
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioPlayTask = nil
-        }
-    }
-
-    private func playJellyfinRadioStation(_ radioType: JellyfinRadioType) {
-        radioPlayTask?.cancel()
-        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
-        radioPlayTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            var tracks: [Track] = []
-            switch radioType {
-            case .libraryRadio:
-                tracks = await JellyfinManager.shared.createLibraryRadio()
-            case .libraryInstantMix:
-                tracks = await JellyfinManager.shared.createLibraryRadioInstantMix()
-            case .genreRadio(let genre):
-                tracks = await JellyfinManager.shared.createGenreRadio(genre: genre)
-            case .genreInstantMix(let genre):
-                tracks = await JellyfinManager.shared.createGenreRadioInstantMix(genre: genre)
-            case .decadeRadio(let start, let end, _):
-                tracks = await JellyfinManager.shared.createDecadeRadio(start: start, end: end)
-            case .decadeInstantMix(let start, let end, _):
-                tracks = await JellyfinManager.shared.createDecadeRadioInstantMix(start: start, end: end)
-            case .favoritesRadio:
-                tracks = await JellyfinManager.shared.createFavoritesRadio()
-            case .favoritesInstantMix:
-                tracks = await JellyfinManager.shared.createFavoritesRadioInstantMix()
-            }
-            guard !Task.isCancelled else { return }
-            guard !tracks.isEmpty else {
-                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-                return
-            }
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioPlayTask = nil
-        }
-    }
-
-    private func playEmbyRadioStation(_ radioType: EmbyRadioType) {
-        radioPlayTask?.cancel()
-        model.isLoading = true; startLoadingAnimation(); needsDisplay = true
-        radioPlayTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            var tracks: [Track] = []
-            switch radioType {
-            case .libraryRadio:
-                tracks = await EmbyManager.shared.createLibraryRadio()
-            case .libraryInstantMix:
-                tracks = await EmbyManager.shared.createLibraryRadioInstantMix()
-            case .genreRadio(let genre):
-                tracks = await EmbyManager.shared.createGenreRadio(genre: genre)
-            case .genreInstantMix(let genre):
-                tracks = await EmbyManager.shared.createGenreRadioInstantMix(genre: genre)
-            case .decadeRadio(let start, let end, _):
-                tracks = await EmbyManager.shared.createDecadeRadio(start: start, end: end)
-            case .decadeInstantMix(let start, let end, _):
-                tracks = await EmbyManager.shared.createDecadeRadioInstantMix(start: start, end: end)
-            case .favoritesRadio:
-                tracks = await EmbyManager.shared.createFavoritesRadio()
-            case .favoritesInstantMix:
-                tracks = await EmbyManager.shared.createFavoritesRadioInstantMix()
-            }
-            guard !Task.isCancelled else { return }
-            guard !tracks.isEmpty else {
-                self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-                return
-            }
-            let audioEngine = WindowManager.shared.audioEngine
-            audioEngine.loadTracks(tracks)
-            self.model.isLoading = false; self.stopLoadingAnimation(); self.needsDisplay = true
-            self.radioPlayTask = nil
-        }
-    }
-
-    private func playLocalRadioStation(_ radioType: LocalRadioType) {
-        let tracks: [Track]
-        switch radioType {
-        case .libraryRadio:
-            tracks = MediaLibrary.shared.createLocalLibraryRadio()
-        case .genreRadio(let genre):
-            tracks = MediaLibrary.shared.createLocalGenreRadio(genre: genre)
-        case .decadeRadio(let start, let end, _):
-            tracks = MediaLibrary.shared.createLocalDecadeRadio(start: start, end: end)
-        }
-        guard !tracks.isEmpty else { return }
-        let audioEngine = WindowManager.shared.audioEngine
-        audioEngine.loadTracks(tracks)
-    }
-    }
-
-// MARK: - NSWindowDelegate
-
-extension PlexBrowserView: NSWindowDelegate {
-    func windowWillClose(_ notification: Notification) {
-        if let closingWindow = notification.object as? NSWindow {
-            if closingWindow === activeTagsPanel {
-                activeTagsPanel = nil
-            } else if closingWindow === activeEditTagsPanel {
-                activeEditTagsPanel = nil
-            } else if closingWindow === activeEditAlbumTagsPanel {
-                activeEditAlbumTagsPanel = nil
-            } else if closingWindow === activeEditVideoTagsPanel {
-                activeEditVideoTagsPanel = nil
-            }
-        }
-    }
 }
-

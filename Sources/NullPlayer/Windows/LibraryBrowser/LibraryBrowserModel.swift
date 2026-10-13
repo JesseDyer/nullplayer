@@ -6,8 +6,8 @@ import NullPlayerCore
 /// Each browser instance owns one: the classic and modern windows, the windows Compact Mode
 /// creates, and a `.wal` skin's embedded library. The model loads and builds the rows of the
 /// current source and tab, and keeps the caches, expansion, sort and search behind them. Its view
-/// draws `displayItems` and reacts to `onChange`; the view keeps scroll position, selection, hover
-/// and animation. Loading is split per source across the `LibraryBrowserModel+<Source>` files.
+/// draws `displayItems` and `selectedIndices` and reacts to `onChange`; the view keeps scroll
+/// position, hover and animation. Loading is split per source across the `LibraryBrowserModel+<Source>` files.
 @MainActor
 final class LibraryBrowserModel: NSObject {
 
@@ -17,25 +17,27 @@ final class LibraryBrowserModel: NSObject {
         case rows
         /// `isLoading` or `errorMessage` changed.
         case loading
-        /// A new list replaced the rows: selection and scroll position no longer apply.
+        /// A new list replaced the rows and cleared the selection: the scroll position no longer applies.
         case rowsReplaced
         /// The rows were re-built in place after an expand, collapse or re-sort.
         case rebuilt
         /// A load of the current tab finished.
         case loaded
-        /// The row a search → Artists navigation was looking for: select it and scroll to it.
+        /// The row a search → Artists navigation was looking for, now selected: scroll to it.
         case reveal(Int)
-        /// `currentSource` changed; the rows were cleared and are reloading.
+        /// `currentSource` changed; the rows and selection were cleared and are reloading.
         case source
         /// `browseMode` changed.
         case browseMode
+        /// A column was shown or hidden, or a group's columns were reset.
+        case columns
     }
 
     var onChange: ((Change) -> Void)?
 
     /// Prefixes the keys each view keeps its own column visibility and tab-slot choice under
     /// ("Classic" for the classic view, empty for the modern view).
-    private let keyPrefix: String
+    let keyPrefix: String
 
     // MARK: - Source and tab
 
@@ -61,6 +63,20 @@ final class LibraryBrowserModel: NSObject {
     var searchQuery: String = ""
 
     // MARK: - Rows and loading
+
+    /// The selected rows' indices into `displayItems`.
+    var selectedIndices: Set<Int> = []
+
+    /// The selected rows, in list order.
+    var selectedItems: [LibraryBrowserItem] {
+        selectedIndices.sorted().filter(displayItems.indices.contains).map { displayItems[$0] }
+    }
+
+    /// A new list replaced the rows: the selection no longer applies.
+    func rowsReplaced() {
+        selectedIndices.removeAll()
+        onChange?(.rowsReplaced)
+    }
 
     var displayItems: [LibraryBrowserItem] = [] {
         didSet { onChange?(.rows) }
@@ -102,12 +118,17 @@ final class LibraryBrowserModel: NSObject {
     var visibleTrackColumnIds = LibraryBrowserColumn.defaultTrackColumnIds { didSet { saveVisibleColumns() } }
     var visibleAlbumColumnIds = LibraryBrowserColumn.defaultAlbumColumnIds { didSet { saveVisibleColumns() } }
     var visibleArtistColumnIds = LibraryBrowserColumn.defaultArtistColumnIds { didSet { saveVisibleColumns() } }
+    /// Resized column widths, keyed "group:columnId" (a radio column by its id alone). Both views
+    /// share one set.
+    var columnWidths: [String: CGFloat] = [:] {
+        didSet { UserDefaults.standard.set(columnWidths, forKey: Self.columnWidthsKey) }
+    }
 
     // YouTube channels keep their own sort state (session-only, default = none → date
     // order as returned by yt-dlp). This keeps the persisted library column sort from
     // leaking in and re-ordering videos to A–Z on every rebuild (e.g. after a download).
     // Only an explicit header click in the YouTube tab sets this.
-    var youtubeColumnSortId: String?
+    var youtubeColumnSortId: LibraryBrowserColumn.ID?
     var youtubeColumnSortAscending = true
 
     // MARK: - Server caches
@@ -158,7 +179,7 @@ final class LibraryBrowserModel: NSObject {
     init(keyPrefix: String) {
         self.keyPrefix = keyPrefix
         super.init()
-        loadVisibleColumns()
+        loadColumns()
         // Set directly, so `currentSource`'s observer does not start a load before the view listens.
         (currentSource, pendingSourceRestore) = Self.restoredSource()
         currentSource.save()
@@ -207,7 +228,7 @@ final class LibraryBrowserModel: NSObject {
     func restoreBrowseMode(rawValue: Int) {
         guard let mode = LibraryBrowseMode(rawValue: rawValue) else { return }
         browseMode = mode == .folders && !isLocalSource ? .plists : mode
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         reloadData()
     }
 
@@ -223,6 +244,7 @@ final class LibraryBrowserModel: NSObject {
         displayItems.removeAll()
         errorMessage = nil
         isLoading = false
+        selectedIndices.removeAll()
         // Internet Radio only has radio/search content, but every library
         // source supports the Radio tab. Preserve Radio across source changes.
         // YouTube reuses the Radio tab to list its channels, so force it too.
@@ -271,6 +293,43 @@ final class LibraryBrowserModel: NSObject {
         isYouTubeChannelSearch && youtubeSearch.isUnsubmitted(searchQuery)
     }
 
+    /// The label of each tab slot, in `LibraryBrowseMode.tabs` order: a two-way slot shows what
+    /// it is switched to.
+    var tabLabels: [String] {
+        LibraryBrowseMode.tabs.map { mode in
+            if mode == .plists, isLocalSource, localPlistsSlotShowsFolders { return "Folders" }
+            if mode == .radio, radioSlotShowingChannels { return "Channels" }
+            return mode.title
+        }
+    }
+
+    /// A source-bar name with the item count appended: "FLAC_LIB (988 items)". The local Artists
+    /// and Albums tabs count the whole library rather than the loaded page; a Plex library counts
+    /// its artists, movies or shows rather than the rows.
+    func withItemCount(_ name: String) -> String {
+        let count: Int
+        switch currentSource {
+        case .local:
+            switch browseMode {
+            case .artists: count = localArtistTotal > 0 ? localArtistTotal : displayItems.count
+            case .albums: count = localAlbumTotal > 0 ? localAlbumTotal : displayItems.count
+            default: count = displayItems.count
+            }
+        case .plex:
+            switch PlexManager.shared.currentLibrary?.type {
+            case "artist": count = plex.artists.count
+            case "movie": count = plex.movies.count
+            case "show": count = plex.shows.count
+            default: count = displayItems.count
+            }
+        case .radio:
+            return "\(name) (\(displayItems.count) stations)"
+        case .subsonic, .jellyfin, .emby, .youtube:
+            count = displayItems.count
+        }
+        return "\(name) (\(count) items)"
+    }
+
     /// A tab-bar click on `slot`. A double-click flips what a two-way slot shows: Plists and
     /// Folders for the Local source, Internet Radio and Channels for YouTube.
     func selectTab(_ slot: LibraryBrowseMode, doubleClick: Bool) {
@@ -280,7 +339,7 @@ final class LibraryBrowserModel: NSObject {
             radioSlotShowsChannels.toggle()
         }
         browseMode = slot == .plists ? effectivePlistsSlotMode : slot
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         loadDataForCurrentMode()
     }
 
@@ -294,8 +353,8 @@ final class LibraryBrowserModel: NSObject {
 
     /// Column sort that applies to the current source. YouTube uses its own session
     /// state (default date order) instead of the persisted library sort.
-    var activeColumnSortId: String? {
-        currentSource.isYouTube ? youtubeColumnSortId : columnSortId
+    var activeColumnSortId: LibraryBrowserColumn.ID? {
+        currentSource.isYouTube ? youtubeColumnSortId : columnSortId.flatMap(LibraryBrowserColumn.ID.init)
     }
     var activeColumnSortAscending: Bool {
         currentSource.isYouTube ? youtubeColumnSortAscending : tabSort.columnSortAscending
@@ -310,9 +369,9 @@ final class LibraryBrowserModel: NSObject {
     }
 
     /// A column-header click: sort by that column, or reverse the order when it already does.
-    func sortByColumn(_ columnId: String) {
+    func sortByColumn(_ columnId: LibraryBrowserColumn.ID) {
         if currentSource.isYouTube {
-            guard columnId != "thumbnail" else { return }  // an image column has nothing to sort by
+            guard columnId != .thumbnail else { return }  // an image column has nothing to sort by
             // YouTube uses its own session sort (not persisted to the library sort).
             if youtubeColumnSortId == columnId {
                 youtubeColumnSortAscending.toggle()
@@ -321,7 +380,7 @@ final class LibraryBrowserModel: NSObject {
                 youtubeColumnSortAscending = true
             }
         } else {
-            LibraryBrowserTabSortStore.shared.clickColumn(columnId, for: browseMode.rawValue)
+            LibraryBrowserTabSortStore.shared.clickColumn(columnId.rawValue, for: browseMode.rawValue)
         }
         applyColumnSort(collapseExpanded: true)
     }
@@ -345,7 +404,7 @@ final class LibraryBrowserModel: NSObject {
             displayItems = []
             isLoading = false
             errorMessage = nil
-            onChange?(.rowsReplaced)
+            rowsReplaced()
             return
         }
 
@@ -472,7 +531,7 @@ final class LibraryBrowserModel: NSObject {
         if case .plex = currentSource, !PlexManager.shared.isLinked { return }
         let generation = invalidateActiveLoads()
         clearAllCachedData()
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         isLoading = true; errorMessage = nil; displayItems = []
         PlexManager.shared.clearCachedContent()
         loadDataForCurrentMode(generation: generation)
@@ -612,7 +671,7 @@ final class LibraryBrowserModel: NSObject {
            let artistOffset = MediaLibraryStore.shared.artistOffset(named: artistName, sort: currentSort) {
             localArtistPageOffset = (artistOffset / localPageSize) * localPageSize
         }
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         loadDataForCurrentMode()
     }
 
@@ -627,7 +686,10 @@ final class LibraryBrowserModel: NSObject {
         pendingScrollToArtistName = nil
         pendingScrollAttempts = 0
         pendingArtistLoadUnfiltered = false
-        if let index { onChange?(.reveal(index)) }
+        if let index {
+            selectedIndices = [index]
+            onChange?(.reveal(index))
+        }
     }
 
     private func pendingArtistIndex(artistId: String, name: String) -> Int? {
@@ -694,101 +756,6 @@ final class LibraryBrowserModel: NSObject {
             return true
         default:
             return nil
-        }
-    }
-
-    // MARK: - Columns
-
-    /// The column group a row's cells belong to; nil for a row drawn as a plain title line.
-    func columnGroup(for item: LibraryBrowserItem) -> LibraryColumnVisibilityGroup? {
-        switch item.type {
-        case .track, .subsonicTrack, .localTrack, .jellyfinTrack, .embyTrack:
-            return .track
-        case .album, .subsonicAlbum, .localAlbum, .jellyfinAlbum, .embyAlbum:
-            return .album
-        case .artist, .subsonicArtist, .localArtist, .jellyfinArtist, .embyArtist:
-            return item.indentLevel == 0 ? .artist : nil
-        case .youtubeVideo:
-            return .youtube
-        default:
-            return nil
-        }
-    }
-
-    func isInternetRadioItem(_ item: LibraryBrowserItem) -> Bool {
-        guard case .radio = currentSource, case .radioStation = item.type else { return false }
-        return true
-    }
-
-    var hasInternetRadioColumns: Bool {
-        guard case .radio = currentSource else { return false }
-        return displayItems.contains(where: isInternetRadioItem)
-    }
-
-    /// YouTube channel uploads render through the resizable column path (title + time),
-    /// gated on the "Channels" view actually containing video rows.
-    var hasYouTubeColumns: Bool {
-        guard radioSlotShowingChannels || isYouTubeChannelSearch else { return false }
-        return displayItems.contains { if case .youtubeVideo = $0.type { return true }; return false }
-    }
-
-    func currentColumnGroup() -> LibraryColumnVisibilityGroup? {
-        if hasYouTubeColumns { return .youtube }
-        return LibraryColumnVisibility.headerGroup(displayItems.lazy.map { self.columnGroup(for: $0) })
-    }
-
-    /// Whether a row draws columns rather than a plain title line.
-    func drawsColumns(_ item: LibraryBrowserItem) -> Bool {
-        columnGroup(for: item) != nil || isInternetRadioItem(item)
-    }
-
-    /// The header's columns for the list's column group; radio has its own fixed set and no group.
-    func headerColumns(for group: LibraryColumnVisibilityGroup?) -> [LibraryBrowserColumn] {
-        if hasInternetRadioColumns { return LibraryBrowserColumn.internetRadioColumns }
-        guard let group else { return [] }
-        return LibraryColumnVisibility.visibleColumns(allColumns: LibraryBrowserColumn.all(for: group),
-                                                      visibleIds: visibleColumnIds(for: group)) { $0.id }
-    }
-
-    func visibleColumnIds(for group: LibraryColumnVisibilityGroup) -> [String] {
-        switch group {
-        case .artist: return normalizedColumnIds(visibleArtistColumnIds, group: .artist)
-        case .album: return normalizedColumnIds(visibleAlbumColumnIds, group: .album)
-        case .track: return normalizedColumnIds(visibleTrackColumnIds, group: .track)
-        // YouTube columns are fixed (not user-hideable); always the full set.
-        case .youtube: return LibraryBrowserColumn.defaultYouTubeColumnIds
-        }
-    }
-
-    func setVisibleColumnIds(_ ids: [String], for group: LibraryColumnVisibilityGroup) {
-        switch group {
-        case .artist: visibleArtistColumnIds = normalizedColumnIds(ids, group: .artist)
-        case .album: visibleAlbumColumnIds = normalizedColumnIds(ids, group: .album)
-        case .track: visibleTrackColumnIds = normalizedColumnIds(ids, group: .track)
-        case .youtube: break
-        }
-    }
-
-    private func normalizedColumnIds(_ ids: [String], group: LibraryColumnVisibilityGroup) -> [String] {
-        LibraryColumnVisibility.normalizedIds(ids, allIds: LibraryBrowserColumn.all(for: group).map(\.id))
-    }
-
-    private func saveVisibleColumns() {
-        UserDefaults.standard.set(visibleTrackColumnIds, forKey: keyPrefix + "BrowserVisibleTrackColumns")
-        UserDefaults.standard.set(visibleAlbumColumnIds, forKey: keyPrefix + "BrowserVisibleAlbumColumns")
-        UserDefaults.standard.set(visibleArtistColumnIds, forKey: keyPrefix + "BrowserVisibleArtistColumns")
-    }
-
-    private func loadVisibleColumns() {
-        let defaults = UserDefaults.standard
-        if let saved = defaults.stringArray(forKey: keyPrefix + "BrowserVisibleTrackColumns") {
-            visibleTrackColumnIds = normalizedColumnIds(saved, group: .track)
-        }
-        if let saved = defaults.stringArray(forKey: keyPrefix + "BrowserVisibleAlbumColumns") {
-            visibleAlbumColumnIds = normalizedColumnIds(saved, group: .album)
-        }
-        if let saved = defaults.stringArray(forKey: keyPrefix + "BrowserVisibleArtistColumns") {
-            visibleArtistColumnIds = normalizedColumnIds(saved, group: .artist)
         }
     }
 

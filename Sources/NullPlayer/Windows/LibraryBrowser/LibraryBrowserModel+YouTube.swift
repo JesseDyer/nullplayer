@@ -38,7 +38,7 @@ extension LibraryBrowserModel {
             return
         }
         displayItems = []
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         isLoading = true
     }
 

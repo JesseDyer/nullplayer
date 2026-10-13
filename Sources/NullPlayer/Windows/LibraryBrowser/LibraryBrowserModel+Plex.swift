@@ -140,7 +140,7 @@ extension LibraryBrowserModel {
         // Playlists span the server's libraries
         plex = PlexBrowserCache(playlists: plex.playlists, playlistTracks: plex.playlistTracks)
         collapse(.plexLibrary)
-        onChange?(.rowsReplaced)
+        rowsReplaced()
         reloadData()
     }
 
