@@ -36,10 +36,8 @@ Sources/NullPlayer/
 ├── Utilities/
 │   ├── LibraryRowThumbnails.swift   # Round list-row thumbnails for every library row (see ui-guide)
 │   └── NSImage+SquareCrop.swift     # squareCenterCropped() — 16:9 thumbnails as square art
-├── Windows/ModernLibraryBrowser/
-│   └── ModernLibraryBrowserView.swift # YouTube folder tree integration
-└── Windows/PlexBrowser/
-    └── PlexBrowserView.swift        # YouTube folder tree integration (classic UI)
+└── Windows/LibraryBrowser/
+    └── LibraryBrowserModel+YouTube.swift # YouTube rows, channel expansion and search for every browser view
 ```
 
 ### YouTubeManager
@@ -135,7 +133,7 @@ Stored inside `downloadRoot`, tracks downloaded files. In memory it is `[YouTube
 
 ### Channel / Video Listing
 
-Both `ModernLibraryBrowserView` and `PlexBrowserView` (classic UI) integrate YouTube as a **source branch** alongside internet radio stations. Channels appear as expandable folders; expanding a channel calls `YouTubeChannelUploads.shared.load(_:)` (see *Upload cache* below), which, when its cached list won't do, runs `YouTubeManager.videos(forChannel:limit:)`. That shells out to `yt-dlp --flat-playlist` with no API key:
+The Library Browser (`LibraryBrowserModel+YouTube`, shared by every browser view) integrates YouTube as a **source branch** alongside internet radio stations. Channels appear as expandable folders; expanding a channel calls `YouTubeChannelUploads.shared.load(_:)` (see *Upload cache* below), which, when its cached list won't do, runs `YouTubeManager.videos(forChannel:limit:)`. That shells out to `yt-dlp --flat-playlist` with no API key:
 
 ```bash
 yt-dlp --flat-playlist -J --playlist-end 200 \
@@ -214,8 +212,7 @@ yt-dlp --flat-playlist -J --playlist-end 20 \
 
 ### Thumbnails and Avatars
 
-- **Art column**: `youtubeColumns` is `[.thumbnail, .title, .youtubeDate, .duration]` in both
-  browsers; `drawColumnRow` draws the `thumbnail` column as a round image, and a header click on it
+- **Art column**: `youtubeColumns` is `[.thumbnail, .title, .youtubeDate, .duration]`; `drawColumnRow` draws the `thumbnail` column as a round image, and a header click on it
   does not sort. Channel rows are not column rows (they keep the ▶ arrow), so their avatar is drawn
   round, inline before the title. Both are ordinary library row thumbnails —
   `LibraryRowThumbnails.Source.video` / `.channel` through `rowThumbnailSource(for:)`; loading,
@@ -244,21 +241,21 @@ yt-dlp --flat-playlist -J --playlist-end 20 \
 Video (leaf) rows render through the **established resizable-column path** (`drawColumnRow`), not the simple list path, so a long title truncates inside its column instead of printing over the time. The column set is:
 
 ```swift
-static let youtubeColumns: [ModernBrowserColumn] = [.thumbnail, .title, .youtubeDate, .duration]  // "Art", "Title", "Date", "Time"
+static let youtubeColumns: [LibraryBrowserColumn] = [.thumbnail, .title, .youtubeDate, .duration]  // "Art", "Title", "Date", "Time"
 ```
 
-- A dedicated **`.youtube` case in `LibraryColumnVisibilityGroup`** namespaces the persisted widths (`youtube:title`, `youtube:youtubeDate`, `youtube:duration`) so they survive `migrateColumnWidths`. This is why the internet-radio column path can't be reused: `internetRadioColumns` are deliberately **non-resizable** (`hitTestColumnResize` early-returns when `hasInternetRadioColumns`), and the requirement here is a movable Time column like the library tabs.
+- A dedicated **`.youtube` case in `LibraryColumnVisibilityGroup`** namespaces the persisted widths (`youtube:title`, `youtube:youtubeDate`, `youtube:duration`) so they survive `migrateColumnWidths`. This is why the internet-radio column path can't be reused: `internetRadioColumns` are deliberately **non-resizable** (`LibraryBrowserList.resizableColumn` returns nil when `hasInternetRadioColumns`), and the requirement here is a movable Time column like the library tabs.
 - The **`youtubeDate`** column shows `video.formattedDate`; sorting it goes through the **raw-`Date` branch** of `columnSortAreInOrder` (via `columnDateValue`, alongside `dateAdded`/`lastPlayed`), not string compare, so it orders by actual date.
 - **Channel (parent) rows stay on the simple-list path** so they keep their ▶/▼ expand arrows; only video rows use columns — mirroring radio folders vs. stations.
 - Column headers appear only once a channel is expanded (video rows exist), gated by `hasYouTubeColumns` (`radioSlotShowingChannels` + any `.youtubeVideo` in `displayItems`).
 - Clicking a header sorts via **`applyYouTubeColumnSort`** — an in-place sort of each contiguous run of video rows (leaving channel leaders put), mirroring `applyInternetRadioColumnSort`.
 - Plumbing touched: `columnGroup(for:)`, `currentColumnGroup()`, `rowColumns(for:header:)`, `headerColumns(for:)`, `columnValue`, plus the four `allColumns`/`defaultColumnIds`/`visibleColumnIds`/`setVisibleColumnIds` group switches.
-- **Both UIs implement this independently**: the classic `PlexBrowserView` mirrors the whole column set (its own `BrowserColumn.youtubeColumns`, `columnValue`, `columnDateValue`, `applyYouTubeColumnSort`, session sort, etc.). Any change to YouTube columns/sorting must be made in **both** `ModernLibraryBrowserView` and `PlexBrowserView` — they share no code.
+- **One implementation for every browser view**: the columns, values and sorts live in `Windows/LibraryBrowser/` (`LibraryBrowserColumn`, `LibraryBrowserModel+Columns`, `LibraryBrowserModel+ColumnSort`, `LibraryBrowserList`); each view only draws them.
 
 ### Video row menu (`YouTubeVideoActions`)
 
-One `@MainActor` instance per browser view (`youtubeVideoActions`, like `youtubeSearch`) owns the
-whole per-video flow, so both browsers' YouTube-video branches are one call each.
+One `@MainActor` instance per browser (`LibraryBrowserActions.youtubeVideos`, beside the model's
+`youtubeSearch`) owns the whole per-video flow.
 
 - `addMenuItems(for:to:)` builds **Audio ▸** / **Video ▸** (each filled by the library's shared play
   menu, `TrackVerb.addMenuItems` in `App/TrackVerb.swift`, with a resolve that returns that form's
@@ -310,12 +307,12 @@ subscriptions and the manifest.
 
 ### Row builder (`YouTubeRows.swift`)
 
-Every YouTube list row in both browsers comes from `YouTubeRowBuilder`, built per rebuild from the
-view's `expandedYouTubeChannels` and their cached uploads (`YouTubeChannelUploads.uploads(of:)`): `channels(_:)` (Channels tab),
+Every YouTube list row comes from `YouTubeRowBuilder`, built per rebuild from the
+model's `expandedYouTubeChannels` and their cached uploads (`YouTubeChannelUploads.uploads(of:)`): `channels(_:)` (Channels tab),
 `channelSearch(_:)` (the YouTube source's Search tab) and `localSearch(query:excluding:)`. It
-returns view-independent `YouTubeRow`s, which both views map through the shared
+returns view-independent `YouTubeRow`s, which the model maps through
 `LibraryBrowserItem(_:)` (`Windows/LibraryBrowser/LibraryBrowserItem.swift`). Row ids, titles, title prefixes, indents and the
-section headers are decided there only, so a change to YouTube rows is made once, not per browser.
+section headers are decided there only, so a change to YouTube rows is made once.
 A row's `title` is the item's own name; decorations (the downloaded-form markers, `✓` on a subscribed
 search result) go in `titlePrefix`, which only the draw paths read, through the display item's
 `shownTitle`. Sorting, the alphabet index and type-ahead read `title`, so they never see a marker.
@@ -369,11 +366,7 @@ when a new key is absent — `flac` → FLAC, `mp3High` → MP3 320, `mp3Low` �
 
 ### UI Mode Support
 
-YouTube channels appear identically in:
-- **Modern LibraryBrowserView** (right-side tree, expandable channel folders + indented video rows)
-- **Classic PlexBrowserView** (left sidebar + table view, same folder/row structure as radio stations)
-
-Both reuse the shared `LibraryBrowserSource` enum routing.
+YouTube channels appear identically in every browser view (expandable channel folders with indented video rows, the same structure as radio stations), since the rows come from `LibraryBrowserModel` and route through the shared `LibraryBrowserSource`.
 
 ### Casting
 
@@ -392,5 +385,5 @@ Downloaded files are local `file://` tracks. After download completes, the `Trac
 - **Streaming playback not offered**: YouTube streams (live, members-only, age-restricted) may fail silently if yt-dlp can't extract them; only downloadable videos are listed
 - **Video titles from yt-dlp**: Source of truth is yt-dlp's title extraction; titles are not synced with YouTube's API and may differ from what the web UI shows
 - **YouTube has its own session sort (default date order)**: The channels tab must NOT inherit the persisted library column sort (`columnSortId`, saved per tab by `LibraryBrowserTabSortStore`), or every rebuild — including after a download — re-sorts videos to A–Z. Both views keep session-only `youtubeColumnSortId`/`youtubeColumnSortAscending` (default nil = yt-dlp's newest-first order), read through `activeColumnSortId`/`activeColumnSortAscending` by every sort/header-draw path. A header click in the YouTube tab sets the session sort only; it never writes the library sort. This state resets to date order on relaunch (intended).
-- **Downloaded marker is rebuild-driven**: A downloading video draws a per-row spinner gated on `youtubeVideoActions.isFetching`; the **form markers** (`♫` audio, `▶︎` video, one per form on disk, from `MediaType.rowMarker` in `Data/Models/Track.swift`, which the playlist's video rows share via `Track.playlistTitle`) are set as the row's `titlePrefix` by `YouTubeRowBuilder.videoRow` from `downloadedFiles(for:)` — at rebuild, never while drawing (it stats the files, the list redraws at 10 Hz under a spinner, and the folder may be a NAS mount). Uploads and the Local search's download rows both go through `videoRow`. `onFilesChanged` fires when the download lands, and the view's handler calls `rebuildCurrentModeItems()` (adds the marker; the spinner is gone because the fetch left `fetches`) — so the spinner→icon transition only works because the row stays put, which is why the session-sort fix above matters (an A–Z re-sort would relocate the row mid-transition).
-- **Channels tab uses the `.youtube` column group, not the radio column path**: Don't route YouTube videos through `internetRadioColumns` — those columns are fixed-width by design. Video rows use `youtubeColumns` (`[.thumbnail, .title, .youtubeDate, .duration]`) via the resizable `LibraryColumnVisibilityGroup.youtube` group; adding/changing that enum requires updating every exhaustive `switch group` in both `ModernLibraryBrowserView` and `PlexBrowserView`
+- **Downloaded marker is rebuild-driven**: A downloading video draws a per-row spinner gated on `actions.youtubeVideos.isFetching`; the **form markers** (`♫` audio, `▶︎` video, one per form on disk, from `MediaType.rowMarker` in `Data/Models/Track.swift`, which the playlist's video rows share via `Track.playlistTitle`) are set as the row's `titlePrefix` by `YouTubeRowBuilder.videoRow` from `downloadedFiles(for:)` — at rebuild, never while drawing (it stats the files, the list redraws at 10 Hz under a spinner, and the folder may be a NAS mount). Uploads and the Local search's download rows both go through `videoRow`. `onFilesChanged` fires when the download lands, and `LibraryBrowserActions` answers it with `model.rebuildCurrentModeItems()` (adds the marker; the spinner is gone because the fetch left `fetches`) — so the spinner→icon transition only works because the row stays put, which is why the session-sort fix above matters (an A–Z re-sort would relocate the row mid-transition).
+- **Channels tab uses the `.youtube` column group, not the radio column path**: Don't route YouTube videos through `internetRadioColumns` — those columns are fixed-width by design. Video rows use `youtubeColumns` (`[.thumbnail, .title, .youtubeDate, .duration]`) via the resizable `LibraryColumnVisibilityGroup.youtube` group; adding/changing that enum requires updating every exhaustive `switch group` in `Windows/LibraryBrowser/`

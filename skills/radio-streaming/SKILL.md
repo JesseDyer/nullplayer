@@ -29,10 +29,8 @@ Sources/NullPlayer/
 │   └── RadioStation.swift             # Station data model
 ├── Windows/Radio/
 │   └── AddRadioStationSheet.swift     # Add/edit station UI
-├── Windows/ModernLibraryBrowser/
-│   └── ModernLibraryBrowserView.swift # Internet radio folder tree + rating column
-└── Windows/PlexBrowser/
-    └── PlexBrowserView.swift          # Internet radio folder tree + rating column
+└── Windows/LibraryBrowser/
+    └── LibraryBrowserModel+Radio.swift # Internet radio folder tree + rating column, every browser view
 ```
 
 ### RadioManager
@@ -163,7 +161,7 @@ Ratings/folders are URL-keyed. If a station URL is edited, `RadioManager.updateS
 
 ### Internet Radio Organization (Folders + Ratings)
 
-Internet Radio now uses folder-tree organization in both `ModernLibraryBrowserView` and `PlexBrowserView`.
+Internet Radio uses folder-tree organization, built once in `LibraryBrowserModel+Radio` for every browser view.
 
 Smart folders:
 - All Stations
@@ -293,10 +291,9 @@ Sources/NullPlayer/
 ├── Data/Models/
 │   ├── MediaLibrary.swift           # createLocalXxxRadio functions
 │   └── LocalRadioHistory.swift      # SQLite play history for local files
-├── Windows/ModernLibraryBrowser/
-│   └── ModernLibraryBrowserView.swift  # Radio tab UI + RadioType enums
-└── Windows/PlexBrowser/
-    └── PlexBrowserView.swift           # Classic/Plex browser radio tab UI + RadioType enums
+└── Windows/LibraryBrowser/
+    ├── LibraryRadioTypes.swift      # The Plex/Subsonic/Jellyfin/Emby/Local RadioType enums
+    └── LibraryBrowserActions.swift  # Playing a generated station (playRadio)
 ```
 
 ### Radio Types (per source)
@@ -338,10 +335,10 @@ Sources/NullPlayer/
 
 ### RadioConfig
 
-`RadioConfig` (file: `ModernLibraryBrowserView.swift`) provides shared constants:
+`RadioConfig` (file: `Plex/PlexServerClient.swift`) provides shared constants:
 
 ```swift
-struct RadioConfig {
+enum RadioConfig {
     static let defaultLimit = 100          // Tracks per radio session
     static let decades: [DecadeRange]      // Pre-defined decade ranges (1960s–2020s)
     static let ratingStations: [...]       // Plex rating-based presets
@@ -449,10 +446,10 @@ func filterForArtistVariety(_ tracks: [Track], limit: Int, maxPerArtist: Int = 2
 
 Standard radio: `maxPerArtist = 2`. Instant Mix / Similar: `maxPerArtist = 1` (more variety).
 
-### Race Condition Guards (ModernLibraryBrowserView)
+### Race Condition Guards (Library Browser)
 
-- **radioLoadTask**: cancelled when source/mode changes before a new genre fetch begins. Result is discarded if source or browseMode changed while awaiting.
-- **radioPlayTask**: cancelled if user double-clicks another station before the previous radio generation completes.
+- **`LibraryBrowserModel.radioLoadTask`**: cancelled when source/mode changes before a new genre fetch begins. Result is discarded if source or browseMode changed while awaiting.
+- **`LibraryBrowserActions.radioPlayTask`**: cancelled if user double-clicks another station before the previous radio generation completes.
 
 ---
 
@@ -472,9 +469,7 @@ The browser Radio tab has two behaviors:
   - Genre/category column centered in radio lists
   - Double-click to generate and play queue
 
-Implemented in both browser views:
-- `Windows/ModernLibraryBrowser/ModernLibraryBrowserView.swift`
-- `Windows/PlexBrowser/PlexBrowserView.swift`
+Implemented once in `Windows/LibraryBrowser/` (`LibraryBrowserModel+Radio` and each server's `build…RadioStationItems`, with `LibraryBrowserActions+Radio` for the station and folder actions); each browser view only draws the rows.
 
 ### Main Window Marquee
 

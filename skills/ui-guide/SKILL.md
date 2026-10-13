@@ -911,23 +911,34 @@ Implementation rules:
 - Live UI switching should exit Compact Window, rebuild the mode-dependent window layer, then
   re-enter Compact Window so the embedded classic/modern compact surface matches the new mode.
 
-### Library and Compact Window visual backdrops (Modern/Metal)
+### Library and Compact Window visual backdrops
 
 The regular Library and Compact surfaces each support a durable visual mode: **Off**, **Cava**,
 **Art**, or **Cava + Art**. They persist independently as `libraryBackdropMode` and
 `compactBackdropMode`. Controls live under **Visuals > Library Window** or
-**Visuals > Compact Window** and in the corresponding surface's context menus. Classic resolves
-both modes to Off. Modern and Metal default both windows to **Cava + Art** on first use; persisted
+**Visuals > Compact Window** and in the corresponding surface's context menus.
+
+The classic browser (Classic, and the `.wal` fallback, `.wmz` and Audion library windows) has its
+own Library Window choice, `ClassicLibraryBackdropMode` (`BrowserBackdropMode.classicLibraryMode`):
+while it is unset the legacy `showBrowserArtworkBackground` toggle reads as Art (on) or Off (off), so
+Classic keeps its look until Cava is picked. Its Cava covers the list area only (`BrowserBackdrop`'s
+`region`), so a hosted frame's keyed-out corners stay clear. It never shows in classic Compact Mode
+or in the `.wal` embedded library holder, which has no controller. Classic resolves the Compact mode
+to Off.
+
+Modern and Metal default both windows to **Cava + Art** on first use; persisted
 window-specific selections still win. When those keys are absent on upgrade, the legacy
 `showBrowserArtworkBackground` value seeds both: enabled maps to Cava + Art and disabled maps to
 Cava. Reset All Visualization Preferences clears both new mode keys and restores Cava + Art.
 
 Implementation rules:
-- `ModernLibraryBrowserWindowController` installs a clear container as the window content view.
-  `CompactBackdropView` and `ModernLibraryBrowserView` are siblings in both regular and Compact
-  presentations, with the backdrop positioned below the browser. Do not make the backdrop a child
+- Both browser window controllers install a clear container as the window content view.
+  `BrowserBackdropView` (`Windows/LibraryBrowser/BrowserBackdropView.swift`, placed by
+  `BrowserBackdrop`) and the browser view are siblings in it (Modern: in both regular and Compact
+  presentations), with the backdrop positioned below the browser. Do not make the backdrop a child
   of the browser; the browser's layer clipping and redraw behavior would clip or erase it.
-- Size the backdrop from the content container's `bounds` on creation and every layout pass. Do not
+- Size the backdrop from the content container's `bounds` (the classic view: its list `region`) on
+  creation and every layout pass. Do not
   copy the browser's `frame`: an offset or partially sized browser frame can restrict Cava to one
   side of the compact window. Keep the backdrop autoresizing in width and height. Propagate the
   browser's `sharpCorners` into the backdrop layer mask whenever docking changes so both siblings
@@ -938,7 +949,8 @@ Implementation rules:
   browser can leave a horizontal cached region covering the backdrop until relaunch.
 - The browser remains above the backdrop and uses translucent background/panel fills while a
   backdrop is active. Text, controls, borders, and hit testing remain browser-owned and fully
-  interactive. `CompactBackdropView.hitTest` returns `nil`.
+  interactive. `BrowserBackdropView.hitTest` returns `nil`. Each view supplies its own
+  `BrowserBackdropLook` (background, default bar colours, corner radius).
 - Art and Cava + Art must use the existing legacy browser artwork renderer and its list-area
   geometry. Never add a full-window/aspect-fill artwork sibling: it duplicates the legacy image and
   changes its established size. Art creates no backdrop sibling; Cava + Art draws the one legacy
@@ -969,14 +981,14 @@ drawn from `LibraryBarIcon.refresh` in the modern browser), switch how the brows
 are visual lenses over the browser's current `displayItems`, not separate queries. The mode is
 `LibraryViewMode`, persisted under the `LibraryBrowserViewMode` default, shared by both browsers and
 kept across tab switches and relaunches. The buttons show only while the list has art rows at its
-root (`artLens.hasItems`); over a list without any (Radio, playlists) the browser draws its list
+root (`list.lens.hasItems`); over a list without any (Radio, playlists) the browser draws its list
 whatever the mode, and the art view hides.
 
 The shared art views live in `Windows/LibraryArt/`, beside neither browser: both use them equally.
 
 The source bar has no separate item-count field: `withItemCount(_:)` appends the count to the
 library name (server sources) or the source name (Local, Radio, YouTube) — "Music (1110 items)".
-Each browser's `serverBarContent` (`ServerBarContent`: built-in source, configured server, or
+`LibraryBrowserModel.sourceBarContent` (`SourceBarContent`: built-in source, configured server, or
 unconfigured prompt) is the one switch over the source; the draw and the natural-width measure both
 read it. A server's library field grows from its minimum (`minLibraryFieldWidth` 80 pt modern,
 `minLibraryFieldChars` 10 classic) to the free space before the right-side buttons, and scrolls when
@@ -984,16 +996,17 @@ even that is short. The draw owns the scroll state: it writes the server and lib
 (zero when no server shows), resets an offset when its name changes, and starts the tick on
 overflow; the tick only advances offsets from those widths and stops when nothing overflows.
 
-**`LibraryArtLens`** (`Windows/LibraryArt/LibraryArtLens.swift`) owns everything the two
-browsers share: the mode, the art view standing in for the list, and the tree navigation. Each
-browser holds one `artLens` and keeps only what is its own, passed as `LibraryArtLens.Host`
-closures: its rows, search state, selection, blocked state (loading, error, Plex not linked), style,
-the `LibraryArtItem` for a row (`artItem(for:)`), expand, play (`handleDoubleClick`), the row's
-context menu (select it, then `showContextMenu` — every art view's right-click goes there), album
-info (`playable(for:)` → `LibraryAlbumInfo`) and next page.
+**`LibraryArtLens`** (`Windows/LibraryArt/LibraryArtLens.swift`) owns the mode, the art view
+standing in for the list, and the tree navigation. `LibraryBrowserList` makes the one lens per
+browser (`list.lens`) and fills its `LibraryArtLens.Host` from the model, actions and art: the rows,
+search state, selection, blocked state (loading, error, Plex not linked), the `LibraryArtItem` for a
+row (`LibraryBrowserArt.artItem(for:)`), expand, play (`actions.activate`), the row's context menu
+(select it, then `actions.contextMenu(for:)` — every art view's right-click goes there), album info
+(`actions.playable(for:)` → `LibraryAlbumInfo`) and next page. Only the style comes from the view
+(`LibraryBrowserList.Host.artStyle`).
 Rows conform to `LibraryArtRow` (`isArtItem`, `isAlbumItem`, `isVideoContainer` from the item type).
-Browser touch points: `rowsDidChange()` from `displayItems.didSet`, `resetNavigation()` on a tab or
-source change, `updateVisibility()` when loading/error/Plex link state changes, `restyle()` wherever the browser
+`LibraryBrowserList.modelDidChange` calls `rowsDidChange()` on a row change, `resetNavigation()` on a
+tab or source change, and `updateVisibility()` when loading state changes. The view's own touch points: `restyle()` wherever the browser
 recolours its other embedded views (skin change, and in the classic browser a pushed or re-resolved
 `.wal`/`.wmz` palette — the art view takes its colours only when made, so a family switch left
 tiles in the old skin's colours), `frame` from the
@@ -1005,9 +1018,9 @@ old view is removed, since removing the first responder hands focus to the windo
 
 The **alphabet index stays beside Flow and Tiles**: the art view's `frame` is the list area less the
 alphabet strip (mode-independent, since the lens reuses `frame` on every mode change), the art
-branch of the draw path still draws the index, and the modern `listLayout()` drops the column
-header while `isPresenting`, so the index runs full height. A letter goes to
-`artLens.jump(to:)` — the first row of the level shown with that sort letter — before
+branch of the draw path still draws the index, and `LibraryBrowserList.headerColumns()` drops the
+column header while `isPresenting`, so the index runs full height. A letter goes to
+`lens.jump(to:)` — the first row of the level shown with that sort letter — before
 `scrollToLetter`'s list path; only at the root does an unmatched letter fall through to a local
 library's letter-offset paging (inside a container that would rebuild the rows out from under the focus).
 
@@ -1027,7 +1040,7 @@ library's letter-offset paging (inside a container that would rebuild the rows o
 - Root eligibility matches what the view can show: normal modes use art rows at level 0, Search
   uses level-1 rows beneath its synthetic category headers. Local Artists/Albums are paginated: the
   view's `onApproachingEnd` reaches `Host.loadNextPage` only at the root level.
-- Art comes from the browser's per-source loaders, `itemArtwork(for:)`; Plex, Jellyfin and Emby
+- Art comes from the per-source loaders, `LibraryBrowserArt.itemArtwork(for:)`; Plex, Jellyfin and Emby
   video items use their native posters, local video items embedded art from the file (shows and
   seasons use their first episode). Local track/album resolution (`MediaLibraryStore` lookups)
   happens **inside** the async loader via `Task.detached`, never in the item-mapping pass.
@@ -1095,11 +1108,13 @@ and asking for it there would pull every description during preload).
 ## Library browser list layout (both browsers)
 
 `ModernLibraryBrowserView` and `PlexBrowserView` each work out the list's geometry in one place,
-`listLayout()`, returning `area` (below the tab and search bars, full inner width; the loading,
-and error views fill it), `header` (the column-header rect and its columns, `nil` when the list
-has no columns), `rows` (under the header, left of the scrollbar and alphabet index),
-`alphabet`, and in the modern browser `banner` (the offline-volume banner under `area`, `nil` when
-no watch folder is offline). Drawing, every hit test, every column-width calculation and every
+`listLayout()`, returning a `LibraryBrowserListLayout` (`Windows/LibraryBrowser/LibraryBrowserList.swift`):
+`area` (below the tab and search bars, full inner width; the loading, error and art views fill it),
+`header` (the column-header rect and its columns, `nil` when the list has no columns), `rows`
+(under the header, left of the scrollbar and alphabet index), `alphabet`, and `banner` (the
+offline-volume banner under `area`, `nil` when no watch folder is offline). `LibraryBrowserList`
+reads it for scrolling, clicks, the header and the menus, in the layout's own coordinates
+(`isFlipped`). Drawing, every hit test, every column-width calculation and every
 scroll range read it; a site that needs the columns or the group their widths are keyed by takes
 `header.columns` / `header.group`, never a second `currentColumnGroup()` call.
 Never rebuild "tab bar, then search bar, then header" at a call site: PR #480 was a header reserved
@@ -1108,11 +1123,10 @@ on one condition when drawn and another when hit-tested, so every click landed o
 - **Coordinates:** classic is skin space (top-left origin, `originalWindowSize`); modern is view
   space (bottom-left). `listTopY` is the bottom of the tab bar, or of the search bar in search mode.
   A classic dirty rect goes through `convertFromSkinCoordinates`, which knows about Hide Title Bars.
-- **Scroll ranges use `rows.height`.** The header, and in the modern browser the offline-volume
-  banner, are not visible list height; counting them hid the last row (M8).
-- **Header hit tests differ on purpose:** the modern browser matches the header band at any x, so
-  a right-click above the alphabet index opens the column menu; the classic one is bounded by the
-  header rect.
+- **Scroll ranges use `rows.height`.** The header and the offline-volume banner are not visible
+  list height; counting them hid the last row (M8).
+- **The header band matches at any x** (`isInHeaderBand`), so a right-click above the alphabet
+  index opens the column menu, in both browsers.
 - The modern alphabet index stops under the header; the classic one spans `area`'s full height.
 
 **One header, every row under it (M19).** The list has one column header, Finder-style:
@@ -1129,20 +1143,19 @@ on one condition when drawn and another when hit-tested, so every click landed o
   sits at the header's x. Shifting the whole row by the indent misaligned every cell once the
   columns overflowed into horizontal scroll. A hit test over a row's cells (the radio rating)
   uses the same unindented positions.
-- The column menu lists only the header's group, so every box ticked is on screen. YouTube's
-  columns are fixed: the Original browser's YouTube section has no checkboxes, only
-  "Reset YouTube Columns" (it resets the Time column's width); the Classic browser offers no
-  YouTube section.
+- The column menu (`LibraryBrowserActions.columnMenu`) lists only the header's group, so every box
+  ticked is on screen. YouTube's and radio's columns are fixed: their header has no column menu
+  (`configurableColumnGroup` is nil).
 
 ## Library row thumbnails (Library browser, all skin families)
 
 Every library list row that can carry art draws it as a small circle before its title; hovering
 the circle shows the art large, in its own shape, beside the row. Shared code lives in
-`Utilities/`; each browser (`ModernLibraryBrowserView`, `PlexBrowserView`) owns only what is
-genuinely its own.
+`Utilities/` and `Windows/LibraryBrowser/`; each browser view (`ModernLibraryBrowserView`,
+`PlexBrowserView`) only draws.
 
-**Per browser** — three touch points, mirrored in both:
-- `rowThumbnailSource(for:)` maps a display item to a `LibraryRowThumbnails.Source` (a cache key
+**Per browser** — the touch points, mirrored in both views:
+- `LibraryBrowserArt.rowThumbnailSource(for:)` (shared) maps a display item to a `LibraryRowThumbnails.Source` (a cache key
   plus an async loader), or nil for rows that never carry art (folders, headers, playlists).
   It reuses `itemArtwork(for:)` — the Flow / Tiles loaders above — for artists, albums, tracks
   and video items, and adds YouTube channels and videos, radio station icons and local playlist
@@ -1154,7 +1167,8 @@ genuinely its own.
   placeholder until its art loads or when there is none, so titles never shift. The classic
   browser draws inside its text counter-flip; a rect centred on the row is the same in its skin
   coordinates, and `convertFromSkinCoordinates` maps it back for the preview's screen anchor.
-- After the row loop, `LibraryRowThumbnails.shared.preload(around:count:source:)`.
+- After the row loop, `rowThumbnails.endPass(visible:count:source:)` loads the rows just drawn, then
+  the rows around them.
 
 **`LibraryRowThumbnails`** (the shared cache):
 - One load makes both `Renditions`: a 64 px square thumbnail and a preview of at most 400 px in the
