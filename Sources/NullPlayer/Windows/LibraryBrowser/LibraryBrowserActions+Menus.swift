@@ -346,7 +346,8 @@ extension LibraryBrowserActions {
     }
 
     /// The library button's menu, on a server source: the Plex library, the Subsonic music
-    /// folder, or the Jellyfin or Emby library of the current tab's kind.
+    /// folder, or the Jellyfin or Emby library of the current tab's kind. A pick only tells the
+    /// manager; the model reloads on the manager's notification.
     func libraryMenu() -> NSMenu? {
         switch model.currentSource {
         case .plex:
@@ -354,23 +355,35 @@ extension LibraryBrowserActions {
         case .subsonic:
             let manager = SubsonicManager.shared
             return libraryMenu(all: "All Folders", libraries: manager.musicFolders.map { ($0, $0.id, $0.name) },
-                               current: manager.currentMusicFolder?.id) { [unowned self] in model.selectSubsonicMusicFolder($0) }
+                               current: manager.currentMusicFolder?.id) { folder in
+                if let folder { manager.selectMusicFolder(folder) } else { manager.clearMusicFolderSelection() }
+            }
         case .jellyfin:
             let manager = JellyfinManager.shared
             if model.browseMode.isVideoMode {
                 return libraryMenu(all: "All Libraries", libraries: manager.videoLibraries.map { ($0, $0.id, Self.videoLibraryTitle($0.name, $0.collectionType)) },
-                                   current: model.browseMode == .shows ? manager.currentShowLibrary?.id : manager.currentMovieLibrary?.id) { [unowned self] in model.selectJellyfinVideoLibrary($0) }
+                                   current: model.browseMode == .shows ? manager.currentShowLibrary?.id : manager.currentMovieLibrary?.id) { library in
+                    manager.selectMovieLibrary(library)
+                    manager.selectShowLibrary(library)
+                }
             }
             return libraryMenu(all: "All Libraries", libraries: manager.musicLibraries.map { ($0, $0.id, "\($0.name) (Music)") },
-                               current: manager.currentMusicLibrary?.id) { [unowned self] in model.selectJellyfinMusicLibrary($0) }
+                               current: manager.currentMusicLibrary?.id) { library in
+                if let library { manager.selectMusicLibrary(library) } else { manager.clearMusicLibrarySelection() }
+            }
         case .emby:
             let manager = EmbyManager.shared
             if model.browseMode.isVideoMode {
                 return libraryMenu(all: "All Libraries", libraries: manager.videoLibraries.map { ($0, $0.id, Self.videoLibraryTitle($0.name, $0.collectionType)) },
-                                   current: model.browseMode == .shows ? manager.currentShowLibrary?.id : manager.currentMovieLibrary?.id) { [unowned self] in model.selectEmbyVideoLibrary($0) }
+                                   current: model.browseMode == .shows ? manager.currentShowLibrary?.id : manager.currentMovieLibrary?.id) { library in
+                    manager.selectMovieLibrary(library)
+                    manager.selectShowLibrary(library)
+                }
             }
             return libraryMenu(all: "All Libraries", libraries: manager.musicLibraries.map { ($0, $0.id, "\($0.name) (Music)") },
-                               current: manager.currentMusicLibrary?.id) { [unowned self] in model.selectEmbyMusicLibrary($0) }
+                               current: manager.currentMusicLibrary?.id) { library in
+                if let library { manager.selectMusicLibrary(library) } else { manager.clearMusicLibrarySelection() }
+            }
         case .local, .radio, .youtube:
             return nil
         }
@@ -444,7 +457,7 @@ extension LibraryBrowserActions {
 
     /// A right-click below the rows: Manage Folders on the Local source.
     func emptySpaceMenu() -> NSMenu? {
-        guard model.isLocalSource else { return nil }
+        guard model.currentSource.isLocal else { return nil }
         let menu = NSMenu()
         menu.addItem(menuItem("Manage Folders...") { [unowned self] in manageWatchFolders() })
         return menu

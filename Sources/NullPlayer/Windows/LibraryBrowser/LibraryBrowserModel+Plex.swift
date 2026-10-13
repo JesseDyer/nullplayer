@@ -10,11 +10,10 @@ extension LibraryBrowserModel {
         let manager = PlexManager.shared
         guard manager.isLinked else {
             displayItems = []
-            isLoading = false
+            endLoading()
             return
         }
-        isLoading = true
-        errorMessage = nil
+        loadState = .loading
         let load: @MainActor () -> Void = { [weak self] in
             self?.loadPlexDataForCurrentMode(serverId: serverId, generation: generation, expectedSource: expectedSource)
         }
@@ -198,9 +197,9 @@ extension LibraryBrowserModel {
             // Prefer the albums fetched on expand, then the counted albums
             let info: String?
             if let albums = plex.artistAlbums[groupKey] {
-                info = countLabel(albums.count, "album")
+                info = LibraryBrowserItem.countLabel(albums.count, "album")
             } else if let count = plexArtistAlbumCount(for: artist), count > 0 {
-                info = countLabel(count, "album")
+                info = LibraryBrowserItem.countLabel(count, "album")
             } else {
                 info = nil
             }
@@ -275,7 +274,7 @@ extension LibraryBrowserModel {
         var seenTitles = Set<String>()
         let playlists = plex.playlists.filter { $0.isAudioPlaylist && seenTitles.insert($0.title.lowercased()).inserted }
         for playlist in menuSorted(playlists, name: \.title, created: { $0.addedAt }) {
-            rows.append(LibraryBrowserItem(id: playlist.id, title: playlist.title, info: countLabel(playlist.leafCount, "track"), indentLevel: 0, hasChildren: playlist.leafCount > 0, type: .plexPlaylist(playlist)))
+            rows.append(LibraryBrowserItem(id: playlist.id, title: playlist.title, info: LibraryBrowserItem.countLabel(playlist.leafCount, "track"), indentLevel: 0, hasChildren: playlist.leafCount > 0, type: .plexPlaylist(playlist)))
             guard isExpanded(.plexPlaylist, playlist.id), let tracks = plex.playlistTracks[playlist.id] else { continue }
             for track in tracks {
                 rows.append(LibraryBrowserItem(id: "\(playlist.id)-\(track.id)", title: track.title, info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track)))
@@ -308,7 +307,7 @@ extension LibraryBrowserModel {
             rows.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(artists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             for artist in artists {
                 let key = Self.plexSearchArtistKey(artist)
-                let info = artist.albumCount > 0 ? countLabel(artist.albumCount, "album") : nil
+                let info = artist.albumCount > 0 ? LibraryBrowserItem.countLabel(artist.albumCount, "album") : nil
                 rows.append(LibraryBrowserItem(id: artist.id, title: artist.title, info: info, indentLevel: 1, hasChildren: true, type: .artist(artist)))
                 if isExpanded(.plexSearchArtist, key), let albums = plex.artistAlbumsByName[key] {
                     rows += plexAlbumRows(albums, indentLevel: 2)
@@ -435,8 +434,7 @@ extension LibraryBrowserModel {
     func loadPlexRadioStations(generation: Int) {
         guard case .plex = currentSource else { return }
         let expectedSource = currentSource
-        isLoading = true
-        errorMessage = nil
+        loadState = .loading
         radioLoadTask?.cancel()
         radioLoadTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -445,7 +443,7 @@ extension LibraryBrowserModel {
                   self.isLoadContextActive(generation, source: expectedSource),
                   self.browseMode == .radio else { return }
             self.buildPlexRadioStationItems(genres: genres)
-            self.isLoading = false
+            self.endLoading()
             self.radioLoadTask = nil
         }
     }

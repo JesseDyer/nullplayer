@@ -256,36 +256,34 @@ extension SubsonicRadioType {
     }
 }
 
-extension JellyfinRadioType {
-    @MainActor
-    func tracks() async -> [Track] {
-        let jellyfin = JellyfinManager.shared
-        switch self {
-        case .libraryRadio: return await jellyfin.createLibraryRadio()
-        case .libraryInstantMix: return await jellyfin.createLibraryRadioInstantMix()
-        case .genreRadio(let g): return await jellyfin.createGenreRadio(genre: g)
-        case .genreInstantMix(let g): return await jellyfin.createGenreRadioInstantMix(genre: g)
-        case .decadeRadio(let s, let e, _): return await jellyfin.createDecadeRadio(start: s, end: e)
-        case .decadeInstantMix(let s, let e, _): return await jellyfin.createDecadeRadioInstantMix(start: s, end: e)
-        case .favoritesRadio: return await jellyfin.createFavoritesRadio()
-        case .favoritesInstantMix: return await jellyfin.createFavoritesRadioInstantMix()
-        }
-    }
+/// The Jellyfin and Emby managers' radio, which `InstantMixRadioType` plays from.
+protocol InstantMixRadioServer {
+    func createLibraryRadio(limit: Int) async -> [Track]
+    func createLibraryRadioInstantMix(limit: Int) async -> [Track]
+    func createGenreRadio(genre: String, limit: Int) async -> [Track]
+    func createGenreRadioInstantMix(genre: String, limit: Int) async -> [Track]
+    func createDecadeRadio(start: Int, end: Int, limit: Int) async -> [Track]
+    func createDecadeRadioInstantMix(start: Int, end: Int, limit: Int) async -> [Track]
+    func createFavoritesRadio(limit: Int) async -> [Track]
+    func createFavoritesRadioInstantMix(limit: Int) async -> [Track]
 }
 
-extension EmbyRadioType {
+extension JellyfinManager: InstantMixRadioServer {}
+extension EmbyManager: InstantMixRadioServer {}
+
+extension InstantMixRadioType {
     @MainActor
-    func tracks() async -> [Track] {
-        let emby = EmbyManager.shared
+    func tracks(from server: some InstantMixRadioServer) async -> [Track] {
+        let limit = RadioPlaybackOptions.playlistLength
         switch self {
-        case .libraryRadio: return await emby.createLibraryRadio()
-        case .libraryInstantMix: return await emby.createLibraryRadioInstantMix()
-        case .genreRadio(let g): return await emby.createGenreRadio(genre: g)
-        case .genreInstantMix(let g): return await emby.createGenreRadioInstantMix(genre: g)
-        case .decadeRadio(let s, let e, _): return await emby.createDecadeRadio(start: s, end: e)
-        case .decadeInstantMix(let s, let e, _): return await emby.createDecadeRadioInstantMix(start: s, end: e)
-        case .favoritesRadio: return await emby.createFavoritesRadio()
-        case .favoritesInstantMix: return await emby.createFavoritesRadioInstantMix()
+        case .libraryRadio: return await server.createLibraryRadio(limit: limit)
+        case .libraryInstantMix: return await server.createLibraryRadioInstantMix(limit: limit)
+        case .genreRadio(let g): return await server.createGenreRadio(genre: g, limit: limit)
+        case .genreInstantMix(let g): return await server.createGenreRadioInstantMix(genre: g, limit: limit)
+        case .decadeRadio(let s, let e, _): return await server.createDecadeRadio(start: s, end: e, limit: limit)
+        case .decadeInstantMix(let s, let e, _): return await server.createDecadeRadioInstantMix(start: s, end: e, limit: limit)
+        case .favoritesRadio: return await server.createFavoritesRadio(limit: limit)
+        case .favoritesInstantMix: return await server.createFavoritesRadioInstantMix(limit: limit)
         }
     }
 }

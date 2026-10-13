@@ -69,8 +69,8 @@ struct LibraryBrowserItem {
         // Plex Radio station type (dynamic playlists from Plex library)
         case plexRadioStation(PlexRadioType)
         case subsonicRadioStation(SubsonicRadioType)
-        case jellyfinRadioStation(JellyfinRadioType)
-        case embyRadioStation(EmbyRadioType)
+        case jellyfinRadioStation(InstantMixRadioType)
+        case embyRadioStation(InstantMixRadioType)
         case localRadioStation(LocalRadioType)
         case localPlaylist(LocalPlaylist)
         case localPlaylistTrack(Track)
@@ -127,6 +127,16 @@ struct LibraryBrowserItem {
 extension LibraryBrowserItem {
     /// The title as drawn: `titlePrefix` (a YouTube row's markers) ahead of the item's own title.
     var shownTitle: String { titlePrefix.map { "\($0) \(title)" } ?? title }
+
+    /// "1 album", "3 albums".
+    static func countLabel(_ count: Int, _ noun: String) -> String {
+        "\(count) \(noun)\(count == 1 ? "" : "s")"
+    }
+
+    /// A row's duration info, as the Time column shows it.
+    static func formatDuration(_ seconds: Int?) -> String? {
+        seconds.map { formatDuration(TimeInterval($0)) }
+    }
 
     init(_ row: YouTubeRow) {
         let type: ItemType

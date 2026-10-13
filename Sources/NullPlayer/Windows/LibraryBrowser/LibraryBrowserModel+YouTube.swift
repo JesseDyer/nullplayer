@@ -4,8 +4,7 @@ import Foundation
 extension LibraryBrowserModel {
 
     func loadYouTubeChannels() {
-        isLoading = false
-        errorMessage = nil
+        loadState = .idle
         buildYouTubeChannelItems()
         YouTubeManager.shared.backfillMissingAvatars()
     }
@@ -22,24 +21,23 @@ extension LibraryBrowserModel {
     /// Search tab (YouTube source): run the submitted query as a YouTube channel search, or show
     /// the results of an unchanged one; `force` (Refresh) re-runs it.
     func loadYouTubeSearchResults(force: Bool = false) {
-        errorMessage = nil
         let started = youtubeSearch.submit(searchedQuery, force: force) { [weak self] error in
             guard let self, self.isYouTubeChannelSearch else { return }
-            self.isLoading = false
             if let error {
-                self.errorMessage = error.localizedDescription
+                self.loadState = .failed(error.localizedDescription)
             } else {
+                self.loadState = .idle
                 self.rebuildCurrentModeItems()
             }
         }
         guard started else {
-            isLoading = false
+            loadState = .idle
             buildYouTubeSearchItems()
             return
         }
         displayItems = []
         rowsReplaced()
-        isLoading = true
+        loadState = .loading
     }
 
     func buildYouTubeSearchItems() {

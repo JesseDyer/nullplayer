@@ -248,14 +248,14 @@ extension LibraryBrowserActions {
 
     func manageWatchFolders() {
         WatchFolderManagerDialog.present { [weak model] in
-            guard let model, model.isLocalSource else { return }
+            guard let model, model.currentSource.isLocal else { return }
             model.loadLocalData()
         }
     }
 
     /// After adding files, show them: switch to the Local source from any other.
     private func showLocalSource() {
-        if !model.isLocalSource { model.currentSource = .local }
+        if !model.currentSource.isLocal { model.currentSource = .local }
     }
 
     /// Files and folders dropped on the browser: folders become watch folders, audio and video

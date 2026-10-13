@@ -47,8 +47,7 @@ extension LibraryBrowserModel {
         DispatchQueue.main.async { [weak self] in
             guard let self, case .plex = self.currentSource else { return }
             if case .connecting = PlexManager.shared.connectionState {
-                self.isLoading = true
-                self.errorMessage = nil
+                self.loadState = .loading
                 return
             }
             self.reloadData()
@@ -60,7 +59,7 @@ extension LibraryBrowserModel {
             guard let self else { return }
             if case .connecting = PlexManager.shared.connectionState {
                 // The server list changed mid-connect; the link state may have, too.
-                self.onChange?(.loading)
+                self.onChange?(.listState)
                 return
             }
             guard self.currentSource.isPlex || self.pendingSourceRestore != nil else { return }
@@ -89,10 +88,10 @@ extension LibraryBrowserModel {
 
     /// Debounced: a scan posts this for every batch it imports.
     @objc private func mediaLibraryDidChange() {
-        guard isLocalSource, !browseMode.isRadioMode, !browseMode.isHistoryMode else { return }
+        guard currentSource.isLocal, !browseMode.isRadioMode, !browseMode.isHistoryMode else { return }
         localLibraryReloadWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self, self.isLocalSource, !self.browseMode.isRadioMode, !self.browseMode.isHistoryMode else { return }
+            guard let self, self.currentSource.isLocal, !self.browseMode.isRadioMode, !self.browseMode.isHistoryMode else { return }
             self.loadLocalData()
         }
         localLibraryReloadWorkItem = workItem
@@ -137,7 +136,7 @@ extension LibraryBrowserModel {
 
     /// The list shows YouTube rows: the YouTube source, or the Local search's channel and video rows.
     var showsYouTubeRows: Bool {
-        if isLocalSource { return browseMode == .search }
+        if currentSource.isLocal { return browseMode == .search }
         return currentSource.isYouTube
     }
 

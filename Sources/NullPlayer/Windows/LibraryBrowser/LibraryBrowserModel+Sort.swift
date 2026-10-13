@@ -23,21 +23,12 @@ extension LibraryBrowserModel {
         }
     }
 
-    /// An album as the server artist date and year sorts read it.
-    struct ServerAlbumDates {
-        let artistId: String?
-        let artist: String?
-        let created: Date?
-        let year: Int?
-    }
-
     /// Subsonic, Jellyfin and Emby artists carry no dates of their own: the date and year sorts go
-    /// by their albums' newest (descending) or oldest (ascending). A Subsonic artist passes
-    /// `indexLetter`, so the name sort groups by the server's index letter (e.g. "The Atlas Moth"
-    /// under T, as Navidrome does).
-    func sortServerArtists<Artist>(_ artists: [Artist], albums: [ServerAlbumDates],
-                                   id: (Artist) -> String, name: (Artist) -> String,
-                                   indexLetter: ((Artist) -> String?)? = nil) -> [Artist] {
+    /// by their albums' newest (descending) or oldest (ascending). An artist type with a
+    /// `sortIndexLetter` (Subsonic's) groups the name sort by the server's index letter (e.g.
+    /// "The Atlas Moth" under T, as Navidrome does).
+    func sortedServerArtists<Artist: BrowsableArtist>(_ artists: [Artist], albums: [some BrowsableAlbum]) -> [Artist] {
+        let indexLetter = Artist.sortIndexLetter
         var newestAdded: [String: Date] = [:]
         var oldestAdded: [String: Date] = [:]
         var newestYear: [String: Int] = [:]
@@ -54,21 +45,21 @@ extension LibraryBrowserModel {
             }
         }
 
-        func key(_ artist: Artist) -> String? { Self.serverArtistKey(id: id(artist), name: name(artist)) }
+        func key(_ artist: Artist) -> String? { Self.serverArtistKey(id: artist.id, name: artist.name) }
         func byName(_ lhs: Artist, _ rhs: Artist, ascending: Bool) -> Bool {
             if let indexLetter {
-                let l0 = Self.normalizedIndexLetter(indexLetter(lhs)) ?? Self.sortLetter(for: name(lhs))
-                let l1 = Self.normalizedIndexLetter(indexLetter(rhs)) ?? Self.sortLetter(for: name(rhs))
+                let l0 = LibraryBrowserItem.normalizedIndexLetter(indexLetter(lhs)) ?? LibraryBrowserItem.sortLetter(forTitle: lhs.name)
+                let l1 = LibraryBrowserItem.normalizedIndexLetter(indexLetter(rhs)) ?? LibraryBrowserItem.sortLetter(forTitle: rhs.name)
                 if l0 != l1 { return ascending ? l0 < l1 : l0 > l1 }
             }
-            return compareNameStrings(name(lhs), name(rhs), ascending: ascending)
+            return compareNameStrings(lhs.name, rhs.name, ascending: ascending)
         }
         /// By the artist's value (missing = `fallback`), then by name ascending.
         func by<Value: Comparable>(_ lhs: Artist, _ rhs: Artist, _ values: [String: Value], fallback: Value, descending: Bool) -> Bool {
             let v0 = key(lhs).flatMap { values[$0] } ?? fallback
             let v1 = key(rhs).flatMap { values[$0] } ?? fallback
             if v0 != v1 { return descending ? v0 > v1 : v0 < v1 }
-            return compareNameStrings(name(lhs), name(rhs), ascending: true)
+            return compareNameStrings(lhs.name, rhs.name, ascending: true)
         }
 
         switch currentSort {

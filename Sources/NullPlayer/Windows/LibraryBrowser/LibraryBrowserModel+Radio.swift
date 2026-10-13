@@ -4,16 +4,14 @@ import Foundation
 extension LibraryBrowserModel {
 
     func loadRadioStations() {
-        isLoading = false
-        errorMessage = nil
+        loadState = .idle
         cachedRadioStations = RadioManager.shared.stations
         buildRadioStationItems()
         if columnSortId != nil { applyColumnSort() }
     }
 
     func loadRadioSearchResults() {
-        isLoading = false
-        errorMessage = nil
+        loadState = .idle
         cachedRadioStations = RadioManager.shared.stations
         buildRadioSearchItems()
         if columnSortId != nil { applyColumnSort() }
@@ -26,8 +24,7 @@ extension LibraryBrowserModel {
         case .radio: loadRadioStations()
         case .search: loadRadioSearchResults()
         default:
-            isLoading = false
-            errorMessage = nil
+            loadState = .idle
             displayItems = []
         }
     }

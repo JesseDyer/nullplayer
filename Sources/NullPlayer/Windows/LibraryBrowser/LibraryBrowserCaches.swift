@@ -25,22 +25,3 @@ struct PlexBrowserCache {
     var playlistTracks: [String: [PlexTrack]] = [:]
     var searchResults: PlexSearchResults?
 }
-
-/// A Subsonic, Jellyfin or Emby server's music rows. Children fetched on expand are keyed by
-/// their parent's id.
-struct ServerMusicCache<Artist, Album, Song, Playlist> {
-    var artists: [Artist] = []
-    var albums: [Album] = []
-    var playlists: [Playlist] = []
-    var artistAlbums: [String: [Album]] = [:]
-    var albumSongs: [String: [Song]] = [:]
-    var playlistTracks: [String: [Song]] = [:]
-}
-
-/// A Jellyfin or Emby server's video rows.
-struct ServerVideoCache<Movie, Show, Season, Episode> {
-    var movies: [Movie] = []
-    var shows: [Show] = []
-    var showSeasons: [String: [Season]] = [:]
-    var seasonEpisodes: [String: [Episode]] = [:]
-}

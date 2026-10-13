@@ -1004,14 +1004,34 @@ non-drawing half both views share. It takes the model's `onChange` and passes ea
 `LibraryBrowserList` and the view (`Host.redraw`, `updateHistory`, `visibilityChanged`); follows
 minimize, occlusion, the docked-group highlight (`isHighlighted`), the library scan and row
 thumbnail loads; routes clicks on the server bar's buttons, the tabs, Sort and the search bar
-(`mouseDown`, before `list.mouseDown`) and file drops; runs the loading and scan spinners
-(`drawSpinner`, at its own step); and tears the model, actions and list down. Each view draws the
+(`mouseDown`, before `list.mouseDown`) and file drops; steps the loading, row and scan spinners
+(`spinnerStep`, which the painter draws at); and tears the model, actions and list down. Each view draws the
 controls and records where in `coordinator.rects`. **Each band resets its own rects as it draws**
 (`beginServerBar`, the tab bar's `rects.tabs.removeAll`), never the whole set at the top of `draw`:
 both views have a fast path that redraws the server bar alone on every marquee tick, and a full
 reset there wipes the tab and Sort rects. What the list area shows comes from
 `LibraryBrowserModel.listState` (not linked, loading, error, rows), and an empty list's text from
 `emptyMessage(enterKey:)`.
+
+**Model changes.** `loadState` (`idle`, `loading`, `failed`) is one value, set whole — never an
+"is loading" and an error set one after the other; a load that ends without its own error calls
+`endLoading()`, which leaves a failure reported meanwhile in place. It emits `.listState` only when it
+changes, and the Plex link state emits `.listState` too. A `browseMode` change clears the selection
+and the list scrolls to the top on `.browseMode`; `rowsReplaced()` is only for a new list on the same
+tab (re-clicking a tab, a refresh, a library pick, a search starting). `.rebuilt` fires after a
+rebuild.
+
+**Server sources.** Subsonic, Jellyfin and Emby load, list, search, expand and offer radio through
+one implementation, `LibraryBrowserModel+Servers.swift` (expand: `fetchServer…` in
+`LibraryBrowserModel+Expand`), written over the protocols in `LibraryBrowserServer.swift`:
+`MusicServerBrowsing` (the three managers) and `VideoServerBrowsing` (Jellyfin and Emby, adding
+Movies and TV), with `Browsable…` protocols on each model type naming the row it becomes
+(`itemType`) and its expansion kind. `currentServerManager` maps the source to its manager; the model
+dispatches through it rather than switching per server. A server's differences are protocol
+members, not branches: Subsonic's index-letter name sort (`sortIndexLetter`) and playlist dates
+(`addedDate`), Jellyfin's background album fetch after Artists (`warmsAlbumsAfterArtists`). A new
+server-specific behaviour joins as such a member. Picking a server library or music folder only
+calls the manager; the model reloads on the manager's notification.
 
 **`LibraryArtLens`** (`Windows/LibraryArt/LibraryArtLens.swift`) owns the mode, the art view
 standing in for the list, and the tree navigation. `LibraryBrowserList` makes the one lens per
@@ -1139,7 +1159,7 @@ scroll range read it; a site that needs the columns or the group their widths ar
 Never rebuild "tab bar, then search bar, then header" at a call site: PR #480 was a header reserved
 on one condition when drawn and another when hit-tested, so every click landed one row up.
 
-- **Coordinates:** classic is skin space (top-left origin, `originalWindowSize`); modern is view
+- **Coordinates:** classic is skin space (top-left origin, `bounds.size`); modern is view
   space (bottom-left). `listTopY` is the bottom of the tab bar, or of the search bar in search mode.
   A classic dirty rect goes through `convertFromSkinCoordinates`, which knows about Hide Title Bars.
 - **Scroll ranges use `rows.height`.** The header and the offline-volume banner are not visible
@@ -1147,7 +1167,19 @@ on one condition when drawn and another when hit-tested, so every click landed o
 - **The header band matches at any x** (`isInHeaderBand`), so a right-click above the alphabet
   index opens the column menu, in both browsers.
 - The modern alphabet index stops under the header; the classic one spans `area`'s full height
-  (`alphabetBesideHeader`).
+  (`alphabetBesideHeader`). Where it stops short, `headerGap` is filled as header.
+
+**One painter draws the list for both views.** `LibraryBrowserListPainter`
+(`Windows/LibraryBrowser/LibraryBrowserListPainter.swift`) draws the header, rows (column cells and
+plain title lines, spinners, thumbnails, star ratings) and alphabet index; a view makes one per draw
+with a `Style` of its skin's fonts and colours and calls `drawList()` (or `drawAlphabet()` behind Flow
+/ Tiles). What goes where — insets, centred radio columns, the ★/☆ colouring, the disclosure
+triangle — is decided there once; never add a row-drawing rule to one view. In a flipped layout
+(classic) the painter draws text, thumbnails and spinners inside `upright(about:)`, a counter-flip
+about the band's own centre, so every y in it reads as if y ran up. Classic's non-Retina fills and
+point-snapping are `Style` fields (`rowFill`, `listFill`, `snapsRowsToPoints`), and the modern
+skins' full-alpha text is `textIgnoresContentAlpha`. The tab bars share
+`LibraryBrowseMode.fitTabWidths` and `slotLabels`, and the active tab is `model.activeTabSlot`.
 
 **One header, every row under it (M19).** The list has one column header, Finder-style:
 - `currentColumnGroup()` → `LibraryColumnVisibility.headerGroup`: the most detailed music group
@@ -1159,7 +1191,7 @@ on one condition when drawn and another when hit-tested, so every click landed o
   headings shows its genre under Genre and nothing under Year. Never draw a row's own group's
   columns under another group's header: that put an artist's album count under "Genre".
   Radio and YouTube video rows keep their own fixed columns (`rowColumns`' other two arms).
-- A child row indents **inside its Title cell only** (`drawColumnRow`'s `inset`); every other cell
+- A child row indents **inside its Title cell only** (the painter's `drawCells`); every other cell
   sits at the header's x. Shifting the whole row by the indent misaligned every cell once the
   columns overflowed into horizontal scroll. A hit test over a row's cells (the radio rating)
   uses the same unindented positions.
@@ -1180,12 +1212,12 @@ the circle shows the art large, in its own shape, beside the row. Shared code li
   It reuses `itemArtwork(for:)` — the Flow / Tiles loaders above — for artists, albums, tracks
   and video items, and adds YouTube channels and videos, radio station icons and local playlist
   tracks. Local albums and artists have no cache key there, so they key on `item:<id>`.
-- A `LibraryRowThumbnailTracker` (`rowThumbnails`): `beginPass(placeholder:)` at the top of
-  `drawListArea`, `draw(...)` at each thumbnail, `hover(at:toScreen:)` from `mouseMoved` (only
+- A `LibraryRowThumbnailTracker` (`rowThumbnails`), handed to the painter: `beginPass(placeholder:)`
+  at the top of `drawList`, `draw(...)` at each thumbnail, `hover(at:toScreen:)` from `mouseMoved` (only
   while the mouse is over the list). A row's art goes in its **Art**
   column when it has one (YouTube videos), otherwise before the title. Every circle gets the
-  placeholder until its art loads or when there is none, so titles never shift. The classic
-  browser draws inside its text counter-flip; a rect centred on the row is the same in its skin
+  placeholder until its art loads or when there is none, so titles never shift. In the classic
+  browser the painter draws inside its counter-flip; a rect centred on the row is the same in its skin
   coordinates, and `convertFromSkinCoordinates` maps it back for the preview's screen anchor.
 - After the row loop, `rowThumbnails.endPass(visible:count:source:)` loads the rows just drawn, then
   the rows around them.

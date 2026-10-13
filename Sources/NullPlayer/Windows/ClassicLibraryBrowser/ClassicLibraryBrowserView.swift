@@ -3,16 +3,10 @@ import AVFoundation
 import NullPlayerCore
 import SwiftUI
 
-// =============================================================================
-// PLEX BROWSER VIEW - Skinned Plex browser with playlist sprite support
-// =============================================================================
-// Follows the same pattern as PlaylistView for:
-// - Coordinate transformation (skin top-down system)
-// - Button hit testing and visual feedback
-// - Scaling support for resizable windows
-// =============================================================================
-
-/// Plex browser view with skin-style skin support
+/// The library browser in a classic skin, and wherever a `.wal`, `.wmz` or Audion session borrows
+/// the classic window: the skinned chrome, server bar, tabs and search bar, drawn in the skin's
+/// top-down coordinates. What it browses and how its list behaves and draws are shared with the
+/// modern view in `Windows/LibraryBrowser/`.
 class ClassicLibraryBrowserView: NSView {
     
     // MARK: - Properties
@@ -64,7 +58,7 @@ class ClassicLibraryBrowserView: NSView {
 
     /// Where the list sits, in skin coordinates (top-left origin).
     private func listLayout() -> LibraryBrowserListLayout {
-        let size = originalWindowSize
+        let size = bounds.size
         let (columns, group) = list.headerColumns()
         return LibraryBrowserListLayout(
             content: NSRect(x: Layout.leftBorder, y: listTopY,
@@ -317,10 +311,7 @@ class ClassicLibraryBrowserView: NSView {
 
     private func tabRowNaturalWidth(textScale: CGFloat) -> CGFloat {
         let style = winampModernStyle
-        var labels = LibraryBrowseMode.tabs.map { $0.title }
-        labels.append("Channels")
-        labels.append("Folders")
-        let maxLabelWidth = labels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) }.max() ?? 0
+        let maxLabelWidth = LibraryBrowseMode.slotLabels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) }.max() ?? 0
         let sortWidth = ClassicLibraryTab.textWidth("Sort", scale: textScale, style: style) + 8
         let perTab = maxLabelWidth + 12  // breathing room so labels don't touch
         let tabsWidth = perTab * CGFloat(LibraryBrowseMode.tabs.count)
@@ -369,7 +360,7 @@ class ClassicLibraryBrowserView: NSView {
     private var topChromeScale: CGFloat {
         let referenceWidth = max(tabRowNaturalWidth(textScale: bitmapTextScale),
                                  serverBarNaturalWidth(textScale: bitmapTextScale))
-        let availableWidth = max(0, originalWindowSize.width - Layout.leftBorder - Layout.rightBorder)
+        let availableWidth = max(0, bounds.width - Layout.leftBorder - Layout.rightBorder)
         guard referenceWidth > 0 else { return 1 }
         return min(1, max(0.66, availableWidth / referenceWidth))
     }
@@ -378,24 +369,6 @@ class ClassicLibraryBrowserView: NSView {
     var minimumCompactContentWidth: CGFloat {
         ceil(tabRowNaturalWidth(textScale: bitmapTextScale) +
              Layout.leftBorder + Layout.rightBorder)
-    }
-
-    /// Per-tab widths across the tab area (which excludes the Sort indicator). Content-aware:
-    /// each tab is sized to its own label plus padding, then leftover space is shared equally
-    /// so every tab gets breathing room and short labels (e.g. "TV", "Data") don't hog width.
-    /// Shared by `drawTabBar` and `hitTestTabBar` so they stay in sync.
-    private func tabBarWidths(tabsWidth: CGFloat, textScale: CGFloat,
-                              horizontalScale: CGFloat) -> [CGFloat] {
-        let style = winampModernStyle
-        let boxPadding = 18 * horizontalScale
-        let natural = model.tabLabels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: style) + boxPadding }
-        let naturalSum = natural.reduce(0, +)
-        if naturalSum > tabsWidth {
-            let scale = tabsWidth / naturalSum
-            return natural.map { $0 * scale }
-        }
-        let extra = (tabsWidth - naturalSum) / CGFloat(natural.count)
-        return natural.map { $0 + extra }
     }
 
     // MARK: - Initialization
@@ -640,31 +613,10 @@ class ClassicLibraryBrowserView: NSView {
         !isEmbeddedInSkin && hostedFrame == nil && SkinnedSurfaceChrome.hidesPaletteTitleBar
     }
 
-    private var originalWindowSize: NSSize {
-        // Use actual bounds, no scaling
-        return bounds.size
-    }
-
-    /// Calculate scale factor based on current bounds vs original (base) size
-    private var scaleFactor: CGFloat {
-        // No scaling, UI stays at fixed pixel size
-        return 1.0
-    }
-
     private func currentPlaylistColors() -> PlaylistColors {
         if let style = winampModernStyle { return style.playlistColors }
         let skin = WindowManager.shared.currentSkin ?? SkinLoader.shared.loadDefault()
         return skin.playlistColors
-    }
-
-    private func classicAppearance(for background: NSColor) -> NSAppearance? {
-        var r: CGFloat = 0
-        var g: CGFloat = 0
-        var b: CGFloat = 0
-        var a: CGFloat = 0
-        background.usingColorSpace(.deviceRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
-        let brightness = 0.299 * r + 0.587 * g + 0.114 * b
-        return NSAppearance(named: brightness < 0.5 ? .darkAqua : .aqua)
     }
 
     /// The Data tab's content, coloured from the playlist colours — the classic skin's, or the
@@ -685,7 +637,7 @@ class ClassicLibraryBrowserView: NSView {
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = listBackground(colors).cgColor
         hostingView.layer?.isOpaque = !showsCavaBackdrop
-        hostingView.appearance = classicAppearance(for: colors.normalBackground)
+        hostingView.appearance = NSAppearance.matching(background: colors.normalBackground)
         hostingView.setAccessibilityIdentifier("plexBrowser.data")
         hostingView.setAccessibilityLabel("Library Data")
         return hostingView
@@ -714,20 +666,19 @@ class ClassicLibraryBrowserView: NSView {
         // Flow / Tiles leave the alphabet index beside them, and the offline banner below.
         let bannerHeight = listLayout().banner?.height ?? 0
         list.lens.frame = embeddedContentRect()
-            .divided(atDistance: Layout.alphabetWidth * scaleFactor, from: .maxXEdge).remainder
+            .divided(atDistance: Layout.alphabetWidth, from: .maxXEdge).remainder
             .divided(atDistance: bannerHeight, from: .minYEdge).remainder
     }
 
     /// Content rect (view coordinates) below the tab bar and above the status bar — shared by the
     /// embedded history subview and the cover flow overlay.
     private func embeddedContentRect() -> NSRect {
-        let scale = scaleFactor
         let hiddenTitleBarOffset = hidesClassicTitleBar ? Layout.titleBarHeight : 0
-        let topInset = (listTopY - hiddenTitleBarOffset) * scale
-        let bottomInset = Layout.statusBarHeight * scale
-        let horizontalInset = (Layout.leftBorder + Layout.rightBorder) * scale
+        let topInset = listTopY - hiddenTitleBarOffset
+        let bottomInset = Layout.statusBarHeight
+        let horizontalInset = Layout.leftBorder + Layout.rightBorder
         return NSRect(
-            x: Layout.leftBorder * scale,
+            x: Layout.leftBorder,
             y: bottomInset,
             width: max(0, bounds.width - horizontalInset),
             height: max(0, bounds.height - topInset - bottomInset)
@@ -755,9 +706,7 @@ class ClassicLibraryBrowserView: NSView {
     
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        
-        let originalSize = originalWindowSize
-        
+
         // Use current skin
         let skin = WindowManager.shared.currentSkin ?? SkinLoader.shared.loadDefault()
         let skinPath = WindowManager.shared.currentSkinPath ?? "default"
@@ -782,7 +731,7 @@ class ClassicLibraryBrowserView: NSView {
         context.interpolationQuality = .low
         
         // Use original bounds for drawing (scaling is applied via transform)
-        let drawBounds = NSRect(origin: .zero, size: originalSize)
+        let drawBounds = NSRect(origin: .zero, size: bounds.size)
 
         let colors = currentPlaylistColors()
 
@@ -840,9 +789,12 @@ class ClassicLibraryBrowserView: NSView {
                                 colors.normalBackground.setFill()
                                 context.fill(layout.area)
                             }
-                            drawAlphabetIndex(in: context, rect: layout.alphabet, colors: colors, renderer: renderer)
+                            listPainter(context, layout, colors: colors).drawAlphabet()
+                        case .rows where model.displayItems.isEmpty:
+                            // An empty list has no columns, so `rows` is the whole list here.
+                            drawEmptyState(in: context, listRect: listLayout().rows, colors: colors, renderer: renderer)
                         case .rows:
-                            drawListArea(in: context, layout: listLayout(), colors: colors, renderer: renderer)
+                            listPainter(context, listLayout(), colors: colors).drawList()
                         }
                     }
 
@@ -851,8 +803,6 @@ class ClassicLibraryBrowserView: NSView {
                         drawOfflineBanner(label, in: context, rect: banner, colors: colors)
                     }
 
-                    // Draw status bar text
-                    drawStatusBarText(in: context, drawBounds: drawBounds, colors: colors, renderer: renderer)
                 }
             }
 
@@ -1007,11 +957,12 @@ class ClassicLibraryBrowserView: NSView {
                                    height: barRect.height)
 
             // Scan animation: small spinner at center of bar while library is scanning
-            if case .local = model.currentSource, coordinator.isLibraryScanning {
+            if model.currentSource.isLocal, coordinator.isLibraryScanning {
                 let outerR: CGFloat = 8
-                coordinator.drawSpinner(in: context, center: CGPoint(x: barRect.midX, y: barRect.midY),
-                                        innerRadius: 3, outerRadius: outerR, lineWidth: 2,
-                                        color: accentTextColor(renderer), maxAlpha: 0.9)
+                LibraryBrowserListPainter.drawSpinner(in: context, center: CGPoint(x: barRect.midX, y: barRect.midY),
+                                                      innerRadius: 3, outerRadius: outerR, lineWidth: 2,
+                                                      color: accentTextColor(renderer), maxAlpha: 0.9,
+                                                      step: coordinator.spinnerStep)
                 let scanText = "SCANNING"
                 let scanX = barRect.midX + outerR + 6
                 drawScaledSkinText(scanText, at: NSPoint(x: scanX, y: textY), scale: textScale, renderer: renderer, in: context)
@@ -1124,32 +1075,24 @@ class ClassicLibraryBrowserView: NSView {
         let tabRightInset = (tabItemHorizontalEdgePadding + rightEdgeItemPaddingBoost) * chromeScale
         let tabsStartX = tabBarRect.minX + tabLeftInset
 
-        // Draw tabs, leaving room for the sort indicator.
-        let modes = LibraryBrowseMode.tabs
+        // Draw tabs, leaving room for the sort indicator: each its label's width plus padding, the
+        // leftover shared; hit-testing reads the rects.
         let tabsWidth = tabBarRect.width - sortWidth - tabLeftInset - tabRightInset
-
-        // Content-aware widths and resolved (possibly dynamic) labels, shared with hit-testing.
         let labels = model.tabLabels
-        let tabWidths = tabBarWidths(tabsWidth: tabsWidth, textScale: textScale,
-                                     horizontalScale: chromeScale)
+        let tabWidths = LibraryBrowseMode.fitTabWidths(
+            labels.map { ClassicLibraryTab.textWidth($0, scale: textScale, style: winampModernStyle) + 18 * chromeScale },
+            into: tabsWidth)
 
         var tabX = tabsStartX
         coordinator.rects.tabs.removeAll(keepingCapacity: true)
-        for (index, mode) in modes.enumerated() {
+        for (index, mode) in LibraryBrowseMode.tabs.enumerated() {
             let tabWidth = tabWidths[index]
             let tabRect = NSRect(x: tabX, y: tabBarY,
                                 width: tabWidth, height: Layout.tabBarHeight)
             tabX += tabWidth
 
-            let label = labels[index]
-            var isSelected = mode == model.browseMode
-            // Highlight the plists slot when browseMode is .folders (local source only).
-            if mode == .plists, model.browseMode == .folders, case .local = model.currentSource {
-                isSelected = true
-            }
-
             // Boxed toggle outline around each tab, mirroring the modern library tabs.
-            ClassicLibraryTab.draw(label, isSelected: isSelected, in: tabRect, boxInsetX: 3 * chromeScale,
+            ClassicLibraryTab.draw(labels[index], isSelected: mode == model.activeTabSlot, in: tabRect, boxInsetX: 3 * chromeScale,
                                    textScale: textScale, colors: colors, renderer: renderer,
                                    style: winampModernStyle, context: context)
             coordinator.rects.tabs.append(tabRect)
@@ -1206,7 +1149,7 @@ class ClassicLibraryBrowserView: NSView {
         let fieldTextColor = winampModernStyle.flatMap { style in
             fieldBackground.map { style.legibleText(style.text, on: $0) }
         }
-        let placeholder = model.currentSource.isYouTube ? "Search YouTube channels - press Enter" : "Type to search..."
+        let placeholder = model.currentSource.isYouTube ? "Search YouTube channels - press Enter" : "Type and press Enter to search..."
         let displayText = model.searchQuery.isEmpty ? placeholder : model.searchQuery
         drawScaledSkinText(displayText, at: NSPoint(x: searchRect.minX + 6, y: textY),
                            scale: textScale, renderer: renderer, in: context, color: fieldTextColor)
@@ -1247,14 +1190,9 @@ class ClassicLibraryBrowserView: NSView {
     
     private func drawLoadingState(in context: CGContext, colors: PlaylistColors, renderer: SkinRenderer) {
         let listRect = listLayout().area
-        coordinator.drawSpinner(in: context, center: CGPoint(x: listRect.midX, y: listRect.midY),
-                                innerRadius: 5, outerRadius: 12, lineWidth: 2.5, color: colors.normalText)
-    }
-
-    /// Small inline spinner used on a downloading YouTube video row.
-    private func drawRowSpinner(in context: CGContext, center: CGPoint, radius: CGFloat, colors: PlaylistColors) {
-        coordinator.drawSpinner(in: context, center: center, innerRadius: radius * 0.45, outerRadius: radius,
-                                lineWidth: 1.5, color: colors.normalText)
+        LibraryBrowserListPainter.drawSpinner(in: context, center: CGPoint(x: listRect.midX, y: listRect.midY),
+                                              innerRadius: 5, outerRadius: 12, lineWidth: 2.5, color: colors.normalText,
+                                              step: coordinator.spinnerStep)
     }
 
     private func drawErrorState(in context: CGContext, message: String, colors: PlaylistColors, renderer: SkinRenderer) {
@@ -1292,378 +1230,44 @@ class ClassicLibraryBrowserView: NSView {
         drawScaledSkinText(message, at: NSPoint(x: textX, y: textY), scale: textScale, renderer: renderer, in: context)
     }
     
-    private func drawListArea(in context: CGContext, layout: LibraryBrowserListLayout, colors: PlaylistColors, renderer: SkinRenderer) {
-        // Show empty state message if no items (an empty list has no columns, so `rows` is the whole list)
-        if model.displayItems.isEmpty {
-            drawEmptyState(in: context, listRect: layout.rows, colors: colors, renderer: renderer)
-            return
-        }
-        
-        // Draw column headers BEFORE clipping (so they stay fixed)
-        if let header = layout.header {
-            drawColumnHeaders(in: context, header: header, colors: colors)
-        }
-        
-        let listRect = layout.rows
-        
-        // Clip to content area (below headers)
-        context.saveGState()
-        context.clip(to: listRect)
-        
-        // On non-Retina displays, fill the entire list area with background color first
-        // to prevent any gaps/lines showing through between items
-        let backingScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        if backingScale < 1.5 && !showsCavaBackdrop {
-            colors.normalBackground.setFill()
-            context.fill(listRect)
-        }
-        
-        art.drawBackground(in: context, rect: listRect, flipped: true)
-
-        // Draw items
-        // Round scroll offset to integer pixels to prevent text shimmering on non-Retina displays
-        let scrollOffset = list.scrollOffset
-        let roundedScrollOffset = backingScale < 1.5 ? round(scrollOffset) : scrollOffset
-        rowThumbnails.beginPass(placeholder: colors.normalText.withAlphaComponent(0.15))
-        
-        let visibleStart = max(0, Int(scrollOffset / itemHeight))
-        let visibleEnd = min(model.displayItems.count, visibleStart + Int(listRect.height / itemHeight) + 2)
-        
-        // Guard against invalid range during window resize
-        guard visibleStart < visibleEnd else {
-            context.restoreGState()
-            // Still draw alphabet index
-            drawAlphabetIndex(in: context, rect: layout.alphabet, colors: colors, renderer: renderer)
-            return
-        }
-        
-        for index in visibleStart..<visibleEnd {
-            let y = listRect.minY + CGFloat(index) * itemHeight - roundedScrollOffset
-            
-            if y + itemHeight < listRect.minY || y > listRect.maxY {
-                continue
-            }
-            
-            let itemRect = NSRect(x: listRect.minX, y: y, width: listRect.width, height: itemHeight)
-            let item = model.displayItems[index]
-            let isSelected = model.selectedIndices.contains(index)
-
-            // Dim tracks/episodes whose file lives on an offline volume
-            let isOffline = model.isOffline(item)
-            if isOffline { context.saveGState(); context.setAlpha(0.35) }
-            defer { if isOffline { context.restoreGState() } }
-            
-            // On non-Retina displays, fill item background to prevent gaps/lines
-            // BUT skip this when artwork background is showing (it already provides a continuous background)
-            // On Retina, only fill background for selected items
-            let hasArtworkBackground = art.background != nil
-            if backingScale < 1.5 && !hasArtworkBackground && !showsCavaBackdrop {
-                // Fill with normal or selected background (only when no artwork)
-                let bgColor = isSelected ? colors.selectedBackground : colors.normalBackground
-                bgColor.setFill()
-                context.fill(itemRect)
-            } else if isSelected {
-                colors.selectedBackground.setFill()
-                context.fill(itemRect)
-            }
-            
-            if let row = list.rowColumns(for: item, header: layout.header) {
-
-                let indent = CGFloat(item.indentLevel) * 16
-                drawColumnRow(item: item, columns: row.columns, group: row.group,
-                              in: context, rect: itemRect, isSelected: isSelected, colors: colors, indent: indent)
-            } else {
-                // Original rendering for artists, playlists, headers, etc.
-                let indent = CGFloat(item.indentLevel) * 16
-                let textX = itemRect.minX + indent + 4
-
-                // Expand/collapse indicator for hierarchical items — or an inline spinner
-                // while a YouTube channel's uploads load.
-                let isLoadingChannel: Bool = {
-                    if case .youtubeChannel(let channel) = item.type { return YouTubeChannelUploads.shared.isFetching(channel.id) }
-                    return false
-                }()
-                var titleSpinnerInset: CGFloat = 0
-                if isLoadingChannel {
-                    let spinnerRadius = min(itemRect.height * 0.3, 6)
-                    drawRowSpinner(in: context, center: CGPoint(x: textX + spinnerRadius, y: itemRect.midY),
-                                   radius: spinnerRadius, colors: colors)
-                    titleSpinnerInset = spinnerRadius * 2 + 4
-                } else if item.hasChildren {
-                    let expanded = model.isExpanded(item)
-                    let indicator = expanded ? "▼" : "▶"
-
-                    // Counter-flip for indicator
-                    context.saveGState()
-                    let indicatorY = itemRect.midY
-                    context.translateBy(x: 0, y: indicatorY)
-                    context.scaleBy(x: 1, y: -1)
-                    context.translateBy(x: 0, y: -indicatorY)
-
-                    let indicatorAttrs: [NSAttributedString.Key: Any] = [
-                        .foregroundColor: colors.normalText.withAlphaComponent(0.6),
-                        .font: contentFont(ofSize: 8)
-                    ]
-                    indicator.draw(at: NSPoint(x: textX - 12, y: itemRect.midY - 5), withAttributes: indicatorAttrs)
-
-                    context.restoreGState()
-                }
-                
-                // Main text (counter-flip)
-                context.saveGState()
-                let textCenterY = itemRect.midY
-                context.translateBy(x: 0, y: textCenterY)
-                context.scaleBy(x: 1, y: -1)
-                context.translateBy(x: 0, y: -textCenterY)
-                
-                let textColor = isSelected ? colors.selectedText : colors.normalText
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .foregroundColor: textColor,
-                    .font: contentFont(ofSize: 10)
-                ]
-
-                // Round thumbnail ahead of the title, drawn inside the counter-flip so it is upright.
-                if let thumbnail = art.rowThumbnailSource(for: item) {
-                    titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: textX + titleSpinnerInset,
-                                                            rowRect: itemRect, side: itemHeight - 2)
-                }
-
-                let textRect = NSRect(x: textX + titleSpinnerInset, y: itemRect.minY + 2,
-                                     width: itemRect.width - indent - 60 - titleSpinnerInset, height: itemHeight - 4)
-                item.shownTitle.draw(in: textRect, withAttributes: attrs)
-                
-                // Secondary info (only for non-column view)
-                if let info = item.info {
-                    let infoColor = isSelected ? colors.selectedText : colors.normalText.withAlphaComponent(0.6)
-                    let infoAttrs: [NSAttributedString.Key: Any] = [
-                        .foregroundColor: infoColor,
-                        .font: contentFont(ofSize: 9)
-                    ]
-                    let infoSize = info.size(withAttributes: infoAttrs)
-                    let infoX = model.browseMode == .radio
-                        ? (itemRect.midX - infoSize.width / 2)
-                        : (itemRect.maxX - infoSize.width - 4)
-                    info.draw(at: NSPoint(x: infoX, y: itemRect.midY - infoSize.height / 2),
-                             withAttributes: infoAttrs)
-                }
-                
-                context.restoreGState()
-            }
-        }
-        rowThumbnails.endPass(visible: visibleStart..<visibleEnd, count: model.displayItems.count) {
-            art.rowThumbnailSource(for: model.displayItems[$0])
-        }
-        
-        context.restoreGState()
-        
-        drawAlphabetIndex(in: context, rect: layout.alphabet, colors: colors, renderer: renderer)
+    /// The shared list painter, in the playlist colours and this view's content font.
+    private func listPainter(_ context: CGContext, _ layout: LibraryBrowserListLayout,
+                             colors: PlaylistColors) -> LibraryBrowserListPainter {
+        // On a non-Retina display rows are filled and land on whole points, so no seams or
+        // shimmering show between them — unless art or Cava already fills behind the list.
+        let isNonRetina = (NSScreen.main?.backingScaleFactor ?? 2.0) < 1.5
+        let fillsList = isNonRetina && !showsCavaBackdrop
+        let style = LibraryBrowserListPainter.Style(
+            titleFont: contentFont(ofSize: 10),
+            detailFont: contentFont(ofSize: 9),
+            disclosureFont: contentFont(ofSize: 8),
+            title: colors.normalText, selectedTitle: colors.selectedText,
+            cell: colors.normalText.withAlphaComponent(0.65), selectedCell: colors.selectedText,
+            info: colors.normalText.withAlphaComponent(0.6), selectedInfo: colors.selectedText,
+            disclosure: colors.normalText.withAlphaComponent(0.6),
+            filledStar: NSColor(calibratedRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0),
+            emptyStar: colors.normalText.withAlphaComponent(0.4),
+            selectedRowFill: colors.selectedBackground,
+            rowFill: fillsList && art.background == nil ? colors.normalBackground : nil,
+            listFill: fillsList ? colors.normalBackground : nil,
+            thumbnailPlaceholder: colors.normalText.withAlphaComponent(0.15),
+            spinner: colors.normalText,
+            snapsRowsToPoints: isNonRetina,
+            textIgnoresContentAlpha: false,
+            headerFill: colors.normalBackground.withAlphaComponent(0.9),
+            headerFont: contentFont(ofSize: 9, weight: .medium),
+            sortIndicatorFont: contentFont(ofSize: 7),
+            headerTitle: colors.normalText.withAlphaComponent(0.7),
+            sortedHeaderTitle: colors.normalText.withAlphaComponent(0.9),
+            headerSeparator: colors.normalText.withAlphaComponent(0.2),
+            headerBottomLine: colors.normalText.withAlphaComponent(0.3),
+            alphabetFill: colors.normalBackground.withAlphaComponent(0.3),
+            letterWithRows: colors.currentText,
+            letterWithoutRows: colors.normalText.withAlphaComponent(0.3))
+        return LibraryBrowserListPainter(context: context, layout: layout, style: style, model: model, list: list,
+                                         art: art, youtubeVideos: actions.youtubeVideos, thumbnails: rowThumbnails,
+                                         spinnerStep: coordinator.spinnerStep)
     }
-    
-    /// Draw column headers with separator line and resize handles
-    private func drawColumnHeaders(in context: CGContext, header: LibraryBrowserListLayout.Header, colors: PlaylistColors) {
-        let rect = header.rect, columns = header.columns
-        // Clip to the header rect to prevent drawing over scrollbar/alphabet index
-        context.saveGState()
-        context.clip(to: rect)
-
-        // Header background (slightly darker)
-        colors.normalBackground.withAlphaComponent(0.9).setFill()
-        context.fill(NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: columnHeaderHeight))
-        
-        // Counter-flip for text drawing
-        context.saveGState()
-        let textCenterY = rect.minY + columnHeaderHeight / 2
-        context.translateBy(x: 0, y: textCenterY)
-        context.scaleBy(x: 1, y: -1)
-        context.translateBy(x: 0, y: -textCenterY)
-        
-        let headerFont = contentFont(ofSize: 9, weight: .medium)
-        let headerColor = colors.normalText.withAlphaComponent(0.7)
-        let sortedHeaderColor = colors.normalText.withAlphaComponent(0.9)
-        let separatorColor = colors.normalText.withAlphaComponent(0.2)
-        
-        for (index, (column, x, width)) in list.columnSpans(columns, group: header.group, in: rect).enumerated() {
-            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
-                (model.hasInternetRadioColumns && column.id == .rating)
-            
-            // Check if this column is the sort column
-            let isSortColumn = model.activeColumnSortId == column.id
-            
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: headerFont,
-                .foregroundColor: isSortColumn ? sortedHeaderColor : headerColor
-            ]
-            
-            let textSize = column.title.size(withAttributes: attrs)
-            let textY = rect.minY + (columnHeaderHeight - textSize.height) / 2
-            
-            let textX = isCenteredRadioColumn ? (x + (width - textSize.width) / 2) : (x + 4)
-            column.title.draw(at: NSPoint(x: textX, y: textY), withAttributes: attrs)
-            
-            // Draw sort indicator if this is the sorted column
-            if isSortColumn {
-                let indicator = model.activeColumnSortAscending ? "▲" : "▼"
-                let indicatorAttrs: [NSAttributedString.Key: Any] = [
-                    .font: contentFont(ofSize: 7),
-                    .foregroundColor: sortedHeaderColor
-                ]
-                let indicatorX = textX + textSize.width + 3
-                indicator.draw(at: NSPoint(x: indicatorX, y: textY + 1), withAttributes: indicatorAttrs)
-            }
-            
-            // Draw column separator (except for last column)
-            if index < columns.count - 1 {
-                context.saveGState()
-                context.setStrokeColor(separatorColor.cgColor)
-                context.setLineWidth(1)
-                context.move(to: CGPoint(x: x + width - 1, y: rect.minY + 3))
-                context.addLine(to: CGPoint(x: x + width - 1, y: rect.minY + columnHeaderHeight - 3))
-                context.strokePath()
-                context.restoreGState()
-            }
-        }
-        
-        context.restoreGState()
-        
-        // Bottom separator line
-        context.setStrokeColor(colors.normalText.withAlphaComponent(0.3).cgColor)
-        context.setLineWidth(1)
-        context.move(to: CGPoint(x: rect.minX, y: rect.minY + columnHeaderHeight))
-        context.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + columnHeaderHeight))
-        context.strokePath()
-        
-        // Restore clipping context
-        context.restoreGState()
-    }
-    
-    /// Draw a single row with columns
-    private func drawColumnRow(item: LibraryBrowserItem, columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
-                               in context: CGContext, rect: NSRect, isSelected: Bool, colors: PlaylistColors, indent: CGFloat = 0) {
-        // Counter-flip for text drawing
-        context.saveGState()
-        let textCenterY = rect.midY
-
-        context.translateBy(x: 0, y: textCenterY)
-        context.scaleBy(x: 1, y: -1)
-        context.translateBy(x: 0, y: -textCenterY)
-        
-        let textColor = isSelected ? colors.selectedText : colors.normalText
-        let dimColor = isSelected ? colors.selectedText : colors.normalText.withAlphaComponent(0.65)
-        let font = contentFont(ofSize: 10)
-        let smallFont = contentFont(ofSize: 9)
-        
-        let hasArtColumn = columns.contains { $0.id == .thumbnail }
-        let cells = LibraryColumnVisibility.cellFrames(
-            widths: model.widths(of: columns, group: group, available: rect.width),
-            titleIndex: columns.firstIndex { $0.id == .title }, indent: indent,
-            spansLeadingCells: model.columnGroup(for: item) != group)
-        for (column, cell) in zip(columns, cells) {
-            let x = rect.minX + cell.start - list.horizontalScrollOffset, width = cell.width
-            if column.id == .thumbnail {
-                // Inside the counter-flip (y-up), centred on the row so the flip doesn't move it.
-                if let thumbnail = art.rowThumbnailSource(for: item) {
-                    rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
-                }
-                continue
-            }
-            let value = column.id == .title ? item.shownTitle : item.columnValue(for: column)
-            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
-                (model.isInternetRadioItem(item) && column.id == .rating)
-            
-            // Title column uses normal color/font, others use dim color/smaller font
-            let color = column.id == .title ? textColor : dimColor
-            let useFont = column.id == .title ? font : smallFont
-            
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: useFont,
-                .foregroundColor: color
-            ]
-
-            // Per-row download spinner on the title column of a downloading YouTube video.
-            var titleSpinnerInset: CGFloat = 0
-            if column.id == .title, case .youtubeVideo(let video) = item.type,
-               actions.youtubeVideos.isFetching(video.videoId) {
-                let spinnerRadius = min(rect.height * 0.3, 6)
-                let cx = x + 4 + spinnerRadius
-                drawRowSpinner(in: context, center: CGPoint(x: cx, y: rect.midY), radius: spinnerRadius, colors: colors)
-                titleSpinnerInset = spinnerRadius * 2 + 4
-            }
-            // Round art ahead of the title, unless the row has an Art column to hold it.
-            if column.id == .title, !hasArtColumn, let thumbnail = art.rowThumbnailSource(for: item) {
-                titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: x + 4 + titleSpinnerInset,
-                                                        rowRect: rect, side: rect.height - 2)
-            }
-
-            let textSize = value.size(withAttributes: attrs)
-            let textY = rect.minY + (rect.height - textSize.height) / 2
-
-            let textX = isCenteredRadioColumn ? (x + (width - textSize.width) / 2) : (x + 4 + titleSpinnerInset)
-            let maxTextWidth = width - 8 - titleSpinnerInset  // Padding on both sides
-            
-            // Draw with truncation if needed
-            let drawRect = NSRect(x: textX, y: textY, width: maxTextWidth, height: textSize.height)
-            if column.id == .rating && !isSelected && (value.contains("★") || value.contains("☆")) {
-                let goldColor = NSColor(calibratedRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0)
-                let emptyColor = dimColor.withAlphaComponent(0.4)
-                let astr = NSMutableAttributedString(string: value, attributes: attrs)
-                for (i, ch) in value.enumerated() {
-                    let range = NSRange(location: i, length: 1)
-                    astr.addAttribute(.foregroundColor, value: ch == "★" ? goldColor : emptyColor, range: range)
-                }
-                astr.draw(with: drawRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-            } else {
-                value.draw(with: drawRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
-            }
-        }
-        
-        context.restoreGState()
-    }
-    
-    private func drawAlphabetIndex(in context: CGContext, rect: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
-        // Background
-        colors.normalBackground.withAlphaComponent(0.3).setFill()
-        context.fill(rect)
-        
-        // Calculate letter height based on available space
-        let letters = LibraryBrowserList.alphabetLetters
-        let letterHeight = rect.height / CGFloat(letters.count)
-        let fontSize = min(9 * contentScale, letterHeight * 0.8)
-        
-        let availableLetters = model.lettersWithRows
-
-        
-        for (index, letter) in letters.enumerated() {
-
-            let y = rect.minY + CGFloat(index) * letterHeight
-            let letterRect = NSRect(x: rect.minX, y: y, width: rect.width, height: letterHeight)
-            
-            // Highlight if this letter has items
-            let hasItems = availableLetters.contains(letter)
-            let color = hasItems ? colors.currentText : colors.normalText.withAlphaComponent(0.3)
-            
-            // Counter-flip for text
-            context.saveGState()
-            let centerY = letterRect.midY
-            context.translateBy(x: 0, y: centerY)
-            context.scaleBy(x: 1, y: -1)
-            context.translateBy(x: 0, y: -centerY)
-            
-            let attrs: [NSAttributedString.Key: Any] = [
-                .foregroundColor: color,
-                .font: NSFont.systemFont(ofSize: fontSize, weight: .bold)
-            ]
-            
-            let letterSize = letter.size(withAttributes: attrs)
-            let drawPoint = NSPoint(
-                x: letterRect.midX - letterSize.width / 2,
-                y: letterRect.midY - letterSize.height / 2
-            )
-            letter.draw(at: drawPoint, withAttributes: attrs)
-            
-            context.restoreGState()
-        }
-    }
-    
     /// The amber strip under the list while a local watch folder is offline.
     private func drawOfflineBanner(_ label: String, in context: CGContext, rect: NSRect, colors: PlaylistColors) {
         colors.normalBackground.setFill()
@@ -1685,11 +1289,6 @@ class ClassicLibraryBrowserView: NSView {
         context.restoreGState()
     }
 
-    private func drawStatusBarText(in context: CGContext, drawBounds: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
-        // Status info is now shown in the top server bar
-        // This function is kept for potential future use but draws nothing
-    }
-    
     // MARK: - Public Methods
     
     func skinDidChange() {
@@ -1706,7 +1305,7 @@ class ClassicLibraryBrowserView: NSView {
         historyHostingView.rootView = makeHistoryRootView(colors)
         historyHostingView.layer?.backgroundColor = listBackground(colors).cgColor
         historyHostingView.layer?.isOpaque = !showsCavaBackdrop
-        historyHostingView.appearance = classicAppearance(for: colors.normalBackground)
+        historyHostingView.appearance = NSAppearance.matching(background: colors.normalBackground)
     }
 
     
@@ -1738,22 +1337,20 @@ class ClassicLibraryBrowserView: NSView {
             // Invisible drag zone at the top of the visible window
             return skinPoint.y >= Layout.titleBarHeight && skinPoint.y < Layout.titleBarHeight + 6
         }
-        let originalSize = originalWindowSize
         return skinPoint.y < Layout.titleBarHeight &&
-               skinPoint.x < originalSize.width - 30  // Leave room for window buttons
+               skinPoint.x < bounds.width - 30  // Leave room for window buttons
     }
     
     /// Check if point hits close button (enlarged hit area extends to right edge and top)
     private func hitTestCloseButton(at skinPoint: NSPoint) -> Bool {
         if isEmbeddedInSkin { return false }
         if hidesClassicTitleBar { return false }
-        let originalSize = originalWindowSize
         // 20x14 in our own flat chrome. Under a borrowed ring the column spans the skin's caption
         // band — 7px to 104px across the corpus — and sits inside its right border, which is where
         // the shared painter draws the glyph: what is clickable is what is drawn (W178).
         let closeRect = hostedFrame == nil && !closesFromCorner
-            ? NSRect(x: originalSize.width - 20, y: 0, width: 20, height: 14)
-            : SkinnedSurfaceChrome.closeButtonRect(in: NSRect(origin: .zero, size: originalSize),
+            ? NSRect(x: bounds.width - 20, y: 0, width: 20, height: 14)
+            : SkinnedSurfaceChrome.closeButtonRect(in: NSRect(origin: .zero, size: bounds.size),
                                                    captionHeight: Layout.titleBarHeight, width: 20)
         // The corner closes except where the server bar draws a control into it.
         let rects = coordinator.rects

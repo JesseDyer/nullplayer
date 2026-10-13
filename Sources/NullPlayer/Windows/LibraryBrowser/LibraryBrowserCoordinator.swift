@@ -4,7 +4,7 @@ import AppKit
 /// It takes the model's changes and passes each to the list and the view; follows the window
 /// (minimized, covered, highlighted in a docked group) and the library scan; handles clicks on the
 /// server bar's buttons, the tabs, the Sort button and the search bar, and files dropped on the
-/// browser; runs the server and library names' scroll and the loading and scan spinners; and
+/// browser; runs the server and library names' scroll and steps the spinners; and
 /// tears the model, actions and list down. Each view draws the controls in its own coordinates and
 /// records where in `rects`; clicks reach here in the same coordinates, as they reach
 /// `LibraryBrowserList`.
@@ -77,8 +77,8 @@ final class LibraryBrowserCoordinator: NSObject {
     private(set) var libraryName = Marquee()
     private var marqueeTimer: Timer?
 
-    /// The loading and scan spinners' step, advanced while either turns.
-    private var spinnerFrame = 0
+    /// The loading, row and scan spinners' step, advanced while one turns.
+    private(set) var spinnerStep = 0
     private(set) var isLibraryScanning = false
     private var spinnerTimer: Timer?
 
@@ -133,7 +133,7 @@ final class LibraryBrowserCoordinator: NSObject {
         switch change {
         case .rows, .reveal, .columns:
             host.redraw(.all)
-        case .loading:
+        case .listState:
             updateSpinner()
             host.redraw(.all)
         case .rowsReplaced:
@@ -288,37 +288,17 @@ final class LibraryBrowserCoordinator: NSObject {
     }
 
     private func spinnerTick() {
-        spinnerFrame += 1
-        if actions.rowsAreBusy {
-            host.redraw(.list)
-        } else if isLibraryScanning {
-            host.redraw(.serverBar)
-        } else {
-            stopSpinner()
-        }
+        let rowsAreBusy = actions.rowsAreBusy
+        guard rowsAreBusy || isLibraryScanning else { stopSpinner(); return }
+        spinnerStep += 1
+        if rowsAreBusy { host.redraw(.list) }
+        if isLibraryScanning { host.redraw(.serverBar) }
     }
 
     private func stopSpinner() {
         spinnerTimer?.invalidate()
         spinnerTimer = nil
-        spinnerFrame = 0
-    }
-
-    /// An eight-spoke spinner at the current step, its spokes fading in from clear to `maxAlpha`.
-    func drawSpinner(in context: CGContext, center: CGPoint, innerRadius: CGFloat, outerRadius: CGFloat,
-                     lineWidth: CGFloat, color: NSColor, maxAlpha: CGFloat = 1) {
-        let spokes = 8
-        let step = CGFloat.pi * 2 / CGFloat(spokes)
-        context.saveGState()
-        context.setLineWidth(lineWidth)
-        for i in 0..<spokes {
-            let angle = CGFloat(i + spinnerFrame) * step - CGFloat.pi / 2
-            color.withAlphaComponent(CGFloat(i + 1) / CGFloat(spokes) * maxAlpha).setStroke()
-            context.move(to: CGPoint(x: center.x + cos(angle) * innerRadius, y: center.y + sin(angle) * innerRadius))
-            context.addLine(to: CGPoint(x: center.x + cos(angle) * outerRadius, y: center.y + sin(angle) * outerRadius))
-            context.strokePath()
-        }
-        context.restoreGState()
+        spinnerStep = 0
     }
 
     // MARK: - Notifications

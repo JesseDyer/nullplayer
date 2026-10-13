@@ -173,88 +173,72 @@ extension LibraryBrowserModel {
                 }
             }
 
-        case .subsonicArtist(let artist):
-            guard subsonic.artistAlbums[artist.id] == nil else { return false }
-            // The cached albums first (instant), the network only without them
-            let cached = subsonic.albums.filter { $0.artistId == artist.id }
-            guard cached.isEmpty else { subsonic.artistAlbums[artist.id] = cached; return false }
-            fetchChildren(of: artist.name, key: key, replacingServerExpand: true) { model in
-                model.subsonic.artistAlbums[artist.id] = try await SubsonicManager.shared.fetchAlbums(forArtist: artist)
-            }
-        case .subsonicAlbum(let album):
-            guard subsonic.albumSongs[album.id] == nil else { return false }
-            fetchChildren(of: album.name, key: key, replacingServerExpand: true) { model in
-                model.subsonic.albumSongs[album.id] = try await SubsonicManager.shared.fetchSongs(forAlbum: album)
-            }
-        case .subsonicPlaylist(let playlist):
-            guard subsonic.playlistTracks[playlist.id] == nil else { return false }
-            fetchChildren(of: playlist.name, key: key, replacingServerExpand: true) { model in
-                let (_, tracks) = try await SubsonicManager.shared.serverClient?.fetchPlaylist(id: playlist.id) ?? (playlist, [])
-                model.subsonic.playlistTracks[playlist.id] = tracks
-            }
-
-        case .jellyfinArtist(let artist):
-            guard jellyfin.artistAlbums[artist.id] == nil else { return false }
-            // The cached albums first (instant), the network only without them
-            let cached = jellyfin.albums.filter { $0.artistId == artist.id }
-            guard cached.isEmpty else { jellyfin.artistAlbums[artist.id] = cached; return false }
-            fetchChildren(of: artist.name, key: key, replacingServerExpand: true) { model in
-                model.jellyfin.artistAlbums[artist.id] = try await JellyfinManager.shared.fetchAlbums(forArtist: artist)
-            }
-        case .jellyfinAlbum(let album):
-            guard jellyfin.albumSongs[album.id] == nil else { return false }
-            fetchChildren(of: album.name, key: key, replacingServerExpand: true) { model in
-                model.jellyfin.albumSongs[album.id] = try await JellyfinManager.shared.fetchSongs(forAlbum: album)
-            }
-        case .jellyfinPlaylist(let playlist):
-            guard jellyfin.playlistTracks[playlist.id] == nil else { return false }
-            fetchChildren(of: playlist.name, key: key, replacingServerExpand: true) { model in
-                let (_, tracks) = try await JellyfinManager.shared.serverClient?.fetchPlaylist(id: playlist.id) ?? (playlist, [])
-                model.jellyfin.playlistTracks[playlist.id] = tracks
-            }
-        case .jellyfinShow(let show):
-            guard jellyfinVideo.showSeasons[show.id] == nil else { return false }
-            fetchChildren(of: show.title, key: key, replacingServerExpand: true) { model in
-                model.jellyfinVideo.showSeasons[show.id] = try await JellyfinManager.shared.fetchSeasons(forShow: show)
-            }
-        case .jellyfinSeason(let season):
-            guard jellyfinVideo.seasonEpisodes[season.id] == nil else { return false }
-            fetchChildren(of: season.title, key: key, replacingServerExpand: true) { model in
-                model.jellyfinVideo.seasonEpisodes[season.id] = try await JellyfinManager.shared.fetchEpisodes(forSeason: season)
-            }
-
-        case .embyArtist(let artist):
-            guard emby.artistAlbums[artist.id] == nil else { return false }
-            // The cached albums first (instant), the network only without them
-            let cached = emby.albums.filter { $0.artistId == artist.id }
-            guard cached.isEmpty else { emby.artistAlbums[artist.id] = cached; return false }
-            fetchChildren(of: artist.name, key: key, replacingServerExpand: true) { model in
-                model.emby.artistAlbums[artist.id] = try await EmbyManager.shared.fetchAlbums(forArtist: artist)
-            }
-        case .embyAlbum(let album):
-            guard emby.albumSongs[album.id] == nil else { return false }
-            fetchChildren(of: album.name, key: key, replacingServerExpand: true) { model in
-                model.emby.albumSongs[album.id] = try await EmbyManager.shared.fetchSongs(forAlbum: album)
-            }
-        case .embyPlaylist(let playlist):
-            guard emby.playlistTracks[playlist.id] == nil else { return false }
-            fetchChildren(of: playlist.name, key: key, replacingServerExpand: true) { model in
-                let (_, tracks) = try await EmbyManager.shared.serverClient?.fetchPlaylist(id: playlist.id) ?? (playlist, [])
-                model.emby.playlistTracks[playlist.id] = tracks
-            }
-        case .embyShow(let show):
-            guard embyVideo.showSeasons[show.id] == nil else { return false }
-            fetchChildren(of: show.title, key: key, replacingServerExpand: true) { model in
-                model.embyVideo.showSeasons[show.id] = try await EmbyManager.shared.fetchSeasons(forShow: show)
-            }
-        case .embySeason(let season):
-            guard embyVideo.seasonEpisodes[season.id] == nil else { return false }
-            fetchChildren(of: season.title, key: key, replacingServerExpand: true) { model in
-                model.embyVideo.seasonEpisodes[season.id] = try await EmbyManager.shared.fetchEpisodes(forSeason: season)
-            }
+        case .subsonicArtist(let artist): return fetchServerAlbums(of: artist, SubsonicManager.shared, key: key)
+        case .subsonicAlbum(let album): return fetchServerSongs(of: album, SubsonicManager.shared, key: key)
+        case .subsonicPlaylist(let playlist): return fetchServerSongs(of: playlist, SubsonicManager.shared, key: key)
+        case .jellyfinArtist(let artist): return fetchServerAlbums(of: artist, JellyfinManager.shared, key: key)
+        case .jellyfinAlbum(let album): return fetchServerSongs(of: album, JellyfinManager.shared, key: key)
+        case .jellyfinPlaylist(let playlist): return fetchServerSongs(of: playlist, JellyfinManager.shared, key: key)
+        case .jellyfinShow(let show): return fetchServerSeasons(of: show, JellyfinManager.shared, key: key)
+        case .jellyfinSeason(let season): return fetchServerEpisodes(of: season, JellyfinManager.shared, key: key)
+        case .embyArtist(let artist): return fetchServerAlbums(of: artist, EmbyManager.shared, key: key)
+        case .embyAlbum(let album): return fetchServerSongs(of: album, EmbyManager.shared, key: key)
+        case .embyPlaylist(let playlist): return fetchServerSongs(of: playlist, EmbyManager.shared, key: key)
+        case .embyShow(let show): return fetchServerSeasons(of: show, EmbyManager.shared, key: key)
+        case .embySeason(let season): return fetchServerEpisodes(of: season, EmbyManager.shared, key: key)
 
         default:
             return false
+        }
+        return true
+    }
+
+    // MARK: - Subsonic, Jellyfin and Emby
+
+    /// An artist's albums: those already cached at once, else from the server.
+    private func fetchServerAlbums<M: MusicServerBrowsing>(of artist: M.Artist, _ manager: M, key: ExpansionKey) -> Bool {
+        let cache = M.musicCache
+        guard self[keyPath: cache].artistAlbums[artist.id] == nil else { return false }
+        let cached = self[keyPath: cache].albums.filter { $0.artistId == artist.id }
+        guard cached.isEmpty else { self[keyPath: cache].artistAlbums[artist.id] = cached; return false }
+        fetchChildren(of: artist.name, key: key, replacingServerExpand: true) { model in
+            model[keyPath: cache].artistAlbums[artist.id] = try await manager.fetchAlbums(forArtist: artist)
+        }
+        return true
+    }
+
+    private func fetchServerSongs<M: MusicServerBrowsing>(of album: M.Album, _ manager: M, key: ExpansionKey) -> Bool {
+        let cache = M.musicCache
+        guard self[keyPath: cache].albumSongs[album.id] == nil else { return false }
+        fetchChildren(of: album.name, key: key, replacingServerExpand: true) { model in
+            model[keyPath: cache].albumSongs[album.id] = try await manager.fetchSongs(forAlbum: album)
+        }
+        return true
+    }
+
+    private func fetchServerSongs<M: MusicServerBrowsing>(of playlist: M.Playlist, _ manager: M, key: ExpansionKey) -> Bool {
+        let cache = M.musicCache
+        guard self[keyPath: cache].playlistTracks[playlist.id] == nil else { return false }
+        fetchChildren(of: playlist.name, key: key, replacingServerExpand: true) { model in
+            model[keyPath: cache].playlistTracks[playlist.id] = try await manager.playlistSongs(playlist)
+        }
+        return true
+    }
+
+    private func fetchServerSeasons<V: VideoServerBrowsing>(of show: V.Show, _ manager: V, key: ExpansionKey) -> Bool {
+        let cache = V.videoCache
+        guard self[keyPath: cache].showSeasons[show.id] == nil else { return false }
+        fetchChildren(of: show.title, key: key, replacingServerExpand: true) { model in
+            model[keyPath: cache].showSeasons[show.id] = try await manager.fetchSeasons(forShow: show)
+        }
+        return true
+    }
+
+    private func fetchServerEpisodes<V: VideoServerBrowsing>(of season: V.Season, _ manager: V, key: ExpansionKey) -> Bool {
+        let cache = V.videoCache
+        guard self[keyPath: cache].seasonEpisodes[season.id] == nil else { return false }
+        fetchChildren(of: season.title, key: key, replacingServerExpand: true) { model in
+            model[keyPath: cache].seasonEpisodes[season.id] = try await manager.fetchEpisodes(forSeason: season)
         }
         return true
     }

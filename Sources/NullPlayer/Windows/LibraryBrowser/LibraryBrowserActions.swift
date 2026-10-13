@@ -131,9 +131,9 @@ final class LibraryBrowserActions: NSObject {
         case .subsonicRadioStation(let radioType):
             playRadio { await radioType.tracks() }
         case .jellyfinRadioStation(let radioType):
-            playRadio { await radioType.tracks() }
+            playRadio { await radioType.tracks(from: JellyfinManager.shared) }
         case .embyRadioStation(let radioType):
-            playRadio { await radioType.tracks() }
+            playRadio { await radioType.tracks(from: EmbyManager.shared) }
         case .localRadioStation(let radioType):
             let tracks = radioType.tracks()
             if !tracks.isEmpty { WindowManager.shared.audioEngine.loadTracks(tracks) }
@@ -168,12 +168,13 @@ final class LibraryBrowserActions: NSObject {
         case .plexPlaylist, .subsonicPlaylist, .jellyfinPlaylist, .embyPlaylist:
             return { [weak model] in
                 guard let model else { throw CancellationError() }
-                model.isLoading = true; model.errorMessage = nil
-                defer { model.isLoading = false }
+                model.loadState = .loading
                 do {
-                    return try await playable.tracks()
+                    let tracks = try await playable.tracks()
+                    model.endLoading()
+                    return tracks
                 } catch {
-                    model.errorMessage = "Failed to load playlist: \(error.localizedDescription.redactingSensitiveURLQueryItems)"
+                    model.loadState = .failed("Failed to load playlist: \(error.localizedDescription.redactingSensitiveURLQueryItems)")
                     throw error
                 }
             }
@@ -235,12 +236,12 @@ final class LibraryBrowserActions: NSObject {
     /// A server radio station: its tracks load behind the loading screen, then replace the queue.
     private func playRadio(_ tracks: @escaping @MainActor () async -> [Track]) {
         radioPlayTask?.cancel()
-        model.isLoading = true
+        model.loadState = .loading
         radioPlayTask = Task { @MainActor [weak self] in
             let tracks = await tracks()
             guard let self, !Task.isCancelled else { return }
             if !tracks.isEmpty { WindowManager.shared.audioEngine.loadTracks(tracks) }
-            self.model.isLoading = false
+            self.model.endLoading()
             self.radioPlayTask = nil
         }
     }

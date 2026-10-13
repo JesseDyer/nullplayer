@@ -3,37 +3,15 @@ import AVFoundation
 import SwiftUI
 import NullPlayerCore
 
-// =============================================================================
-// MODERN LIBRARY BROWSER VIEW - Library browser with modern skin chrome
-// =============================================================================
-// Comprehensive port of ClassicLibraryBrowserView.swift to use the modern skin engine.
-//
-// Key differences from classic ClassicLibraryBrowserView:
-// 1. ZERO dependencies on classic skin system (Skin/, SkinRenderer, SkinLoader, SkinElements)
-// 2. Uses ModernSkinRenderer for window chrome (title bar, borders, control buttons)
-// 3. Uses ModernSkinEngine for skin loading and change notifications
-// 4. Uses NSFont for text (not skin bitmap font)
-// 5. Uses bottom-left origin coordinates (macOS native - NO coordinate flipping)
-// 6. Uses modern skin palette colors (primaryColor, accentColor, textColor, etc.)
-// 7. Tabs and selections use modern boxed toggle style
-// 8. Shares its value types (source, tab, row) with the classic view: Windows/LibraryBrowser/
-// =============================================================================
-
-// MARK: - Button Type
-
-enum LibraryBrowserButtonType {
-    case close
-}
-
-// MARK: - Modern Library Browser View
-
+/// The library browser in an Original or Metal skin: the window chrome, server bar, tabs and search
+/// bar drawn with the modern skin engine, in AppKit's bottom-up coordinates, and never touching the
+/// classic skin system. What it browses and how its list behaves and draws are shared with the
+/// classic view in `Windows/LibraryBrowser/`.
 class ModernLibraryBrowserView: NSView {
-    
-    // MARK: - Properties
-    
-    weak var controller: ModernLibraryBrowserWindowController?
 
-    private var renderer: ModernSkinRenderer!
+    // MARK: - Properties
+
+    weak var controller: ModernLibraryBrowserWindowController?
 
     /// Compact Mode: when true, a stripped-down player bar is embedded across the top
     /// (just below the title bar) and all content below shifts down to make room.
@@ -166,7 +144,7 @@ class ModernLibraryBrowserView: NSView {
     private var edgeOcclusionSegments: EdgeOcclusionSegments = .empty
     
     // Button/drag state
-    private var pressedButton: LibraryBrowserButtonType?
+    private var isClosePressed = false
     private var isDraggingWindow = false
     /// True when hide-title-bars mode primed drag hold timing on mouseDown.
     private var didPrimeWindowDragHold = false
@@ -206,11 +184,6 @@ class ModernLibraryBrowserView: NSView {
         layer?.isOpaque = false
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         
-        // Load skin
-        let skin = ModernSkinEngine.shared.currentSkin ?? ModernSkinLoader.shared.loadDefault()
-        renderer = ModernSkinRenderer(skin: skin)
-        
-
         // Register notifications
         NotificationCenter.default.addObserver(self, selector: #selector(modernSkinDidChange),
                                                name: ModernSkinEngine.skinDidChangeNotification, object: nil)
@@ -321,16 +294,6 @@ class ModernLibraryBrowserView: NSView {
         layer.maskedCorners = allCorners.subtracting(sharpCorners)
     }
 
-    private func skinAppearance(for skin: ModernSkin) -> NSAppearance? {
-        var r: CGFloat = 0
-        var g: CGFloat = 0
-        var b: CGFloat = 0
-        var a: CGFloat = 0
-        skin.backgroundColor.usingColorSpace(.deviceRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
-        let brightness = 0.299 * r + 0.587 * g + 0.114 * b
-        return NSAppearance(named: brightness < 0.5 ? .darkAqua : .aqua)
-    }
-
     private func makeHistoryHostingView() -> NSHostingView<StatsContentView> {
         let skin = currentSkin()
         let rootView = StatsContentView(agent: model.history,
@@ -342,7 +305,7 @@ class ModernLibraryBrowserView: NSView {
         let background = contentFill(skin.backgroundColor)
         hostingView.layer?.backgroundColor = background.cgColor
         hostingView.layer?.isOpaque = !backdropActive && background.alphaComponent >= 1
-        hostingView.appearance = skinAppearance(for: skin)
+        hostingView.appearance = NSAppearance.matching(background: skin.backgroundColor)
         hostingView.setAccessibilityIdentifier("modernLibraryBrowser.data")
         hostingView.setAccessibilityLabel("Library Data")
         return hostingView
@@ -599,7 +562,7 @@ class ModernLibraryBrowserView: NSView {
 
             // Close button in title bar (base space)
             let closeBtnRect = NSRect(x: baseWidth - 14, y: baseHeight - tbh / 2 - 5, width: 10, height: 10)
-            let closeState = pressedButton == .close ? "pressed" : "normal"
+            let closeState = isClosePressed ? "pressed" : "normal"
             renderer.drawWindowControlButton("library_btn_close", state: closeState, in: closeBtnRect, context: context)
         }
         
@@ -648,14 +611,14 @@ class ModernLibraryBrowserView: NSView {
                     // background (already filled above — translucent when a Cava backdrop is
                     // active, opaque otherwise) is exactly what should sit behind the covers, so
                     // the Cava backdrop shows through at full strength instead of behind a second scrim.
-                    drawAlphabetIndex(in: context, rect: layout.alphabet, skin: skin)
+                    listPainter(context, layout, skin: skin).drawAlphabet()
+                case .rows where model.displayItems.isEmpty:
+                    // An empty list has no columns, so `rows` is the whole list here.
+                    drawEmptyState(in: context, listRect: layout.rows, skin: skin)
                 case .rows:
-                    drawListArea(in: context, layout: layout, skin: skin)
+                    listPainter(context, layout, skin: skin).drawList()
                 }
             }
-
-            // Status bar text
-            drawStatusBarText(in: context, skin: skin)
         }
 
         // Library | Playlist toggle footer at the bottom (compact window only).
@@ -673,23 +636,6 @@ class ModernLibraryBrowserView: NSView {
 
     // MARK: - Tab Bar Drawing (Modern Boxed Toggle Style)
     
-    /// Per-tab widths across the tab bar. Content-aware: each tab is sized to its own label
-    /// plus padding, then any leftover space is shared equally so every tab gets some
-    /// breathing room and short labels (e.g. "TV", "Data") don't hog equal width.
-    private func tabBarWidths(totalWidth: CGFloat, labels: [String], font: NSFont,
-                              horizontalScale: CGFloat) -> [CGFloat] {
-        let attrs: [NSAttributedString.Key: Any] = [.font: font]
-        let padding = 18 * ModernSkinElements.sizeMultiplier * horizontalScale
-        let natural = labels.map { $0.size(withAttributes: attrs).width + padding }
-        let naturalSum = natural.reduce(0, +)
-        if naturalSum > totalWidth {
-            let scale = totalWidth / naturalSum
-            return natural.map { $0 * scale }
-        }
-        let extra = (totalWidth - naturalSum) / CGFloat(labels.count)
-        return natural.map { $0 + extra }
-    }
-
     /// Server-bar field widths at full size, in points before scaling.
     private static let serverFieldWidth: CGFloat = 100
     /// The library field's narrowest width; it grows into the free space before the right-side buttons.
@@ -732,11 +678,7 @@ class ModernLibraryBrowserView: NSView {
     private func tabRowNaturalWidth(font: NSFont) -> CGFloat {
         let m = ModernSkinElements.sizeMultiplier
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
-
-        var labels = LibraryBrowseMode.tabs.map { $0.title }
-        labels.append("Channels")
-        labels.append("Folders")
-        let maxLabelWidth = labels.map { $0.size(withAttributes: attrs).width }.max() ?? 0
+        let maxLabelWidth = LibraryBrowseMode.slotLabels.map { $0.size(withAttributes: attrs).width }.max() ?? 0
 
         let sortWidth = "Sort".size(withAttributes: attrs).width + 16 * m
         let perTab = maxLabelWidth + 12 * m
@@ -780,28 +722,23 @@ class ModernLibraryBrowserView: NSView {
         
         let tabsWidth = tabBarRect.width - sortWidth
 
-        let modes = LibraryBrowseMode.tabs
-        // Resolved (possibly dynamic) labels + content-aware widths, shared with hit-testing.
+        // Each tab its label's width plus padding, the leftover shared; hit-testing reads the rects.
         let labels = model.tabLabels
-        let widths = tabBarWidths(totalWidth: tabsWidth, labels: labels, font: font,
-                                  horizontalScale: chromeScale)
+        let padding = 18 * ModernSkinElements.sizeMultiplier * chromeScale
+        let widths = LibraryBrowseMode.fitTabWidths(
+            labels.map { $0.size(withAttributes: [.font: font]).width + padding }, into: tabsWidth)
         var tabX = tabBarRect.minX
         coordinator.rects.tabs.removeAll(keepingCapacity: true)
 
-        for (index, mode) in modes.enumerated() {
+        for (index, mode) in LibraryBrowseMode.tabs.enumerated() {
             let tabWidth = widths[index]
             let tabRect = NSRect(x: tabX, y: tabBarY,
                                  width: tabWidth, height: Layout.tabBarHeight)
             tabX += tabWidth
 
             let label = labels[index]
-            var isSelected = mode == model.browseMode
-            // Highlight the plists slot when browseMode is .folders (local source only).
-            if mode == .plists, model.browseMode == .folders, case .local = model.currentSource {
-                isSelected = true
-            }
             let tabInset = 2 * ModernSkinElements.sizeMultiplier * chromeScale
-            ModernLibraryTab.draw(label, isActive: isSelected,
+            ModernLibraryTab.draw(label, isActive: mode == model.activeTabSlot,
                           rect: tabRect.insetBy(dx: tabInset,
                                                dy: 2 * ModernSkinElements.sizeMultiplier),
                           font: font, skin: skin, context: context)
@@ -973,11 +910,12 @@ class ModernLibraryBrowserView: NSView {
                                    height: barRect.height)
 
             // Scan animation: small spinner at center of bar while library is scanning
-            if case .local = model.currentSource, coordinator.isLibraryScanning {
+            if model.currentSource.isLocal, coordinator.isLibraryScanning {
                 let outerR: CGFloat = 8 * m
-                coordinator.drawSpinner(in: context, center: CGPoint(x: barRect.midX, y: barRect.midY),
-                                        innerRadius: 3 * m, outerRadius: outerR, lineWidth: 1.5 * m,
-                                        color: isMetalRenderStyle ? skin.textColor : skin.accentColor, maxAlpha: 0.9)
+                LibraryBrowserListPainter.drawSpinner(
+                    in: context, center: CGPoint(x: barRect.midX, y: barRect.midY), innerRadius: 3 * m, outerRadius: outerR,
+                    lineWidth: 1.5 * m, color: isMetalRenderStyle ? skin.textColor : skin.accentColor, maxAlpha: 0.9,
+                    step: coordinator.spinnerStep)
                 let scanText = "SCANNING"
                 let scanTextX = barRect.midX + outerR + 6 * m
                 drawText(scanText, at: NSPoint(x: scanTextX, y: textY), withAttributes: prefixAttrs, context: context)
@@ -1146,278 +1084,46 @@ class ModernLibraryBrowserView: NSView {
         drawText(label, at: textOrigin, withAttributes: attrs, context: context)
     }
 
-    // MARK: - List Area Drawing
+    // MARK: - List
 
-    private func drawListArea(in context: CGContext, layout: LibraryBrowserListLayout, skin: ModernSkin) {
-        // An empty list has no columns, so `rows` is the whole list here.
-        if model.displayItems.isEmpty {
-            drawEmptyState(in: context, listRect: layout.rows, skin: skin)
-            return
-        }
-
-        if let header = layout.header {
-            drawColumnHeaders(in: context, header: header, skin: skin)
-            // Fill the header-row gap above the alphabet index (and scrollbar) so it
-            // matches the column-header band instead of showing the panel background.
-            let gapRect = NSRect(x: header.rect.maxX, y: header.rect.minY,
-                                 width: layout.area.maxX - header.rect.maxX, height: header.rect.height)
-            contentFill(isMetalRenderStyle ? metalControlBandFill : skin.surfaceColor.withAlphaComponent(0.4)).setFill()
-            context.fill(gapRect)
-        }
-
-        let listRect = layout.rows
-
-        // Clip to content area
-        context.saveGState()
-        context.clip(to: listRect)
-        
-        art.drawBackground(in: context, rect: listRect, flipped: false)
-        rowThumbnails.beginPass(placeholder: skin.textDimColor.withAlphaComponent(0.15))
-        
-        // Draw items (bottom-left origin: item 0 at top of list, so we draw from top down)
-        let visibleStart = max(0, Int(list.scrollOffset / itemHeight))
-        let visibleEnd = min(model.displayItems.count, visibleStart + Int(listRect.height / itemHeight) + 2)
-        
-        guard visibleStart < visibleEnd else {
-            context.restoreGState()
-            drawAlphabetIndex(in: context, rect: layout.alphabet, skin: skin)
-            return
-        }
-        
-        let font = skin.scaledSystemFont(size: 8)
-        let smallFont = skin.scaledSystemFont(size: 7.2)
-        
-        for index in visibleStart..<visibleEnd {
-            let itemRect = layout.rowRect(index, scrollOffset: list.scrollOffset)
-            if itemRect.maxY < listRect.minY || itemRect.minY > listRect.maxY { continue }
-            let item = model.displayItems[index]
-            let isSelected = model.selectedIndices.contains(index)
-
-            // Dim tracks/episodes whose file lives on an offline volume
-            let isOffline = model.isOffline(item)
-            if isOffline { context.saveGState(); context.setAlpha(0.35) }
-
-            // Selection background - subtle to keep accent text readable.
-            // In metal mode, highlight with the green LCD display color (matching the
-            // playlist's now-playing row) instead of the metal control fill.
-            if isSelected {
-                (isMetalRenderStyle ? metalMaterial.displayFill.withAlphaComponent(0.30) : skin.primaryColor.withAlphaComponent(0.06)).setFill()
-                context.fill(itemRect)
-            }
-
-            if let row = list.rowColumns(for: item, header: layout.header) {
-
-                let indent = CGFloat(item.indentLevel) * 16
-                drawColumnRow(item: item, columns: row.columns, group: row.group,
-                              in: context, rect: itemRect, isSelected: isSelected, skin: skin, indent: indent)
-            } else {
-                // Simple list rendering
-                let indent = CGFloat(item.indentLevel) * 16
-                let textX = itemRect.minX + indent + 4
-
-                // Expand/collapse indicator — or an inline spinner while a YouTube channel's uploads load.
-                let isLoadingChannel: Bool = {
-                    if case .youtubeChannel(let channel) = item.type { return YouTubeChannelUploads.shared.isFetching(channel.id) }
-                    return false
-                }()
-                var titleSpinnerInset: CGFloat = 0
-                if isLoadingChannel {
-                    let spinnerRadius = min(itemHeight * 0.3, 6)
-                    drawRowSpinner(in: context, center: CGPoint(x: textX + spinnerRadius, y: itemRect.midY),
-                                   radius: spinnerRadius, skin: skin)
-                    titleSpinnerInset = spinnerRadius * 2 + 4
-                } else if item.hasChildren {
-                    let expanded = model.isExpanded(item)
-                    let indicator = expanded ? "▼" : "▶"
-                    let indicatorAttrs: [NSAttributedString.Key: Any] = [
-                        .foregroundColor: skin.applyTextOpacity(to: skin.textDimColor),
-                        .font: skin.scaledSystemFont(size: 6.4)
-                    ]
-                    drawText(indicator, at: NSPoint(x: textX - 12, y: itemRect.midY - 5), withAttributes: indicatorAttrs, context: context)
-                }
-
-                // Round thumbnail ahead of the title: a YouTube channel's avatar, or the item's art.
-                if let thumbnail = art.rowThumbnailSource(for: item) {
-                    titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: textX + titleSpinnerInset,
-                                                            rowRect: itemRect, side: itemHeight - 2)
-                }
-
-                // Main text
-                let textColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textColor
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .foregroundColor: skin.applyTextOpacity(to: textColor),
-                    .font: font
-                ]
-                let textRect = NSRect(x: textX + titleSpinnerInset, y: itemRect.minY + 2,
-                                     width: itemRect.width - indent - 60 - titleSpinnerInset, height: itemHeight - 4)
-                drawText(item.shownTitle, in: textRect, withAttributes: attrs, context: context)
-
-                // Secondary info
-                if let info = item.info {
-                    let infoColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textDimColor
-                    let infoAttrs: [NSAttributedString.Key: Any] = [
-                        .foregroundColor: skin.applyTextOpacity(to: infoColor),
-                        .font: smallFont
-                    ]
-                    let infoSize = info.size(withAttributes: infoAttrs)
-                    let infoX = model.browseMode == .radio
-                        ? (itemRect.midX - infoSize.width / 2)
-                        : (itemRect.maxX - infoSize.width - 4)
-                    drawText(info, at: NSPoint(x: infoX, y: itemRect.midY - infoSize.height / 2), withAttributes: infoAttrs, context: context)
-                }
-            }
-
-            if isOffline { context.restoreGState() }
-        }
-        rowThumbnails.endPass(visible: visibleStart..<visibleEnd, count: model.displayItems.count) {
-            art.rowThumbnailSource(for: model.displayItems[$0])
-        }
-        
-        context.restoreGState()
-        
-        // Draw alphabet index (exclude column header zone so # appears below column headers)
-        drawAlphabetIndex(in: context, rect: layout.alphabet, skin: skin)
+    /// The shared list painter, in this skin's fonts and colours.
+    private func listPainter(_ context: CGContext, _ layout: LibraryBrowserListLayout, skin: ModernSkin) -> LibraryBrowserListPainter {
+        let metal = isMetalRenderStyle
+        let selected = skin.applyTextOpacity(to: metal ? skin.textColor : skin.accentColor)
+        let dim = skin.applyTextOpacity(to: skin.textDimColor)
+        let style = LibraryBrowserListPainter.Style(
+            titleFont: skin.scaledSystemFont(size: 8),
+            detailFont: skin.scaledSystemFont(size: 7.2),
+            disclosureFont: skin.scaledSystemFont(size: 6.4),
+            title: skin.applyTextOpacity(to: skin.textColor), selectedTitle: selected,
+            cell: dim, selectedCell: selected,
+            info: dim, selectedInfo: selected,
+            disclosure: dim,
+            filledStar: metal ? metalRatingColor : NSColor(srgbRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0),
+            emptyStar: dim.withAlphaComponent(0.4),
+            // Metal highlights with the green LCD colour of the playlist's now-playing row.
+            selectedRowFill: metal ? metalMaterial.displayFill.withAlphaComponent(0.30) : skin.primaryColor.withAlphaComponent(0.06),
+            rowFill: nil,
+            listFill: nil,
+            thumbnailPlaceholder: skin.textDimColor.withAlphaComponent(0.15),
+            spinner: skin.applyTextOpacity(to: skin.textColor),
+            snapsRowsToPoints: false,
+            textIgnoresContentAlpha: true,
+            headerFill: contentFill(metal ? metalControlBandFill : skin.surfaceColor.withAlphaComponent(0.4)),
+            headerFont: skin.scaledSystemFont(size: 7.2, weight: .medium),
+            sortIndicatorFont: skin.scaledSystemFont(size: 5.6),
+            headerTitle: skin.applyTextOpacity(to: skin.textDimColor.withAlphaComponent(0.7)),
+            sortedHeaderTitle: skin.applyTextOpacity(to: skin.textColor.withAlphaComponent(0.9)),
+            headerSeparator: skin.textDimColor.withAlphaComponent(0.2),
+            headerBottomLine: skin.textDimColor.withAlphaComponent(0.3),
+            // Metal lets the brushed panel show through, so the index reads as part of one surface.
+            alphabetFill: contentFill(metal ? .clear : skin.surfaceColor.withAlphaComponent(0.3)),
+            letterWithRows: selected,
+            letterWithoutRows: skin.applyTextOpacity(to: skin.textDimColor.withAlphaComponent(0.3)))
+        return LibraryBrowserListPainter(context: context, layout: layout, style: style, model: model, list: list,
+                                         art: art, youtubeVideos: actions.youtubeVideos, thumbnails: rowThumbnails,
+                                         spinnerStep: coordinator.spinnerStep)
     }
-
-    // MARK: - Column Headers
-    
-    private func drawColumnHeaders(in context: CGContext, header: LibraryBrowserListLayout.Header, skin: ModernSkin) {
-        let rect = header.rect, columns = header.columns
-        context.saveGState()
-        context.clip(to: rect)
-        
-        contentFill(isMetalRenderStyle ? metalControlBandFill : skin.surfaceColor.withAlphaComponent(0.4)).setFill()
-        context.fill(rect)
-
-        let headerFont = skin.scaledSystemFont(size: 7.2, weight: .medium)
-        let headerColor = skin.textDimColor.withAlphaComponent(0.7)
-        let sortedHeaderColor = skin.textColor.withAlphaComponent(0.9)
-        let separatorColor = skin.textDimColor.withAlphaComponent(0.2)
-        
-        for (index, (column, x, width)) in list.columnSpans(columns, group: header.group, in: rect).enumerated() {
-            let isSortColumn = model.activeColumnSortId == column.id
-            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
-                (model.hasInternetRadioColumns && column.id == .rating)
-            
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: headerFont,
-                .foregroundColor: skin.applyTextOpacity(to: isSortColumn ? sortedHeaderColor : headerColor)
-            ]
-            
-            let textSize = column.title.size(withAttributes: attrs)
-            let textY = rect.minY + (columnHeaderHeight - textSize.height) / 2
-            let textX = isCenteredRadioColumn ? (x + (width - textSize.width) / 2) : (x + 4)
-            drawText(column.title, at: NSPoint(x: textX, y: textY), withAttributes: attrs, context: context)
-            
-            if isSortColumn {
-                let indicator = model.activeColumnSortAscending ? "▲" : "▼"
-                let indicatorAttrs: [NSAttributedString.Key: Any] = [
-                    .font: skin.scaledSystemFont(size: 5.6),
-                    .foregroundColor: skin.applyTextOpacity(to: sortedHeaderColor)
-                ]
-                drawText(indicator, at: NSPoint(x: textX + textSize.width + 3, y: textY + 1), withAttributes: indicatorAttrs, context: context)
-            }
-            
-            if index < columns.count - 1 {
-                context.setStrokeColor(separatorColor.cgColor)
-                context.setLineWidth(1)
-                context.move(to: CGPoint(x: x + width - 1, y: rect.minY + 3))
-                context.addLine(to: CGPoint(x: x + width - 1, y: rect.maxY - 3))
-                context.strokePath()
-            }
-        }
-        
-        // Bottom separator
-        context.setStrokeColor(skin.textDimColor.withAlphaComponent(0.3).cgColor)
-        context.setLineWidth(1)
-        context.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        context.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        context.strokePath()
-        
-        context.restoreGState()
-    }
-    
-    // MARK: - Column Row Drawing
-    
-    private func drawColumnRow(item: LibraryBrowserItem, columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
-                               in context: CGContext, rect: NSRect, isSelected: Bool, skin: ModernSkin, indent: CGFloat = 0) {
-        let textColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textColor
-        let dimColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textDimColor
-        let font = skin.scaledSystemFont(size: 8)
-        let smallFont = skin.scaledSystemFont(size: 7.2)
-        
-        let hasArtColumn = columns.contains { $0.id == .thumbnail }
-        let cells = LibraryColumnVisibility.cellFrames(
-            widths: model.widths(of: columns, group: group, available: rect.width),
-            titleIndex: columns.firstIndex { $0.id == .title }, indent: indent,
-            spansLeadingCells: model.columnGroup(for: item) != group)
-        for (column, cell) in zip(columns, cells) {
-            let x = rect.minX + cell.start - list.horizontalScrollOffset, width = cell.width
-
-            if column.id == .thumbnail {
-                if let thumbnail = art.rowThumbnailSource(for: item) {
-                    rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
-                }
-                continue
-            }
-            let value = column.id == .title ? item.shownTitle : item.columnValue(for: column)
-            let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
-                (model.isInternetRadioItem(item) && column.id == .rating)
-            
-            let color = column.id == .title ? textColor : dimColor
-            let useFont = column.id == .title ? font : smallFont
-
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: useFont,
-                .foregroundColor: skin.applyTextOpacity(to: color)
-            ]
-            // Per-row download spinner on the title column of a downloading YouTube video.
-            var titleSpinnerInset: CGFloat = 0
-            if column.id == .title, case .youtubeVideo(let video) = item.type,
-               actions.youtubeVideos.isFetching(video.videoId) {
-                let spinnerRadius = min(rect.height * 0.3, 6)
-                let cx = x + 4 + spinnerRadius
-                drawRowSpinner(in: context, center: CGPoint(x: cx, y: rect.midY), radius: spinnerRadius, skin: skin)
-                titleSpinnerInset = spinnerRadius * 2 + 4
-            }
-            // Round art ahead of the title, unless the row has an Art column to hold it.
-            if column.id == .title, !hasArtColumn, let thumbnail = art.rowThumbnailSource(for: item) {
-                titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: x + 4 + titleSpinnerInset,
-                                                        rowRect: rect, side: rect.height - 2)
-            }
-
-            let textSize = value.size(withAttributes: attrs)
-            let textY = rect.minY + (rect.height - textSize.height) / 2
-            let textX = isCenteredRadioColumn ? (x + (width - textSize.width) / 2) : (x + 4 + titleSpinnerInset)
-            let maxTextWidth = width - 8 - titleSpinnerInset
-
-            let drawRect = NSRect(x: textX, y: textY, width: maxTextWidth, height: textSize.height)
-            if column.id == .rating && !isSelected && value.contains("★") {
-                let goldColor = isMetalRenderStyle
-                    ? metalRatingColor
-                    : NSColor(srgbRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0)
-                let emptyColor = skin.applyTextOpacity(to: dimColor).withAlphaComponent(0.4)
-                let astr = NSMutableAttributedString(string: value, attributes: attrs)
-                for (i, ch) in value.enumerated() {
-                    let range = NSRange(location: i, length: 1)
-                    astr.addAttribute(.foregroundColor, value: ch == "★" ? goldColor : emptyColor, range: range)
-                }
-                context.saveGState()
-                context.setAlpha(1.0)
-                astr.draw(with: drawRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-                context.restoreGState()
-            } else {
-                drawText(
-                    value,
-                    in: drawRect,
-                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
-                    withAttributes: attrs,
-                    context: context
-                )
-            }
-        }
-    }
-    
     // MARK: - State Drawing Methods
     
     private func drawNotLinkedState(in context: CGContext, listRect: NSRect, skin: ModernSkin) {
@@ -1440,14 +1146,9 @@ class ModernLibraryBrowserView: NSView {
     }
     
     private func drawLoadingState(in context: CGContext, listRect: NSRect, skin: ModernSkin) {
-        coordinator.drawSpinner(in: context, center: CGPoint(x: listRect.midX, y: listRect.midY),
-                                innerRadius: 5, outerRadius: 12, lineWidth: 2.5, color: skin.textColor)
-    }
-
-    /// Small inline spinner used on a downloading YouTube video row.
-    private func drawRowSpinner(in context: CGContext, center: CGPoint, radius: CGFloat, skin: ModernSkin) {
-        coordinator.drawSpinner(in: context, center: center, innerRadius: radius * 0.45, outerRadius: radius,
-                                lineWidth: 1.5, color: skin.applyTextOpacity(to: skin.textColor))
+        LibraryBrowserListPainter.drawSpinner(in: context, center: CGPoint(x: listRect.midX, y: listRect.midY),
+                                              innerRadius: 5, outerRadius: 12, lineWidth: 2.5, color: skin.textColor,
+                                              step: coordinator.spinnerStep)
     }
 
     private func drawErrorState(in context: CGContext, message: String, listRect: NSRect, skin: ModernSkin) {
@@ -1470,45 +1171,6 @@ class ModernLibraryBrowserView: NSView {
         let textX = listRect.midX - textSize.width / 2
         let textY = listRect.midY - textSize.height / 2
         drawText(message, at: NSPoint(x: textX, y: textY), withAttributes: attrs, context: context)
-    }
-    
-    // MARK: - Alphabet Index
-    
-    private func drawAlphabetIndex(in context: CGContext, rect: NSRect, skin: ModernSkin) {
-        // Metal: let the brushed-metal panel show through so the index reads as part of
-        // the single continuous surface rather than a darker inset strip.
-        contentFill(isMetalRenderStyle ? NSColor.clear : skin.surfaceColor.withAlphaComponent(0.3)).setFill()
-        context.fill(rect)
-        
-        let letters = LibraryBrowserList.alphabetLetters
-        let letterHeight = rect.height / CGFloat(letters.count)
-        let fontSize = min(9 * ModernSkinElements.sizeMultiplier, letterHeight * 0.8)
-        let availableLetters = model.lettersWithRows
-
-        for (index, letter) in letters.enumerated() {
-
-            // Bottom-left origin: # at top, Z at bottom
-            let y = rect.maxY - CGFloat(index + 1) * letterHeight
-            let letterRect = NSRect(x: rect.minX, y: y, width: rect.width, height: letterHeight)
-            
-            let hasItems = availableLetters.contains(letter)
-            let color = hasItems ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textDimColor.withAlphaComponent(0.3)
-            
-            let attrs: [NSAttributedString.Key: Any] = [
-                .foregroundColor: skin.applyTextOpacity(to: color),
-                .font: NSFont.boldSystemFont(ofSize: fontSize)
-            ]
-            let letterSize = letter.size(withAttributes: attrs)
-            let drawPoint = NSPoint(
-                x: letterRect.midX - letterSize.width / 2,
-                y: letterRect.midY - letterSize.height / 2
-            )
-            drawText(letter, at: drawPoint, withAttributes: attrs, context: context)
-        }
-    }
-    
-    private func drawStatusBarText(in context: CGContext, skin: ModernSkin) {
-        // Status info shown in server bar; this is kept for future use
     }
     
     // MARK: - List Layout
@@ -1579,7 +1241,7 @@ class ModernLibraryBrowserView: NSView {
 
         // Window buttons (only when titlebar is visible)
         if !WindowManager.shared.hideTitleBars {
-            if hitTestCloseButton(at: point) { pressedButton = .close; needsDisplay = true; return }
+            if hitTestCloseButton(at: point) { isClosePressed = true; needsDisplay = true; return }
         }
 
         // Library | Playlist toggle footer (compact window only). The footer band sits below
@@ -1641,11 +1303,9 @@ class ModernLibraryBrowserView: NSView {
             didPrimeWindowDragHold = false
         }
 
-        if let pressed = pressedButton {
-            switch pressed {
-            case .close: if hitTestCloseButton(at: point) { window?.close() }
-            }
-            pressedButton = nil; needsDisplay = true
+        if isClosePressed {
+            if hitTestCloseButton(at: point) { window?.close() }
+            isClosePressed = false; needsDisplay = true
         }
     }
 
@@ -1707,12 +1367,11 @@ class ModernLibraryBrowserView: NSView {
 
     @objc private func modernSkinDidChange() {
         let skin = currentSkin()
-        renderer = ModernSkinRenderer(skin: skin)
         historyHostingView?.rootView = StatsContentView(agent: model.history,
                                                         skinTextColor: Color(skin.textColor),
                                                         headerTitle: "Library Data",
                                                         heatmapTheme: ContributionHeatmapTheme(modernSkin: skin))
-        historyHostingView?.appearance = skinAppearance(for: skin)
+        historyHostingView?.appearance = NSAppearance.matching(background: skin.backgroundColor)
         updateHistoryHostingBackground()
         list.lens.restyle()
         backdrop.reload()

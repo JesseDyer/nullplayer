@@ -5,7 +5,7 @@ extension LibraryBrowserModel {
 
     /// The banner under the list while a local watch folder is offline, or nil.
     var offlineBannerText: String? {
-        guard isLocalSource, !offlineWatchFolders.isEmpty else { return nil }
+        guard currentSource.isLocal, !offlineWatchFolders.isEmpty else { return nil }
         let count = offlineWatchFolders.reduce(0) { $0 + $1.totalCount }
         let names = offlineWatchFolders.map { $0.url.lastPathComponent }.joined(separator: ", ")
         return "⚠  \"\(names)\" offline — \(count) track\(count == 1 ? "" : "s") unavailable"
@@ -23,8 +23,7 @@ extension LibraryBrowserModel {
     }
 
     func loadLocalData() {
-        isLoading = false
-        errorMessage = nil
+        loadState = .idle
 
         // Watch folders on volumes that are not mounted
         offlineWatchFolders = MediaLibrary.shared.watchFolderSummaries().filter { !$0.isAvailable }
@@ -85,7 +84,7 @@ extension LibraryBrowserModel {
 
     /// After a tag edit: reload the local rows from scratch.
     func reloadLocalBrowserAfterMetadataEdit() {
-        guard isLocalSource else { return }
+        guard currentSource.isLocal else { return }
         clearLocalCachedData()
         displayItems.removeAll()
         rowsReplaced()
@@ -94,11 +93,8 @@ extension LibraryBrowserModel {
 
     /// After adding videos: open the local Movies tab, so they are in view.
     func showLocalMovies() {
-        if !isLocalSource { currentSource = .local }
-        if browseMode != .movies {
-            browseMode = .movies
-            rowsReplaced()
-        }
+        if !currentSource.isLocal { currentSource = .local }
+        browseMode = .movies
         loadDataForCurrentMode()
     }
 
@@ -175,7 +171,7 @@ extension LibraryBrowserModel {
         LibraryBrowserItem(
             id: "local-artist-\(name)",
             title: name,
-            info: countLabel(albumCount, "album"),
+            info: LibraryBrowserItem.countLabel(albumCount, "album"),
             indentLevel: indentLevel,
             hasChildren: albumCount > 0,
             type: .localArtist(Artist(id: name, name: name, albums: []))
@@ -226,8 +222,7 @@ extension LibraryBrowserModel {
         // Show the loading spinner (not the empty "No folders found" state) while the
         // off-actor walk runs — matters for slow network/NAS watch folders.
         displayItems.removeAll()
-        errorMessage = nil
-        isLoading = true
+        loadState = .loading
 
         // Cancel any walk still running from a previous (faster) click
         localFolderBuildTask?.cancel()
@@ -239,9 +234,9 @@ extension LibraryBrowserModel {
             await MainActor.run { [weak self] in
                 guard let self,
                       self.localFolderBuildGeneration == gen,
-                      self.isLocalSource,
+                      self.currentSource.isLocal,
                       self.browseMode == .folders else { return }
-                self.isLoading = false
+                self.endLoading()
                 self.displayItems = items
                 self.localFolderBuildTask = nil
             }
@@ -299,7 +294,7 @@ extension LibraryBrowserModel {
             guard isExpanded(.localPlaylist, key), let tracks = localPlaylistTracks[key] else { continue }
             for track in tracks {
                 rows.append(LibraryBrowserItem(id: "\(key)-\(track.url.absoluteString)", title: track.title,
-                                                       info: formatDuration(track.duration.map { Int($0) }),
+                                                       info: LibraryBrowserItem.formatDuration(track.duration.map { Int($0) }),
                                                        indentLevel: 1, hasChildren: false, type: .localPlaylistTrack(track)))
             }
         }
@@ -328,13 +323,13 @@ extension LibraryBrowserModel {
     func buildLocalShowItems() {
         var rows: [LibraryBrowserItem] = []
         for show in cachedLocalShows.sorted(by: { compareNameStrings($0.title, $1.title, ascending: true) }) {
-            rows.append(LibraryBrowserItem(id: "local-show-\(show.id)", title: show.title, info: countLabel(show.episodeCount, "episode"),
+            rows.append(LibraryBrowserItem(id: "local-show-\(show.id)", title: show.title, info: LibraryBrowserItem.countLabel(show.episodeCount, "episode"),
                                                    indentLevel: 0, hasChildren: true, type: .localShow(show)))
             guard isExpanded(.localShow, show.id) else { continue }
             for season in show.seasons.sorted(by: { $0.number < $1.number }) {
                 let seasonKey = Self.localSeasonKey(season, showTitle: show.title)
                 rows.append(LibraryBrowserItem(id: "local-season-\(seasonKey)", title: "Season \(season.number)",
-                                                       info: countLabel(season.episodes.count, "episode"), indentLevel: 1,
+                                                       info: LibraryBrowserItem.countLabel(season.episodes.count, "episode"), indentLevel: 1,
                                                        hasChildren: true, type: .localSeason(season, showTitle: show.title)))
                 guard isExpanded(.localSeason, seasonKey) else { continue }
                 for episode in season.episodes.sorted(by: { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }) {
@@ -355,8 +350,7 @@ extension LibraryBrowserModel {
     // MARK: - Radio
 
     func loadLocalRadioStations() {
-        isLoading = false
-        errorMessage = nil
+        loadState = .idle
         var rows = [LibraryBrowserItem(id: "local-radio-library", title: "Library Radio", info: "Library", indentLevel: 0, hasChildren: false, type: .localRadioStation(.libraryRadio))]
         for genre in MediaLibrary.shared.allGenres() {
             rows.append(LibraryBrowserItem(id: "local-radio-genre-\(genre)", title: "\(genre) Radio", info: "Genre", indentLevel: 0, hasChildren: false, type: .localRadioStation(.genreRadio(genre))))

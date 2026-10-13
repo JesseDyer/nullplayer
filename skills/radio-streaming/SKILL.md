@@ -310,7 +310,7 @@ Sources/NullPlayer/
 | `.decadeRadio(s,e,name)` | `createDecadeRadio(start:end:)` | Songs from year range |
 | `.decadeSimilar(s,e,name)` | `createDecadeRadioSimilar(start:end:)` | Similar to a random decade track |
 
-**Jellyfin** (`JellyfinRadioType`):
+**Jellyfin and Emby** (`InstantMixRadioType`, played through `tracks(from:)` on the row's server — `InstantMixRadioServer`):
 | Case | Function |
 |------|----------|
 | `.libraryRadio` | `createLibraryRadio()` — random songs |
@@ -321,8 +321,6 @@ Sources/NullPlayer/
 | `.decadeInstantMix(s,e,name)` | `createDecadeRadioInstantMix(start:end:)` |
 | `.favoritesRadio` | `createFavoritesRadio()` — favorite songs |
 | `.favoritesInstantMix` | `createFavoritesRadioInstantMix()` |
-
-**Emby** (`EmbyRadioType`) — same structure as Jellyfin (Library, Genre, Decade, Favorites each with plain + InstantMix variant).
 
 **Local** (`LocalRadioType`):
 | Case | Function |
@@ -469,7 +467,7 @@ The browser Radio tab has two behaviors:
   - Genre/category column centered in radio lists
   - Double-click to generate and play queue
 
-Implemented once in `Windows/LibraryBrowser/` (`LibraryBrowserModel+Radio` and each server's `build…RadioStationItems`, with `LibraryBrowserActions+Radio` for the station and folder actions); each browser view only draws the rows.
+Implemented once in `Windows/LibraryBrowser/` (`LibraryBrowserModel+Radio`, Plex's and Local's `build…RadioStationItems`, and `loadServerRadioStations` for Subsonic, Jellyfin and Emby, which lists `BrowsableRadioStation.stations(genres:)`, with `LibraryBrowserActions+Radio` for the station and folder actions); each browser view only draws the rows.
 
 ### Main Window Marquee
 

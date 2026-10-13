@@ -15,8 +15,9 @@ final class LibraryBrowserModel: NSObject {
     enum Change {
         /// `displayItems` changed.
         case rows
-        /// `isLoading` or `errorMessage` changed.
-        case loading
+        /// What the list area shows instead of rows may have changed: `loadState`, or whether the
+        /// Plex source still needs an account linked.
+        case listState
         /// A new list replaced the rows and cleared the selection: the scroll position no longer applies.
         case rowsReplaced
         /// The rows were re-built in place after an expand, collapse or re-sort.
@@ -27,7 +28,7 @@ final class LibraryBrowserModel: NSObject {
         case reveal(Int)
         /// `currentSource` changed; the rows and selection were cleared and are reloading.
         case source
-        /// `browseMode` changed.
+        /// `browseMode` changed; the selection was cleared, and the new tab opens at its top.
         case browseMode
         /// A column was shown or hidden, or a group's columns were reset.
         case columns
@@ -57,6 +58,7 @@ final class LibraryBrowserModel: NSObject {
                 cancelLocalFolderBuild()
             }
             if browseMode.isHistoryMode { history.scheduleRefresh() }
+            selectedIndices.removeAll()
             onChange?(.browseMode)
         }
     }
@@ -95,11 +97,28 @@ final class LibraryBrowserModel: NSObject {
     var displayItems: [LibraryBrowserItem] = [] {
         didSet { onChange?(.rows) }
     }
-    var isLoading = false {
-        didSet { onChange?(.loading) }
+
+    /// Whether the current tab is loading, or failed to.
+    enum LoadState: Equatable {
+        case idle
+        case loading
+        case failed(String)
     }
+
+    var loadState = LoadState.idle {
+        didSet { if loadState != oldValue { onChange?(.listState) } }
+    }
+
+    var isLoading: Bool { loadState == .loading }
+
     var errorMessage: String? {
-        didSet { onChange?(.loading) }
+        if case .failed(let message) = loadState { return message }
+        return nil
+    }
+
+    /// A load ended without an error of its own: a failure reported meanwhile stays.
+    func endLoading() {
+        if loadState == .loading { loadState = .idle }
     }
 
     /// What the list area shows, outside the Data tab: a state in place of the rows, or the rows
@@ -153,7 +172,8 @@ final class LibraryBrowserModel: NSObject {
     var radioLoadTask: Task<Void, Never>?
     /// A Subsonic, Jellyfin or Emby row's children; a newer expand replaces it.
     var expandTask: Task<Void, Never>?
-    var jellyfinAlbumWarmTask: Task<Void, Never>?
+    /// The albums of a server whose Artists tab loaded without them (Jellyfin).
+    var albumWarmTask: Task<Void, Never>?
 
     // MARK: - Expansion
 
@@ -191,14 +211,11 @@ final class LibraryBrowserModel: NSObject {
     // MARK: - Server caches
 
     var plex = PlexBrowserCache()
-    var subsonic = ServerMusicCache<SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicPlaylist>()
-    var jellyfin = ServerMusicCache<JellyfinArtist, JellyfinAlbum, JellyfinSong, JellyfinPlaylist>()
-    var jellyfinVideo = ServerVideoCache<JellyfinMovie, JellyfinShow, JellyfinSeason, JellyfinEpisode>()
-    var emby = ServerMusicCache<EmbyArtist, EmbyAlbum, EmbySong, EmbyPlaylist>()
-    var embyVideo = ServerVideoCache<EmbyMovie, EmbyShow, EmbySeason, EmbyEpisode>()
-    var subsonicSearchResults: SubsonicSearchResults?
-    var jellyfinSearchResults: JellyfinSearchResults?
-    var embySearchResults: EmbySearchResults?
+    var subsonic = ServerMusicCache<SubsonicManager>()
+    var jellyfin = ServerMusicCache<JellyfinManager>()
+    var jellyfinVideo = ServerVideoCache<JellyfinManager>()
+    var emby = ServerMusicCache<EmbyManager>()
+    var embyVideo = ServerVideoCache<EmbyManager>()
 
     // MARK: - Local
 
@@ -284,8 +301,7 @@ final class LibraryBrowserModel: NSObject {
     /// is Plists.
     func restoreBrowseMode(rawValue: Int) {
         guard let mode = LibraryBrowseMode(rawValue: rawValue) else { return }
-        browseMode = mode == .folders && !isLocalSource ? .plists : mode
-        rowsReplaced()
+        browseMode = mode == .folders && !currentSource.isLocal ? .plists : mode
         reloadData()
     }
 
@@ -293,14 +309,13 @@ final class LibraryBrowserModel: NSObject {
 
     private func sourceDidChange() {
         invalidateActiveLoads()
-        if browseMode == .folders && !isLocalSource {
+        if browseMode == .folders && !currentSource.isLocal {
             browseMode = .plists
         }
         clearAllCachedData()
         clearLocalCachedData()
         displayItems.removeAll()
-        errorMessage = nil
-        isLoading = false
+        loadState = .idle
         selectedIndices.removeAll()
         // Internet Radio only has radio/search content, but every library
         // source supports the Radio tab. Preserve Radio across source changes.
@@ -312,11 +327,6 @@ final class LibraryBrowserModel: NSObject {
         reloadData()
     }
 
-    var isLocalSource: Bool {
-        if case .local = currentSource { return true }
-        return false
-    }
-
     // MARK: - Tab slots
 
     /// The Plists tab slot toggles between Plists and Folders (Local source only).
@@ -326,7 +336,7 @@ final class LibraryBrowserModel: NSObject {
     }
 
     var effectivePlistsSlotMode: LibraryBrowseMode {
-        isLocalSource && localPlistsSlotShowsFolders ? .folders : .plists
+        currentSource.isLocal && localPlistsSlotShowsFolders ? .folders : .plists
     }
 
     /// The Radio tab slot toggles between Internet Radio stations and YouTube
@@ -355,10 +365,15 @@ final class LibraryBrowserModel: NSObject {
     /// it is switched to.
     var tabLabels: [String] {
         LibraryBrowseMode.tabs.map { mode in
-            if mode == .plists, isLocalSource, localPlistsSlotShowsFolders { return "Folders" }
-            if mode == .radio, radioSlotShowingChannels { return "Channels" }
+            if mode == .plists, currentSource.isLocal, localPlistsSlotShowsFolders { return LibraryBrowseMode.folders.title }
+            if mode == .radio, radioSlotShowingChannels { return LibraryBrowseMode.channelsLabel }
             return mode.title
         }
+    }
+
+    /// The tab slot showing `browseMode`: Folders shares the Plists slot.
+    var activeTabSlot: LibraryBrowseMode {
+        browseMode == .folders ? .plists : browseMode
     }
 
     /// A source-bar name with the item count appended: "FLAC_LIB (988 items)". The local Artists
@@ -391,7 +406,7 @@ final class LibraryBrowserModel: NSObject {
     /// A tab-bar click on `slot`. A double-click flips what a two-way slot shows: Plists and
     /// Folders for the Local source, Internet Radio and Channels for YouTube.
     func selectTab(_ slot: LibraryBrowseMode, doubleClick: Bool) {
-        if doubleClick, slot == .plists, isLocalSource {
+        if doubleClick, slot == .plists, currentSource.isLocal {
             localPlistsSlotShowsFolders.toggle()
         } else if doubleClick, slot == .radio, currentSource.isYouTube {
             radioSlotShowsChannels.toggle()
@@ -400,6 +415,7 @@ final class LibraryBrowserModel: NSObject {
         // Clicking the Data tab again re-reads the play history.
         if mode == browseMode, mode.isHistoryMode { history.scheduleRefresh() }
         browseMode = mode
+        // Even the open tab re-reads from the top.
         rowsReplaced()
         loadDataForCurrentMode()
     }
@@ -464,8 +480,7 @@ final class LibraryBrowserModel: NSObject {
         if browseMode.isHistoryMode {
             invalidateActiveLoads()
             displayItems = []
-            isLoading = false
-            errorMessage = nil
+            loadState = .idle
             rowsReplaced()
             return
         }
@@ -479,38 +494,32 @@ final class LibraryBrowserModel: NSObject {
             case .search:
                 if currentSource.isYouTube { loadYouTubeSearchResults() } else { loadRadioSearchResults() }
             default:
-                isLoading = false
-                errorMessage = nil
+                loadState = .idle
                 displayItems = []
             }
             return
         }
 
-        if browseMode == .radio {
-            switch currentSource {
-            case .plex: loadPlexRadioStations(generation: generation)
-            case .subsonic: loadSubsonicRadioStations(generation: generation)
-            case .jellyfin: loadJellyfinRadioStations(generation: generation)
-            case .emby: loadEmbyRadioStations(generation: generation)
-            case .local: loadLocalRadioStations()
-            case .radio, .youtube: displayItems = []
+        if let manager = currentServerManager {
+            if browseMode == .radio {
+                loadServerRadioStations(manager, generation: generation)
+            } else {
+                loadServerData(manager, generation: generation)
             }
             return
         }
-
         switch currentSource {
+        case .local where browseMode == .radio: loadLocalRadioStations()
         case .local: loadLocalData()
+        case .plex where browseMode == .radio: loadPlexRadioStations(generation: generation)
         case .plex(let serverId): loadPlexData(serverId: serverId, generation: generation)
-        case .subsonic(let serverId): loadSubsonicData(serverId: serverId, generation: generation)
-        case .jellyfin(let serverId): loadJellyfinData(serverId: serverId, generation: generation)
-        case .emby(let serverId): loadEmbyData(serverId: serverId, generation: generation)
-        case .radio, .youtube: break
+        case .subsonic, .jellyfin, .emby, .radio, .youtube: break
         }
     }
 
     /// Rebuild the current tab's rows from the caches, after an expand, collapse or re-sort.
     func rebuildCurrentModeItems() {
-        onChange?(.rebuilt)
+        defer { onChange?(.rebuilt) }
         if currentSource.usesRadioTab {
             switch browseMode {
             case .radio:
@@ -525,13 +534,12 @@ final class LibraryBrowserModel: NSObject {
         }
         // A server's or the library's radio stations are not rebuilt; they stay as loaded.
         if browseMode == .radio { return }
-        switch currentSource {
-        case .local: rebuildLocalItems()
-        case .plex: rebuildPlexItems()
-        case .subsonic: rebuildSubsonicItems()
-        case .jellyfin: rebuildJellyfinItems()
-        case .emby: rebuildEmbyItems()
-        case .radio, .youtube: break
+        if let manager = currentServerManager {
+            rebuildServerRows(manager)
+        } else if currentSource.isLocal {
+            rebuildLocalItems()
+        } else if currentSource.isPlex {
+            rebuildPlexItems()
         }
         if columnSortId != nil { applyColumnSort() }
         resolvePendingArtist()
@@ -544,48 +552,25 @@ final class LibraryBrowserModel: NSObject {
             history.scheduleRefresh()
             return
         }
-        if currentSource.usesRadioTab {
-            if case .youtube = currentSource, browseMode == .search {
-                loadYouTubeSearchResults(force: true)
-            } else if case .youtube = currentSource, browseMode != .radio {
-                isLoading = false
-                errorMessage = nil
-                displayItems = []
-            } else {
-                loadDataForCurrentMode()
-            }
-            return
-        }
-        if browseMode == .radio {
+        if currentSource.isYouTube && browseMode == .search {
+            loadYouTubeSearchResults(force: true)
+        } else if currentSource.usesRadioTab || browseMode == .radio {
             loadDataForCurrentMode()
-            return
-        }
-        switch currentSource {
-        case .local:
+        } else if let manager = currentServerManager {
+            refreshServer(manager)
+        } else if currentSource.isLocal {
             MediaLibrary.shared.rescanWatchFolders()
             loadLocalData()
-        case .plex:
+        } else if currentSource.isPlex {
             refreshData()
-        case .subsonic:
-            SubsonicManager.shared.clearCachedContent()
-            refreshAfterPreload { await SubsonicManager.shared.preloadLibraryContent() }
-        case .jellyfin:
-            jellyfinAlbumWarmTask?.cancel(); jellyfinAlbumWarmTask = nil
-            JellyfinManager.shared.clearCachedContent()
-            refreshAfterPreload { await JellyfinManager.shared.preloadLibraryContent() }
-        case .emby:
-            EmbyManager.shared.clearCachedContent()
-            refreshAfterPreload { await EmbyManager.shared.preloadLibraryContent() }
-        case .radio, .youtube:
-            break
         }
     }
 
     /// Show the loading state at once, then reload once the server's library is preloaded again.
-    private func refreshAfterPreload(_ preload: @escaping @MainActor () async -> Void) {
+    func refreshAfterPreload(_ preload: @escaping @MainActor () async -> Void) {
         loadTask?.cancel(); loadTask = nil
         let source = currentSource
-        isLoading = true; errorMessage = nil; displayItems = []
+        loadState = .loading; displayItems = []
         Task { @MainActor [weak self] in
             await preload()
             guard let self, self.currentSource == source else { return }
@@ -599,7 +584,7 @@ final class LibraryBrowserModel: NSObject {
         let generation = invalidateActiveLoads()
         clearAllCachedData()
         rowsReplaced()
-        isLoading = true; errorMessage = nil; displayItems = []
+        loadState = .loading; displayItems = []
         PlexManager.shared.clearCachedContent()
         loadDataForCurrentMode(generation: generation)
     }
@@ -609,10 +594,10 @@ final class LibraryBrowserModel: NSObject {
     @discardableResult
     func invalidateActiveLoads() -> Int {
         loadGeneration &+= 1
-        for task in [sourceConnectTask, loadTask, radioLoadTask, expandTask, jellyfinAlbumWarmTask] {
+        for task in [sourceConnectTask, loadTask, radioLoadTask, expandTask, albumWarmTask] {
             task?.cancel()
         }
-        sourceConnectTask = nil; loadTask = nil; radioLoadTask = nil; expandTask = nil; jellyfinAlbumWarmTask = nil
+        sourceConnectTask = nil; loadTask = nil; radioLoadTask = nil; expandTask = nil; albumWarmTask = nil
         youtubeSearch.cancel()
         return loadGeneration
     }
@@ -623,14 +608,12 @@ final class LibraryBrowserModel: NSObject {
 
     func setLoadErrorIfActive(_ message: String, generation: Int, source expectedSource: LibraryBrowserSource) {
         guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = false
-        errorMessage = message
+        loadState = .failed(message)
     }
 
     func finishLoadIfActive(generation: Int, source expectedSource: LibraryBrowserSource) {
         guard isLoadContextActive(generation, source: expectedSource) else { return }
-        isLoading = false
-        errorMessage = nil
+        loadState = .idle
         // Apply any active column-header sort so a fresh server load matches what an
         // expand-driven rebuild produces — otherwise expanding a row would re-order the list.
         if columnSortId != nil { applyColumnSort() }
@@ -690,8 +673,8 @@ final class LibraryBrowserModel: NSObject {
 
     /// Drop every server's rows and collapse them; the local rows are kept.
     func clearAllCachedData() {
-        jellyfinAlbumWarmTask?.cancel()
-        jellyfinAlbumWarmTask = nil
+        albumWarmTask?.cancel()
+        albumWarmTask = nil
         plex = PlexBrowserCache()
         collapse(.plexLibrary, .plexPlaylists)
         resetSubsonic()
@@ -734,11 +717,10 @@ final class LibraryBrowserModel: NSObject {
         emby.artists.removeAll()
         // Switch first so the page offset is computed under the Artists tab's own sort.
         browseMode = .artists
-        if isLocalSource,
+        if currentSource.isLocal,
            let artistOffset = MediaLibraryStore.shared.artistOffset(named: artistName, sort: currentSort) {
             localArtistPageOffset = (artistOffset / localPageSize) * localPageSize
         }
-        rowsReplaced()
         loadDataForCurrentMode()
     }
 
@@ -770,55 +752,19 @@ final class LibraryBrowserModel: NSObject {
 
     // MARK: - Letters and type-ahead
 
-    /// The alphabet-index letter a title files under, ignoring a leading article as the sort does.
-    static func sortLetter(for title: String) -> String {
-        let sortTitle = LibraryTextSorter.normalized(title, ignoreLeadingArticles: true).uppercased()
-        guard let firstChar = sortTitle.first else { return "#" }
-        return firstChar.isLetter ? String(firstChar) : "#"
-    }
-
     /// The alphabet-index letters that have rows: a paged local tab's, from the store; else the
     /// loaded rows'.
     var lettersWithRows: Set<String> {
-        if isLocalSource, browseMode == .artists { return Set(localArtistLetterOffsets.keys) }
-        if isLocalSource, browseMode == .albums { return Set(localAlbumLetterOffsets.keys) }
-        return Set(displayItems.map(Self.effectiveSortLetter))
-    }
-
-    /// The letter a row files under; a Subsonic artist uses the server's index letter.
-
-    static func effectiveSortLetter(for item: LibraryBrowserItem) -> String {
-        if case .subsonicArtist(let artist) = item.type,
-           let normalized = normalizedIndexLetter(artist.indexLetter) {
-            return normalized
-        }
-        return sortLetter(for: item.title)
-    }
-
-    /// Normalizes a raw Subsonic `indexLetter` to a single uppercase letter, or nil if blank.
-    static func normalizedIndexLetter(_ raw: String?) -> String? {
-        guard let first = raw?.trimmingCharacters(in: .whitespaces).first else { return nil }
-        return String(first).uppercased()
-    }
-
-    /// Whether type-ahead `query` (lowercased) picks this title: its start, its start without a
-    /// leading article ("beat" → "The Beatles"), or its canonical form ("the at" → "Atlas Moth, The").
-    static func titleMatchesTypeAhead(_ title: String, query: String) -> Bool {
-        let lower = title.lowercased()
-        if lower.hasPrefix(query) { return true }
-        if LibraryTextSorter.normalized(title, ignoreLeadingArticles: true).lowercased().hasPrefix(query) { return true }
-        for suffix in [", the", ", an", ", a"] where lower.hasSuffix(suffix) {
-            let article = String(suffix.dropFirst(2))
-            return (article + " " + lower.dropLast(suffix.count)).hasPrefix(query)
-        }
-        return false
+        if currentSource.isLocal, browseMode == .artists { return Set(localArtistLetterOffsets.keys) }
+        if currentSource.isLocal, browseMode == .albums { return Set(localAlbumLetterOffsets.keys) }
+        return Set(displayItems.map(\.sortLetter))
     }
 
     /// The local Artists and Albums tabs page from the store: jump the page to `letter`.
     /// Returns nil on other tabs and sources, which scroll the loaded rows instead; otherwise
     /// whether the page moved (false when nothing files under `letter`).
     func showLocalPage(atLetter letter: String) -> Bool? {
-        guard isLocalSource else { return nil }
+        guard currentSource.isLocal else { return nil }
         switch browseMode {
         case .artists:
             guard let offset = localArtistLetterOffsets[letter] else { return false }
@@ -833,18 +779,6 @@ final class LibraryBrowserModel: NSObject {
         default:
             return nil
         }
-    }
-
-    // MARK: - Row text
-
-    /// "1 album", "3 albums".
-    func countLabel(_ count: Int, _ noun: String) -> String {
-        "\(count) \(noun)\(count == 1 ? "" : "s")"
-    }
-
-    /// A row's duration info, as the Time column shows it.
-    func formatDuration(_ seconds: Int?) -> String? {
-        seconds.map { LibraryBrowserItem.formatDuration(TimeInterval($0)) }
     }
 
     // MARK: - Teardown

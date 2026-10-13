@@ -75,6 +75,12 @@ enum LibraryBrowserSource: Equatable, Codable {
         }
     }
 
+    /// Whether this is the local library
+    var isLocal: Bool {
+        if case .local = self { return true }
+        return false
+    }
+
     /// Whether this is a Subsonic source
     var isSubsonic: Bool {
         if case .subsonic = self { return true }

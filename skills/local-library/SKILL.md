@@ -329,7 +329,7 @@ Every browser view navigates from Search results to the Artists tab through `Lib
 `makeFastTrack` does **not** persist a scan signature. The signature (`scan_file_size`, `scan_mod_date`) is written only after metadata enrichment completes. This is intentional: if enrichment is interrupted, the file will be re-enriched on next scan.
 
 ### Plists tab (local playlists) — browser wiring pitfalls
-Built once in `LibraryBrowserModel+Local` (`buildLocalPlaylistItems`), mirroring the server-playlist pattern (`buildSubsonicPlaylistItems`). Watch for:
+Built once in `LibraryBrowserModel+Local` (`buildLocalPlaylistItems`), mirroring the server-playlist pattern (`serverPlaylistRows`). Watch for:
 - **Two build sites** must both build the list: `loadLocalData()` **and** `rebuildLocalItems()` (reached from `rebuildCurrentModeItems()`). Updating only one makes playlists appear on first load then vanish after any expand/collapse (which re-runs `rebuildCurrentModeItems`).
 - **Key the expansion and track cache by `p.url.path`** (the stable identity), never `id.uuidString`; the `.localPlaylist` expansion key and `localPlaylistTracks` must use the same key.
 - Lazy parse on expand (`LibraryBrowserModel+Expand`) uses `Task.detached` (NOT plain `Task {}` — cancellation inheritance gotcha) and hops back with `MainActor.run`. `LibraryPlayable.tracks(inPlaylistFile:)` does the sync file I/O off-main and resolves each entry against the library (matched ⇒ the library track, unmatched ⇒ `Track(lightweightURL:)`).
@@ -346,8 +346,8 @@ running scan). Names sort in Finder's order through `LibraryTextSorter` with art
 (#543), and a symlinked folder is skipped by asking the item itself (`isSymbolicLinkKey`) — comparing
 resolved paths dropped every folder under a symlinked root such as `/tmp`.
 
-Column rows lay out their cells through `LibraryColumnVisibility.cellFrames`, shared by both browsers'
-`drawColumnRow`: a title indents from the leading pad as a plain row does, and only by what the cells
+Column rows lay out their cells through `LibraryColumnVisibility.cellFrames`, in the list painter both
+browsers share (`LibraryBrowserListPainter.drawCells`): a title indents from the leading pad as a plain row does, and only by what the cells
 before it leave short of its depth; an artist or album row under track columns spans the empty `#` cell.
 
 ## Data Tab (Play History Analytics)

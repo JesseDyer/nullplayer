@@ -13,6 +13,8 @@ struct LibraryBrowserListLayout {
     let rows: NSRect
     /// The alphabet index, beside the rows.
     let alphabet: NSRect
+    /// Right of the header, above an alphabet index that starts under it: filled as header.
+    let headerGap: NSRect?
     /// The offline-volume banner under `area`, when a local watch folder is offline.
     let banner: NSRect?
     let rowHeight: CGFloat
@@ -50,6 +52,8 @@ struct LibraryBrowserListLayout {
         self.header = columns.isEmpty ? nil : Header(rect: headerRect, columns: columns, group: group)
         self.rows = rows
         self.alphabet = alphabetBesideHeader ? alphabet : alphabet.divided(atDistance: headerHeight, from: top).remainder
+        self.headerGap = alphabetBesideHeader || columns.isEmpty ? nil
+            : NSRect(x: headerRect.maxX, y: headerRect.minY, width: area.maxX - headerRect.maxX, height: headerRect.height)
         self.banner = bannerHeight > 0 ? banner : nil
         self.rowHeight = rowHeight
         self.scale = scale
@@ -63,9 +67,14 @@ struct LibraryBrowserListLayout {
 
     /// Row `index`'s rect, with the list scrolled by `scrollOffset`.
     func rowRect(_ index: Int, scrollOffset: CGFloat) -> NSRect {
-        let top = CGFloat(index) * rowHeight - scrollOffset
-        let y = isFlipped ? rows.minY + top : rows.maxY - top - rowHeight
-        return NSRect(x: rows.minX, y: y, width: rows.width, height: rowHeight)
+        band(index, height: rowHeight, in: rows, scrollOffset: scrollOffset)
+    }
+
+    /// The `index`th band `height` tall down `rect`, counting from its top.
+    func band(_ index: Int, height: CGFloat, in rect: NSRect, scrollOffset: CGFloat = 0) -> NSRect {
+        let top = CGFloat(index) * height - scrollOffset
+        let y = isFlipped ? rect.minY + top : rect.maxY - top - height
+        return NSRect(x: rect.minX, y: y, width: rect.width, height: height)
     }
 
     /// The header's band at any x, so a right-click above the alphabet index still opens the
@@ -122,7 +131,7 @@ final class LibraryBrowserList {
             },
             albumInfo: { [unowned self] in actions.playable(for: $0).flatMap(LibraryAlbumInfo.init) },
             loadNextPage: { [unowned self] in
-                if model.isLocalSource { model.appendNextLocalPage() }
+                if model.currentSource.isLocal { model.appendNextLocalPage() }
             }
         ))
     private let flowLabelPlacement: CoverFlowView.LabelPlacement
@@ -146,7 +155,7 @@ final class LibraryBrowserList {
     func modelDidChange(_ change: LibraryBrowserModel.Change) {
         switch change {
         case .rows: lens.rowsDidChange()
-        case .loading: lens.updateVisibility()
+        case .listState: lens.updateVisibility()
         case .rowsReplaced: scrollOffset = 0
         case .rebuilt: horizontalScrollOffset = 0
         // With nothing playing, the artwork background shows the browsed library's art.
@@ -156,8 +165,10 @@ final class LibraryBrowserList {
             lens.resetNavigation()
             scrollOffset = 0
         case .columns: clampHorizontalScrollOffset()
-        // A new tab opens Flow or Tiles at its root.
-        case .browseMode: lens.resetNavigation()
+        // A new tab opens at its top, and Flow or Tiles at its root.
+        case .browseMode:
+            lens.resetNavigation()
+            scrollOffset = 0
         }
     }
 
@@ -412,7 +423,7 @@ final class LibraryBrowserList {
         }
 
         // Near the end of a paged local tab, load the next page.
-        if model.isLocalSource,
+        if model.currentSource.isLocal,
            scrollOffset + layout.rows.height + layout.rowHeight * 10 >= CGFloat(model.displayItems.count) * layout.rowHeight {
             model.appendNextLocalPage()
         }
@@ -439,12 +450,12 @@ final class LibraryBrowserList {
     /// The alphabet index: Flow / Tiles centre the letter, a paged local tab loads its page, any
     /// other list scrolls to and selects its first row.
     private func scrollToLetter(_ letter: String) {
-        if lens.jump(to: { LibraryBrowserModel.effectiveSortLetter(for: $0) == letter }) { return }
+        if lens.jump(to: { $0.sortLetter == letter }) { return }
         if let moved = model.showLocalPage(atLetter: letter) {
             if moved { scrollOffset = 0 }
             return
         }
-        guard let index = model.displayItems.firstIndex(where: { LibraryBrowserModel.effectiveSortLetter(for: $0) == letter }) else { return }
+        guard let index = model.displayItems.firstIndex(where: { $0.sortLetter == letter }) else { return }
         let layout = host.layout()
         let maxScroll = max(0, CGFloat(model.displayItems.count) * layout.rowHeight - layout.rows.height)
         scrollOffset = min(maxScroll, CGFloat(index) * layout.rowHeight)
@@ -492,7 +503,7 @@ final class LibraryBrowserList {
             }
         case 48: // Tab / Shift-Tab: the next or previous tab (Folders shares the Plists slot)
             let tabs = LibraryBrowseMode.tabs
-            guard let current = tabs.firstIndex(of: model.browseMode == .folders ? .plists : model.browseMode) else { break }
+            guard let current = tabs.firstIndex(of: model.activeTabSlot) else { break }
             let step = event.modifierFlags.contains(.shift) ? tabs.count - 1 : 1
             model.selectTab(tabs[(current + step) % tabs.count], doubleClick: false)
         case 49 where model.browseMode != .search: // Space: play / pause

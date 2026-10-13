@@ -214,7 +214,7 @@ yt-dlp --flat-playlist -J --playlist-end 20 \
 
 ### Thumbnails and Avatars
 
-- **Art column**: `youtubeColumns` is `[.thumbnail, .title, .youtubeDate, .duration]`; `drawColumnRow` draws the `thumbnail` column as a round image, and a header click on it
+- **Art column**: `youtubeColumns` is `[.thumbnail, .title, .youtubeDate, .duration]`; the list painter (`LibraryBrowserListPainter.drawCells`) draws the `thumbnail` column as a round image, and a header click on it
   does not sort. Channel rows are not column rows (they keep the ▶ arrow), so their avatar is drawn
   round, inline before the title. Both are ordinary library row thumbnails —
   `LibraryRowThumbnails.Source.video` / `.channel` through `rowThumbnailSource(for:)`; loading,
@@ -240,7 +240,7 @@ yt-dlp --flat-playlist -J --playlist-end 20 \
 
 #### Column rendering (Channels tab)
 
-Video (leaf) rows render through the **established resizable-column path** (`drawColumnRow`), not the simple list path, so a long title truncates inside its column instead of printing over the time. The column set is:
+Video (leaf) rows render through the **established resizable-column path** (the list painter's `drawCells`), not the simple list path, so a long title truncates inside its column instead of printing over the time. The column set is:
 
 ```swift
 static let youtubeColumns: [LibraryBrowserColumn] = [.thumbnail, .title, .youtubeDate, .duration]  // "Art", "Title", "Date", "Time"

@@ -86,7 +86,8 @@ enum SubsonicRadioType: Equatable, Hashable {
     }
 }
 
-enum JellyfinRadioType: Equatable, Hashable {
+/// A Jellyfin or Emby radio station: each plain, or as an Instant Mix seeded from it.
+enum InstantMixRadioType: Equatable, Hashable {
     case libraryRadio
     case libraryInstantMix
     case genreRadio(String)
@@ -118,35 +119,14 @@ enum JellyfinRadioType: Equatable, Hashable {
     }
 }
 
-enum EmbyRadioType: Equatable, Hashable {
-    case libraryRadio
-    case libraryInstantMix
-    case genreRadio(String)
-    case genreInstantMix(String)
-    case decadeRadio(start: Int, end: Int, name: String)
-    case decadeInstantMix(start: Int, end: Int, name: String)
-    case favoritesRadio
-    case favoritesInstantMix
-
-    var displayName: String {
-        switch self {
-        case .libraryRadio: return "Library Radio"
-        case .libraryInstantMix: return "Library Radio (Instant Mix)"
-        case .genreRadio(let g): return "\(g) Radio"
-        case .genreInstantMix(let g): return "\(g) Radio (Instant Mix)"
-        case .decadeRadio(_, _, let n): return "\(n) Radio"
-        case .decadeInstantMix(_, _, let n): return "\(n) Radio (Instant Mix)"
-        case .favoritesRadio: return "Favorites Radio"
-        case .favoritesInstantMix: return "Favorites Radio (Instant Mix)"
-        }
-    }
-    var category: String {
-        switch self {
-        case .libraryRadio, .libraryInstantMix: return "Library"
-        case .genreRadio, .genreInstantMix: return "Genre"
-        case .decadeRadio, .decadeInstantMix: return "Decade"
-        case .favoritesRadio, .favoritesInstantMix: return "Favorites"
-        }
+extension InstantMixRadioType: BrowsableRadioStation {
+    static func stations(genres: [String]) -> [Self] {
+        [.libraryRadio, .libraryInstantMix, .favoritesRadio, .favoritesInstantMix]
+            + genres.flatMap { [.genreRadio($0), .genreInstantMix($0)] }
+            + RadioConfig.decades.flatMap {
+                [.decadeRadio(start: $0.start, end: $0.end, name: $0.name),
+                 .decadeInstantMix(start: $0.start, end: $0.end, name: $0.name)]
+            }
     }
 }
 

@@ -195,7 +195,7 @@ final class LibraryBrowserArt: NSObject {
 
     /// With nothing playing, show the first art found among the browsed local rows.
     func showBrowsedLibrary() {
-        guard case .local = model.currentSource, isBackgroundEnabled() else { return }
+        guard model.currentSource.isLocal, isBackgroundEnabled() else { return }
         if let track = WindowManager.shared.audioEngine.currentTrack {
             showPlayingTrack(track)
             return
