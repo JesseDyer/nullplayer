@@ -291,69 +291,38 @@ extension LibraryBrowserModel {
     }
 
     private func buildSearchItems() {
-        var rows: [LibraryBrowserItem] = []
-        defer { displayItems = rows }
-        guard let results = plex.searchResults else { return }
+        guard let results = plex.searchResults else { displayItems = []; return }
 
-        if !results.artists.isEmpty {
-            // One row per name, keeping the artist with the most albums
-            var artistsByName: [String: PlexArtist] = [:]
-            for artist in results.artists {
-                let key = Self.plexSearchArtistKey(artist)
-                if let existing = artistsByName[key], existing.albumCount >= artist.albumCount { continue }
-                artistsByName[key] = artist
-            }
-            let artists = sortPlexArtists(Array(artistsByName.values))
-            rows.append(LibraryBrowserItem(id: "header-artists", title: "Artists (\(artists.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for artist in artists {
-                let key = Self.plexSearchArtistKey(artist)
-                let info = artist.albumCount > 0 ? LibraryBrowserItem.countLabel(artist.albumCount, "album") : nil
-                rows.append(LibraryBrowserItem(id: artist.id, title: artist.title, info: info, indentLevel: 1, hasChildren: true, type: .artist(artist)))
-                if isExpanded(.plexSearchArtist, key), let albums = plex.artistAlbumsByName[key] {
-                    rows += plexAlbumRows(albums, indentLevel: 2)
-                }
-            }
+        // One row per name, keeping the artist with the most albums
+        var artistsByName: [String: PlexArtist] = [:]
+        for artist in results.artists {
+            let key = Self.plexSearchArtistKey(artist)
+            if let existing = artistsByName[key], existing.albumCount >= artist.albumCount { continue }
+            artistsByName[key] = artist
         }
-
-        let albums = sortPlexAlbums(uniqueById(results.albums))
-        if !albums.isEmpty {
-            rows.append(LibraryBrowserItem(id: "header-albums", title: "Albums (\(albums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for album in albums {
-                rows.append(LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album)))
-                rows += plexTrackRows(ofAlbum: album, indentLevel: 2)
-            }
+        var rows = searchSection("artists", "Artists", sortPlexArtists(Array(artistsByName.values))) { artist in
+            let key = Self.plexSearchArtistKey(artist)
+            let info = artist.albumCount > 0 ? LibraryBrowserItem.countLabel(artist.albumCount, "album") : nil
+            let row = LibraryBrowserItem(id: artist.id, title: artist.title, info: info, indentLevel: 1, hasChildren: true, type: .artist(artist))
+            guard isExpanded(.plexSearchArtist, key), let albums = plex.artistAlbumsByName[key] else { return [row] }
+            return [row] + plexAlbumRows(albums, indentLevel: 2)
         }
-
-        let tracks = menuSorted(uniqueById(results.tracks), name: \.title, created: { $0.addedAt })
-        if !tracks.isEmpty {
-            rows.append(LibraryBrowserItem(id: "header-tracks", title: "Tracks (\(tracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for track in tracks {
-                rows.append(LibraryBrowserItem(id: track.id, title: "\(track.grandparentTitle ?? "") - \(track.title)", info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track)))
-            }
+        rows += searchSection("albums", "Albums", sortPlexAlbums(uniqueById(results.albums))) { album in
+            [LibraryBrowserItem(id: album.id, title: "\(album.parentTitle ?? "") - \(album.title)", info: album.year.map { String($0) }, indentLevel: 1, hasChildren: true, type: .album(album))]
+                + plexTrackRows(ofAlbum: album, indentLevel: 2)
         }
-
-        let movies = uniqueById(results.movies)
-        if !movies.isEmpty {
-            rows.append(LibraryBrowserItem(id: "header-movies", title: "Movies (\(movies.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            rows += movies.map { plexMovieItem($0, indentLevel: 1) }
+        rows += searchSection("tracks", "Tracks", menuSorted(uniqueById(results.tracks), name: \.title, created: { $0.addedAt })) { track in
+            [LibraryBrowserItem(id: track.id, title: "\(track.grandparentTitle ?? "") - \(track.title)", info: track.formattedDuration, indentLevel: 1, hasChildren: false, type: .track(track))]
         }
-
-        let shows = uniqueById(results.shows)
-        if !shows.isEmpty {
-            rows.append(LibraryBrowserItem(id: "header-shows", title: "TV Shows (\(shows.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for show in shows {
-                rows.append(LibraryBrowserItem(id: show.id, title: show.title, info: "\(show.childCount) seasons", indentLevel: 1, hasChildren: true, type: .show(show)))
-                rows += plexSeasonRows(of: show, indentLevel: 2)
-            }
+        rows += searchSection("movies", "Movies", uniqueById(results.movies)) { [plexMovieItem($0, indentLevel: 1)] }
+        rows += searchSection("shows", "TV Shows", uniqueById(results.shows)) { show in
+            [LibraryBrowserItem(id: show.id, title: show.title, info: "\(show.childCount) seasons", indentLevel: 1, hasChildren: true, type: .show(show))]
+                + plexSeasonRows(of: show, indentLevel: 2)
         }
-
-        let episodes = uniqueById(results.episodes)
-        if !episodes.isEmpty {
-            rows.append(LibraryBrowserItem(id: "header-episodes", title: "Episodes (\(episodes.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
-            for episode in episodes {
-                rows.append(LibraryBrowserItem(id: episode.id, title: "\(episode.grandparentTitle ?? "") - \(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 1, hasChildren: false, type: .episode(episode)))
-            }
+        rows += searchSection("episodes", "Episodes", uniqueById(results.episodes)) { episode in
+            [LibraryBrowserItem(id: episode.id, title: "\(episode.grandparentTitle ?? "") - \(episode.episodeIdentifier) - \(episode.title)", info: episode.formattedDuration, indentLevel: 1, hasChildren: false, type: .episode(episode))]
         }
+        displayItems = rows
     }
 
     /// The first of each id, in order: search returns some items more than once.

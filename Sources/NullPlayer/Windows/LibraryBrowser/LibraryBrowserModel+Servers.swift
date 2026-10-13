@@ -224,7 +224,7 @@ extension LibraryBrowserModel {
     }
 
     /// A header with the count, then each item's rows; nothing when there are none.
-    private func searchSection<Item>(_ id: String, _ title: String, _ items: [Item],
+    func searchSection<Item>(_ id: String, _ title: String, _ items: [Item],
                                      rows: (Item) -> [LibraryBrowserItem]) -> [LibraryBrowserItem] {
         guard !items.isEmpty else { return [] }
         return [LibraryBrowserItem(id: "header-\(id)", title: "\(title) (\(items.count))", info: nil,
