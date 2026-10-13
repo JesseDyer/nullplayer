@@ -56,11 +56,15 @@ final class LibraryBrowserModel: NSObject {
             if oldValue == .folders, browseMode != .folders {
                 cancelLocalFolderBuild()
             }
+            if browseMode.isHistoryMode { history.scheduleRefresh() }
             onChange?(.browseMode)
         }
     }
 
     var searchQuery: String = ""
+
+    /// The Data tab's play history, refreshed while that tab shows.
+    let history = PlayHistoryAgent()
 
     // MARK: - Rows and loading
 
@@ -338,10 +342,14 @@ final class LibraryBrowserModel: NSObject {
         } else if doubleClick, slot == .radio, currentSource.isYouTube {
             radioSlotShowsChannels.toggle()
         }
-        browseMode = slot == .plists ? effectivePlistsSlotMode : slot
+        let mode = slot == .plists ? effectivePlistsSlotMode : slot
+        // Clicking the Data tab again re-reads the play history.
+        if mode == browseMode, mode.isHistoryMode { history.scheduleRefresh() }
+        browseMode = mode
         rowsReplaced()
         loadDataForCurrentMode()
     }
+
 
     // MARK: - Sort
 
@@ -476,7 +484,12 @@ final class LibraryBrowserModel: NSObject {
     }
 
     /// The Refresh button: re-read the current tab from its source, dropping the server's cache.
+    /// On the Data tab, re-read the play history.
     func refreshCurrentSource() {
+        if browseMode.isHistoryMode {
+            history.scheduleRefresh()
+            return
+        }
         if currentSource.usesRadioTab {
             if case .youtube = currentSource, browseMode == .search {
                 loadYouTubeSearchResults(force: true)
@@ -710,7 +723,16 @@ final class LibraryBrowserModel: NSObject {
         return firstChar.isLetter ? String(firstChar) : "#"
     }
 
+    /// The alphabet-index letters that have rows: a paged local tab's, from the store; else the
+    /// loaded rows'.
+    var lettersWithRows: Set<String> {
+        if isLocalSource, browseMode == .artists { return Set(localArtistLetterOffsets.keys) }
+        if isLocalSource, browseMode == .albums { return Set(localAlbumLetterOffsets.keys) }
+        return Set(displayItems.map(Self.effectiveSortLetter))
+    }
+
     /// The letter a row files under; a Subsonic artist uses the server's index letter.
+
     static func effectiveSortLetter(for item: LibraryBrowserItem) -> String {
         if case .subsonicArtist(let artist) = item.type,
            let normalized = normalizedIndexLetter(artist.indexLetter) {

@@ -139,6 +139,26 @@ extension LibraryBrowserModel {
         columnWidths[Self.columnWidthKey(column.id, group: group)]
     }
 
+    /// Each column's width across `available`: its stored width, else its minimum. Until it is
+    /// resized, Title takes what the others leave.
+    func widths(of columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
+                available: CGFloat) -> [CGFloat] {
+        let fixed = columns.filter { $0.id != .title }.reduce(0) { $0 + (storedColumnWidth(for: $1, group: group) ?? $1.minWidth) }
+        return columns.map { column in
+            if column.id == .title {
+                return max(column.minWidth, storedColumnWidth(for: column, group: group) ?? available - fixed - 8)
+            }
+            return storedColumnWidth(for: column, group: group) ?? column.minWidth
+        }
+    }
+
+    /// The columns' width with their leading and trailing inset; past `available`, the list
+    /// scrolls sideways.
+    func totalWidth(of columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
+                    available: CGFloat) -> CGFloat {
+        8 + widths(of: columns, group: group, available: available).reduce(0, +)
+    }
+
     func setColumnWidth(_ width: CGFloat, for id: LibraryBrowserColumn.ID, group: LibraryColumnVisibilityGroup) {
         columnWidths[Self.columnWidthKey(id, group: group)] = width
     }

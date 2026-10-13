@@ -1,11 +1,12 @@
 import AppKit
+import AVFoundation
 
 /// The artwork fetches both library browser views make the same way, and the one cache they share.
 @MainActor
 enum LibraryArtwork {
     static let cache = NSCache<NSString, NSImage>()
 
-    /// A row's art cache key and loader, as the views' `itemArtwork` returns it.
+    /// A row's art cache key and loader, as `LibraryBrowserArt.itemArtwork` returns it.
     typealias ItemArtwork = (cacheKey: String?, load: () async -> NSImage?)
 
     /// An http(s) image, cached under `cacheNamespace`. A favicon passes without an image MIME type.
@@ -94,12 +95,155 @@ enum LibraryArtwork {
         return ("emby:\(itemId)", { await emby(itemId: itemId) })
     }
 
+    /// A Plex image by its thumb path, sent with the Plex streaming headers.
+    static func plex(thumb: String, cacheKey: String) async -> NSImage? {
+        var request = PlexManager.shared.artworkURL(thumb: thumb, size: 400).map { URLRequest(url: $0) }
+        for (key, value) in PlexManager.shared.streamingHeaders ?? [:] {
+            request?.setValue(value, forHTTPHeaderField: key)
+        }
+        return await serverImage(cacheKey: cacheKey, request: request)
+    }
+
+    /// A Subsonic cover by its cover-art id.
+    static func subsonic(coverArt: String, cacheKey: String) async -> NSImage? {
+        await serverImage(cacheKey: cacheKey,
+                          url: SubsonicManager.shared.coverArtURL(coverArtId: coverArt, size: 400))
+    }
+
+    /// A local file's embedded art: the common metadata, then its ID3 and iTunes atoms.
+    static func local(url: URL) async -> NSImage? {
+        let cacheKey = NSString(string: "local:\(url.path)")
+        if let cached = cache.object(forKey: cacheKey) { return cached }
+
+        let asset = AVURLAsset(url: url)
+        do {
+            let groups = [try await asset.load(.metadata),
+                          try await asset.loadMetadata(for: .id3Metadata),
+                          try await asset.loadMetadata(for: .iTunesMetadata)]
+            for item in groups.joined() where item.commonKey == .commonKeyArtwork {
+                if let data = try await item.load(.dataValue), let image = NSImage(data: data) {
+                    cache.setObject(image, forKey: cacheKey)
+                    return image
+                }
+            }
+        } catch {
+            NSLog("LibraryArtwork: Failed to load local artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
+        }
+        return nil
+    }
+
+    /// An album cover from the iTunes Search API, for a track with no art of its own.
+    static func web(artist: String?, album: String?, title: String?) async -> NSImage? {
+        let searchTerm: String
+        if let artist, !artist.isEmpty, let album, !album.isEmpty {
+            searchTerm = "\(artist) \(album)"
+        } else if let artist, !artist.isEmpty, let title, !title.isEmpty {
+            searchTerm = "\(artist) \(title)"
+        } else if let album, !album.isEmpty {
+            searchTerm = album
+        } else {
+            return nil
+        }
+
+        let cacheKey = NSString(string: "web:\(searchTerm)")
+        if let cached = cache.object(forKey: cacheKey) { return cached }
+        guard let encoded = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://itunes.apple.com/search?term=\(encoded)&media=music&entity=album&limit=1") else {
+            return nil
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let first = (json["results"] as? [[String: Any]])?.first,
+                  let artworkURL = first["artworkUrl100"] as? String,
+                  // 600x600 instead of the 100x100 the search returns.
+                  let highRes = URL(string: artworkURL.replacingOccurrences(of: "100x100", with: "600x600")) else {
+                return nil
+            }
+            let (imageData, _) = try await URLSession.shared.data(from: highRes)
+            guard let image = NSImage(data: imageData) else { return nil }
+            cache.setObject(image, forKey: cacheKey)
+            return image
+        } catch {
+            NSLog("LibraryArtwork: Failed to load web artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
+            return nil
+        }
+    }
+
+    /// A movie poster from TMDb, for a movie with no art of its own.
+    static func moviePoster(title: String, year: Int?) async -> NSImage? {
+        // Build search query
+        var searchTerm = title
+        if let year = year {
+            searchTerm += " \(year)"
+        }
+        
+        // Check cache first
+        let cacheKey = NSString(string: "tmdb:\(searchTerm)")
+        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
+            return cached
+        }
+        
+        // URL encode the search term
+        guard let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return nil
+        }
+        
+        // Use TMDb Search API
+        // Note: This uses the public search endpoint which works without authentication for basic queries
+        var urlString = "https://api.themoviedb.org/3/search/movie?query=\(encoded)"
+        if let year = year {
+            urlString += "&year=\(year)"
+        }
+        
+        guard let url = URL(string: urlString) else { return nil }
+        
+        do {
+            var request = URLRequest(url: url)
+            // TMDb requires an API key - use the read-only public key for search
+            // This is a standard read-only key that allows basic search functionality
+            request.setValue("Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlNjUyZmJjMjE3NTcxYTZjNzU4NmYwNzE1MWQ4ZmRjOCIsInN1YiI6IjY1YjUyYTc3MGYyZmJkMDE3YzQ0OGU1OSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.tWcXq_3A4N4gP4Jz5MJNqVWfHBNZdEbwLZZGpZU9hTw", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            
+            let (data, _) = try await URLSession.shared.data(for: request)
+            
+            // Parse JSON response
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let results = json["results"] as? [[String: Any]],
+               let firstResult = results.first,
+               let posterPath = firstResult["poster_path"] as? String {
+                
+                // Fetch poster image (w500 is a good size for display)
+                let posterUrlString = "https://image.tmdb.org/t/p/w500\(posterPath)"
+                
+                if let posterUrl = URL(string: posterUrlString) {
+                    let (imageData, _) = try await URLSession.shared.data(from: posterUrl)
+                    if let image = NSImage(data: imageData) {
+                        // Cache the result
+                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
+                        NSLog("LibraryArtwork: Loaded TMDb poster for: %@", title)
+                        return image
+                    }
+                }
+            }
+        } catch {
+            NSLog("LibraryArtwork: Failed to load TMDb poster: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
+        }
+        
+        return nil
+    }
+
     private static func serverImage(cacheKey: String, url: URL?) async -> NSImage? {
+        await serverImage(cacheKey: cacheKey, request: url.map { URLRequest(url: $0) })
+    }
+
+    private static func serverImage(cacheKey: String, request: URLRequest?) async -> NSImage? {
         let key = NSString(string: cacheKey)
         if let cached = cache.object(forKey: key) { return cached }
-        guard let url else { return nil }
+        guard let request else { return nil }
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let image = NSImage(data: data) else { return nil }
             cache.setObject(image, forKey: key)

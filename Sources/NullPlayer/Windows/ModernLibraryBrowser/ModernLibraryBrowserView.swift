@@ -47,10 +47,11 @@ class ModernLibraryBrowserView: NSView {
         }
     }
     private var compactPlayerBar: CompactPlayerBarView?
-    private var backdropView: CompactBackdropView?
+    private lazy var backdrop = BrowserBackdrop(mode: { [weak self] in self?.effectiveBackdropMode ?? .off },
+                                                look: Self.backdropLook)
 
     var backdropPresenter: CavaPresenter? {
-        backdropView?.presenter
+        backdrop.presenter
     }
 
     /// Height of the embedded compact player bar (0 when not in compact mode).
@@ -75,22 +76,10 @@ class ModernLibraryBrowserView: NSView {
     /// The browser's source, tab, rows and caches; this view draws them.
     let model = LibraryBrowserModel(keyPrefix: "")
 
-    private var typeAheadQuery: String = ""
-    private var typeAheadTimer: Timer?
-
-    private var scrollOffset: CGFloat = 0
-    private var horizontalScrollOffset: CGFloat = 0
-    private let historyAgent = PlayHistoryAgent()
     private var historyHostingView: NSHostingView<StatsContentView>?
-    
+
     private var itemHeight: CGFloat { 18 * ModernSkinElements.sizeMultiplier }
     private var columnHeaderHeight: CGFloat { 18 * ModernSkinElements.sizeMultiplier }
-    
-    // Column state
-    private var resizingColumnId: LibraryBrowserColumn.ID?
-    private var resizingColumnGroup: LibraryColumnVisibilityGroup?
-    private var resizeStartX: CGFloat = 0
-    private var resizeStartWidth: CGFloat = 0
 
     /// Content shown below the compact player bar: the library browser or the play queue.
     /// Only consulted when `compactMode == true`; the full library window is unaffected.
@@ -132,7 +121,6 @@ class ModernLibraryBrowserView: NSView {
         }
     ))
 
-
     // Animation
     private var loadingAnimationTimer: Timer?
     private var loadingAnimationFrame: Int = 0
@@ -164,31 +152,16 @@ class ModernLibraryBrowserView: NSView {
     /// Highlight state for drag-mode visual feedback
     private var isHighlighted = false
     
-    /// List, Flow or Tiles, and the Flow / Tiles view standing in for the list (see LibraryArtLens).
-    private lazy var artLens = LibraryArtLens<LibraryBrowserItem>(container: self, host: .init(
-        rows: { [unowned self] in model.displayItems },
-        isSearch: { [unowned self] in model.browseMode == .search },
-        selectedIndex: { [unowned self] in model.selectedIndices.min() },
-        isBlocked: { [unowned self] in
-            model.isLoading || model.errorMessage != nil || (model.currentSource.isPlex && !PlexManager.shared.isLinked)
-        },
-        style: { [unowned self] in
+    /// Scrolling, clicks, keys and menus on the rows, and Flow / Tiles standing in for them.
+    private lazy var list = LibraryBrowserList(view: self, model: model, actions: actions, art: art, host: .init(
+        layout: { [unowned self] in listLayout() },
+        artStyle: { [unowned self] in
             let skin = currentSkin()
             return LibraryArtStyle(titleColor: skin.textColor, subtitleColor: skin.textDimColor,
                                    placeholderFill: skin.surfaceColor, placeholderTextColor: skin.textDimColor)
         },
-        item: { [unowned self] in artItem(for: $0) },
-        isExpanded: { [unowned self] in model.isExpanded($0) },
-        toggleExpand: { [unowned self] in model.toggleExpand($0) },
-        play: { [unowned self] in actions.activate($0) },
-        menu: { [unowned self] row, event in
-            // As a right-click on the row in the list: select it, then its menu.
-            if let index = model.displayItems.firstIndex(where: { $0.id == row.id }) { model.selectedIndices = [index] }
-            showContextMenu(for: row, at: event)
-        },
-        albumInfo: { [unowned self] in actions.playable(for: $0).flatMap(LibraryAlbumInfo.init) },
-        loadNextPage: { [unowned self] in
-            if case .local = model.currentSource { model.appendNextLocalPage() }
+        backdropMenu: { [unowned self] in
+            ContextMenuBuilder.browserBackdropMenuItem(compact: compactMode, presenter: backdropPresenter)
         }
     ))
     /// The List / Flow / Tiles buttons in the server bar, as last drawn.
@@ -201,14 +174,8 @@ class ModernLibraryBrowserView: NSView {
     private var tabButtonRects: [NSRect] = []
     private var sortButtonRect: NSRect = .zero
     
-    // Artwork
-    private var currentArtwork: NSImage?
-    /// Artwork for the playing track, kept separate from selection-driven browser artwork.
-    private var currentTrackArtwork: NSImage?
-    private var artworkTrackId: UUID?
-    private var currentTrackArtworkLoadTask: Task<Void, Never>?
-    private var artworkLoadTask: Task<Void, Never>?
-    private var artworkDisplayGeneration = 0
+    /// Row art and the art drawn behind the list.
+    private lazy var art = LibraryBrowserArt(model: model, isBackgroundEnabled: { [unowned self] in effectiveBackdropMode.showsArt })
     private var isPreparingForUITeardown = false
     private let rowThumbnails = LibraryRowThumbnailTracker()
     
@@ -223,7 +190,6 @@ class ModernLibraryBrowserView: NSView {
     /// True when hide-title-bars mode primed drag hold timing on mouseDown.
     private var didPrimeWindowDragHold = false
     private var windowDragStartPoint: NSPoint = .zero
-    private let alphabetLetters = ["#"] + (65...90).map { String(UnicodeScalar($0)) }
     
     // MARK: - Layout Constants (independent of classic skin)
     
@@ -273,10 +239,6 @@ class ModernLibraryBrowserView: NSView {
                                                name: .windowLayoutDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(libraryRowThumbnailDidLoad),
                                                name: LibraryRowThumbnails.didLoadNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(trackDidChange),
-                                               name: .audioTrackDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(playHistoryDidChange),
-                                               name: MediaLibraryStore.playHistoryDidChangeNotification, object: nil)
 
         // Window visibility notifications
         NotificationCenter.default.addObserver(self, selector: #selector(windowDidMiniaturize),
@@ -301,9 +263,8 @@ class ModernLibraryBrowserView: NSView {
         startServerNameScroll()
         
         // Load artwork for current track
-        if showsLegacyArtwork {
-            loadArtwork(for: WindowManager.shared.audioEngine.currentTrack)
-        }
+        art.onBackgroundChange = { [weak self] in self?.needsDisplay = true }
+        art.showPlayingTrack(WindowManager.shared.audioEngine.currentTrack)
         
         // Set accessibility
         setAccessibilityIdentifier("modernLibraryBrowserView")
@@ -315,42 +276,22 @@ class ModernLibraryBrowserView: NSView {
 
     /// The model's rows, loading state, source or tab changed.
     private func modelDidChange(_ change: LibraryBrowserModel.Change) {
+        list.modelDidChange(change)
         switch change {
-        case .rows:
-            artLens.rowsDidChange()
+        case .rows, .reveal, .columns:
             needsDisplay = true
         case .loading:
-            artLens.updateVisibility()
             updateLoadingAnimation()
             needsDisplay = true
         case .rowsReplaced:
-            scrollOffset = 0
-            if model.browseMode.isHistoryMode {
-                historyAgent.scheduleRefresh()
-                updateHistoryHostingVisibility()
-            }
+            if model.browseMode.isHistoryMode { updateHistoryHostingVisibility() }
         case .rebuilt:
-            horizontalScrollOffset = 0
-        case .loaded:
+            break
+        case .loaded, .source:
             // The offline banner (local source, a folder offline) takes list height from Flow / Tiles.
             needsLayout = true
-        case .reveal(let index):
-            ensureVisible(index: index)
-            needsDisplay = true
-        case .source:
-            artLens.resetNavigation()
-            needsLayout = true   // the offline banner shows on the local source only
-            scrollOffset = 0
-            startServerNameScroll()
-        case .columns:
-            clampHorizontalScrollOffset()
-            needsDisplay = true
+            if case .source = change { startServerNameScroll() }
         case .browseMode:
-            // A new tab opens Flow or Tiles at its root.
-            artLens.resetNavigation()
-            if model.browseMode.isHistoryMode {
-                historyAgent.scheduleRefresh()
-            }
             updateHistoryHostingVisibility()
         }
     }
@@ -359,7 +300,7 @@ class ModernLibraryBrowserView: NSView {
         NotificationCenter.default.removeObserver(self)
         stopLoadingAnimation()
         stopServerNameScroll()
-        backdropView?.stop()
+        backdrop.stop()
     }
 
     /// Synchronously cancel every in-flight task, work item, and timer this view and its model
@@ -371,18 +312,14 @@ class ModernLibraryBrowserView: NSView {
     func prepareForUITeardown() {
         isPreparingForUITeardown = true
         model.cancelAll()
-        currentTrackArtworkLoadTask?.cancel(); artworkLoadTask?.cancel()
-        currentTrackArtworkLoadTask = nil; artworkLoadTask = nil
+        art.cancel()
         actions.cancelAll()
 
         // Timers (timers with a target/captured self can also pin the view alive).
-        typeAheadTimer?.invalidate(); typeAheadTimer = nil
         stopLoadingAnimation()
         stopServerNameScroll()
-        backdropView?.stop()
-        backdropView?.removeFromSuperview()
-        backdropView = nil
-        artLens.teardown()
+        backdrop.remove()
+        list.teardown()
     }
 
     override func viewDidMoveToWindow() {
@@ -398,6 +335,7 @@ class ModernLibraryBrowserView: NSView {
         super.setFrameSize(newSize)
         startServerNameScroll()
         updateEmbeddedSubviewFrames()
+        list.clampHorizontalScrollOffset()
     }
 
     override func layout() {
@@ -414,11 +352,7 @@ class ModernLibraryBrowserView: NSView {
     private let backdropScrimAlpha: CGFloat = 0.72
 
     private var backdropActive: Bool {
-        WindowManager.shared.isRunningModernUI && effectiveBackdropMode.showsCava
-    }
-
-    private var showsLegacyArtwork: Bool {
-        WindowManager.shared.isRunningModernUI && effectiveBackdropMode.showsArt
+        effectiveBackdropMode.showsCava
     }
 
     private var effectiveBackdropMode: BrowserBackdropMode {
@@ -448,7 +382,7 @@ class ModernLibraryBrowserView: NSView {
         let cornerRadius = currentSkin().config.window.cornerRadius ?? 0
         layer.cornerRadius = cornerRadius
         layer.masksToBounds = cornerRadius > 0
-        backdropView?.setSharpCorners(sharpCorners)
+        backdrop.view?.setSharpCorners(sharpCorners)
         guard cornerRadius > 0 else { return }
         let allCorners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
                                          .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
@@ -467,7 +401,7 @@ class ModernLibraryBrowserView: NSView {
 
     private func makeHistoryHostingView() -> NSHostingView<StatsContentView> {
         let skin = currentSkin()
-        let rootView = StatsContentView(agent: historyAgent,
+        let rootView = StatsContentView(agent: model.history,
                                         skinTextColor: Color(skin.textColor),
                                         headerTitle: "Library Data",
                                         heatmapTheme: ContributionHeatmapTheme(modernSkin: skin))
@@ -514,87 +448,28 @@ class ModernLibraryBrowserView: NSView {
     private func updateEmbeddedSubviewFrames() {
         historyHostingView?.frame = embeddedHistoryContentRect()
         // Flow / Tiles leave the alphabet index beside them.
-        artLens.frame = listLayout().area.divided(atDistance: Layout.alphabetWidth, from: .maxXEdge).remainder
+        list.lens.frame = listLayout().area.divided(atDistance: Layout.alphabetWidth, from: .maxXEdge).remainder
         updateCompactPlayerBarFrame()
         updateCompactPlaylistFrame()
-        updateBackdropFrame()
-    }
-
-    private func updateBackdropFrame() {
-        guard let backdropView, let container = superview else { return }
-        backdropView.frame = container.bounds
-    }
-
-    /// Switching from an opaque browser to a translucent backdrop composition can leave portions
-    /// of AppKit's layer cache untouched on the first selection. Repaint the complete sibling
-    /// hierarchy now and once more after menu tracking/layout has returned to the main run loop.
-    private func redrawBackdropComposition(in container: NSView?) {
-        guard let container else {
-            needsDisplay = true
-            return
-        }
-
-        container.markSubtreeForDisplayAndLayout()
-        container.layoutSubtreeIfNeeded()
-        container.window?.displayIfNeeded()
-
-        DispatchQueue.main.async { [weak self, weak container] in
-            guard let self, let container, self.superview === container else { return }
-            self.updateBackdropFrame()
-            container.markSubtreeForDisplayAndLayout()
-            container.layoutSubtreeIfNeeded()
-            container.window?.displayIfNeeded()
-        }
+        backdrop.updateFrame()
     }
 
     func refreshBackdrop() {
-        let container = superview
-        guard !isPreparingForUITeardown,
-              WindowManager.shared.isRunningModernUI,
-              effectiveBackdropMode.showsCava,
-              let container else {
-            backdropView?.stop()
-            backdropView?.removeFromSuperview()
-            backdropView = nil
-            updateHistoryHostingBackground()
-            if showsLegacyArtwork,
-               let track = WindowManager.shared.audioEngine.currentTrack,
-               artworkTrackId != track.id || currentTrackArtwork == nil {
-                loadArtwork(for: track)
-            }
-            redrawBackdropComposition(in: container)
-            return
-        }
-
-        let backdrop: CompactBackdropView
-        if let existing = backdropView, existing.scope == backdropScope {
-            backdrop = existing
-        } else {
-            backdropView?.stop()
-            backdropView?.removeFromSuperview()
-            backdrop = CompactBackdropView(
-                frame: container.bounds,
-                scope: backdropScope,
-                modeProvider: { [weak self] in self?.effectiveBackdropMode ?? .off }
-            )
-            container.addSubview(backdrop, positioned: .below, relativeTo: self)
-            backdropView = backdrop
-        }
-        backdrop.frame = container.bounds
-        backdrop.setSharpCorners(sharpCorners)
-        backdrop.reload()
         updateHistoryHostingBackground()
+        art.showPlayingTrack(WindowManager.shared.audioEngine.currentTrack)
+        backdrop.refresh(beneath: self, showsCava: !isPreparingForUITeardown && backdropActive,
+                         scope: backdropScope, sharpCorners: sharpCorners)
+    }
 
-        if showsLegacyArtwork,
-           let track = WindowManager.shared.audioEngine.currentTrack,
-           artworkTrackId != track.id || currentTrackArtwork == nil {
-            loadArtwork(for: track)
-        }
-        redrawBackdropComposition(in: container)
+    /// The Original or Metal skin's colours and corners for the Cava backdrop.
+    private static func backdropLook() -> BrowserBackdropLook {
+        let skin = ModernSkinEngine.shared.currentSkin ?? ModernSkinLoader.shared.loadDefault()
+        return BrowserBackdropLook(background: skin.backgroundColor, low: skin.primaryColor, high: skin.accentColor,
+                                   cornerRadius: skin.config.window.cornerRadius ?? 0)
     }
 
     func stopBackdrop() {
-        backdropView?.stop()
+        backdrop.stop()
     }
 
     /// Create/position/remove the embedded compact player bar to match the current mode.
@@ -722,7 +597,6 @@ class ModernLibraryBrowserView: NSView {
     // MARK: - Drawing
     
     override func draw(_ dirtyRect: NSRect) {
-        let capturedArtwork = currentArtwork
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         
         let skin = currentSkin()
@@ -822,12 +696,12 @@ class ModernLibraryBrowserView: NSView {
             let listRect = layout.area
 
             // Offline volume banner (local source only, under the list)
-            if let bannerRect = layout.banner {
-                drawOfflineBanner(in: context, rect: bannerRect, skin: skin)
+            if let bannerRect = layout.banner, let label = model.offlineBannerText {
+                drawOfflineBanner(label, in: context, rect: bannerRect, skin: skin)
             }
 
             if model.browseMode.isHistoryMode {
-                drawArtworkBackground(in: context, listRect: listRect, artwork: capturedArtwork)
+                art.drawBackground(in: context, rect: listRect, flipped: false)
                 // SwiftUI-hosted history content is rendered via an embedded subview.
             } else if model.currentSource.isPlex && !PlexManager.shared.isLinked {
                 drawNotLinkedState(in: context, listRect: listRect, skin: skin)
@@ -835,14 +709,14 @@ class ModernLibraryBrowserView: NSView {
                 drawLoadingState(in: context, listRect: listRect, skin: skin)
             } else if let error = model.errorMessage {
                 drawErrorState(in: context, message: error, listRect: listRect, skin: skin)
-            } else if artLens.isPresenting {
+            } else if list.lens.isPresenting {
                 // The Flow / Tiles view renders the art. Draw nothing here: the window
                 // background (already filled above — translucent when a Cava backdrop is active,
                 // opaque otherwise) is exactly what should sit behind the covers, so the Cava
                 // backdrop shows through at full strength instead of behind a second scrim.
                 drawAlphabetIndex(in: context, rect: layout.alphabet, skin: skin)
             } else {
-                drawListArea(in: context, layout: layout, skin: skin, artwork: capturedArtwork)
+                drawListArea(in: context, layout: layout, skin: skin)
             }
 
             // Status bar text
@@ -881,50 +755,6 @@ class ModernLibraryBrowserView: NSView {
         return natural.map { $0 + extra }
     }
 
-    /// What the source bar shows after "Source:".
-    private enum ServerBarContent {
-        /// Local Files, Internet Radio or YouTube: the name with its count, then +ADD.
-        case builtIn(name: String)
-        /// A configured server: its name in a fixed field, then its library.
-        case server(name: String, library: String)
-        /// A server source with nothing configured: a centred prompt.
-        case unconfigured(prompt: String)
-    }
-
-    private var serverBarContent: ServerBarContent {
-        switch model.currentSource {
-        case .local:
-            return .builtIn(name: "Local Files")
-        case .radio:
-            return .builtIn(name: "Internet Radio")
-        case .youtube:
-            return .builtIn(name: "YouTube")
-        case .plex(let serverId):
-            let manager = PlexManager.shared
-            let server = manager.servers.first(where: { $0.id == serverId })
-            guard server != nil || manager.isLinked else {
-                return .unconfigured(prompt: "Click to link your Plex account")
-            }
-            return .server(name: server?.name ?? "Select Server", library: manager.currentLibrary?.title ?? "Select")
-        case .subsonic(let serverId):
-            let manager = SubsonicManager.shared
-            guard let server = manager.servers.first(where: { $0.id == serverId }) else {
-                return .unconfigured(prompt: "Click to add a Subsonic server")
-            }
-            return .server(name: server.name, library: manager.currentMusicFolder?.name ?? "All")
-        case .jellyfin(let serverId):
-            guard let server = JellyfinManager.shared.servers.first(where: { $0.id == serverId }) else {
-                return .unconfigured(prompt: "Click to add a Jellyfin server")
-            }
-            return .server(name: server.name, library: jellyfinCurrentLibraryName)
-        case .emby(let serverId):
-            guard let server = EmbyManager.shared.servers.first(where: { $0.id == serverId }) else {
-                return .unconfigured(prompt: "Click to add an Emby server")
-            }
-            return .server(name: server.name, library: embyCurrentLibraryName)
-        }
-    }
-
     /// Server-bar field widths at full size, in points before scaling.
     private static let serverFieldWidth: CGFloat = 100
     /// The library field's narrowest width; it grows into the free space before the right-side buttons.
@@ -945,12 +775,12 @@ class ModernLibraryBrowserView: NSView {
         let minimumGap = 12 * m
 
         var rightWidth = 8 * m + serverBarButtonSide(m: m)
-        if artLens.hasItems {
+        if list.lens.hasItems {
             rightWidth += 12 * m + viewModeButtonsWidth(m: m)
         }
 
         let leftWidth: CGFloat
-        switch serverBarContent {
+        switch model.sourceBarContent {
         case .builtIn(let name):
             leftWidth = leadingInset + prefixWidth + textWidth(model.withItemCount(name)) + 28 * m + textWidth("+ADD")
         case .server:
@@ -1184,12 +1014,12 @@ class ModernLibraryBrowserView: NSView {
 
         // List / Flow / Tiles — shown when the current list has art to show.
         viewModeButtonRects = []
-        if artLens.hasItems {
+        if list.lens.hasItems {
             let leadingX = refreshX - 12 * hm - viewModeButtonsWidth(m: m)
             var x = leadingX
             for mode in LibraryViewMode.allCases {
                 let rect = NSRect(x: x, y: barRect.minY + 3 * m, width: buttonSide, height: buttonSide)
-                let color = ModernLibraryTab.drawBox(isActive: artLens.mode == mode, rect: rect, skin: skin, context: context)
+                let color = ModernLibraryTab.drawBox(isActive: list.lens.mode == mode, rect: rect, skin: skin, context: context)
                 mode.drawIcon(in: rect.insetBy(dx: buttonSide * 0.28, dy: buttonSide * 0.28),
                               color: skin.applyTextOpacity(to: color), context: context)
                 viewModeButtonRects.append((mode, rect))
@@ -1199,7 +1029,7 @@ class ModernLibraryBrowserView: NSView {
         }
 
         // Source-specific content
-        switch serverBarContent {
+        switch model.sourceBarContent {
         case .builtIn(let name):
             let sourceText = model.withItemCount(name)
             drawText(sourceText, at: NSPoint(x: sourceNameStartX, y: textY), withAttributes: dataAttrs, context: context)
@@ -1400,14 +1230,10 @@ class ModernLibraryBrowserView: NSView {
     
     // MARK: - Offline Volume Banner
 
-    private func drawOfflineBanner(in context: CGContext, rect: NSRect, skin: ModernSkin) {
+    private func drawOfflineBanner(_ label: String, in context: CGContext, rect: NSRect, skin: ModernSkin) {
         // Background — amber tint
         NSColor.systemOrange.withAlphaComponent(0.18).setFill()
         context.fill(rect)
-
-        let offlineCount = model.offlineWatchFolders.reduce(0) { $0 + $1.totalCount }
-        let names = model.offlineWatchFolders.map { $0.url.lastPathComponent }.joined(separator: ", ")
-        let label = "⚠  \"\(names)\" offline — \(offlineCount) track\(offlineCount == 1 ? "" : "s") unavailable"
 
         let font = skin.scaledSystemFont(size: 7.5)
         let attrs: [NSAttributedString.Key: Any] = [
@@ -1421,7 +1247,7 @@ class ModernLibraryBrowserView: NSView {
 
     // MARK: - List Area Drawing
 
-    private func drawListArea(in context: CGContext, layout: ListLayout, skin: ModernSkin, artwork: NSImage?) {
+    private func drawListArea(in context: CGContext, layout: LibraryBrowserListLayout, skin: ModernSkin) {
         // An empty list has no columns, so `rows` is the whole list here.
         if model.displayItems.isEmpty {
             drawEmptyState(in: context, listRect: layout.rows, skin: skin)
@@ -1444,11 +1270,11 @@ class ModernLibraryBrowserView: NSView {
         context.saveGState()
         context.clip(to: listRect)
         
-        drawArtworkBackground(in: context, listRect: listRect, artwork: artwork)
+        art.drawBackground(in: context, rect: listRect, flipped: false)
         rowThumbnails.beginPass(placeholder: skin.textDimColor.withAlphaComponent(0.15))
         
         // Draw items (bottom-left origin: item 0 at top of list, so we draw from top down)
-        let visibleStart = max(0, Int(scrollOffset / itemHeight))
+        let visibleStart = max(0, Int(list.scrollOffset / itemHeight))
         let visibleEnd = min(model.displayItems.count, visibleStart + Int(listRect.height / itemHeight) + 2)
         
         guard visibleStart < visibleEnd else {
@@ -1461,26 +1287,13 @@ class ModernLibraryBrowserView: NSView {
         let smallFont = skin.scaledSystemFont(size: 7.2)
         
         for index in visibleStart..<visibleEnd {
-            // In bottom-left coords: item 0 is at top, so y decreases as index increases
-            let itemTopY = listRect.maxY - CGFloat(index) * itemHeight + scrollOffset
-            let y = itemTopY - itemHeight
-            
-            if y + itemHeight < listRect.minY || y > listRect.maxY { continue }
-            
-            let itemRect = NSRect(x: listRect.minX, y: y, width: listRect.width, height: itemHeight)
+            let itemRect = layout.rowRect(index, scrollOffset: list.scrollOffset)
+            if itemRect.maxY < listRect.minY || itemRect.minY > listRect.maxY { continue }
             let item = model.displayItems[index]
             let isSelected = model.selectedIndices.contains(index)
 
             // Dim tracks/episodes whose file lives on an offline volume
-            let isOffline: Bool
-            switch item.type {
-            case .localTrack(let track):
-                isOffline = model.offlineVolumePrefixes.contains { track.url.path.hasPrefix($0) }
-            case .localEpisode(let ep):
-                isOffline = model.offlineVolumePrefixes.contains { ep.url.path.hasPrefix($0) }
-            default:
-                isOffline = false
-            }
+            let isOffline = model.isOffline(item)
             if isOffline { context.saveGState(); context.setAlpha(0.35) }
 
             // Selection background - subtle to keep accent text readable.
@@ -1491,7 +1304,8 @@ class ModernLibraryBrowserView: NSView {
                 context.fill(itemRect)
             }
 
-            if let row = rowColumns(for: item, header: layout.header) {
+            if let row = list.rowColumns(for: item, header: layout.header) {
+
                 let indent = CGFloat(item.indentLevel) * 16
                 drawColumnRow(item: item, columns: row.columns, group: row.group,
                               in: context, rect: itemRect, isSelected: isSelected, skin: skin, indent: indent)
@@ -1522,7 +1336,7 @@ class ModernLibraryBrowserView: NSView {
                 }
 
                 // Round thumbnail ahead of the title: a YouTube channel's avatar, or the item's art.
-                if let thumbnail = rowThumbnailSource(for: item) {
+                if let thumbnail = art.rowThumbnailSource(for: item) {
                     titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: textX + titleSpinnerInset,
                                                             rowRect: itemRect, side: itemHeight - 2)
                 }
@@ -1555,7 +1369,7 @@ class ModernLibraryBrowserView: NSView {
             if isOffline { context.restoreGState() }
         }
         rowThumbnails.endPass(visible: visibleStart..<visibleEnd, count: model.displayItems.count) {
-            rowThumbnailSource(for: model.displayItems[$0])
+            art.rowThumbnailSource(for: model.displayItems[$0])
         }
         
         context.restoreGState()
@@ -1564,24 +1378,10 @@ class ModernLibraryBrowserView: NSView {
         drawAlphabetIndex(in: context, rect: layout.alphabet, skin: skin)
     }
 
-    private func drawArtworkBackground(in context: CGContext, listRect: NSRect, artwork: NSImage?) {
-        guard showsLegacyArtwork,
-              let artworkImage = artwork,
-              let cgImage = artworkImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
-
-        context.saveGState()
-        context.clip(to: listRect)
-        let imageSize = NSSize(width: cgImage.width, height: cgImage.height)
-        let artworkRect = calculateCenterFillRect(imageSize: imageSize, in: listRect)
-        context.setAlpha(0.12)
-        context.draw(cgImage, in: artworkRect)
-        context.restoreGState()
-    }
-    
     // MARK: - Column Headers
     
-    private func drawColumnHeaders(in context: CGContext, header: ListLayout.Header, skin: ModernSkin) {
-        let rect = header.rect, columns = header.columns, group = header.group
+    private func drawColumnHeaders(in context: CGContext, header: LibraryBrowserListLayout.Header, skin: ModernSkin) {
+        let rect = header.rect, columns = header.columns
         context.saveGState()
         context.clip(to: rect)
         
@@ -1593,9 +1393,7 @@ class ModernLibraryBrowserView: NSView {
         let sortedHeaderColor = skin.textColor.withAlphaComponent(0.9)
         let separatorColor = skin.textDimColor.withAlphaComponent(0.2)
         
-        var x = rect.minX + 4 - horizontalScrollOffset
-        for (index, column) in columns.enumerated() {
-            let width = widthForColumn(column, availableWidth: rect.width, columns: columns, group: group)
+        for (index, (column, x, width)) in list.columnSpans(columns, group: header.group, in: rect).enumerated() {
             let isSortColumn = model.activeColumnSortId == column.id
             let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
                 (model.hasInternetRadioColumns && column.id == .rating)
@@ -1626,8 +1424,6 @@ class ModernLibraryBrowserView: NSView {
                 context.addLine(to: CGPoint(x: x + width - 1, y: rect.maxY - 3))
                 context.strokePath()
             }
-            
-            x += width
         }
         
         // Bottom separator
@@ -1644,7 +1440,6 @@ class ModernLibraryBrowserView: NSView {
     
     private func drawColumnRow(item: LibraryBrowserItem, columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
                                in context: CGContext, rect: NSRect, isSelected: Bool, skin: ModernSkin, indent: CGFloat = 0) {
-        let totalWidth = rect.width
         let textColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textColor
         let dimColor = isSelected ? (isMetalRenderStyle ? skin.textColor : skin.accentColor) : skin.textDimColor
         let font = skin.scaledSystemFont(size: 8)
@@ -1652,13 +1447,14 @@ class ModernLibraryBrowserView: NSView {
         
         let hasArtColumn = columns.contains { $0.id == .thumbnail }
         let cells = LibraryColumnVisibility.cellFrames(
-            widths: columns.map { widthForColumn($0, availableWidth: totalWidth, columns: columns, group: group) },
+            widths: model.widths(of: columns, group: group, available: rect.width),
             titleIndex: columns.firstIndex { $0.id == .title }, indent: indent,
             spansLeadingCells: model.columnGroup(for: item) != group)
         for (column, cell) in zip(columns, cells) {
-            let x = rect.minX + cell.start - horizontalScrollOffset, width = cell.width
+            let x = rect.minX + cell.start - list.horizontalScrollOffset, width = cell.width
+
             if column.id == .thumbnail {
-                if let thumbnail = rowThumbnailSource(for: item) {
+                if let thumbnail = art.rowThumbnailSource(for: item) {
                     rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
                 }
                 continue
@@ -1684,7 +1480,7 @@ class ModernLibraryBrowserView: NSView {
                 titleSpinnerInset = spinnerRadius * 2 + 4
             }
             // Round art ahead of the title, unless the row has an Art column to hold it.
-            if column.id == .title, !hasArtColumn, let thumbnail = rowThumbnailSource(for: item) {
+            if column.id == .title, !hasArtColumn, let thumbnail = art.rowThumbnailSource(for: item) {
                 titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: x + 4 + titleSpinnerInset,
                                                         rowRect: rect, side: rect.height - 2)
             }
@@ -1840,22 +1636,13 @@ class ModernLibraryBrowserView: NSView {
         contentFill(isMetalRenderStyle ? NSColor.clear : skin.surfaceColor.withAlphaComponent(0.3)).setFill()
         context.fill(rect)
         
-        let letterCount = CGFloat(alphabetLetters.count)
-        let letterHeight = rect.height / letterCount
+        let letters = LibraryBrowserList.alphabetLetters
+        let letterHeight = rect.height / CGFloat(letters.count)
         let fontSize = min(9 * ModernSkinElements.sizeMultiplier, letterHeight * 0.8)
-        
-        var availableLetters = Set<String>()
-        if case .local = model.currentSource, model.browseMode == .artists {
-            availableLetters = Set(model.localArtistLetterOffsets.keys)
-        } else if case .local = model.currentSource, model.browseMode == .albums {
-            availableLetters = Set(model.localAlbumLetterOffsets.keys)
-        } else {
-            for item in model.displayItems {
-                availableLetters.insert(LibraryBrowserModel.effectiveSortLetter(for: item))
-            }
-        }
+        let availableLetters = model.lettersWithRows
 
-        for (index, letter) in alphabetLetters.enumerated() {
+        for (index, letter) in letters.enumerated() {
+
             // Bottom-left origin: # at top, Z at bottom
             let y = rect.maxY - CGFloat(index + 1) * letterHeight
             let letterRect = NSRect(x: rect.minX, y: y, width: rect.width, height: letterHeight)
@@ -1882,128 +1669,35 @@ class ModernLibraryBrowserView: NSView {
     
     // MARK: - List Layout
 
-    /// Where the list sits, worked out in one place. Drawing, every hit test and every scroll
-    /// range read it, so a click lands on the row drawn under it (PR #480: hit tests reserved the
-    /// header on a different condition than drawing, and every click landed one row up).
-    private struct ListLayout {
-        /// Below the tab bar (and search bar), above the offline banner, the window's full inner
-        /// width. Loading, error and art views fill it.
-        let area: NSRect
-        /// The column header band and the columns it shows, when the list has columns.
-        let header: Header?
-        /// Where rows are drawn: under the header, left of the scrollbar and alphabet index.
-        let rows: NSRect
-        /// The alphabet index, beside the rows.
-        let alphabet: NSRect
-        /// The offline-volume banner under `area`, when a local watch folder is offline.
-        let banner: NSRect?
-
-        struct Header {
-            let rect: NSRect
-            let columns: [LibraryBrowserColumn]
-            /// The group the columns' widths are keyed by; nil for radio's fixed columns.
-            let group: LibraryColumnVisibilityGroup?
-        }
-    }
-
     /// The bottom of the tab bar, or of the search bar in search mode.
     private var listTopY: CGFloat {
         topChromeBottomY - Layout.serverBarHeight - Layout.tabBarHeight
             - (model.browseMode == .search ? Layout.searchBarHeight : 0)
     }
 
-    private func listLayout() -> ListLayout {
-        let showsBanner = model.isLocalSource && !model.offlineWatchFolders.isEmpty
+    private func listLayout() -> LibraryBrowserListLayout {
+        let showsBanner = model.offlineBannerText != nil
         let bottomY = contentRegionBottomY + (showsBanner ? Layout.offlineBannerHeight : 0)
         let area = NSRect(x: Layout.borderWidth, y: bottomY,
                           width: bounds.width - Layout.borderWidth * 2, height: listTopY - bottomY)
         // Flow / Tiles draw no column header, so the alphabet index beside them runs full height.
-        let group = model.currentColumnGroup()
-        let columns = artLens.isPresenting ? [] : model.headerColumns(for: group)
+        let (columns, group) = list.headerColumns()
         let headerHeight = columns.isEmpty ? 0 : columnHeaderHeight
         let rows = NSRect(x: area.minX, y: area.minY,
                           width: area.width - Layout.scrollbarWidth - Layout.alphabetWidth,
                           height: area.height - headerHeight)
-        return ListLayout(
+        return LibraryBrowserListLayout(
             area: area,
             header: columns.isEmpty ? nil : .init(rect: NSRect(x: rows.minX, y: rows.maxY, width: rows.width, height: headerHeight),
                                                   columns: columns, group: group),
             rows: rows,
             alphabet: NSRect(x: rows.maxX, y: rows.minY, width: Layout.alphabetWidth, height: rows.height),
-            banner: showsBanner ? NSRect(x: area.minX, y: contentRegionBottomY, width: area.width, height: Layout.offlineBannerHeight) : nil
+            banner: showsBanner ? NSRect(x: area.minX, y: contentRegionBottomY, width: area.width, height: Layout.offlineBannerHeight) : nil,
+            rowHeight: itemHeight, scale: ModernSkinElements.sizeMultiplier, isFlipped: false
         )
     }
 
-    // MARK: - Column Support
 
-    /// The columns a row draws and the group their widths are keyed by (nil = simple list rendering).
-    /// Artist, album and track rows all draw the list's one header, Finder-style; radio and
-    /// YouTube rows draw their own fixed columns.
-    private func rowColumns(for item: LibraryBrowserItem, header: ListLayout.Header?) -> (columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?)? {
-        switch model.columnGroup(for: item) {
-        case .youtube?: return (LibraryBrowserColumn.youtubeColumns, .youtube)
-        case _?: return header.map { ($0.columns, $0.group) }
-        case nil: return model.isInternetRadioItem(item) ? (LibraryBrowserColumn.internetRadioColumns, nil) : nil
-        }
-    }
-    
-    private func widthForColumn(
-        _ column: LibraryBrowserColumn,
-        availableWidth: CGFloat,
-        columns: [LibraryBrowserColumn],
-        group: LibraryColumnVisibilityGroup?
-    ) -> CGFloat {
-        if column.id == .title {
-            // If a stored width exists for the title column (set when user resizes any column), use it
-            if let storedWidth = model.storedColumnWidth(for: column, group: group) {
-                return max(column.minWidth, storedWidth)
-            }
-            // Otherwise, title is flexible and fills remaining space
-            let fixedWidth = columns.filter { $0.id != .title }.reduce(0) {
-                $0 + (model.storedColumnWidth(for: $1, group: group) ?? $1.minWidth)
-            }
-            return max(column.minWidth, availableWidth - fixedWidth - 8)
-        }
-        return model.storedColumnWidth(for: column, group: group) ?? column.minWidth
-    }
-    
-    private func totalColumnsWidth(
-        columns: [LibraryBrowserColumn],
-        availableWidth: CGFloat,
-        group: LibraryColumnVisibilityGroup?
-    ) -> CGFloat {
-        8 + columns.reduce(0) { total, column in
-            total + widthForColumn(column, availableWidth: availableWidth, columns: columns, group: group)
-        }
-    }
-
-    private func clampHorizontalScrollOffset() {
-        guard let header = listLayout().header else { horizontalScrollOffset = 0; return }
-        let availableWidth = header.rect.width
-        let maxOffset = max(0, totalColumnsWidth(columns: header.columns, availableWidth: availableWidth, group: header.group) - availableWidth)
-        horizontalScrollOffset = max(0, min(horizontalScrollOffset, maxOffset))
-    }
-    
-    // MARK: - Utility
-    
-    private func calculateCenterFillRect(imageSize: NSSize, in targetRect: NSRect) -> NSRect {
-        guard imageSize.width > 0, imageSize.height > 0 else { return targetRect }
-        let imageAspect = imageSize.width / imageSize.height
-        let targetAspect = targetRect.width / targetRect.height
-        var width: CGFloat
-        var height: CGFloat
-        if imageAspect > targetAspect {
-            width = targetRect.width
-            height = width / imageAspect
-        } else {
-            height = targetRect.height
-            width = height * imageAspect
-        }
-        let x = targetRect.minX + (targetRect.width - width) / 2
-        let y = targetRect.minY + (targetRect.height - height) / 2
-        return NSRect(x: x, y: y, width: width, height: height)
-    }
-    
     // MARK: - Hit Testing (Bottom-Left Origin)
     
     private func hitTestTitleBar(at point: NSPoint) -> Bool {
@@ -2045,98 +1739,6 @@ class ModernLibraryBrowserView: NSView {
     private func hitTestSearchBar(at point: NSPoint) -> Bool {
         guard model.browseMode == .search else { return false }
         return point.y >= listTopY && point.y < listTopY + Layout.searchBarHeight
-    }
-    
-    private func hitTestListArea(at point: NSPoint) -> Int? {
-        let rows = listLayout().rows
-        guard rows.contains(point) else { return nil }
-        
-        // In bottom-left origin, items are rendered from top down
-        let clickedIndex = Int((rows.maxY - point.y + scrollOffset) / itemHeight)
-        return model.displayItems.indices.contains(clickedIndex) ? clickedIndex : nil
-    }
-
-    private func hitTestInternetRadioRating(at point: NSPoint, itemIndex: Int) -> Int? {
-        guard model.hasInternetRadioColumns, itemIndex >= 0, itemIndex < model.displayItems.count else { return nil }
-        let item = model.displayItems[itemIndex]
-        let layout = listLayout()
-        guard case .radioStation = item.type, let row = rowColumns(for: item, header: layout.header) else { return nil }
-
-        let listRect = layout.rows
-        let itemTopY = listRect.maxY - CGFloat(itemIndex) * itemHeight + scrollOffset
-        let rowRect = NSRect(x: listRect.minX, y: itemTopY - itemHeight, width: listRect.width, height: itemHeight)
-        guard rowRect.contains(point) else { return nil }
-
-        var x = rowRect.minX + 4 - horizontalScrollOffset
-        for column in row.columns {
-            let width = widthForColumn(column, availableWidth: rowRect.width, columns: row.columns, group: row.group)
-            if column.id == .rating {
-                let cellRect = NSRect(x: x, y: rowRect.minY, width: width, height: rowRect.height)
-                guard cellRect.contains(point) else { return nil }
-                let innerWidth = max(1, cellRect.width - 8)
-                let clampedX = min(max(point.x, cellRect.minX + 4), cellRect.maxX - 4)
-                let normalized = (clampedX - (cellRect.minX + 4)) / innerWidth
-                let star = min(5, max(1, Int(normalized * 5.0) + 1))
-                return star
-            }
-            x += width
-        }
-        return nil
-    }
-
-    private func hitTestAlphabetIndex(at point: NSPoint) -> Bool {
-        return listLayout().alphabet.contains(point)
-    }
-    
-    /// The column header when `point` is in its band, at any x — so a right-click above the
-    /// alphabet index still opens the column menu.
-    private func columnHeader(at point: NSPoint) -> ListLayout.Header? {
-        guard let header = listLayout().header, point.y >= header.rect.minY, point.y < header.rect.maxY else { return nil }
-        return header
-    }
-    
-    private func hitTestColumnResize(at point: NSPoint) -> LibraryBrowserColumn.ID? {
-        if model.hasInternetRadioColumns { return nil }
-        guard let header = columnHeader(at: point), header.columns.count > 1 else { return nil }
-        let columns = header.columns
-        let group = header.group
-        
-        let threshold: CGFloat = 4 * ModernSkinElements.sizeMultiplier
-        var x = header.rect.minX + 4 - horizontalScrollOffset
-        
-        for (index, column) in columns.enumerated() {
-            let width = widthForColumn(column, availableWidth: header.rect.width, columns: columns, group: group)
-            let edgeX = x + width
-            
-            // Allow resizing any non-last column by dragging its right edge
-            if index < columns.count - 1 {
-                if abs(point.x - edgeX) < threshold {
-                    return column.id
-                }
-            }
-            // Allow resizing column to the left of title (drag left edge of title = resize previous column)
-            if index > 0 && column.id == .title {
-                if abs(point.x - x) < threshold {
-                    return columns[index - 1].id
-                }
-            }
-            x += width
-        }
-        return nil
-    }
-    
-    private func hitTestColumnHeader(at point: NSPoint) -> LibraryBrowserColumn.ID? {
-        guard let header = columnHeader(at: point) else { return nil }
-        let columns = header.columns
-        let group = header.group
-        
-        var x = header.rect.minX + 4 - horizontalScrollOffset
-        for column in columns {
-            let width = widthForColumn(column, availableWidth: header.rect.width, columns: columns, group: group)
-            if point.x >= x && point.x < x + width { return column.id }
-            x += width
-        }
-        return nil
     }
     
     // MARK: - Mouse Events
@@ -2212,40 +1814,11 @@ class ModernLibraryBrowserView: NSView {
         // Search bar
         if hitTestSearchBar(at: point) { window?.makeFirstResponder(self); return }
         
-        // Column resize (check before sort so edge-drag doesn't trigger sort)
-        if let header = columnHeader(at: point), let columnId = hitTestColumnResize(at: point) {
-            resizingColumnId = columnId
-            resizingColumnGroup = header.group
-            resizeStartX = point.x
-            let columns = header.columns
-            let group = resizingColumnGroup
-            let headerWidth = header.rect.width
-            resizeStartWidth = widthForColumn(LibraryBrowserColumn.findColumn(id: columnId)!, availableWidth: headerWidth, columns: columns, group: group)
-            // Freeze the title column's current width so it doesn't flex during resize
-            if let group, model.storedColumnWidth(for: .title, group: group) == nil {
-                let titleWidth = widthForColumn(.title, availableWidth: headerWidth, columns: columns, group: group)
-                model.setColumnWidth(titleWidth, for: .title, group: group)
-            }
-            NSCursor.resizeLeftRight.push()
-            return
-        }
-        
-        // Column header click for sorting
-        if let columnId = hitTestColumnHeader(at: point) {
-            model.sortByColumn(columnId)
-            needsDisplay = true
-            return
-        }
-        
-        // Alphabet index
-        if hitTestAlphabetIndex(at: point) { handleAlphabetClick(at: point); return }
-        
-        // List area
-        if let itemIndex = hitTestListArea(at: point) {
-            handleListClick(at: itemIndex, event: event, point: point); return
-        }
-        
+        // The column header, alphabet index and rows
+        if list.mouseDown(at: point, event: event) { return }
+
         // Title bar drag
+
         if hitTestTitleBar(at: point) {
             isDraggingWindow = true; windowDragStartPoint = event.locationInWindow
             if let window = window { WindowManager.shared.windowWillStartDragging(window, fromTitleBar: true) }
@@ -2253,13 +1826,7 @@ class ModernLibraryBrowserView: NSView {
     }
     
     override func mouseDragged(with event: NSEvent) {
-        if let columnId = resizingColumnId, let group = resizingColumnGroup {
-            let point = convert(event.locationInWindow, from: nil)
-            let deltaX = point.x - resizeStartX
-            let minWidth = LibraryBrowserColumn.findColumn(id: columnId)?.minWidth ?? 30
-            model.setColumnWidth(max(minWidth, resizeStartWidth + deltaX), for: columnId, group: group)
-            needsDisplay = true; return
-        }
+        if list.mouseDragged(at: convert(event.locationInWindow, from: nil)) { return }
 
         // When HT is on, lazily start window drag on first mouseDragged (handles content-area drags)
         if !isDraggingWindow && WindowManager.shared.hideTitleBars {
@@ -2281,7 +1848,7 @@ class ModernLibraryBrowserView: NSView {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         
-        if resizingColumnId != nil { resizingColumnId = nil; resizingColumnGroup = nil; NSCursor.pop() }
+        list.mouseUp()
         if isDraggingWindow {
             isDraggingWindow = false
             if let window = window { WindowManager.shared.windowDidFinishDragging(window) }
@@ -2301,15 +1868,8 @@ class ModernLibraryBrowserView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if hitTestColumnResize(at: point) != nil {
-            NSCursor.resizeLeftRight.set()
-        } else if hitTestAlphabetIndex(at: point) {
-            NSCursor.pointingHand.set()
-        } else {
-            NSCursor.arrow.set()
-        }
-        let overList = hitTestListArea(at: point) != nil
-        rowThumbnails.hover(at: overList ? point : nil) { window?.convertToScreen(convert($0, to: nil)) }
+        list.cursor(at: point).set()
+        rowThumbnails.hover(at: list.rowIndex(at: point) != nil ? point : nil) { window?.convertToScreen(convert($0, to: nil)) }
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -2318,207 +1878,25 @@ class ModernLibraryBrowserView: NSView {
     }
     
     override func rightMouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        
-        // Right-click on column header: show column visibility menu
-        if columnHeader(at: point) != nil {
-            showColumnConfigMenu(at: event); return
+        if !list.rightMouseDown(at: convert(event.locationInWindow, from: nil), event: event) {
+            super.rightMouseDown(with: event)
         }
-        
-        if let clickedIndex = hitTestListArea(at: point) {
-            if !model.selectedIndices.contains(clickedIndex) { model.selectedIndices = [clickedIndex]; needsDisplay = true }
-            let item = model.displayItems[clickedIndex]
-            showContextMenu(for: item, at: event); return
-        }
-        let menu = actions.emptySpaceMenu() ?? NSMenu()
-        prependBackdropMenu(to: menu)
-        if !menu.items.isEmpty {
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-            return
-        }
-        super.rightMouseDown(with: event)
     }
-    
+
     override func scrollWheel(with event: NSEvent) {
-        if model.browseMode.isHistoryMode {
-            super.scrollWheel(with: event)
+        guard list.scrollWheel(event) else {
+            if model.browseMode.isHistoryMode { super.scrollWheel(with: event) }
             return
         }
-        let layout = listLayout()
-        let listHeight = layout.rows.height
-        let totalHeight = CGFloat(model.displayItems.count) * itemHeight
-        let verticalDelta = verticalScrollDelta(from: event)
         // The list with its header and the offline banner: a horizontal scroll moves the header too.
-        let dirtyRect = layout.banner.map { layout.area.union($0) } ?? layout.area
-
-        if totalHeight > listHeight && verticalDelta != 0 {
-            scrollOffset = max(0, min(totalHeight - listHeight, scrollOffset - verticalDelta))
-            setNeedsDisplay(dirtyRect)
-        }
-
-        let horizontalDelta = horizontalScrollDelta(from: event)
-        if horizontalDelta != 0, let header = layout.header {
-            let availableWidth = header.rect.width
-            let totalWidth = totalColumnsWidth(columns: header.columns, availableWidth: availableWidth, group: header.group)
-            let maxOffset = max(0, totalWidth - availableWidth)
-            if maxOffset > 0 {
-                horizontalScrollOffset = max(0, min(maxOffset, horizontalScrollOffset - horizontalDelta))
-                setNeedsDisplay(dirtyRect)
-            }
-        }
-
-        // Trigger next-page load when scrolled near the bottom of a local paginated list
-        if case .local = model.currentSource { loadNextLocalPageIfNeeded(listHeight: listHeight) }
-    }
-
-    private func verticalScrollDelta(from event: NSEvent) -> CGFloat {
-        if event.hasPreciseScrollingDeltas, event.scrollingDeltaY != 0 {
-            return event.scrollingDeltaY
-        }
-        return event.deltaY * 3
-    }
-
-    private func horizontalScrollDelta(from event: NSEvent) -> CGFloat {
-        if event.hasPreciseScrollingDeltas, event.scrollingDeltaX != 0 {
-            return event.scrollingDeltaX
-        }
-        return event.deltaX * 3
-    }
-
-    private func loadNextLocalPageIfNeeded(listHeight: CGFloat) {
-        let threshold = itemHeight * 10   // start loading 10 rows from bottom
-        let loadedHeight = CGFloat(model.displayItems.count) * itemHeight
-        guard scrollOffset + listHeight + threshold >= loadedHeight else { return }
-        model.appendNextLocalPage()
+        let layout = listLayout()
+        setNeedsDisplay(layout.banner.map { layout.area.union($0) } ?? layout.area)
     }
 
     // MARK: - Keyboard Events
-    
+
     override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 36: // Enter
-            if model.browseMode == .search && !model.searchQuery.isEmpty && (!model.isYouTubeChannelSearch || model.hasUnsubmittedYouTubeSearch) {
-                model.loadDataForCurrentMode()
-            } else if event.modifierFlags.contains(.shift) {
-                runVerbOnSelection(.playNext)
-            } else if event.modifierFlags.contains(.option) {
-                runVerbOnSelection(.addToQueue)
-            } else {
-                if let index = model.selectedIndices.first, index < model.displayItems.count { actions.activate(model.displayItems[index]) }
-            }
-        case 124: // Right Arrow — expand or move into first child
-            if let index = model.selectedIndices.first, index < model.displayItems.count {
-                let item = model.displayItems[index]
-                if item.hasChildren {
-                    if model.isExpanded(item) {
-                        // Move to first child
-                        let nextIdx = index + 1
-                        if nextIdx < model.displayItems.count {
-                            model.selectedIndices = [nextIdx]; ensureVisible(index: nextIdx); loadArtworkForSelection(); needsDisplay = true
-                        }
-                    } else {
-                        model.toggleExpand(item); needsDisplay = true
-                    }
-                }
-            }
-        case 123: // Left Arrow — collapse or jump to parent
-            if let index = model.selectedIndices.first, index < model.displayItems.count {
-                let item = model.displayItems[index]
-                if model.isExpanded(item) {
-                    model.toggleExpand(item); needsDisplay = true
-                } else if item.indentLevel > 0 {
-                    // Scan backward for parent (first item with indentLevel == current - 1, skipping .header)
-                    let parentLevel = item.indentLevel - 1
-                    var parentIdx: Int? = nil
-                    for i in stride(from: index - 1, through: 0, by: -1) {
-                        let candidate = model.displayItems[i]
-                        if case .header = candidate.type { continue }
-                        if candidate.indentLevel == parentLevel { parentIdx = i; break }
-                    }
-                    if let p = parentIdx {
-                        model.selectedIndices = [p]; ensureVisible(index: p); loadArtworkForSelection(); needsDisplay = true
-                    }
-                }
-            }
-        case 48: // Tab — cycle browse tabs
-            let allModes = LibraryBrowseMode.tabs
-            // Treat .folders as .plists for tab cycling (they occupy the same slot)
-            let effectiveMode = model.browseMode == .folders ? .plists : model.browseMode
-            if let currentIdx = allModes.firstIndex(of: effectiveMode) {
-                let shift = event.modifierFlags.contains(.shift)
-                let nextIdx = shift
-                    ? (currentIdx - 1 + allModes.count) % allModes.count
-                    : (currentIdx + 1) % allModes.count
-                let nextMode = allModes[nextIdx]
-                model.browseMode = nextMode == .plists ? model.effectivePlistsSlotMode : nextMode
-                model.selectedIndices.removeAll(); scrollOffset = 0
-                model.loadDataForCurrentMode()
-            }
-        case 49: // Space — search input when searching, otherwise play/pause
-            if model.browseMode == .search {
-                if let chars = event.characters, !chars.isEmpty {
-                    model.searchQuery += chars; needsDisplay = true
-                }
-            } else if WindowManager.shared.isVideoActivePlayback {
-                WindowManager.shared.toggleVideoPlayPause()
-            } else if WindowManager.shared.audioEngine.state == .playing {
-                WindowManager.shared.audioEngine.pause()
-            } else {
-                WindowManager.shared.audioEngine.play()
-            }
-        case 125: // Down
-            if let maxIndex = model.selectedIndices.max(), maxIndex < model.displayItems.count - 1 {
-                model.selectedIndices = [maxIndex + 1]; ensureVisible(index: maxIndex + 1); loadArtworkForSelection(); needsDisplay = true
-            }
-        case 126: // Up
-            if let minIndex = model.selectedIndices.min(), minIndex > 0 {
-                model.selectedIndices = [minIndex - 1]; ensureVisible(index: minIndex - 1); loadArtworkForSelection(); needsDisplay = true
-            }
-        default:
-            if model.browseMode == .search, let chars = event.characters, !chars.isEmpty {
-                if event.keyCode == 51 {
-                    if !model.searchQuery.isEmpty { model.searchQuery.removeLast(); needsDisplay = true }
-                } else if chars.rangeOfCharacter(from: .alphanumerics) != nil ||
-                          chars.rangeOfCharacter(from: .whitespaces) != nil {
-                    model.searchQuery += chars; needsDisplay = true
-                }
-            } else if model.browseMode != .search, let chars = event.characters, !chars.isEmpty {
-                if event.keyCode == 53 { // Escape — clear type-ahead
-                    typeAheadQuery = ""; typeAheadTimer?.invalidate(); typeAheadTimer = nil; needsDisplay = true
-                } else if event.keyCode == 51 { // Backspace
-                    if !typeAheadQuery.isEmpty {
-                        typeAheadQuery.removeLast()
-                        jumpToTypeAhead()
-                    }
-                } else if chars.rangeOfCharacter(from: .alphanumerics) != nil ||
-                          chars.rangeOfCharacter(from: .whitespaces) != nil {
-                    typeAheadQuery += chars
-                    jumpToTypeAhead()
-                }
-            }
-        }
-    }
-    
-    private func ensureVisible(index: Int) {
-        let effectiveHeight = listLayout().rows.height
-
-        let itemTop = CGFloat(index) * itemHeight
-        let itemBottom = itemTop + itemHeight
-
-        if itemTop < scrollOffset { scrollOffset = itemTop }
-        else if itemBottom > scrollOffset + effectiveHeight { scrollOffset = itemBottom - effectiveHeight }
-    }
-
-    private func jumpToTypeAhead() {
-        let query = typeAheadQuery.lowercased()
-        guard !query.isEmpty else { return }
-        if let idx = model.displayItems.firstIndex(where: { LibraryBrowserModel.titleMatchesTypeAhead($0.title, query: query) }) {
-            model.selectedIndices = [idx]; ensureVisible(index: idx); loadArtworkForSelection(); needsDisplay = true
-        }
-        typeAheadTimer?.invalidate()
-        typeAheadTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-            self?.typeAheadQuery = ""
-        }
+        if !list.keyDown(event) { super.keyDown(with: event) }
     }
 
     // MARK: - Drag and Drop
@@ -2537,11 +1915,11 @@ class ModernLibraryBrowserView: NSView {
     
     private func handleServerBarClick(at point: NSPoint, event: NSEvent) {
         if refreshButtonRect.contains(point) {
-            handleRefreshClick()
+            model.refreshCurrentSource()
             return
         }
         if let hit = viewModeButtonRects.first(where: { $0.rect.contains(point) }) {
-            artLens.mode = hit.mode
+            list.lens.mode = hit.mode
             needsDisplay = true
             return
         }
@@ -2561,159 +1939,6 @@ class ModernLibraryBrowserView: NSView {
                    in: window?.contentView)
     }
 
-    private func handleRefreshClick() {
-        if model.browseMode.isHistoryMode {
-            historyAgent.scheduleRefresh()
-            return
-        }
-        model.refreshCurrentSource()
-    }
-    
-    // MARK: - Alphabet Click
-    
-    private func handleAlphabetClick(at point: NSPoint) {
-        let rect = listLayout().alphabet
-        let letterCount = CGFloat(alphabetLetters.count)
-        let letterHeight = rect.height / letterCount
-        guard letterHeight > 0 else { return }
-
-        // Screen coords: maxY is the top of the strip (# at top, Z at bottom).
-        let relativeFromTop = rect.maxY - point.y
-        let letterIndex = Int(relativeFromTop / letterHeight)
-
-        guard letterIndex >= 0 && letterIndex < alphabetLetters.count else { return }
-        scrollToLetter(alphabetLetters[letterIndex])
-    }
-    
-    private func scrollToLetter(_ letter: String) {
-        if artLens.jump(to: { LibraryBrowserModel.effectiveSortLetter(for: $0) == letter }) { return }
-        // Paged local tabs load the letter's page
-        if let moved = model.showLocalPage(atLetter: letter) {
-            if moved { scrollOffset = 0 }
-            return
-        }
-        for (index, item) in model.displayItems.enumerated() {
-            if LibraryBrowserModel.effectiveSortLetter(for: item) == letter {
-                let effectiveHeight = listLayout().rows.height
-                let maxScroll = max(0, CGFloat(model.displayItems.count) * itemHeight - effectiveHeight)
-                scrollOffset = min(maxScroll, CGFloat(index) * itemHeight)
-                model.selectedIndices = [index]; needsDisplay = true; return
-            }
-        }
-    }
-    
-    // MARK: - List Click
-    
-    private func handleListClick(at index: Int, event: NSEvent, point: NSPoint) {
-        let item = model.displayItems[index]
-
-        if case .radioFolder(let folder) = item.type {
-            let indent = CGFloat(item.indentLevel) * 16
-            let inExpandZone = point.x < Layout.borderWidth + indent + 20
-
-            if folder.hasChildren && inExpandZone {
-                model.toggleExpand(item)
-                return
-            }
-
-            if folder.hasChildren && event.clickCount == 2 {
-                model.toggleExpand(item)
-                return
-            }
-
-            if let updatedIndex = model.displayItems.firstIndex(where: { $0.id == folder.id }) {
-                model.selectedIndices = [updatedIndex]
-            } else {
-                model.selectedIndices = [index]
-            }
-            needsDisplay = true
-            return
-        }
-
-        if let clickedStar = hitTestInternetRadioRating(at: point, itemIndex: index),
-           case .radioStation(let station) = item.type {
-            let currentRating = RadioManager.shared.rating(for: station)
-            let targetRating = currentRating == clickedStar ? 0 : clickedStar
-            RadioManager.shared.setRating(targetRating, for: station)
-            model.selectedIndices = [index]
-            needsDisplay = true
-            return
-        }
-
-        if item.hasChildren {
-            let indent = CGFloat(item.indentLevel) * 16
-            let inExpandZone = point.x < Layout.borderWidth + indent + 20
-            if item.type.isAlbumItem {
-                if event.clickCount == 1 { model.toggleExpand(item) }
-                // Fall through to selection
-            } else if inExpandZone {
-                model.toggleExpand(item); return
-            }
-        }
-
-        if event.modifierFlags.contains(.shift) {
-            if let lastSelected = model.selectedIndices.max() {
-                for i in min(lastSelected, index)...max(lastSelected, index) { model.selectedIndices.insert(i) }
-            } else { model.selectedIndices.insert(index) }
-        } else if event.modifierFlags.contains(.command) {
-            if model.selectedIndices.contains(index) { model.selectedIndices.remove(index) }
-            else { model.selectedIndices.insert(index) }
-        } else {
-            model.selectedIndices = [index]
-            if model.browseMode == .search,
-               case .radioStation(let station) = item.type,
-               event.clickCount == 1 {
-                RadioManager.shared.play(station: station)
-            } else {
-                loadArtworkForSelection()
-            }
-        }
-        
-        if event.clickCount == 2 { actions.activate(item) }
-        needsDisplay = true
-    }
-    
-    // MARK: - Menus
-
-    private func showColumnConfigMenu(at event: NSEvent) {
-        let menu = actions.columnMenu() ?? NSMenu()
-        prependBackdropMenu(to: menu)
-        guard !menu.items.isEmpty else { return }
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    private var backdropMenuIsAvailable: Bool {
-        !compactMode || AppCapabilities.supports(.compactWindowVisualsMenu)
-    }
-
-    private func prependBackdropMenu(to menu: NSMenu) {
-        guard backdropMenuIsAvailable else { return }
-        if !menu.items.isEmpty {
-            menu.insertItem(.separator(), at: 0)
-        }
-        let item = NSMenuItem(
-            title: compactMode ? "Compact Background" : "Library Background",
-            action: nil,
-            keyEquivalent: ""
-        )
-        item.submenu = compactMode
-            ? ContextMenuBuilder.buildCompactBackdropMenu(presenter: backdropPresenter)
-            : ContextMenuBuilder.buildLibraryBackdropMenu(presenter: backdropPresenter)
-        menu.insertItem(item, at: 0)
-    }
-
-    private func showContextMenu(for item: LibraryBrowserItem, at event: NSEvent) {
-        guard let menu = actions.contextMenu(for: item) else { return }
-        prependBackdropMenu(to: menu)
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    /// Shift+Enter / Option+Enter: the menu's Play Next / Add to Queue on the selected row.
-    private func runVerbOnSelection(_ verb: TrackVerb) {
-        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
-        actions.run(verb, on: model.displayItems[index])
-    }
-
     // MARK: - Notification Handlers
     
     private func invalidateServerBarFontCache() {
@@ -2730,14 +1955,14 @@ class ModernLibraryBrowserView: NSView {
     @objc private func modernSkinDidChange() {
         let skin = currentSkin()
         renderer = ModernSkinRenderer(skin: skin)
-        historyHostingView?.rootView = StatsContentView(agent: historyAgent,
+        historyHostingView?.rootView = StatsContentView(agent: model.history,
                                                         skinTextColor: Color(skin.textColor),
                                                         headerTitle: "Library Data",
                                                         heatmapTheme: ContributionHeatmapTheme(modernSkin: skin))
         historyHostingView?.appearance = skinAppearance(for: skin)
         updateHistoryHostingBackground()
-        artLens.restyle()
-        backdropView?.reload()
+        list.lens.restyle()
+        backdrop.reload()
         invalidateServerBarFontCache()
         updateCornerMask()
         updateEmbeddedSubviewFrames()
@@ -2749,13 +1974,6 @@ class ModernLibraryBrowserView: NSView {
         modernSkinDidChange()
     }
 
-    @objc private func playHistoryDidChange() {
-        Task { @MainActor [weak self] in
-            guard let self, self.model.browseMode.isHistoryMode else { return }
-            self.historyAgent.scheduleRefresh()
-        }
-    }
-    
     @objc private func windowLayoutDidChange() {
         guard let window = window else { return }
         let newEdges = WindowManager.shared.computeAdjacentEdges(for: window)
@@ -2789,32 +2007,16 @@ class ModernLibraryBrowserView: NSView {
 
     /// A channel's uploads started or finished loading: spin the per-row spinner. The model rebuilds the rows.
 
-    @objc private func trackDidChange(_ notification: Notification) {
-        let track = notification.userInfo?["track"] as? Track
-        let needsCurrentTrackArtwork = showsLegacyArtwork
-        guard needsCurrentTrackArtwork else {
-            artworkDisplayGeneration &+= 1
-            if currentArtwork != nil || currentTrackArtwork != nil {
-                currentArtwork = nil
-                currentTrackArtwork = nil
-                artworkTrackId = nil
-                needsDisplay = true
-            }
-            return
-        }
-        loadArtwork(for: track)
-    }
-    
     @objc private func windowDidMiniaturize(_ notification: Notification) {
         guard notification.object as? NSWindow == window else { return }
         stopServerNameScroll()
-        backdropView?.reload()
+        backdrop.reload()
     }
     
     @objc private func windowDidDeminiaturize(_ notification: Notification) {
         guard notification.object as? NSWindow == window else { return }
         startServerNameScroll()
-        backdropView?.reload()
+        backdrop.reload()
     }
     
     @objc private func windowDidChangeOcclusionState(_ notification: Notification) {
@@ -2824,7 +2026,7 @@ class ModernLibraryBrowserView: NSView {
         } else {
             stopServerNameScroll()
         }
-        backdropView?.reload()
+        backdrop.reload()
     }
     
     // MARK: - Loading Animation
@@ -2866,26 +2068,6 @@ class ModernLibraryBrowserView: NSView {
         }
     }
     
-    /// Returns the display name of the currently relevant Jellyfin library based on browse mode.
-    private var jellyfinCurrentLibraryName: String {
-        let mgr = JellyfinManager.shared
-        switch model.browseMode {
-        case .movies: return mgr.currentMovieLibrary?.name ?? "All"
-        case .shows:  return mgr.currentShowLibrary?.name ?? "All"
-        default:      return mgr.currentMusicLibrary?.name ?? "All"
-        }
-    }
-
-    /// Returns the display name of the currently relevant Emby library based on browse mode.
-    private var embyCurrentLibraryName: String {
-        let mgr = EmbyManager.shared
-        switch model.browseMode {
-        case .movies: return mgr.currentMovieLibrary?.name ?? "All"
-        case .shows:  return mgr.currentShowLibrary?.name ?? "All"
-        default:      return mgr.currentMusicLibrary?.name ?? "All"
-        }
-    }
-
     // MARK: - Server Name Scroll
     
     private func startServerNameScroll() {
@@ -2940,268 +2122,4 @@ class ModernLibraryBrowserView: NSView {
         return NSRect(x: 0, y: barY, width: bounds.width, height: Layout.serverBarHeight)
     }
 
-    // MARK: - Artwork Loading
-    
-    private func loadArtwork(for track: Track?) {
-        currentTrackArtworkLoadTask?.cancel(); currentTrackArtworkLoadTask = nil
-        guard let track = track else {
-            artworkDisplayGeneration &+= 1
-            currentArtwork = nil
-            currentTrackArtwork = nil
-            artworkTrackId = nil
-            needsDisplay = true
-            return
-        }
-        guard track.id != artworkTrackId || currentTrackArtwork == nil else {
-            return
-        }
-        artworkDisplayGeneration &+= 1
-        let displayGeneration = artworkDisplayGeneration
-        currentTrackArtworkLoadTask = Task { [weak self] in
-            guard let self = self else { return }
-            var image: NSImage?
-            if let plexRatingKey = track.plexRatingKey {
-                image = await self.loadPlexArtwork(ratingKey: plexRatingKey, thumbPath: track.artworkThumb)
-            } else if let subsonicId = track.subsonicId {
-                image = await self.loadSubsonicArtwork(songId: subsonicId)
-            } else if track.jellyfinId != nil {
-                if let itemId = track.artworkThumb { image = await LibraryArtwork.jellyfin(itemId: itemId) }
-            } else if track.embyId != nil {
-                if let itemId = track.artworkThumb { image = await LibraryArtwork.emby(itemId: itemId) }
-            } else if track.url.isFileURL {
-                image = await self.loadLocalArtwork(url: track.url)
-            } else if RadioManager.shared.isActive {
-                image = await LibraryArtwork.radio(for: track)
-            } else if let thumb = track.artworkThumb {
-                image = await LibraryArtwork.remote(urlString: thumb, cacheNamespace: "generic")
-            }
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard WindowManager.shared.audioEngine.currentTrack?.id == track.id,
-                      self.artworkDisplayGeneration == displayGeneration else { return }
-                self.currentTrackArtwork = image
-                self.artworkTrackId = track.id
-                self.currentArtwork = image
-                self.needsDisplay = true
-            }
-        }
-    }
-
-    private func loadPlexArtwork(ratingKey: String, thumbPath: String? = nil) async -> NSImage? {
-        let cacheKey = NSString(string: "plex:\(ratingKey)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) { return cached }
-        let thumb = thumbPath ?? "/library/metadata/\(ratingKey)/thumb"
-        guard let url = PlexManager.shared.artworkURL(thumb: thumb, size: 400) else { return nil }
-        do {
-            var request = URLRequest(url: url)
-            if let headers = PlexManager.shared.streamingHeaders {
-                for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
-            }
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let image = NSImage(data: data) else { return nil }
-            LibraryArtwork.cache.setObject(image, forKey: cacheKey); return image
-        } catch { return nil }
-    }
-    
-    private func loadSubsonicArtwork(songId: String) async -> NSImage? {
-        let cacheKey = NSString(string: "subsonic:\(songId)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) { return cached }
-        guard let url = SubsonicManager.shared.coverArtURL(coverArtId: songId, size: 400) else { return nil }
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let image = NSImage(data: data) else { return nil }
-            LibraryArtwork.cache.setObject(image, forKey: cacheKey); return image
-        } catch { return nil }
-    }
-    
-    private func loadLocalArtwork(url: URL) async -> NSImage? {
-        let cacheKey = NSString(string: "local:\(url.path)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) { return cached }
-        let asset = AVURLAsset(url: url)
-        do {
-            let metadata = try await asset.load(.metadata)
-            for item in metadata {
-                if item.commonKey == .commonKeyArtwork {
-                    if let data = try await item.load(.dataValue), let image = NSImage(data: data) {
-                        LibraryArtwork.cache.setObject(image, forKey: cacheKey); return image
-                    }
-                }
-            }
-        } catch { }
-        return nil
-    }
-
-    private func loadArtworkForSelection() {
-        guard showsLegacyArtwork else { return }
-        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
-        
-        let item = model.displayItems[index]
-        artworkLoadTask?.cancel()
-        artworkDisplayGeneration &+= 1
-        let displayGeneration = artworkDisplayGeneration
-        
-        artworkLoadTask = Task { [weak self] in
-            guard let self = self else { return }
-            var image: NSImage?
-            
-            switch item.type {
-            case .localMovie, .localShow, .localSeason, .localEpisode:
-                // Video artwork is loaded during playback via AVAssetImageGenerator
-                break
-            case .radioStation(let station):
-                let radioTrack = station.toTrack()
-                image = await LibraryArtwork.radio(for: radioTrack, station: station)
-            case .youtubeVideo(let video):
-                // A download carries its own embedded art; otherwise the 16:9 thumbnail.
-                if let fileURL = YouTubeManager.shared.coverArtFile(for: video.videoId) {
-                    image = await self.loadLocalArtwork(url: fileURL)
-                }
-                if image == nil, let thumb = video.thumbnailURL {
-                    image = await LibraryArtwork.remote(urlString: thumb.absoluteString, cacheNamespace: "youtube")
-                }
-                image = image?.squareCenterCropped()
-            case .youtubeChannel(let channel):
-                if let avatar = channel.avatarURL(side: 512) {
-                    image = await LibraryArtwork.remote(urlString: avatar.absoluteString, cacheNamespace: "youtube")?.squareCenterCropped()
-                }
-            default:
-                image = await self.itemArtwork(for: item).load()
-            }
-
-            guard !Task.isCancelled else { return }
-            if let image = image {
-                await MainActor.run {
-                    guard self.artworkDisplayGeneration == displayGeneration else { return }
-                    self.currentArtwork = image
-                    self.needsDisplay = true
-                }
-            }
-        }
-    }
-    
-    // MARK: - Art (Flow, Tiles, row thumbnails)
-
-    /// A row as the Flow / Tiles views show it.
-    private func artItem(for item: LibraryBrowserItem) -> LibraryArtItem {
-        let cacheKey = itemArtwork(for: item).cacheKey
-        return LibraryArtItem(id: item.id, title: item.title, subtitle: item.info ?? "",
-                              cachedArtwork: { cacheKey.flatMap { LibraryArtwork.cache.object(forKey: NSString(string: $0)) } },
-                              art: rowThumbnailSource(for: item),
-                              artAspect: item.type.isPoster ? LibraryArtItem.posterAspect : 1)
-    }
-
-    /// Resolve a display item to its artwork cache key and async loader (reusing the per-source
-    /// loaders that back `loadArtworkForSelection`).
-    private func itemArtwork(for item: LibraryBrowserItem) -> LibraryArtwork.ItemArtwork {
-        switch item.type {
-        case .album(let album):
-            return ("plex:\(album.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: album.id, thumbPath: album.thumb) })
-        case .localAlbum(let album):
-            // Resolve the album's first track off the main thread (inside the throttled loader) —
-            // never synchronously here, since this runs for every item on each list rebuild.
-            return (nil, { [weak self] in
-                let track: LibraryTrack?
-                if let first = album.tracks.first {
-                    track = first
-                } else {
-                    track = await Task.detached { MediaLibraryStore.shared.tracksForAlbum(album.id).first }.value
-                }
-                guard let self, let track else { return nil }
-                return await self.loadLocalArtwork(url: track.url)
-            })
-        case .subsonicAlbum(let album):
-            guard let coverArt = album.coverArt else { return (nil, { nil }) }
-            return ("subsonic:\(coverArt)", { [weak self] in await self?.loadSubsonicArtwork(songId: coverArt) })
-        case .jellyfinAlbum(let album):
-            return LibraryArtwork.jellyfinItem(album.artworkItemId)
-        case .embyAlbum(let album):
-            return LibraryArtwork.embyItem(album.artworkItemId)
-        case .movie(let movie):
-            return ("plex:\(movie.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: movie.id, thumbPath: movie.thumb) })
-        case .show(let show):
-            return ("plex:\(show.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: show.id, thumbPath: show.thumb) })
-        case .season(let season):
-            return ("plex:\(season.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: season.id, thumbPath: season.thumb) })
-        case .episode(let episode):
-            return ("plex:\(episode.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: episode.id, thumbPath: episode.thumb) })
-        case .localMovie(let movie):
-            return ("local:\(movie.url.path)", { [weak self] in await self?.loadLocalArtwork(url: movie.url) })
-        case .localShow(let show):
-            guard let episode = show.seasons.first(where: { !$0.episodes.isEmpty })?.episodes.first else {
-                return (nil, { nil })
-            }
-            return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
-        case .localSeason(let season, _):
-            guard let episode = season.episodes.first else { return (nil, { nil }) }
-            return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
-        case .localEpisode(let episode):
-            return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
-        case .jellyfinMovie(let movie):
-            return LibraryArtwork.jellyfinItem(movie.artworkItemId)
-        case .jellyfinShow(let show):
-            return LibraryArtwork.jellyfinItem(show.artworkItemId)
-        case .jellyfinSeason(let season):
-            return LibraryArtwork.jellyfinItem(season.artworkItemId)
-        case .jellyfinEpisode(let episode):
-            return LibraryArtwork.jellyfinItem(episode.artworkItemId)
-        case .embyMovie(let movie):
-            return LibraryArtwork.embyItem(movie.artworkItemId)
-        case .embyShow(let show):
-            return LibraryArtwork.embyItem(show.artworkItemId)
-        case .embySeason(let season):
-            return LibraryArtwork.embyItem(season.artworkItemId)
-        case .embyEpisode(let episode):
-            return LibraryArtwork.embyItem(episode.artworkItemId)
-        case .artist(let artist):
-            guard let thumb = artist.thumb else { return ("plex:\(artist.id)", { nil }) }
-            return ("plex:\(artist.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: artist.id, thumbPath: thumb) })
-        case .localArtist(let artist):
-            return (nil, { [weak self] in
-                let track = await Task.detached {
-                    MediaLibraryStore.shared.searchTracks(query: artist.name, limit: 1, offset: 0).first
-                }.value
-                guard let self, let track else { return nil }
-                return await self.loadLocalArtwork(url: track.url)
-            })
-        case .subsonicArtist(let artist):
-            guard let coverArt = artist.coverArt else { return (nil, { nil }) }
-            return ("subsonic:\(coverArt)", { [weak self] in await self?.loadSubsonicArtwork(songId: coverArt) })
-        case .jellyfinArtist(let artist):
-            return LibraryArtwork.jellyfinItem(artist.artworkItemId)
-        case .embyArtist(let artist):
-            return LibraryArtwork.embyItem(artist.artworkItemId)
-        case .track(let track):
-            guard let thumb = track.thumb else { return ("plex:\(track.id)", { nil }) }
-            return ("plex:\(track.id)", { [weak self] in await self?.loadPlexArtwork(ratingKey: track.id, thumbPath: thumb) })
-        case .localTrack(let track):
-            return ("local:\(track.url.path)", { [weak self] in await self?.loadLocalArtwork(url: track.url) })
-        case .subsonicTrack(let song):
-            guard let coverArt = song.coverArt else { return (nil, { nil }) }
-            return ("subsonic:\(coverArt)", { [weak self] in await self?.loadSubsonicArtwork(songId: coverArt) })
-        case .jellyfinTrack(let song):
-            return LibraryArtwork.jellyfinItem(song.artworkItemId)
-        case .embyTrack(let song):
-            return LibraryArtwork.embyItem(song.artworkItemId)
-        default:
-            return (nil, { nil })
-        }
-    }
-
-    /// The art for a row's round thumbnail, or nil for rows that never carry art. Cover Flow items
-    /// reuse `itemArtwork`'s loaders, keyed within the current server.
-    private func rowThumbnailSource(for item: LibraryBrowserItem) -> LibraryRowThumbnails.Source? {
-        switch item.type {
-        case .localFolder: return nil
-        case .youtubeChannel(let channel): return .channel(channel)
-        case .youtubeVideo(let video): return .video(video)
-        case .radioStation(let station): return .radio(station)
-        case .localPlaylistTrack(let track): return .localFile(track.url)
-        default:
-            guard item.type.isArtItem else { return nil }
-            let (cacheKey, load) = itemArtwork(for: item)
-            return .item(key: cacheKey ?? "item:\(item.id)", server: model.currentSource.serverId, owner: self, load: load)
-        }
-    }
 }

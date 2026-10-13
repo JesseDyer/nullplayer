@@ -6,6 +6,9 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
     // MARK: - Properties
     
     private var browserView: PlexBrowserView!
+    /// The window's content outside Compact Mode: the browser over its Cava backdrop, as siblings
+    /// so Cava repaints independently beneath the browser's translucent list.
+    private var contentContainer: NSView!
     
     /// Minimum window size. Width floors at the center-stack width so the window can be sized to
     /// align cleanly when docked top/bottom in a center stack (Compact Mode keeps a tab-label
@@ -82,7 +85,11 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
         browserView = PlexBrowserView(frame: NSRect(origin: .zero, size: Self.defaultSize))
         browserView.controller = self
         browserView.autoresizingMask = [.width, .height]
-        window?.contentView = browserView
+        contentContainer = NSView(frame: browserView.frame)
+        contentContainer.wantsLayer = true
+        contentContainer.layer?.backgroundColor = NSColor.clear.cgColor
+        contentContainer.addSubview(browserView)
+        window?.contentView = contentContainer
     }
     
     /// Normal-mode frame for position memory.
@@ -131,6 +138,14 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
     /// before this controller is closed and niled for a UI reload.
     func prepareForUITeardown() {
         browserView?.prepareForUITeardown()
+    }
+
+    var libraryBackdropPresenter: CavaPresenter? {
+        browserView.backdropPresenter
+    }
+
+    func refreshLibraryBackdrop() {
+        browserView.refreshBackdrop()
     }
 
     // MARK: - Compact Mode
@@ -202,9 +217,11 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
             compactPlaylist = nil
             compactContainer = nil
             browserView.isHidden = false
-            browserView.frame = NSRect(origin: .zero, size: size)
+            contentContainer.frame = NSRect(origin: .zero, size: size)
+            browserView.frame = contentContainer.bounds
             browserView.autoresizingMask = [.width, .height]
-            window.contentView = browserView
+            window.contentView = contentContainer
+            contentContainer.addSubview(browserView)
         }
         browserView.needsDisplay = true
     }
@@ -296,6 +313,7 @@ extension PlexBrowserWindowController: NSWindowDelegate {
     }
     
     func windowWillClose(_ notification: Notification) {
+        browserView.stopBackdrop()
         WindowManager.shared.rememberPlexBrowserFrameBeforeClose()
         WindowManager.shared.notifyMainWindowVisibilityChanged()
     }

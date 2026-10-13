@@ -23,18 +23,6 @@ class PlexBrowserView: NSView {
     /// the tab-slot choices are kept apart from the modern browser's, under "Classic" keys.
     let model = LibraryBrowserModel(keyPrefix: "Classic")
 
-    /// Selected item indices
-    
-    /// Scroll offset
-    private var scrollOffset: CGFloat = 0
-
-    /// Typeahead state for keyboard navigation in non-search mode
-    private var typeAheadQuery: String = ""
-    private var typeAheadTimer: Timer?
-    
-    /// Horizontal scroll offset for column headers
-    private var horizontalScrollOffset: CGFloat = 0
-    
     /// Classic library content metrics follow UI Size just like the modern/metal browser.
     /// The window itself is stretchable, so scale the content rather than deriving this from
     /// the current window dimensions (which would also enlarge text during a manual resize).
@@ -67,40 +55,6 @@ class PlexBrowserView: NSView {
     private func contentFont(ofSize size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         NSFont.systemFont(ofSize: size * contentScale, weight: weight)
     }
-    
-
-
-    /// Column being resized (id) and resize state
-    private var resizingColumnId: LibraryBrowserColumn.ID?
-    private var resizingColumnGroup: LibraryColumnVisibilityGroup?
-    private var resizingColumnFromLeadingEdge = false
-    private var resizeStartX: CGFloat = 0
-    private var resizeStartWidth: CGFloat = 0
-    
-
-
-    /// Where the list sits, in skin coordinates (top-left origin), worked out in one place.
-    /// Drawing, every hit test and every scroll range read it, so a click lands on the row drawn
-    /// under it (PR #480: hit tests reserved the header on a different condition than drawing,
-    /// and every click landed one row up).
-    private struct ListLayout {
-        /// Below the tab bar (and search bar), above the status bar, the window's full inner
-        /// width. Loading, error and Cover Flow backgrounds fill it.
-        let area: NSRect
-        /// The column header band and the columns it shows, when the list has columns.
-        let header: Header?
-        /// Where rows are drawn: under the header, left of the scrollbar and alphabet index.
-        let rows: NSRect
-        /// The alphabet index, beside the header and the rows.
-        let alphabet: NSRect
-
-        struct Header {
-            let rect: NSRect
-            let columns: [LibraryBrowserColumn]
-            /// The group the columns' widths are keyed by; nil for radio's fixed columns.
-            let group: LibraryColumnVisibilityGroup?
-        }
-    }
 
     /// The bottom of the tab bar, or of the search bar in search mode.
     private var listTopY: CGFloat {
@@ -108,78 +62,26 @@ class PlexBrowserView: NSView {
             + (model.browseMode == .search ? Layout.searchBarHeight : 0)
     }
 
-    private func listLayout() -> ListLayout {
+    /// Where the list sits, in skin coordinates (top-left origin).
+    private func listLayout() -> LibraryBrowserListLayout {
         let size = originalWindowSize
+        let bannerHeight = model.offlineBannerText == nil ? 0 : 18 * contentScale
         let area = NSRect(x: Layout.leftBorder, y: listTopY,
                           width: size.width - Layout.leftBorder - Layout.rightBorder,
-                          height: size.height - listTopY - Layout.statusBarHeight)
-        let group = model.currentColumnGroup()
-        let columns = model.headerColumns(for: group)
+                          height: size.height - listTopY - Layout.statusBarHeight - bannerHeight)
+        let (columns, group) = list.headerColumns()
         let headerHeight = columns.isEmpty ? 0 : columnHeaderHeight
         let width = area.width - Layout.scrollbarWidth - Layout.alphabetWidth
-        return ListLayout(
+        return LibraryBrowserListLayout(
             area: area,
             header: columns.isEmpty ? nil : .init(rect: NSRect(x: area.minX, y: area.minY, width: width, height: headerHeight),
                                                   columns: columns, group: group),
             rows: NSRect(x: area.minX, y: area.minY + headerHeight, width: width, height: area.height - headerHeight),
-            alphabet: NSRect(x: area.minX + width, y: area.minY, width: Layout.alphabetWidth, height: area.height)
+            alphabet: NSRect(x: area.minX + width, y: area.minY, width: Layout.alphabetWidth, height: area.height),
+            banner: bannerHeight > 0 ? NSRect(x: area.minX, y: area.maxY, width: area.width, height: bannerHeight) : nil,
+            rowHeight: itemHeight, scale: contentScale, isFlipped: true
         )
     }
-
-    /// The columns a row draws and the group their widths are keyed by (nil = simple list rendering).
-    /// Artist, album and track rows all draw the list's one header, Finder-style; radio and
-    /// YouTube rows draw their own fixed columns.
-    private func rowColumns(for item: LibraryBrowserItem, header: ListLayout.Header?) -> (columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?)? {
-        switch model.columnGroup(for: item) {
-        case .youtube?: return (LibraryBrowserColumn.youtubeColumns, .youtube)
-        case _?: return header.map { ($0.columns, $0.group) }
-        case nil: return model.isInternetRadioItem(item) ? (LibraryBrowserColumn.internetRadioColumns, nil) : nil
-        }
-    }
-    
-    private func widthForColumn(
-        _ column: LibraryBrowserColumn,
-        availableWidth: CGFloat,
-        columns: [LibraryBrowserColumn],
-        group: LibraryColumnVisibilityGroup?
-    ) -> CGFloat {
-        if column.id == .title {
-            // Title column gets remaining space
-            let fixedWidth = columns.filter { $0.id != .title }.reduce(0) { 
-                $0 + (model.storedColumnWidth(for: $1, group: group) ?? $1.minWidth)
-            }
-            return max(column.minWidth, availableWidth - fixedWidth - 8)
-        }
-        return model.storedColumnWidth(for: column, group: group) ?? column.minWidth
-    }
-    
-    /// Calculate total width needed for all columns
-    private func totalColumnsWidth(columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?) -> CGFloat {
-        var total: CGFloat = 8  // Initial padding
-        for column in columns {
-            if column.id == .title {
-                total += column.minWidth  // Title uses minWidth for total calculation
-            } else {
-                total += model.storedColumnWidth(for: column, group: group) ?? column.minWidth
-            }
-        }
-        return total
-    }
-
-    private func clampHorizontalScrollOffset() {
-        guard let header = listLayout().header else { horizontalScrollOffset = 0; return }
-        let maxOffset = max(0, totalColumnsWidth(columns: header.columns, group: header.group) - header.rect.width)
-        horizontalScrollOffset = max(0, min(horizontalScrollOffset, maxOffset))
-    }
-    
-    
-
-
-    
-
-    
-    
-
 
     /// What the rows do and the menus that offer it.
     private lazy var actions: LibraryBrowserActions = LibraryBrowserActions(model: model, host: .init(
@@ -192,11 +94,8 @@ class PlexBrowserView: NSView {
         }
     ))
 
-    private let historyAgent = PlayHistoryAgent()
     private var historyHostingView: NSHostingView<StatsContentView>?
 
-    
-    
     /// Loading animation
     private var loadingAnimationTimer: Timer?
     private var loadingAnimationFrame: Int = 0
@@ -222,17 +121,12 @@ class PlexBrowserView: NSView {
     /// Highlight state for drag-mode visual feedback
     private var isHighlighted = false
     
-    /// List, Flow or Tiles, and the Flow / Tiles view standing in for the list (see LibraryArtLens).
+    /// Scrolling, clicks, keys and menus on the rows, and Flow / Tiles standing in for them.
     /// Classic's taller, freely stretchable window keeps the Flow label under the centred cover.
-    private lazy var artLens = LibraryArtLens<LibraryBrowserItem>(
-        container: self, flowLabelPlacement: .belowCenteredCover, host: .init(
-            rows: { [unowned self] in model.displayItems },
-            isSearch: { [unowned self] in model.browseMode == .search },
-            selectedIndex: { [unowned self] in model.selectedIndices.min() },
-            isBlocked: { [unowned self] in
-                model.isLoading || model.errorMessage != nil || (model.currentSource.isPlex && !PlexManager.shared.isLinked)
-            },
-            style: { [unowned self] in
+    private lazy var list = LibraryBrowserList(
+        view: self, model: model, actions: actions, art: art, flowLabelPlacement: .belowCenteredCover, host: .init(
+            layout: { [unowned self] in listLayout() },
+            artStyle: { [unowned self] in
                 let colors = currentPlaylistColors()
                 return LibraryArtStyle(
                     titleColor: colors.normalText,
@@ -241,18 +135,10 @@ class PlexBrowserView: NSView {
                     placeholderTextColor: colors.normalText.withAlphaComponent(0.6)
                 )
             },
-            item: { [unowned self] in artItem(for: $0) },
-            isExpanded: { [unowned self] in model.isExpanded($0) },
-            toggleExpand: { [unowned self] in model.toggleExpand($0) },
-            play: { [unowned self] in actions.activate($0) },
-            menu: { [unowned self] row, event in
-                // As a right-click on the row in the list: select it, then its menu.
-                if let index = model.displayItems.firstIndex(where: { $0.id == row.id }) { model.selectedIndices = [index] }
-                showContextMenu(for: row, at: event)
-            },
-            albumInfo: { [unowned self] in actions.playable(for: $0).flatMap(LibraryAlbumInfo.init) },
-            loadNextPage: { [unowned self] in
-                if case .local = model.currentSource { model.appendNextLocalPage() }
+            // Neither an embedded `.wal` browser nor Compact Mode has a library backdrop to offer.
+            backdropMenu: { [unowned self] in
+                controller?.isCompactMode == false
+                    ? ContextMenuBuilder.browserBackdropMenuItem(compact: false, presenter: backdropPresenter) : nil
             }
         ))
     /// The List / Flow / Tiles buttons in the server bar, as last drawn (skin coordinates).
@@ -274,25 +160,64 @@ class PlexBrowserView: NSView {
     /// Embedded in a `.wal` holder there is no title bar of ours, so background the browser does not
     /// consume — the blank area below the last row — moves the skin's window instead (B60).
     private var embeddedWindowDrag = WinampModernHostedWindowDrag()
-    
-    /// Alphabet index for quick navigation
-    private let alphabetLetters = ["#"] + (65...90).map { String(UnicodeScalar($0)) } // # A-Z
-    
-    // MARK: - Artwork Background State
-    
-    /// Current artwork image for background display
-    private var currentArtwork: NSImage?
-    
-    /// Track ID for the currently displayed artwork (to avoid reloading)
-    private var artworkTrackId: UUID?
-    
-    /// Async task for loading artwork (can be cancelled)
-    private var artworkLoadTask: Task<Void, Never>?
-    
-    /// Static image cache shared across all browser instances
+
+    // MARK: - Art
+
+    /// Row art and the art drawn behind the list.
+    private lazy var art = LibraryBrowserArt(model: model,
+                                             isBackgroundEnabled: { WindowManager.shared.libraryBackdropMode.showsArt })
     private let rowThumbnails = LibraryRowThumbnailTracker()
-    
-    // MARK: - Layout Constants (reference to SkinElements)
+
+    // MARK: - Cava backdrop
+
+    /// Cava beneath the list, in a sibling view the controller's content container holds. It
+    /// covers the list alone, so a hosted frame's keyed-out corners stay clear.
+    private lazy var backdrop = BrowserBackdrop(
+        mode: { WindowManager.shared.libraryBackdropMode }, look: Self.backdropLook,
+        region: { [weak self] in
+            guard let self else { return .zero }
+            return convert(convertFromSkinCoordinates(listLayout().area), to: superview)
+        })
+    var backdropPresenter: CavaPresenter? { backdrop.presenter }
+    private static let backdropScrimAlpha: CGFloat = 0.72
+
+    /// Cava shows in a library window of its own: never embedded in a `.wal` holder (which has no
+    /// controller) or in Compact Mode.
+    private var showsCavaBackdrop: Bool {
+        controller?.isCompactMode == false && WindowManager.shared.libraryBackdropMode.showsCava
+    }
+
+    /// The list's background: translucent over a Cava backdrop, so the bars show through.
+    private func listBackground(_ colors: PlaylistColors) -> NSColor {
+        let base = colors.normalBackground
+        return showsCavaBackdrop ? base.withAlphaComponent(base.alphaComponent * Self.backdropScrimAlpha) : base
+    }
+
+    /// The backdrop mode, skin or window changed: show, restyle or remove the backdrop.
+    func refreshBackdrop() {
+        guard controller != nil else { return }
+        refreshHistoryHostingColors()
+        art.showPlayingTrack(WindowManager.shared.audioEngine.currentTrack)
+        backdrop.refresh(beneath: self, showsCava: showsCavaBackdrop, scope: .libraryWindow, sharpCorners: [])
+        needsDisplay = true
+    }
+
+    func stopBackdrop() {
+        backdrop.stop()
+    }
+
+    /// The classic look for the Cava backdrop: the hosted surface style's in a `.wal`, `.wmz` or
+    /// Audion window, else the playlist colours and the Winamp Green bars, as the Cava window uses.
+    private static func backdropLook() -> BrowserBackdropLook {
+        if let style = WindowManager.shared.hostedSurfaceStyle {
+            return BrowserBackdropLook(background: style.playlistColors.normalBackground,
+                                       low: style.visualizationLow, high: style.visualizationHigh, cornerRadius: 0)
+        }
+        let skin = WindowManager.shared.currentSkin ?? SkinLoader.shared.loadDefault()
+        let green = CavaSettings.scheme(named: "Winamp Green")
+        return BrowserBackdropLook(background: skin.playlistColors.normalBackground,
+                                   low: green?.low ?? .green, high: green?.high ?? .green, cornerRadius: 0)
+    }
     
     /// Per-instance layout metrics.
     ///
@@ -404,7 +329,7 @@ class PlexBrowserView: NSView {
         guard embeddedWinampModernStyle != style else { return }
         embeddedWinampModernStyle = style
         refreshHistoryHostingColors()
-        artLens.restyle()
+        list.lens.restyle()
         needsDisplay = true
     }
 
@@ -421,49 +346,9 @@ class PlexBrowserView: NSView {
         return tabsWidth + sortWidth + insets
     }
 
-    /// What the source bar shows after "Source:".
-    private enum ServerBarContent {
-        /// Local Files, Internet Radio or YouTube: the name with its count, then +ADD.
-        case builtIn(name: String)
-        /// A configured server: its name in a field `maxChars` wide, then its library.
-        case server(name: String, maxChars: Int, library: String)
-        /// A server source with nothing configured: a centred prompt, and no right-side buttons.
-        case unconfigured(prompt: String)
-    }
-
-    private var serverBarContent: ServerBarContent {
-        switch model.currentSource {
-        case .local:
-            return .builtIn(name: "Local Files")
-        case .radio:
-            return .builtIn(name: "Internet Radio")
-        case .youtube:
-            return .builtIn(name: "YouTube")
-        case .plex(let serverId):
-            let manager = PlexManager.shared
-            let server = manager.servers.first(where: { $0.id == serverId })
-            guard server != nil || manager.isLinked else {
-                return .unconfigured(prompt: "Click to link your Plex account")
-            }
-            return .server(name: server?.name ?? "Select Server", maxChars: 12,
-                           library: manager.currentLibrary?.title ?? "Select")
-        case .subsonic(let serverId):
-            let manager = SubsonicManager.shared
-            guard let server = manager.servers.first(where: { $0.id == serverId }) else {
-                return .unconfigured(prompt: "Click to add a Subsonic server")
-            }
-            return .server(name: server.name, maxChars: 20, library: manager.currentMusicFolder?.name ?? "All")
-        case .jellyfin(let serverId):
-            guard let server = JellyfinManager.shared.servers.first(where: { $0.id == serverId }) else {
-                return .unconfigured(prompt: "Click to add a Jellyfin server")
-            }
-            return .server(name: server.name, maxChars: 20, library: jellyfinCurrentLibraryName)
-        case .emby(let serverId):
-            guard let server = EmbyManager.shared.servers.first(where: { $0.id == serverId }) else {
-                return .unconfigured(prompt: "Click to add an Emby server")
-            }
-            return .server(name: server.name, maxChars: 20, library: embyCurrentLibraryName)
-        }
+    /// The server-name field's width, in characters: Plex's is narrower.
+    private var serverFieldChars: CGFloat {
+        model.currentSource.isPlex ? 12 : 20
     }
 
     /// The library field's narrowest width, in characters; it grows into the free space before the
@@ -480,16 +365,17 @@ class PlexBrowserView: NSView {
         let minimumGap: CGFloat = 12
 
         var rightWidth = trailingInset + textWidth("F5")
-        if artLens.hasItems {
+        if list.lens.hasItems {
             rightWidth += 12 + viewModeButtonsWidth(textScale: textScale, chromeScale: 1)
         }
 
         let leftWidth: CGFloat
-        switch serverBarContent {
+        switch model.sourceBarContent {
         case .builtIn(let name):
             leftWidth = leadingInset + prefixWidth + textWidth(model.withItemCount(name)) + 28 + textWidth("+ADD")
-        case .server(_, let maxChars, _):
-            leftWidth = leadingInset + prefixWidth + CGFloat(maxChars) * charWidth + 16 +
+        case .server:
+            leftWidth = leadingInset + prefixWidth + serverFieldChars * charWidth + 16 +
+
                 textWidth("Lib:") + 4 + Self.minLibraryFieldChars * charWidth
         case .unconfigured(let prompt):
             leftWidth = leadingInset + prefixWidth
@@ -583,20 +469,6 @@ class PlexBrowserView: NSView {
             name: LibraryRowThumbnails.didLoadNotification,
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(playHistoryDidChange),
-            name: MediaLibraryStore.playHistoryDidChangeNotification,
-            object: nil
-        )
-        
-        // Observe track changes for artwork background
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(trackDidChange),
-            name: .audioTrackDidChange,
-            object: nil
-        )
         
         // Register for drag and drop (local files)
         registerForDraggedTypes([.fileURL])
@@ -609,9 +481,8 @@ class PlexBrowserView: NSView {
         startServerNameScroll()
         
         // Load artwork for currently playing track (if any)
-        if WindowManager.shared.showBrowserArtworkBackground {
-            loadArtwork(for: WindowManager.shared.audioEngine.currentTrack)
-        }
+        art.onBackgroundChange = { [weak self] in self?.needsDisplay = true }
+        art.showPlayingTrack(WindowManager.shared.audioEngine.currentTrack)
         
         // Set up accessibility identifiers for UI testing
         setupAccessibility()
@@ -644,6 +515,7 @@ class PlexBrowserView: NSView {
         guard notification.object as? NSWindow == window else { return }
         // Stop timers when minimized to save CPU
         stopServerNameScroll()
+        backdrop.reload()
     }
     
     /// Restart timers when Plex browser window is restored from minimized state
@@ -651,6 +523,7 @@ class PlexBrowserView: NSView {
         guard notification.object as? NSWindow == window else { return }
         // Restart timers when restored
         startServerNameScroll()
+        backdrop.reload()
     }
     
     /// Handle window occlusion state changes to pause/resume timers for CPU efficiency
@@ -663,45 +536,29 @@ class PlexBrowserView: NSView {
             // Window became occluded - stop timers to save CPU
             stopServerNameScroll()
         }
+        backdrop.reload()
     }
     
     /// The model's rows, loading state, source or tab changed.
     private func modelDidChange(_ change: LibraryBrowserModel.Change) {
+        list.modelDidChange(change)
         switch change {
-        case .rows:
-            artLens.rowsDidChange()
+        case .rows, .reveal, .columns:
             needsDisplay = true
         case .loading:
-            artLens.updateVisibility()
             updateLoadingAnimation()
             needsDisplay = true
         case .rowsReplaced:
-            scrollOffset = 0
-            if model.browseMode.isHistoryMode {
-                historyAgent.scheduleRefresh()
-                updateHistoryHostingVisibility()
-            }
+            if model.browseMode.isHistoryMode { updateHistoryHostingVisibility() }
         case .rebuilt:
-            horizontalScrollOffset = 0
+            break
         case .loaded:
-            // With nothing playing, the artwork background shows the browsed library's art.
-            if model.isLocalSource { loadLocalBrowseArtwork() }
-        case .reveal(let index):
-            ensureVisible(index: index)
-            needsDisplay = true
+            // The offline banner (local source, a folder offline) takes list height from Flow / Tiles.
+            needsLayout = true
         case .source:
-            artLens.resetNavigation()
-            scrollOffset = 0
+            needsLayout = true   // the offline banner shows on the local source only
             startServerNameScroll()
-        case .columns:
-            clampHorizontalScrollOffset()
-            needsDisplay = true
         case .browseMode:
-            // A new tab opens Flow or Tiles at its root.
-            artLens.resetNavigation()
-            if model.browseMode.isHistoryMode {
-                historyAgent.scheduleRefresh()
-            }
             updateHistoryHostingVisibility()
             needsDisplay = true
         }
@@ -711,6 +568,7 @@ class PlexBrowserView: NSView {
         NotificationCenter.default.removeObserver(self)
         stopLoadingAnimation()
         stopServerNameScroll()
+        backdrop.stop()
     }
 
     /// Synchronously cancel every in-flight task, work item, and timer this view and its model
@@ -721,20 +579,26 @@ class PlexBrowserView: NSView {
     /// *before* closing the window.
     func prepareForUITeardown() {
         model.cancelAll()
-        artworkLoadTask?.cancel(); artworkLoadTask = nil
+        art.cancel()
         actions.cancelAll()
+        backdrop.remove()
 
         // Timers (timers with a target/captured self can also pin the view alive).
-        typeAheadTimer?.invalidate(); typeAheadTimer = nil
         stopLoadingAnimation()
         stopServerNameScroll()
-        artLens.teardown()
+        list.teardown()
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         startServerNameScroll()
         updateHistoryHostingFrame()
+        list.clampHorizontalScrollOffset()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        refreshBackdrop()
     }
 
     override func layout() {
@@ -911,7 +775,7 @@ class PlexBrowserView: NSView {
     /// The Data tab's content, coloured from the playlist colours — the classic skin's, or the
     /// `.wal`/`.wmz` surface style's (which follows the colour theme).
     private func makeHistoryRootView(_ colors: PlaylistColors) -> StatsContentView {
-        StatsContentView(agent: historyAgent,
+        StatsContentView(agent: model.history,
                          skinTextColor: Color(nsColor: colors.normalText),
                          headerTitle: "Library Data",
                          heatmapTheme: ContributionHeatmapTheme(background: colors.normalBackground,
@@ -924,8 +788,8 @@ class PlexBrowserView: NSView {
         let rootView = makeHistoryRootView(colors)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = colors.normalBackground.cgColor
-        hostingView.layer?.isOpaque = true
+        hostingView.layer?.backgroundColor = listBackground(colors).cgColor
+        hostingView.layer?.isOpaque = !showsCavaBackdrop
         hostingView.appearance = classicAppearance(for: colors.normalBackground)
         hostingView.setAccessibilityIdentifier("plexBrowser.data")
         hostingView.setAccessibilityLabel("Library Data")
@@ -951,8 +815,12 @@ class PlexBrowserView: NSView {
 
     private func updateHistoryHostingFrame() {
         historyHostingView?.frame = embeddedContentRect()
-        // Flow / Tiles leave the alphabet index beside them.
-        artLens.frame = embeddedContentRect().divided(atDistance: Layout.alphabetWidth * scaleFactor, from: .maxXEdge).remainder
+        backdrop.updateFrame()
+        // Flow / Tiles leave the alphabet index beside them, and the offline banner below.
+        let bannerHeight = listLayout().banner?.height ?? 0
+        list.lens.frame = embeddedContentRect()
+            .divided(atDistance: Layout.alphabetWidth * scaleFactor, from: .maxXEdge).remainder
+            .divided(atDistance: bannerHeight, from: .minYEdge).remainder
     }
 
     /// Content rect (view coordinates) below the tab bar and above the status bar — shared by the
@@ -969,151 +837,6 @@ class PlexBrowserView: NSView {
             width: max(0, bounds.width - horizontalInset),
             height: max(0, bounds.height - topInset - bottomInset)
         )
-    }
-
-    // MARK: - Art (Flow, Tiles, row thumbnails)
-
-    /// A row as the Flow / Tiles views show it.
-    private func artItem(for item: LibraryBrowserItem) -> LibraryArtItem {
-        let cacheKey = itemArtwork(for: item).cacheKey
-        return LibraryArtItem(id: item.id, title: item.title, subtitle: item.info ?? "",
-                              cachedArtwork: { cacheKey.flatMap { LibraryArtwork.cache.object(forKey: NSString(string: $0)) } },
-                              art: rowThumbnailSource(for: item),
-                              artAspect: item.type.isPoster ? LibraryArtItem.posterAspect : 1)
-    }
-
-    /// Resolve a display item to its artwork cache key and async loader (reusing the per-source
-    /// loaders that back `loadArtworkForSelection`).
-    private func itemArtwork(for item: LibraryBrowserItem) -> LibraryArtwork.ItemArtwork {
-        switch item.type {
-        case .album(let album):
-            guard let thumb = album.thumb else { return ("plex:\(album.id)", { nil }) }
-            let key = "plex:\(album.id)"
-            return (key, { [weak self] in await self?.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) })
-        case .localAlbum(let album):
-            // Resolve the album's first track off the main thread (inside the throttled loader) —
-            // never synchronously here, since this runs for every item on each list rebuild.
-            return (nil, { [weak self] in
-                let track: LibraryTrack?
-                if let first = album.tracks.first {
-                    track = first
-                } else {
-                    track = await Task.detached { MediaLibraryStore.shared.tracksForAlbum(album.id).first }.value
-                }
-                guard let self, let track else { return nil }
-                return await self.loadLocalArtwork(url: track.url)
-            })
-        case .subsonicAlbum(let album):
-            guard let coverArt = album.coverArt else { return (nil, { nil }) }
-            let key = "subsonic:\(coverArt)"
-            return (key, { [weak self] in await self?.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: key) })
-        case .jellyfinAlbum(let album):
-            return LibraryArtwork.jellyfinItem(album.artworkItemId)
-        case .embyAlbum(let album):
-            return LibraryArtwork.embyItem(album.artworkItemId)
-        case .movie(let movie):
-            let key = "plex:\(movie.id)"
-            return (key, { [weak self] in
-                guard let self else { return nil }
-                if let thumb = movie.thumb,
-                   let image = await self.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) {
-                    return image
-                }
-                return await self.loadMovieWebArtwork(title: movie.title, year: movie.year)
-            })
-        case .show(let show):
-            guard let thumb = show.thumb else { return ("plex:\(show.id)", { nil }) }
-            let key = "plex:\(show.id)"
-            return (key, { [weak self] in await self?.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) })
-        case .season(let season):
-            guard let thumb = season.thumb else { return ("plex:\(season.id)", { nil }) }
-            let key = "plex:\(season.id)"
-            return (key, { [weak self] in await self?.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) })
-        case .episode(let episode):
-            guard let thumb = episode.thumb else { return ("plex:\(episode.id)", { nil }) }
-            let key = "plex:\(episode.id)"
-            return (key, { [weak self] in await self?.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) })
-        case .localMovie(let movie):
-            return ("local:\(movie.url.path)", { [weak self] in await self?.loadLocalArtwork(url: movie.url) })
-        case .localShow(let show):
-            guard let episode = show.seasons.first(where: { !$0.episodes.isEmpty })?.episodes.first else {
-                return (nil, { nil })
-            }
-            return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
-        case .localSeason(let season, _):
-            guard let episode = season.episodes.first else { return (nil, { nil }) }
-            return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
-        case .localEpisode(let episode):
-            return ("local:\(episode.url.path)", { [weak self] in await self?.loadLocalArtwork(url: episode.url) })
-        case .jellyfinMovie(let movie):
-            return LibraryArtwork.jellyfinItem(movie.artworkItemId)
-        case .jellyfinShow(let show):
-            return LibraryArtwork.jellyfinItem(show.artworkItemId)
-        case .jellyfinSeason(let season):
-            return LibraryArtwork.jellyfinItem(season.artworkItemId)
-        case .jellyfinEpisode(let episode):
-            return LibraryArtwork.jellyfinItem(episode.artworkItemId)
-        case .embyMovie(let movie):
-            return LibraryArtwork.embyItem(movie.artworkItemId)
-        case .embyShow(let show):
-            return LibraryArtwork.embyItem(show.artworkItemId)
-        case .embySeason(let season):
-            return LibraryArtwork.embyItem(season.artworkItemId)
-        case .embyEpisode(let episode):
-            return LibraryArtwork.embyItem(episode.artworkItemId)
-        case .artist(let artist):
-            guard let thumb = artist.thumb else { return ("plex:\(artist.id)", { nil }) }
-            let key = "plex:\(artist.id)"
-            return (key, { [weak self] in await self?.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) })
-        case .localArtist(let artist):
-            return (nil, { [weak self] in
-                let track = await Task.detached {
-                    MediaLibraryStore.shared.searchTracks(query: artist.name, limit: 1, offset: 0).first
-                }.value
-                guard let self, let track else { return nil }
-                return await self.loadLocalArtwork(url: track.url)
-            })
-        case .subsonicArtist(let artist):
-            guard let coverArt = artist.coverArt else { return (nil, { nil }) }
-            let key = "subsonic:\(coverArt)"
-            return (key, { [weak self] in await self?.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: key) })
-        case .jellyfinArtist(let artist):
-            return LibraryArtwork.jellyfinItem(artist.artworkItemId)
-        case .embyArtist(let artist):
-            return LibraryArtwork.embyItem(artist.artworkItemId)
-        case .track(let track):
-            guard let thumb = track.thumb else { return ("plex:\(track.id)", { nil }) }
-            let key = "plex:\(track.id)"
-            return (key, { [weak self] in await self?.loadPlexArtworkByThumb(thumb: thumb, cacheKey: key) })
-        case .localTrack(let track):
-            return ("local:\(track.url.path)", { [weak self] in await self?.loadLocalArtwork(url: track.url) })
-        case .subsonicTrack(let song):
-            guard let coverArt = song.coverArt else { return (nil, { nil }) }
-            let key = "subsonic:\(coverArt)"
-            return (key, { [weak self] in await self?.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: key) })
-        case .jellyfinTrack(let song):
-            return LibraryArtwork.jellyfinItem(song.artworkItemId)
-        case .embyTrack(let song):
-            return LibraryArtwork.embyItem(song.artworkItemId)
-        default:
-            return (nil, { nil })
-        }
-    }
-
-    /// The art for a row's round thumbnail, or nil for rows that never carry art. Cover Flow items
-    /// reuse `itemArtwork`'s loaders, keyed within the current server.
-    private func rowThumbnailSource(for item: LibraryBrowserItem) -> LibraryRowThumbnails.Source? {
-        switch item.type {
-        case .localFolder: return nil
-        case .youtubeChannel(let channel): return .channel(channel)
-        case .youtubeVideo(let video): return .video(video)
-        case .radioStation(let station): return .radio(station)
-        case .localPlaylistTrack(let track): return .localFile(track.url)
-        default:
-            guard item.type.isArtItem else { return nil }
-            let (cacheKey, load) = itemArtwork(for: item)
-            return .item(key: cacheKey ?? "item:\(item.id)", server: model.currentSource.serverId, owner: self, load: load)
-        }
     }
 
     /// Convert a point from view coordinates to skin coordinates (top-left origin)
@@ -1136,11 +859,6 @@ class PlexBrowserView: NSView {
     // MARK: - Drawing
     
     override func draw(_ dirtyRect: NSRect) {
-        // Capture artwork reference to prevent release during draw cycle.
-        // An async Task may replace currentArtwork mid-draw, causing the old
-        // image to be deallocated while Core Animation still references it.
-        let capturedArtwork = currentArtwork
-        
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         
         let originalSize = originalWindowSize
@@ -1177,17 +895,22 @@ class PlexBrowserView: NSView {
             // Must still draw the window chrome (borders) so the border tiles aren't missing in that row
             let serverBarMinY = bounds.height - CGFloat(Layout.titleBarHeight + Layout.serverBarHeight)
             if dirtyRect.minY >= serverBarMinY {
-                let scrollPosition = calculateScrollPosition()
                 drawWindowChromeIfNeeded(renderer: renderer, context: context, bounds: drawBounds,
-                                         isActive: isActive, scrollPosition: scrollPosition)
+                                         isActive: isActive, scrollPosition: list.scrollPosition)
                 drawServerBar(in: context, drawBounds: drawBounds, colors: colors, renderer: renderer)
             } else {
-                // Calculate scroll position for scrollbar (0-1)
-                let scrollPosition = calculateScrollPosition()
-
                 // Draw window frame using skin sprites
                 drawWindowChromeIfNeeded(renderer: renderer, context: context, bounds: drawBounds,
-                                         isActive: isActive, scrollPosition: scrollPosition)
+                                         isActive: isActive, scrollPosition: list.scrollPosition)
+
+                // The list goes translucent over a Cava backdrop, which shows through it.
+                if showsCavaBackdrop {
+                    context.saveGState()
+                    context.setBlendMode(.copy)
+                    listBackground(colors).setFill()
+                    context.fill(listLayout().area)
+                    context.restoreGState()
+                }
 
                 // Draw server/library selector bar
                 drawServerBar(in: context, drawBounds: drawBounds, colors: colors, renderer: renderer)
@@ -1217,16 +940,23 @@ class PlexBrowserView: NSView {
                             drawLoadingState(in: context, colors: colors, renderer: renderer)
                         } else if let error = model.errorMessage {
                             drawErrorState(in: context, message: error, colors: colors, renderer: renderer)
-                        } else if artLens.isPresenting {
+                        } else if list.lens.isPresenting {
                             // The Flow / Tiles view renders the art; just fill the list area
                             // background so the interior isn't left stale behind it.
                             let layout = listLayout()
-                            colors.normalBackground.setFill()
-                            context.fill(layout.area)
+                            if !showsCavaBackdrop {
+                                colors.normalBackground.setFill()
+                                context.fill(layout.area)
+                            }
                             drawAlphabetIndex(in: context, rect: layout.alphabet, colors: colors, renderer: renderer)
                         } else {
-                            drawListArea(in: context, layout: listLayout(), colors: colors, renderer: renderer, artwork: capturedArtwork)
+                            drawListArea(in: context, layout: listLayout(), colors: colors, renderer: renderer)
                         }
+                    }
+
+                    // Offline volume banner (local source only, under the list)
+                    if let banner = listLayout().banner, let label = model.offlineBannerText {
+                        drawOfflineBanner(label, in: context, rect: banner, colors: colors)
                     }
 
                     // Draw status bar text
@@ -1242,17 +972,6 @@ class PlexBrowserView: NSView {
         }
     }
 
-    /// Calculate scroll position as 0-1 value
-    private func calculateScrollPosition() -> CGFloat {
-        let listHeight = listLayout().rows.height
-        let totalContentHeight = CGFloat(model.displayItems.count) * itemHeight
-        
-        guard totalContentHeight > listHeight else { return 0 }
-        
-        let scrollRange = totalContentHeight - listHeight
-        return min(1, max(0, scrollOffset / scrollRange))
-    }
-    
     // MARK: - Content Drawing (in skin coordinates, using skin text font)
     
     /// The colour the classic sheet's text is drawn in — sampled from `text.bmp` normally, taken
@@ -1298,7 +1017,7 @@ class PlexBrowserView: NSView {
         chromeScale: CGFloat,
         context: CGContext
     ) -> CGFloat {
-        guard artLens.hasItems else { return trailingX }
+        guard list.lens.hasItems else { return trailingX }
         let side = viewModeIconSide(textScale: textScale)
         let leadingX = trailingX - 12 * chromeScale - viewModeButtonsWidth(textScale: textScale, chromeScale: chromeScale)
         let colors = currentPlaylistColors()
@@ -1306,7 +1025,7 @@ class PlexBrowserView: NSView {
         for mode in LibraryViewMode.allCases {
             // Centred on the bitmap text's line, padded out to a comfortable hit target.
             let icon = NSRect(x: x, y: textY - textScale, width: side, height: side)
-            mode.drawIcon(in: icon, color: artLens.mode == mode ? colors.currentText : colors.normalText,
+            mode.drawIcon(in: icon, color: list.lens.mode == mode ? colors.currentText : colors.normalText,
                           context: context)
             viewModeButtonRects.append((mode, icon.insetBy(dx: -1.5 * chromeScale, dy: -3 * textScale)))
             x += side + 3 * chromeScale
@@ -1361,7 +1080,7 @@ class PlexBrowserView: NSView {
         serverNameCycleWidth = 0
         libraryNameCycleWidth = 0
 
-        let content = serverBarContent
+        let content = model.sourceBarContent
         if case .unconfigured(let prompt) = content {
             let promptWidth = ClassicLibraryTab.textWidth(prompt, scale: textScale, style: winampModernStyle)
             drawScaledSkinText(prompt, at: NSPoint(x: barRect.midX - promptWidth / 2, y: textY), scale: textScale, renderer: renderer, in: context)
@@ -1423,7 +1142,7 @@ class PlexBrowserView: NSView {
                 drawScaledSkinText(scanText, at: NSPoint(x: scanX, y: textY), scale: textScale, renderer: renderer, in: context)
             }
 
-        case .server(let serverName, let maxChars, let library):
+        case .server(let serverName, let library):
             // A changed name scrolls from its start.
             if serverName != lastServerName {
                 lastServerName = serverName
@@ -1435,7 +1154,7 @@ class PlexBrowserView: NSView {
             }
 
             // Server name right after "Source:", in a fixed-width field
-            let serverNameMaxWidth = CGFloat(maxChars) * scaledCharWidth
+            let serverNameMaxWidth = serverFieldChars * scaledCharWidth
             serverNameCycleWidth = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
                               availableWidth: serverNameMaxWidth, scale: textScale,
                               scrollOffset: serverNameScrollOffset,
@@ -1770,12 +1489,8 @@ class PlexBrowserView: NSView {
         case .folders:
             message = "No folders found"
         case .search:
-            if model.isYouTubeChannelSearch {
-                // Channel search is submit-only: until Enter, nothing has been searched.
-                message = model.searchQuery.isEmpty || model.hasUnsubmittedYouTubeSearch ? "Type and press Enter to search" : "No results found"
-            } else {
-                message = model.searchQuery.isEmpty ? "Type to search" : "No results found"
-            }
+            // Search runs on Enter: until then, nothing has been searched.
+            message = model.searchQuery.isEmpty || model.hasUnsubmittedYouTubeSearch ? "Type and press Enter to search" : "No results found"
         case .radio:
             message = "No radio stations found"
         case .history:
@@ -1793,7 +1508,7 @@ class PlexBrowserView: NSView {
         drawScaledSkinText(message, at: NSPoint(x: textX, y: textY), scale: textScale, renderer: renderer, in: context)
     }
     
-    private func drawListArea(in context: CGContext, layout: ListLayout, colors: PlaylistColors, renderer: SkinRenderer, artwork: NSImage?) {
+    private func drawListArea(in context: CGContext, layout: LibraryBrowserListLayout, colors: PlaylistColors, renderer: SkinRenderer) {
         // Show empty state message if no items (an empty list has no columns, so `rows` is the whole list)
         if model.displayItems.isEmpty {
             drawEmptyState(in: context, listRect: layout.rows, colors: colors, renderer: renderer)
@@ -1814,36 +1529,16 @@ class PlexBrowserView: NSView {
         // On non-Retina displays, fill the entire list area with background color first
         // to prevent any gaps/lines showing through between items
         let backingScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        if backingScale < 1.5 {
+        if backingScale < 1.5 && !showsCavaBackdrop {
             colors.normalBackground.setFill()
             context.fill(listRect)
         }
         
-        // Draw album art background if enabled and available
-        if WindowManager.shared.showBrowserArtworkBackground, let artworkImage = artwork,
-           let cgImage = artworkImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            context.saveGState()
-            
-            // Calculate centered fill rect (scale to fill, center, maintain aspect ratio)
-            let imageSize = NSSize(width: cgImage.width, height: cgImage.height)
-            let artworkRect = calculateCenterFillRect(imageSize: imageSize, in: listRect)
-            
-            // Set low opacity for subtle background
-            context.setAlpha(0.12)
-            
-            // Draw the image - CGContext draws with origin at bottom-left, but we're in flipped skin coords
-            // So we need to flip just for this image
-            context.saveGState()
-            context.translateBy(x: artworkRect.minX, y: artworkRect.maxY)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: artworkRect.width, height: artworkRect.height))
-            context.restoreGState()
-            
-            context.restoreGState()
-        }
-        
+        art.drawBackground(in: context, rect: listRect, flipped: true)
+
         // Draw items
         // Round scroll offset to integer pixels to prevent text shimmering on non-Retina displays
+        let scrollOffset = list.scrollOffset
         let roundedScrollOffset = backingScale < 1.5 ? round(scrollOffset) : scrollOffset
         rowThumbnails.beginPass(placeholder: colors.normalText.withAlphaComponent(0.15))
         
@@ -1868,12 +1563,17 @@ class PlexBrowserView: NSView {
             let itemRect = NSRect(x: listRect.minX, y: y, width: listRect.width, height: itemHeight)
             let item = model.displayItems[index]
             let isSelected = model.selectedIndices.contains(index)
+
+            // Dim tracks/episodes whose file lives on an offline volume
+            let isOffline = model.isOffline(item)
+            if isOffline { context.saveGState(); context.setAlpha(0.35) }
+            defer { if isOffline { context.restoreGState() } }
             
             // On non-Retina displays, fill item background to prevent gaps/lines
             // BUT skip this when artwork background is showing (it already provides a continuous background)
             // On Retina, only fill background for selected items
-            let hasArtworkBackground = WindowManager.shared.showBrowserArtworkBackground && artwork != nil
-            if backingScale < 1.5 && !hasArtworkBackground {
+            let hasArtworkBackground = art.background != nil
+            if backingScale < 1.5 && !hasArtworkBackground && !showsCavaBackdrop {
                 // Fill with normal or selected background (only when no artwork)
                 let bgColor = isSelected ? colors.selectedBackground : colors.normalBackground
                 bgColor.setFill()
@@ -1883,7 +1583,8 @@ class PlexBrowserView: NSView {
                 context.fill(itemRect)
             }
             
-            if let row = rowColumns(for: item, header: layout.header) {
+            if let row = list.rowColumns(for: item, header: layout.header) {
+
                 let indent = CGFloat(item.indentLevel) * 16
                 drawColumnRow(item: item, columns: row.columns, group: row.group,
                               in: context, rect: itemRect, isSelected: isSelected, colors: colors, indent: indent)
@@ -1938,7 +1639,7 @@ class PlexBrowserView: NSView {
                 ]
 
                 // Round thumbnail ahead of the title, drawn inside the counter-flip so it is upright.
-                if let thumbnail = rowThumbnailSource(for: item) {
+                if let thumbnail = art.rowThumbnailSource(for: item) {
                     titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: textX + titleSpinnerInset,
                                                             rowRect: itemRect, side: itemHeight - 2)
                 }
@@ -1966,7 +1667,7 @@ class PlexBrowserView: NSView {
             }
         }
         rowThumbnails.endPass(visible: visibleStart..<visibleEnd, count: model.displayItems.count) {
-            rowThumbnailSource(for: model.displayItems[$0])
+            art.rowThumbnailSource(for: model.displayItems[$0])
         }
         
         context.restoreGState()
@@ -1975,23 +1676,12 @@ class PlexBrowserView: NSView {
     }
     
     /// Draw column headers with separator line and resize handles
-    private func drawColumnHeaders(in context: CGContext, header: ListLayout.Header, colors: PlaylistColors) {
-        let rect = header.rect, columns = header.columns, group = header.group
+    private func drawColumnHeaders(in context: CGContext, header: LibraryBrowserListLayout.Header, colors: PlaylistColors) {
+        let rect = header.rect, columns = header.columns
         // Clip to the header rect to prevent drawing over scrollbar/alphabet index
         context.saveGState()
         context.clip(to: rect)
-        
-        let totalWidth = rect.width
-        
-        // Calculate total columns width to determine if horizontal scroll is needed
-        let columnsWidth = totalColumnsWidth(columns: columns, group: group)
-        let maxHorizontalScroll = max(0, columnsWidth - totalWidth)
-        
-        // Clamp horizontal scroll offset
-        if horizontalScrollOffset > maxHorizontalScroll {
-            horizontalScrollOffset = maxHorizontalScroll
-        }
-        
+
         // Header background (slightly darker)
         colors.normalBackground.withAlphaComponent(0.9).setFill()
         context.fill(NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: columnHeaderHeight))
@@ -2008,9 +1698,7 @@ class PlexBrowserView: NSView {
         let sortedHeaderColor = colors.normalText.withAlphaComponent(0.9)
         let separatorColor = colors.normalText.withAlphaComponent(0.2)
         
-        var x = rect.minX + 4 - horizontalScrollOffset
-        for (index, column) in columns.enumerated() {
-            let width = widthForColumn(column, availableWidth: totalWidth, columns: columns, group: group)
+        for (index, (column, x, width)) in list.columnSpans(columns, group: header.group, in: rect).enumerated() {
             let isCenteredRadioColumn = (model.browseMode == .radio && column.id == .genre) ||
                 (model.hasInternetRadioColumns && column.id == .rating)
             
@@ -2049,8 +1737,6 @@ class PlexBrowserView: NSView {
                 context.strokePath()
                 context.restoreGState()
             }
-            
-            x += width
         }
         
         context.restoreGState()
@@ -2069,11 +1755,10 @@ class PlexBrowserView: NSView {
     /// Draw a single row with columns
     private func drawColumnRow(item: LibraryBrowserItem, columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?,
                                in context: CGContext, rect: NSRect, isSelected: Bool, colors: PlaylistColors, indent: CGFloat = 0) {
-        let totalWidth = rect.width
-        
         // Counter-flip for text drawing
         context.saveGState()
         let textCenterY = rect.midY
+
         context.translateBy(x: 0, y: textCenterY)
         context.scaleBy(x: 1, y: -1)
         context.translateBy(x: 0, y: -textCenterY)
@@ -2085,14 +1770,14 @@ class PlexBrowserView: NSView {
         
         let hasArtColumn = columns.contains { $0.id == .thumbnail }
         let cells = LibraryColumnVisibility.cellFrames(
-            widths: columns.map { widthForColumn($0, availableWidth: totalWidth, columns: columns, group: group) },
+            widths: model.widths(of: columns, group: group, available: rect.width),
             titleIndex: columns.firstIndex { $0.id == .title }, indent: indent,
             spansLeadingCells: model.columnGroup(for: item) != group)
         for (column, cell) in zip(columns, cells) {
-            let x = rect.minX + cell.start - horizontalScrollOffset, width = cell.width
+            let x = rect.minX + cell.start - list.horizontalScrollOffset, width = cell.width
             if column.id == .thumbnail {
                 // Inside the counter-flip (y-up), centred on the row so the flip doesn't move it.
-                if let thumbnail = rowThumbnailSource(for: item) {
+                if let thumbnail = art.rowThumbnailSource(for: item) {
                     rowThumbnails.draw(thumbnail, in: context, at: x + 4, rowRect: rect, side: min(width - 8, rect.height - 2))
                 }
                 continue
@@ -2120,7 +1805,7 @@ class PlexBrowserView: NSView {
                 titleSpinnerInset = spinnerRadius * 2 + 4
             }
             // Round art ahead of the title, unless the row has an Art column to hold it.
-            if column.id == .title, !hasArtColumn, let thumbnail = rowThumbnailSource(for: item) {
+            if column.id == .title, !hasArtColumn, let thumbnail = art.rowThumbnailSource(for: item) {
                 titleSpinnerInset += rowThumbnails.draw(thumbnail, in: context, at: x + 4 + titleSpinnerInset,
                                                         rowRect: rect, side: rect.height - 2)
             }
@@ -2156,23 +1841,15 @@ class PlexBrowserView: NSView {
         context.fill(rect)
         
         // Calculate letter height based on available space
-        let letterCount = CGFloat(alphabetLetters.count)
-        let letterHeight = rect.height / letterCount
+        let letters = LibraryBrowserList.alphabetLetters
+        let letterHeight = rect.height / CGFloat(letters.count)
         let fontSize = min(9 * contentScale, letterHeight * 0.8)
         
-        // Build set of sort letters that exist in current items
-        var availableLetters = Set<String>()
-        if model.currentSource == .local && model.browseMode == .artists {
-            availableLetters = Set(model.localArtistLetterOffsets.keys)
-        } else if model.currentSource == .local && model.browseMode == .albums {
-            availableLetters = Set(model.localAlbumLetterOffsets.keys)
-        } else {
-            for item in model.displayItems {
-                availableLetters.insert(LibraryBrowserModel.effectiveSortLetter(for: item))
-            }
-        }
+        let availableLetters = model.lettersWithRows
+
         
-        for (index, letter) in alphabetLetters.enumerated() {
+        for (index, letter) in letters.enumerated() {
+
             let y = rect.minY + CGFloat(index) * letterHeight
             let letterRect = NSRect(x: rect.minX, y: y, width: rect.width, height: letterHeight)
             
@@ -2203,6 +1880,27 @@ class PlexBrowserView: NSView {
         }
     }
     
+    /// The amber strip under the list while a local watch folder is offline.
+    private func drawOfflineBanner(_ label: String, in context: CGContext, rect: NSRect, colors: PlaylistColors) {
+        colors.normalBackground.setFill()
+        context.fill(rect)
+        NSColor.systemOrange.withAlphaComponent(0.18).setFill()
+        context.fill(rect)
+
+        // Counter-flip for text
+        context.saveGState()
+        context.translateBy(x: 0, y: rect.midY)
+        context.scaleBy(x: 1, y: -1)
+        context.translateBy(x: 0, y: -rect.midY)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .foregroundColor: colors.normalText,
+            .font: contentFont(ofSize: 9)
+        ]
+        let size = label.size(withAttributes: attrs)
+        label.draw(at: NSPoint(x: rect.minX + 6, y: rect.midY - size.height / 2), withAttributes: attrs)
+        context.restoreGState()
+    }
+
     private func drawStatusBarText(in context: CGContext, drawBounds: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
         // Status info is now shown in the top server bar
         // This function is kept for potential future use but draws nothing
@@ -2262,31 +1960,6 @@ class PlexBrowserView: NSView {
         if !scanning { needsDisplay = true }
     }
 
-    /// Returns the display name of the currently relevant Jellyfin library based on browse mode.
-    private var jellyfinCurrentLibraryName: String {
-        let manager = JellyfinManager.shared
-        switch model.browseMode {
-        case .movies:
-            return manager.currentMovieLibrary?.name ?? "All"
-        case .shows:
-            return manager.currentShowLibrary?.name ?? "All"
-        default:
-            return manager.currentMusicLibrary?.name ?? "All"
-        }
-    }
-
-    /// Returns the display name of the currently relevant Emby library based on browse mode.
-    private var embyCurrentLibraryName: String {
-        let manager = EmbyManager.shared
-        switch model.browseMode {
-        case .movies:
-            return manager.currentMovieLibrary?.name ?? "All"
-        case .shows:
-            return manager.currentShowLibrary?.name ?? "All"
-        default:
-            return manager.currentMusicLibrary?.name ?? "All"
-        }
-    }
 
     // MARK: - Server Name Scroll Animation
     
@@ -2343,7 +2016,8 @@ class PlexBrowserView: NSView {
     
     func skinDidChange() {
         refreshHistoryHostingColors()
-        artLens.restyle()
+        backdrop.reload()
+        list.lens.restyle()
         updateHistoryHostingFrame()
         needsDisplay = true
     }
@@ -2352,17 +2026,11 @@ class PlexBrowserView: NSView {
         guard let historyHostingView else { return }
         let colors = currentPlaylistColors()
         historyHostingView.rootView = makeHistoryRootView(colors)
-        historyHostingView.layer?.backgroundColor = colors.normalBackground.cgColor
+        historyHostingView.layer?.backgroundColor = listBackground(colors).cgColor
+        historyHostingView.layer?.isOpaque = !showsCavaBackdrop
         historyHostingView.appearance = classicAppearance(for: colors.normalBackground)
     }
 
-    @objc private func playHistoryDidChange() {
-        Task { @MainActor [weak self] in
-            guard let self, self.model.browseMode.isHistoryMode else { return }
-            self.historyAgent.scheduleRefresh()
-        }
-    }
-    
     
     /// A `.wal` skin switched colour theme; the style is re-derived on each draw, so a repaint is
     /// the whole job.
@@ -2371,8 +2039,9 @@ class PlexBrowserView: NSView {
         // A colour-theme switch recolours the Data tab too. Classic windows resolve no style, and
         // their Data tab is recoloured by `skinDidChange` instead.
         if winampModernStyle != nil { refreshHistoryHostingColors() }
+        backdrop.reload()
         // The palette resolved for Flow / Tiles may predate this style (a switch into `.wmz`).
-        artLens.restyle()
+        list.lens.restyle()
         // A borrowed frame moves the content hole this view lays its list and its controls out
         // from, and it lands after the first layout pass — see the same note on the rest of the
         // hosted family (W220).
@@ -2380,640 +2049,6 @@ class PlexBrowserView: NSView {
         needsDisplay = true
     }
 
-    // MARK: - Artwork Background
-    
-    @objc private func trackDidChange(_ notification: Notification) {
-        let track = notification.userInfo?["track"] as? Track
-
-        guard WindowManager.shared.showBrowserArtworkBackground else {
-            // Clear artwork if feature is disabled
-            if currentArtwork != nil {
-                currentArtwork = nil
-                artworkTrackId = nil
-                needsDisplay = true
-            }
-            return
-        }
-        
-        loadArtwork(for: track)
-    }
-    
-    /// Load artwork for a track (Plex or local)
-    private func loadArtwork(for track: Track?) {
-        // Cancel any pending load
-        artworkLoadTask?.cancel()
-        artworkLoadTask = nil
-        
-        guard let track = track else {
-            // No track playing - keep selection artwork (if any), just clear track ID
-            // This allows Plex Radio selection artwork to persist when nothing is playing
-            artworkTrackId = nil
-            return
-        }
-        
-        // Skip if same track
-        guard track.id != artworkTrackId else { return }
-        
-        // Don't clear artwork immediately - wait until new image is ready
-        // This prevents the "flash and disappear" when switching from selection artwork to track artwork
-        
-        artworkLoadTask = Task { [weak self] in
-            guard let self = self else { return }
-            
-            var image: NSImage?
-            
-            if let plexRatingKey = track.plexRatingKey {
-                // Plex track - load from server
-                // Pass track.artworkThumb directly - it's more reliable than searching caches
-                image = await self.loadPlexArtwork(ratingKey: plexRatingKey, albumName: track.album, thumbPath: track.artworkThumb)
-                
-                // Fallback to TMDb for video tracks when Plex artwork fails
-                if image == nil && track.mediaType == .video {
-                    // Parse year from title if present (e.g., "Movie Name (2023)")
-                    var movieTitle = track.title
-                    var movieYear: Int?
-                    if let range = movieTitle.range(of: #"\s*\(\d{4}\)\s*$"#, options: .regularExpression) {
-                        let yearString = String(movieTitle[range]).trimmingCharacters(in: .whitespaces)
-                        movieYear = Int(yearString.trimmingCharacters(in: CharacterSet(charactersIn: "()")))
-                        movieTitle = String(movieTitle[..<range.lowerBound])
-                    }
-                    image = await self.loadMovieWebArtwork(title: movieTitle, year: movieYear)
-                }
-            } else if let subsonicId = track.subsonicId {
-                // Subsonic track - load from server
-                image = await self.loadSubsonicArtwork(songId: subsonicId, albumName: track.album)
-            } else if track.jellyfinId != nil {
-                // Jellyfin track - load from server
-                if let itemId = track.artworkThumb { image = await LibraryArtwork.jellyfin(itemId: itemId) }
-            } else if track.embyId != nil {
-                // Emby track - load from server
-                if let itemId = track.artworkThumb { image = await LibraryArtwork.emby(itemId: itemId) }
-            } else if track.url.isFileURL {
-                // Local file - extract embedded artwork
-                image = await self.loadLocalArtwork(url: track.url)
-                
-                // If no embedded artwork, try fetching from web
-                if image == nil {
-                    if track.mediaType == .video {
-                        // Video file - try TMDb
-                        image = await self.loadMovieWebArtwork(title: track.title, year: nil)
-                    } else {
-                        // Audio file - try iTunes
-                        image = await self.loadWebArtwork(artist: track.artist, album: track.album, title: track.title)
-                    }
-                }
-            } else if RadioManager.shared.isActive {
-                // Internet radio - use station icon URL or favicon fallback
-                image = await LibraryArtwork.radio(for: track)
-            } else if let thumb = track.artworkThumb {
-                // Generic remote artwork URL fallback
-                image = await LibraryArtwork.remote(urlString: thumb, cacheNamespace: "generic")
-            }
-            
-            // Check if task was cancelled
-            guard !Task.isCancelled else { return }
-            
-            await MainActor.run {
-                guard WindowManager.shared.audioEngine.currentTrack?.id == track.id else { return }
-                self.currentArtwork = image
-                self.artworkTrackId = track.id
-                self.needsDisplay = true
-            }
-        }
-    }
-    
-    /// Load artwork from web using iTunes Search API
-    private func loadWebArtwork(artist: String?, album: String?, title: String?) async -> NSImage? {
-        // Build search query - prefer album search, fall back to track
-        var searchTerm: String
-        if let artist = artist, !artist.isEmpty, let album = album, !album.isEmpty {
-            searchTerm = "\(artist) \(album)"
-        } else if let artist = artist, !artist.isEmpty, let title = title, !title.isEmpty {
-            searchTerm = "\(artist) \(title)"
-        } else if let album = album, !album.isEmpty {
-            searchTerm = album
-        } else {
-            return nil
-        }
-        
-        // Check cache first
-        let cacheKey = NSString(string: "web:\(searchTerm)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
-            return cached
-        }
-        
-        // URL encode the search term
-        guard let encoded = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            return nil
-        }
-        
-        // Use iTunes Search API
-        let urlString = "https://itunes.apple.com/search?term=\(encoded)&media=music&entity=album&limit=1"
-        guard let url = URL(string: urlString) else { return nil }
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            
-            // Parse JSON response
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let results = json["results"] as? [[String: Any]],
-               let firstResult = results.first,
-               let artworkUrlString = firstResult["artworkUrl100"] as? String {
-                
-                // Get higher resolution artwork (600x600 instead of 100x100)
-                let highResUrl = artworkUrlString.replacingOccurrences(of: "100x100", with: "600x600")
-                
-                if let artworkUrl = URL(string: highResUrl) {
-                    let (imageData, _) = try await URLSession.shared.data(from: artworkUrl)
-                    if let image = NSImage(data: imageData) {
-                        // Cache the result
-                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-                        NSLog("PlexBrowserView: Loaded web artwork for: %@", searchTerm)
-                        return image
-                    }
-                }
-            }
-        } catch {
-            NSLog("PlexBrowserView: Failed to load web artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        
-        return nil
-    }
-    
-    /// Load artwork for a Plex track using its rating key
-    /// - Parameters:
-    ///   - ratingKey: The track's Plex rating key
-    ///   - albumName: Optional album name for fallback lookup
-    ///   - thumbPath: Optional thumb path from the track itself (most reliable source)
-    private func loadPlexArtwork(ratingKey: String, albumName: String? = nil, thumbPath providedThumb: String? = nil) async -> NSImage? {
-        // Check cache first
-        let cacheKey = NSString(string: "plex:\(ratingKey)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
-            return cached
-        }
-        
-        // Use provided thumb path first (from track.artworkThumb) - this is the most reliable
-        // because it's the exact path the Plex API returned for this track
-        var thumbPath: String? = providedThumb
-        
-        // Check album tracks cache
-        if thumbPath == nil {
-            for (_, tracks) in model.plex.albumTracks {
-                if let plexTrack = tracks.first(where: { $0.id == ratingKey }) {
-                    thumbPath = plexTrack.thumb
-                    break
-                }
-            }
-        }
-        
-        // Check cached albums by ID
-        if thumbPath == nil {
-            if let album = model.plex.albums.first(where: { $0.id == ratingKey }) {
-                thumbPath = album.thumb
-            }
-        }
-        
-        // Try to find album by name (fallback when track not in cache)
-        if thumbPath == nil, let albumName = albumName, !albumName.isEmpty {
-            if let album = model.plex.albums.first(where: { $0.title.lowercased() == albumName.lowercased() }) {
-                thumbPath = album.thumb
-                NSLog("PlexBrowserView: Found album art by name match: %@", albumName)
-            }
-        }
-        
-        // If still not found, construct the thumb path directly from the rating key
-        // Plex allows fetching artwork using /library/metadata/{ratingKey}/thumb
-        if thumbPath == nil {
-            thumbPath = "/library/metadata/\(ratingKey)/thumb"
-            NSLog("PlexBrowserView: Using direct rating key path for artwork: %@", ratingKey)
-        }
-        
-        guard let thumb = thumbPath,
-              let artworkURL = PlexManager.shared.artworkURL(thumb: thumb, size: 400) else {
-            NSLog("PlexBrowserView: Could not construct artwork URL for rating key: %@", ratingKey)
-            return nil
-        }
-        
-        NSLog("PlexBrowserView: Loading artwork from: %@", artworkURL.redacted)
-        
-        // Download the image
-        do {
-            var request = URLRequest(url: artworkURL)
-            // Add Plex headers if needed
-            if let headers = PlexManager.shared.streamingHeaders {
-                for (key, value) in headers {
-                    request.setValue(value, forHTTPHeaderField: key)
-                }
-            }
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                NSLog("PlexBrowserView: Non-HTTP response for artwork")
-                return nil
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                NSLog("PlexBrowserView: Artwork request failed with status: %d", httpResponse.statusCode)
-                return nil
-            }
-            
-            guard let image = NSImage(data: data) else {
-                NSLog("PlexBrowserView: Could not create image from data (%d bytes)", data.count)
-                return nil
-            }
-            
-            // Cache the image
-            LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-            NSLog("PlexBrowserView: Successfully loaded artwork for rating key: %@", ratingKey)
-            
-            return image
-        } catch {
-            NSLog("PlexBrowserView: Failed to load Plex artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            return nil
-        }
-    }
-    
-    /// Load cover art from a Subsonic server
-    private func loadSubsonicArtwork(songId: String, albumName: String? = nil) async -> NSImage? {
-        // Check cache first
-        let cacheKey = NSString(string: "subsonic:\(songId)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
-            return cached
-        }
-        
-        // Find the cover art ID from cached data
-        var coverArtId: String?
-        
-        // Check cached albums for this song
-        for (_, songs) in model.subsonic.albumSongs {
-            if let song = songs.first(where: { $0.id == songId }) {
-                coverArtId = song.coverArt
-                break
-            }
-        }
-        
-        // Check cached albums by name
-        if coverArtId == nil, let albumName = albumName {
-            if let album = model.subsonic.albums.first(where: { $0.name == albumName }) {
-                coverArtId = album.coverArt
-            }
-        }
-        
-        // Try using the song ID as cover art ID (some servers support this)
-        if coverArtId == nil {
-            coverArtId = songId
-        }
-        
-        guard let artworkURL = SubsonicManager.shared.coverArtURL(coverArtId: coverArtId, size: 400) else {
-            NSLog("PlexBrowserView: Could not construct Subsonic artwork URL for song: %@", songId)
-            return nil
-        }
-        
-        NSLog("PlexBrowserView: Loading Subsonic artwork from: %@", artworkURL.redacted)
-        
-        // Download the image
-        do {
-            let (data, response) = try await URLSession.shared.data(from: artworkURL)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                NSLog("PlexBrowserView: Non-HTTP response for Subsonic artwork")
-                return nil
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                NSLog("PlexBrowserView: HTTP %d for Subsonic artwork", httpResponse.statusCode)
-                return nil
-            }
-            
-            guard let image = NSImage(data: data) else {
-                NSLog("PlexBrowserView: Could not create image from Subsonic artwork data")
-                return nil
-            }
-            
-            // Cache the image
-            LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-            
-            return image
-        } catch {
-            NSLog("PlexBrowserView: Failed to load Subsonic artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-            return nil
-        }
-    }
-    
-    /// Load embedded artwork from a local audio file
-    private func loadLocalArtwork(url: URL) async -> NSImage? {
-        // Check cache first
-        let cacheKey = NSString(string: "local:\(url.path)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
-            return cached
-        }
-        
-        // Extract artwork using AVFoundation
-        let asset = AVURLAsset(url: url)
-        
-        do {
-            let metadata = try await asset.load(.metadata)
-            
-            for item in metadata {
-                // Check for artwork in common metadata
-                if item.commonKey == .commonKeyArtwork {
-                    if let data = try await item.load(.dataValue),
-                       let image = NSImage(data: data) {
-                        // Cache the image
-                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-                        return image
-                    }
-                }
-            }
-            
-            // Also check ID3 metadata format
-            let id3Metadata = try await asset.loadMetadata(for: .id3Metadata)
-            for item in id3Metadata {
-                if item.commonKey == .commonKeyArtwork {
-                    if let data = try await item.load(.dataValue),
-                       let image = NSImage(data: data) {
-                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-                        return image
-                    }
-                }
-            }
-            
-            // Check iTunes metadata format
-            let itunesMetadata = try await asset.loadMetadata(for: .iTunesMetadata)
-            for item in itunesMetadata {
-                if item.commonKey == .commonKeyArtwork {
-                    if let data = try await item.load(.dataValue),
-                       let image = NSImage(data: data) {
-                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-                        return image
-                    }
-                }
-            }
-        } catch {
-            NSLog("PlexBrowserView: Failed to load local artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        
-        return nil
-    }
-
-    /// Load artwork based on the currently selected item in the browser
-    /// Called when selection changes to show artwork for browsed items (not just playing items)
-    private func loadArtworkForSelection() {
-        guard WindowManager.shared.showBrowserArtworkBackground else { return }
-        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
-        
-        let item = model.displayItems[index]
-        
-        // Cancel any pending load
-        artworkLoadTask?.cancel()
-        
-        artworkLoadTask = Task { [weak self] in
-            guard let self = self else { return }
-            
-            var image: NSImage?
-            
-            switch item.type {
-            case .movie, .episode, .album, .artist, .show, .season, .track, .localAlbum,
-                 .subsonicTrack, .subsonicAlbum, .subsonicArtist,
-                 .jellyfinTrack, .jellyfinAlbum, .jellyfinArtist, .jellyfinMovie, .jellyfinShow, .jellyfinSeason, .jellyfinEpisode,
-                 .embyTrack, .embyAlbum, .embyArtist, .embyMovie, .embyShow, .embySeason, .embyEpisode:
-                image = await self.itemArtwork(for: item).load()
-
-            case .localTrack(let track):
-                image = await self.loadLocalArtwork(url: track.url)
-                if image == nil {
-                    image = await self.loadWebArtwork(artist: track.artist, album: track.album, title: track.title)
-                }
-                
-            case .localArtist(let artist):
-                // Load artwork from first track by this artist
-                let firstTrack = await Task.detached {
-                    MediaLibraryStore.shared.searchTracks(query: artist.name, limit: 1, offset: 0).first
-                }.value
-                if let firstTrack {
-                    image = await self.loadLocalArtwork(url: firstTrack.url)
-                    if image == nil {
-                        image = await self.loadWebArtwork(artist: firstTrack.artist, album: firstTrack.album, title: firstTrack.title)
-                    }
-                }
-                
-            case .subsonicPlaylist(let playlist):
-                if let coverArt = playlist.coverArt {
-                    image = await self.loadSubsonicArtworkByCoverId(coverArt: coverArt, cacheKey: "subsonic:playlist:\(playlist.id)")
-                }
-                
-            case .jellyfinPlaylist(let playlist):
-                image = await LibraryArtwork.jellyfinItem(playlist.artworkItemId).load()
-
-            case .embyPlaylist(let playlist):
-                image = await LibraryArtwork.embyItem(playlist.artworkItemId).load()
-
-            case .plexPlaylist(let playlist):
-                if let thumb = playlist.thumb {
-                    image = await self.loadPlexArtworkByThumb(thumb: thumb, cacheKey: "plex:playlist:\(playlist.id)")
-                }
-                
-            case .localMovie, .localShow, .localSeason, .localEpisode:
-                // Video artwork is loaded during playback via AVAssetImageGenerator
-                break
-
-            case .localFolder:
-                // Folder rows have no artwork
-                break
-
-            case .radioStation(let station):
-                let radioTrack = station.toTrack()
-                image = await LibraryArtwork.radio(for: radioTrack, station: station)
-            case .youtubeVideo(let video):
-                // A download carries its own embedded art; otherwise the 16:9 thumbnail.
-                if let fileURL = YouTubeManager.shared.coverArtFile(for: video.videoId) {
-                    image = await self.loadLocalArtwork(url: fileURL)
-                }
-                if image == nil, let thumb = video.thumbnailURL {
-                    image = await LibraryArtwork.remote(urlString: thumb.absoluteString, cacheNamespace: "youtube")
-                }
-                image = image?.squareCenterCropped()
-            case .youtubeChannel(let channel):
-                if let avatar = channel.avatarURL(side: 512) {
-                    image = await LibraryArtwork.remote(urlString: avatar.absoluteString, cacheNamespace: "youtube")?.squareCenterCropped()
-                }
-            case .localPlaylist, .localPlaylistTrack,
-                 .plexRadioStation,
-                 .subsonicRadioStation,
-                 .jellyfinRadioStation,
-                 .embyRadioStation,
-                 .localRadioStation,
-                 .radioFolder,
-                 .header:
-                break
-            }
-
-            guard !Task.isCancelled else { return }
-            
-            await MainActor.run {
-                if image != nil {
-                    self.currentArtwork = image
-                    self.artworkTrackId = nil  // Clear track ID since this is from selection
-                    self.needsDisplay = true
-                }
-            }
-        }
-    }
-    
-    /// Load artwork from Plex using a thumb path directly
-    private func loadPlexArtworkByThumb(thumb: String, cacheKey: String) async -> NSImage? {
-        // Check cache first
-        let cacheNSKey = NSString(string: cacheKey)
-        if let cached = LibraryArtwork.cache.object(forKey: cacheNSKey) {
-            return cached
-        }
-        
-        guard let artworkURL = PlexManager.shared.artworkURL(thumb: thumb, size: 400) else {
-            return nil
-        }
-        
-        do {
-            var request = URLRequest(url: artworkURL)
-            if let headers = PlexManager.shared.streamingHeaders {
-                for (key, value) in headers {
-                    request.setValue(value, forHTTPHeaderField: key)
-                }
-            }
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let image = NSImage(data: data) else {
-                return nil
-            }
-            
-            LibraryArtwork.cache.setObject(image, forKey: cacheNSKey)
-            return image
-        } catch {
-            return nil
-        }
-    }
-    
-    /// Load artwork from Subsonic using a cover art ID directly
-    private func loadSubsonicArtworkByCoverId(coverArt: String, cacheKey: String) async -> NSImage? {
-        // Check cache first
-        let cacheNSKey = NSString(string: cacheKey)
-        if let cached = LibraryArtwork.cache.object(forKey: cacheNSKey) {
-            return cached
-        }
-        
-        guard let artworkURL = SubsonicManager.shared.coverArtURL(coverArtId: coverArt, size: 400) else {
-            return nil
-        }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(from: artworkURL)
-            
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let image = NSImage(data: data) else {
-                return nil
-            }
-            
-            LibraryArtwork.cache.setObject(image, forKey: cacheNSKey)
-            return image
-        } catch {
-            return nil
-        }
-    }
-    
-    /// Load movie poster from TMDb (The Movie Database) as fallback
-    private func loadMovieWebArtwork(title: String, year: Int?) async -> NSImage? {
-        // Build search query
-        var searchTerm = title
-        if let year = year {
-            searchTerm += " \(year)"
-        }
-        
-        // Check cache first
-        let cacheKey = NSString(string: "tmdb:\(searchTerm)")
-        if let cached = LibraryArtwork.cache.object(forKey: cacheKey) {
-            return cached
-        }
-        
-        // URL encode the search term
-        guard let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            return nil
-        }
-        
-        // Use TMDb Search API
-        // Note: This uses the public search endpoint which works without authentication for basic queries
-        var urlString = "https://api.themoviedb.org/3/search/movie?query=\(encoded)"
-        if let year = year {
-            urlString += "&year=\(year)"
-        }
-        
-        guard let url = URL(string: urlString) else { return nil }
-        
-        do {
-            var request = URLRequest(url: url)
-            // TMDb requires an API key - use the read-only public key for search
-            // This is a standard read-only key that allows basic search functionality
-            request.setValue("Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlNjUyZmJjMjE3NTcxYTZjNzU4NmYwNzE1MWQ4ZmRjOCIsInN1YiI6IjY1YjUyYTc3MGYyZmJkMDE3YzQ0OGU1OSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.tWcXq_3A4N4gP4Jz5MJNqVWfHBNZdEbwLZZGpZU9hTw", forHTTPHeaderField: "Authorization")
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            
-            let (data, _) = try await URLSession.shared.data(for: request)
-            
-            // Parse JSON response
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let results = json["results"] as? [[String: Any]],
-               let firstResult = results.first,
-               let posterPath = firstResult["poster_path"] as? String {
-                
-                // Fetch poster image (w500 is a good size for display)
-                let posterUrlString = "https://image.tmdb.org/t/p/w500\(posterPath)"
-                
-                if let posterUrl = URL(string: posterUrlString) {
-                    let (imageData, _) = try await URLSession.shared.data(from: posterUrl)
-                    if let image = NSImage(data: imageData) {
-                        // Cache the result
-                        LibraryArtwork.cache.setObject(image, forKey: cacheKey)
-                        NSLog("PlexBrowserView: Loaded TMDb poster for: %@", title)
-                        return image
-                    }
-                }
-            }
-        } catch {
-            NSLog("PlexBrowserView: Failed to load TMDb poster: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        
-        return nil
-    }
-    
-    /// Calculate a centered fit rect for artwork - scales to fit entirely within bounds, centered
-    private func calculateCenterFillRect(imageSize: NSSize, in targetRect: NSRect) -> NSRect {
-        guard imageSize.width > 0, imageSize.height > 0 else { return targetRect }
-        
-        let imageAspect = imageSize.width / imageSize.height
-        let targetAspect = targetRect.width / targetRect.height
-        
-        var width: CGFloat
-        var height: CGFloat
-        
-        if imageAspect > targetAspect {
-            // Image is wider than target - fit to width, scale height proportionally
-            width = targetRect.width
-            height = width / imageAspect
-        } else {
-            // Image is taller than target - fit to height, scale width proportionally
-            height = targetRect.height
-            width = height * imageAspect
-        }
-        
-        // Center the rect within the target
-        let x = targetRect.minX + (targetRect.width - width) / 2
-        let y = targetRect.minY + (targetRect.height - height) / 2
-        
-        return NSRect(x: x, y: y, width: width, height: height)
-    }
-    
     // MARK: - Hit Testing
     
     /// Check if point hits title bar (for dragging)
@@ -3084,120 +2119,7 @@ class PlexBrowserView: NSView {
         return skinPoint.y >= listTopY - Layout.searchBarHeight && skinPoint.y < listTopY
     }
     
-    /// Check if point is in alphabet index
-    private func hitTestAlphabetIndex(at skinPoint: NSPoint) -> Bool {
-        guard !model.browseMode.isHistoryMode else { return false }
-        return listLayout().alphabet.contains(skinPoint)
-    }
-    
-    /// Check if point is in list area and return item index
-    private func hitTestListArea(at skinPoint: NSPoint) -> Int? {
-        guard !model.browseMode.isHistoryMode else { return nil }
-        let rows = listLayout().rows
-        guard rows.contains(skinPoint) else { return nil }
-        
-        let clickedIndex = Int((skinPoint.y - rows.minY + scrollOffset) / itemHeight)
-        return model.displayItems.indices.contains(clickedIndex) ? clickedIndex : nil
-    }
 
-    private func hitTestInternetRadioRating(at skinPoint: NSPoint, itemIndex: Int) -> Int? {
-        guard !model.browseMode.isHistoryMode else { return nil }
-        guard model.hasInternetRadioColumns, itemIndex >= 0, itemIndex < model.displayItems.count else { return nil }
-        let item = model.displayItems[itemIndex]
-        let layout = listLayout()
-        guard case .radioStation = item.type, let row = rowColumns(for: item, header: layout.header) else { return nil }
-
-        let listRect = layout.rows
-        let rowY = listRect.minY + CGFloat(itemIndex) * itemHeight - scrollOffset
-        let rowRect = NSRect(x: listRect.minX, y: rowY, width: listRect.width, height: itemHeight)
-        guard rowRect.contains(skinPoint) else { return nil }
-
-        var x = rowRect.minX + 4 - horizontalScrollOffset
-        for column in row.columns {
-            let width = widthForColumn(column, availableWidth: rowRect.width, columns: row.columns, group: row.group)
-            if column.id == .rating {
-                let cellRect = NSRect(x: x, y: rowRect.minY, width: width, height: rowRect.height)
-                guard cellRect.contains(skinPoint) else { return nil }
-                let innerWidth = max(1, cellRect.width - 8)
-                let clampedX = min(max(skinPoint.x, cellRect.minX + 4), cellRect.maxX - 4)
-                let normalized = (clampedX - (cellRect.minX + 4)) / innerWidth
-                let star = min(5, max(1, Int(normalized * 5.0) + 1))
-                return star
-            }
-            x += width
-        }
-        return nil
-    }
-
-    /// The column header when `skinPoint` is on it.
-    private func columnHeader(at skinPoint: NSPoint) -> ListLayout.Header? {
-        guard !model.browseMode.isHistoryMode, let header = listLayout().header, header.rect.contains(skinPoint) else { return nil }
-        return header
-    }
-    
-    /// Check if point hits a column resize handle (returns column id to resize)
-    private func hitTestColumnResize(at skinPoint: NSPoint) -> LibraryBrowserColumn.ID? {
-        if model.hasInternetRadioColumns { return nil }
-        guard let header = columnHeader(at: skinPoint) else { return nil }
-        let columns = header.columns
-        let group = header.group
-
-        // Check if near a column separator (within 4 pixels)
-        var x = header.rect.minX + 4
-        let hitMargin: CGFloat = 4
-        
-        for (index, column) in columns.enumerated() {
-            let width = widthForColumn(column, availableWidth: header.rect.width, columns: columns, group: group)
-            let separatorX = x + width
-            
-            // YouTube's Time column is the final column, so resize it from its leading
-            // edge (the separator after Title). Other groups keep their existing
-            // trailing-edge resize behavior.
-            if index < columns.count - 1,
-               abs(skinPoint.x - separatorX) < hitMargin {
-                if model.hasYouTubeColumns, column.id == .title {
-                    return columns[index + 1].id
-                }
-                if column.id != .title {
-                    return column.id
-                }
-            }
-            x += width
-        }
-        
-        return nil
-    }
-    
-    /// Check if point hits a column header (returns column id for sorting)
-    private func hitTestColumnHeader(at skinPoint: NSPoint) -> LibraryBrowserColumn.ID? {
-        guard let header = columnHeader(at: skinPoint) else { return nil }
-        
-        // Check if on a resize handle first (don't trigger sort)
-        if hitTestColumnResize(at: skinPoint) != nil {
-            return nil
-        }
-
-        let columns = header.columns
-        let group = header.group
-        
-        // Find which column was clicked
-        var x = header.rect.minX + 4
-        
-        for column in columns {
-            let width = widthForColumn(column, availableWidth: header.rect.width, columns: columns, group: group)
-            if skinPoint.x >= x && skinPoint.x < x + width {
-                return column.id
-            }
-            x += width
-        }
-        
-        return nil
-    }
-
-    private func hitTestColumnHeaderArea(at skinPoint: NSPoint) -> Bool {
-        !model.hasInternetRadioColumns && columnHeader(at: skinPoint) != nil
-    }
-    
     // MARK: - Cursor Tracking
     
     override func updateTrackingAreas() {
@@ -3212,17 +2134,9 @@ class PlexBrowserView: NSView {
     }
     
     override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let skinPoint = convertToSkinCoordinates(point)
-        
-        // Show resize cursor when over column resize handles
-        if hitTestColumnResize(at: skinPoint) != nil {
-            NSCursor.resizeLeftRight.set()
-        } else {
-            NSCursor.arrow.set()
-        }
-        let overList = hitTestListArea(at: skinPoint) != nil
-        rowThumbnails.hover(at: overList ? skinPoint : nil) {
+        let skinPoint = convertToSkinCoordinates(convert(event.locationInWindow, from: nil))
+        list.cursor(at: skinPoint).set()
+        rowThumbnails.hover(at: list.rowIndex(at: skinPoint) != nil ? skinPoint : nil) {
             window?.convertToScreen(convert(convertFromSkinCoordinates($0), to: nil))
         }
     }
@@ -3239,72 +2153,16 @@ class PlexBrowserView: NSView {
     }
     
     override func rightMouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let skinPoint = convertToSkinCoordinates(point)
-        
-        // Right-click on column header: show column visibility menu
-        if hitTestColumnHeaderArea(at: skinPoint) {
-            showColumnConfigMenu(at: event)
-            return
+        let skinPoint = convertToSkinCoordinates(convert(event.locationInWindow, from: nil))
+        if !list.rightMouseDown(at: skinPoint, event: event) {
+            super.rightMouseDown(with: event)
         }
-        
-        // Check list area for item context menu
-        if !model.browseMode.isHistoryMode, let clickedIndex = hitTestListArea(at: skinPoint) {
-            // Select the clicked item if not already selected
-            if !model.selectedIndices.contains(clickedIndex) {
-                model.selectedIndices = [clickedIndex]
-                needsDisplay = true
-            }
-            
-            let item = model.displayItems[clickedIndex]
-            
-            // Show context menu - uses search URLs as fallback for external links
-            // Direct IMDB/TMDB links will be used if IDs are already available
-            showContextMenu(for: item, at: event)
-            return
-        }
-        
-        // Local library empty-space right-click: show Manage Folders
-        if !model.browseMode.isHistoryMode, let menu = actions.emptySpaceMenu() {
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-            return
-        }
-        // Default right-click behavior
-        super.rightMouseDown(with: event)
-    }
-
-    private func showColumnConfigMenu(at event: NSEvent) {
-        guard let menu = actions.columnMenu() else { return }
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let skinPoint = convertToSkinCoordinates(point)
-        
-        // Check for column resize
-        if let header = columnHeader(at: skinPoint), let columnId = hitTestColumnResize(at: skinPoint) {
-            resizingColumnId = columnId
-            resizingColumnGroup = header.group
-            resizingColumnFromLeadingEdge = model.hasYouTubeColumns && columnId == .duration
-            resizeStartX = skinPoint.x
-            resizeStartWidth = widthForColumn(
-                LibraryBrowserColumn.findColumn(id: columnId) ?? .title,
-                availableWidth: header.rect.width,
-                columns: header.columns,
-                group: resizingColumnGroup
-            )
-            NSCursor.resizeLeftRight.push()
-            return
-        }
-        
-        // Check for column header click (for sorting)
-        if let columnId = hitTestColumnHeader(at: skinPoint) {
-            model.sortByColumn(columnId)
-            needsDisplay = true
-            return
-        }
-        
+
         // Check window control buttons
         if hitTestCloseButton(at: skinPoint) {
             pressedButton = .close
@@ -3315,7 +2173,7 @@ class PlexBrowserView: NSView {
         // Check server bar
         if hitTestServerBar(at: skinPoint) {
             if let mode = viewModeButton(at: skinPoint) {
-                artLens.mode = mode
+                list.lens.mode = mode
                 needsDisplay = true
                 return
             }
@@ -3348,18 +2206,9 @@ class PlexBrowserView: NSView {
             return
         }
         
-        // Check alphabet index
-        if hitTestAlphabetIndex(at: skinPoint) {
-            handleAlphabetClick(at: skinPoint)
-            return
-        }
-        
-        // Check list area
-        if let itemIndex = hitTestListArea(at: skinPoint) {
-            handleListClick(at: itemIndex, event: event, skinPoint: skinPoint)
-            return
-        }
-        
+        // The column header, alphabet index and rows
+        if list.mouseDown(at: skinPoint, event: event) { return }
+
         // Title bar - start window drag (can undock)
         if hitTestTitleBar(at: skinPoint) {
             isDraggingWindow = true
@@ -3373,7 +2222,7 @@ class PlexBrowserView: NSView {
     }
     private func handleServerBarClick(at skinPoint: NSPoint, event: NSEvent) {
         if refreshButtonRect.contains(skinPoint) {
-            handleRefreshClick()
+            model.refreshCurrentSource()
             return
         }
 
@@ -3392,161 +2241,8 @@ class PlexBrowserView: NSView {
                    in: window?.contentView)
     }
 
-    private func handleRefreshClick() {
-        if model.browseMode.isHistoryMode {
-            historyAgent.scheduleRefresh()
-            return
-        }
-        model.refreshCurrentSource()
-    }
-
-    // MARK: - List Clicks
-
-    private func handleAlphabetClick(at skinPoint: NSPoint) {
-        let rect = listLayout().alphabet
-        let relativeY = skinPoint.y - rect.minY
-        let letterCount = CGFloat(alphabetLetters.count)
-        let letterHeight = rect.height / letterCount
-        let letterIndex = Int(relativeY / letterHeight)
-        
-        guard letterIndex >= 0 && letterIndex < alphabetLetters.count else { return }
-        
-        let targetLetter = alphabetLetters[letterIndex]
-        scrollToLetter(targetLetter)
-    }
-    
-    private func scrollToLetter(_ letter: String) {
-        if artLens.jump(to: { LibraryBrowserModel.effectiveSortLetter(for: $0) == letter }) { return }
-        // Paged local tabs load the letter's page
-        if let moved = model.showLocalPage(atLetter: letter) {
-            if moved { scrollOffset = 0 }
-            return
-        }
-        for (index, item) in model.displayItems.enumerated() {
-            if LibraryBrowserModel.effectiveSortLetter(for: item) == letter {
-                let listHeight = listLayout().rows.height
-                let maxScroll = max(0, CGFloat(model.displayItems.count) * itemHeight - listHeight)
-                scrollOffset = min(maxScroll, CGFloat(index) * itemHeight)
-                model.selectedIndices = [index]
-                needsDisplay = true
-                return
-            }
-        }
-    }
-    
-    private func handleListClick(at index: Int, event: NSEvent, skinPoint: NSPoint) {
-        let item = model.displayItems[index]
-
-        if case .radioFolder(let folder) = item.type {
-            let indent = CGFloat(item.indentLevel) * 16
-            let inExpandZone = skinPoint.x < Layout.leftBorder + indent + 20
-            if folder.hasChildren && inExpandZone {
-                model.toggleExpand(item)
-                return
-            }
-            if folder.hasChildren && event.clickCount == 2 {
-                model.toggleExpand(item)
-                return
-            }
-            if let updatedIndex = model.displayItems.firstIndex(where: { $0.id == folder.id }) {
-                model.selectedIndices = [updatedIndex]
-            } else {
-                model.selectedIndices = [index]
-            }
-            needsDisplay = true
-            return
-        }
-
-        if let clickedStar = hitTestInternetRadioRating(at: skinPoint, itemIndex: index),
-           case .radioStation(let station) = item.type {
-            let currentRating = RadioManager.shared.rating(for: station)
-            let targetRating = currentRating == clickedStar ? 0 : clickedStar
-            RadioManager.shared.setRating(targetRating, for: station)
-            model.selectedIndices = [index]
-            needsDisplay = true
-            return
-        }
-        
-        // Handle expand/collapse
-        if item.hasChildren {
-            let indent = CGFloat(item.indentLevel) * 16
-            let inExpandZone = skinPoint.x < Layout.leftBorder + indent + 20
-            if item.type.isAlbumItem {
-                if event.clickCount == 1 { model.toggleExpand(item) }
-                // Fall through to selection
-            } else if inExpandZone {
-                model.toggleExpand(item)
-                return
-            }
-        }
-
-        // Handle selection
-        if event.modifierFlags.contains(.shift) {
-            if let lastSelected = model.selectedIndices.max() {
-                let start = min(lastSelected, index)
-                let end = max(lastSelected, index)
-                for i in start...end {
-                    model.selectedIndices.insert(i)
-                }
-            } else {
-                model.selectedIndices.insert(index)
-            }
-            // Load artwork for selection (shift-click multi-select)
-            loadArtworkForSelection()
-        } else if event.modifierFlags.contains(.command) {
-            if model.selectedIndices.contains(index) {
-                model.selectedIndices.remove(index)
-            } else {
-                model.selectedIndices.insert(index)
-            }
-            // Load artwork for selection (cmd-click multi-select)
-            loadArtworkForSelection()
-        } else {
-            model.selectedIndices = [index]
-            
-            // A single click selects; tracks play on double-click, as in the Original browser.
-            // Each play is a Play Now that inserts the track, so playing on the single click as
-            // well played a double-clicked track three times and left three copies queued.
-            switch item.type {
-            case .plexRadioStation,
-                 .subsonicRadioStation,
-                 .jellyfinRadioStation,
-                 .embyRadioStation,
-                 .localRadioStation:
-                // Radio stations don't load artwork on single-click - only on play (double-click)
-                break
-            case .radioStation(let station):
-                if model.browseMode == .search && event.clickCount == 1 {
-                    RadioManager.shared.play(station: station)
-                }
-            default:
-                // Everything else — tracks included, which play on double-click — loads artwork
-                loadArtworkForSelection()
-            }
-        }
-        
-        // Double-click to play a track, album or show, or expand an artist
-        if event.clickCount == 2 {
-            actions.activate(item)
-        }
-        
-        needsDisplay = true
-    }
-    
     override func mouseDragged(with event: NSEvent) {
-        // Handle column resize dragging
-        if let columnId = resizingColumnId, let group = resizingColumnGroup {
-            let point = convert(event.locationInWindow, from: nil)
-            let skinPoint = convertToSkinCoordinates(point)
-            let rawDeltaX = skinPoint.x - resizeStartX
-            let deltaX = resizingColumnFromLeadingEdge ? -rawDeltaX : rawDeltaX
-            let minWidth = LibraryBrowserColumn.findColumn(id: columnId)?.minWidth ?? 30
-            let newWidth = max(minWidth, resizeStartWidth + deltaX)
-            model.setColumnWidth(newWidth, for: columnId, group: group)
-            needsDisplay = true
-            return
-        }
-        
+        if list.mouseDragged(at: convertToSkinCoordinates(convert(event.locationInWindow, from: nil))) { return }
         if embeddedWindowDrag.drag(event) { return }
 
         // Handle window dragging - snaps to other windows but doesn't dock
@@ -3569,14 +2265,8 @@ class PlexBrowserView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let skinPoint = convertToSkinCoordinates(point)
         
-        // End column resizing
-        if resizingColumnId != nil {
-            resizingColumnId = nil
-            resizingColumnGroup = nil
-            resizingColumnFromLeadingEdge = false
-            NSCursor.pop()
-        }
-        
+        list.mouseUp()
+
         // End window dragging
         if isDraggingWindow {
             isDraggingWindow = false
@@ -3597,13 +2287,6 @@ class PlexBrowserView: NSView {
         }
     }
 
-    private func loadNextLocalPageIfNeeded(listHeight: CGFloat) {
-        let threshold = itemHeight * 10
-        let loadedHeight = CGFloat(model.displayItems.count) * itemHeight
-        guard scrollOffset + listHeight + threshold >= loadedHeight else { return }
-        model.appendNextLocalPage()
-    }
-
     // MARK: - Drag and Drop (Local Files and Playlists)
     
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -3620,226 +2303,26 @@ class PlexBrowserView: NSView {
         return actions.addDroppedItems(items)
     }
     
-    // MARK: - Right-Click Context Menu (for list items)
-
-    private func showContextMenu(for item: LibraryBrowserItem, at event: NSEvent) {
-        guard let menu = actions.contextMenu(for: item) else { return }
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
-    }
-
-    /// Shift+Enter / Option+Enter: the menu's Play Next / Add to Queue on the selected row.
-    private func runVerbOnSelection(_ verb: TrackVerb) {
-        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
-        actions.run(verb, on: model.displayItems[index])
-    }
-
     override func scrollWheel(with event: NSEvent) {
-        if model.browseMode.isHistoryMode {
-            super.scrollWheel(with: event)
+        guard list.scrollWheel(event) else {
+            if model.browseMode.isHistoryMode { super.scrollWheel(with: event) }
             return
         }
-
-        let layout = listLayout()
-        let listHeight = layout.rows.height
-        let totalHeight = CGFloat(model.displayItems.count) * itemHeight
-        let verticalDelta = verticalScrollDelta(from: event)
-        let horizontalDelta = horizontalScrollDelta(from: event)
-        var needsRedraw = false
-
-        if let header = layout.header,
-           event.modifierFlags.contains(.shift) || abs(horizontalDelta) > abs(verticalDelta) {
-            let totalWidth = totalColumnsWidth(columns: header.columns, group: header.group)
-            let maxOffset = max(0, totalWidth - header.rect.width)
-            if maxOffset > 0 {
-                let delta = event.modifierFlags.contains(.shift) ? verticalDelta : horizontalDelta
-                horizontalScrollOffset = max(0, min(maxOffset, horizontalScrollOffset - delta))
-                needsRedraw = true
-            }
-        }
-
-        if totalHeight > listHeight && verticalDelta != 0 && !event.modifierFlags.contains(.shift) {
-            scrollOffset = max(0, min(totalHeight - listHeight, scrollOffset - verticalDelta))
-            needsRedraw = true
-        }
-
-        if needsRedraw {
-            // The list and the status bar under it, full width so the side borders' scroll thumb follows.
-            setNeedsDisplay(convertFromSkinCoordinates(NSRect(x: 0, y: layout.area.minY, width: bounds.width,
-                                                              height: layout.area.height + Layout.statusBarHeight)))
-        }
-
-        if case .local = model.currentSource { loadNextLocalPageIfNeeded(listHeight: listHeight) }
+        // The list and the status bar under it, full width so the side borders' scroll thumb follows.
+        let area = listLayout().area
+        setNeedsDisplay(convertFromSkinCoordinates(NSRect(x: 0, y: area.minY, width: bounds.width,
+                                                          height: area.height + Layout.statusBarHeight)))
     }
 
-    private func verticalScrollDelta(from event: NSEvent) -> CGFloat {
-        if event.hasPreciseScrollingDeltas, event.scrollingDeltaY != 0 {
-            return event.scrollingDeltaY
-        }
-        return event.deltaY * 3
-    }
-
-    private func horizontalScrollDelta(from event: NSEvent) -> CGFloat {
-        if event.hasPreciseScrollingDeltas, event.scrollingDeltaX != 0 {
-            return event.scrollingDeltaX
-        }
-        return event.deltaX * 3
-    }
-    
     // MARK: - Keyboard Events
-    
+
     override var acceptsFirstResponder: Bool { true }
-    
+
     override func keyDown(with event: NSEvent) {
-        if model.browseMode.isHistoryMode {
-            super.keyDown(with: event)
-            return
-        }
-        
-        switch event.keyCode {
-        case 36: // Enter
-            if model.hasUnsubmittedYouTubeSearch {
-                model.loadYouTubeSearchResults()
-            } else if event.modifierFlags.contains(.shift) {
-                runVerbOnSelection(.playNext)
-            } else if event.modifierFlags.contains(.option) {
-                runVerbOnSelection(.addToQueue)
-            } else {
-                if let index = model.selectedIndices.first, index < model.displayItems.count {
-                    actions.activate(model.displayItems[index])
-                }
-            }
-            
-        case 125: // Down arrow
-            if let maxIndex = model.selectedIndices.max(), maxIndex < model.displayItems.count - 1 {
-                model.selectedIndices = [maxIndex + 1]
-                ensureVisible(index: maxIndex + 1)
-                loadArtworkForSelection()
-                needsDisplay = true
-            }
-            
-        case 126: // Up arrow
-            if let minIndex = model.selectedIndices.min(), minIndex > 0 {
-                model.selectedIndices = [minIndex - 1]
-                ensureVisible(index: minIndex - 1)
-                loadArtworkForSelection()
-                needsDisplay = true
-            }
-            
-        default:
-            guard let chars = event.characters, !chars.isEmpty else { break }
-            if model.browseMode == .search {
-                if event.keyCode == 51 { // Delete
-                    if !model.searchQuery.isEmpty { model.searchQuery.removeLast(); searchQueryDidChange() }
-                } else if chars.rangeOfCharacter(from: .alphanumerics) != nil ||
-                          chars.rangeOfCharacter(from: .whitespaces) != nil {
-                    model.searchQuery += chars; searchQueryDidChange()
-                }
-            } else {
-                if event.keyCode == 53 { // Escape — clear type-ahead
-                    typeAheadQuery = ""; typeAheadTimer?.invalidate(); typeAheadTimer = nil; needsDisplay = true
-                } else if event.keyCode == 51 { // Backspace
-                    if !typeAheadQuery.isEmpty { typeAheadQuery.removeLast(); jumpToTypeAhead() }
-                } else if chars.rangeOfCharacter(from: .alphanumerics) != nil ||
-                          chars.rangeOfCharacter(from: .whitespaces) != nil {
-                    typeAheadQuery += chars; jumpToTypeAhead()
-                }
-            }
-        }
-    }
-    
-    private func ensureVisible(index: Int) {
-        let listHeight = listLayout().rows.height
-
-        let itemTop = CGFloat(index) * itemHeight
-        let itemBottom = itemTop + itemHeight
-
-        if itemTop < scrollOffset {
-            scrollOffset = itemTop
-        } else if itemBottom > scrollOffset + listHeight {
-            scrollOffset = itemBottom - listHeight
-        }
-    }
-
-    private func jumpToTypeAhead() {
-        let query = typeAheadQuery.lowercased()
-        guard !query.isEmpty else { return }
-        if let idx = model.displayItems.firstIndex(where: { LibraryBrowserModel.titleMatchesTypeAhead($0.title, query: query) }) {
-            model.selectedIndices = [idx]; ensureVisible(index: idx); loadArtworkForSelection(); needsDisplay = true
-        }
-        typeAheadTimer?.invalidate()
-        typeAheadTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-            self?.typeAheadQuery = ""
-        }
-    }
-
-    // MARK: - YouTube (shares the Radio tab UI as its own source)
-
-    /// Search as you type — except a YouTube channel search, a network call that waits for Enter.
-    private func searchQueryDidChange() {
-        if model.isYouTubeChannelSearch { needsDisplay = true } else { model.loadDataForCurrentMode() }
+        if !list.keyDown(event) { super.keyDown(with: event) }
     }
 
     @objc private func libraryRowThumbnailDidLoad() {
         needsDisplay = true
-    }
-
-    /// A channel's uploads started or finished loading: spin the per-row spinner. The model rebuilds the rows.
-
-    // MARK: - Browse Artwork
-
-    /// Load artwork from browsed local content
-    private func loadLocalBrowseArtwork() {
-        guard case .local = model.currentSource else { return }
-        guard WindowManager.shared.showBrowserArtworkBackground else { return }
-        
-        // If a track is playing, use its artwork
-        if let currentTrack = WindowManager.shared.audioEngine.currentTrack {
-            loadArtwork(for: currentTrack)
-            return
-        }
-        
-        // Capture current state for async task
-        let items = model.displayItems
-
-        // Otherwise, try to find artwork from the current browse context
-        artworkLoadTask?.cancel()
-        artworkLoadTask = Task { [weak self] in
-            guard let self = self else { return }
-
-            var image: NSImage?
-
-            // Try to get artwork from the first track we can find
-            for item in items {
-                switch item.type {
-                case .localTrack(let track):
-                    image = await self.loadLocalArtwork(url: track.url)
-                    break
-                case .localAlbum(let album):
-                    let albumTracks = MediaLibraryStore.shared.tracksForAlbum(album.id)
-                    if let track = albumTracks.first {
-                        image = await self.loadLocalArtwork(url: track.url)
-                    }
-                    break
-                case .localArtist(let artist):
-                    let artistTracks = MediaLibraryStore.shared.searchTracks(query: artist.name, limit: 1, offset: 0)
-                    if let track = artistTracks.first {
-                        image = await self.loadLocalArtwork(url: track.url)
-                    }
-                    break
-                default:
-                    continue
-                }
-                if image != nil { break }
-            }
-            
-            guard !Task.isCancelled else { return }
-            
-            await MainActor.run {
-                if image != nil {
-                    self.currentArtwork = image
-                    self.needsDisplay = true
-                }
-            }
-        }
     }
 }

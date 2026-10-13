@@ -155,6 +155,12 @@ final class LibraryBrowserActions: NSObject {
         verb.run(resolver(for: playable))
     }
 
+    /// Shift+Enter / Option+Enter: the menu's Play Next / Add to Queue on the selected row.
+    func runOnSelection(_ verb: TrackVerb) {
+        guard let index = model.selectedIndices.first, index < model.displayItems.count else { return }
+        run(verb, on: model.displayItems[index])
+    }
+
     /// The row's tracks for a play verb, from its menu, Enter or double-click. A server playlist is
     /// fetched behind the loading screen, which shows the error if the fetch fails.
     func resolver(for playable: LibraryPlayable) -> @MainActor () async throws -> [Track] {

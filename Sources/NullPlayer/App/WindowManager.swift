@@ -173,6 +173,18 @@ enum BrowserBackdropMode: Int, CaseIterable {
     static let libraryPreferenceKey = "libraryBackdropMode"
     static let legacyArtworkPreferenceKey = "showBrowserArtworkBackground"
     static let preferenceKeys = [compactPreferenceKey, libraryPreferenceKey]
+    /// The classic view's library window (Classic, and the `.wal`, `.wmz` and Audion windows).
+    /// Kept apart from Original/Metal's, and never seeded by the legacy migration below.
+    static let classicLibraryPreferenceKey = "ClassicLibraryBackdropMode"
+
+    /// The classic view's library backdrop: its own choice, else the legacy artwork toggle (on, its
+    /// default, is Art; off is Off), so Classic looks as it did until Cava is picked.
+    static func classicLibraryMode(in defaults: UserDefaults) -> BrowserBackdropMode {
+        if defaults.object(forKey: classicLibraryPreferenceKey) != nil {
+            return BrowserBackdropMode(rawValue: defaults.integer(forKey: classicLibraryPreferenceKey)) ?? .art
+        }
+        return defaults.object(forKey: legacyArtworkPreferenceKey) as? Bool == false ? .off : .art
+    }
 
     /// Preserve the legacy modern-browser artwork choice while adopting Cava as the new default.
     /// Existing window-specific selections always win, and an installation with no legacy choice
@@ -470,21 +482,21 @@ class WindowManager {
         compactWindowController?.refreshCompactBackdrop()
     }
 
+    /// Backdrop of the library window: Original/Metal's, or the classic view's own.
     var libraryBackdropMode: BrowserBackdropMode {
-        guard isRunningModernUI else { return .off }
+        guard isRunningModernUI else { return BrowserBackdropMode.classicLibraryMode(in: .standard) }
         return BrowserBackdropMode(
             rawValue: UserDefaults.standard.integer(forKey: BrowserBackdropMode.libraryPreferenceKey)
         ) ?? .defaultMode
     }
 
     var libraryBackdropPresenter: CavaPresenter? {
-        guard isRunningModernUI else { return nil }
-        return plexBrowserWindowController?.libraryBackdropPresenter
+        plexBrowserWindowController?.libraryBackdropPresenter
     }
 
     func setLibraryBackdropMode(_ mode: BrowserBackdropMode) {
-        guard isRunningModernUI else { return }
-        UserDefaults.standard.set(mode.rawValue, forKey: BrowserBackdropMode.libraryPreferenceKey)
+        let key = isRunningModernUI ? BrowserBackdropMode.libraryPreferenceKey : BrowserBackdropMode.classicLibraryPreferenceKey
+        UserDefaults.standard.set(mode.rawValue, forKey: key)
         plexBrowserWindowController?.refreshLibraryBackdrop()
     }
 
@@ -4977,21 +4989,6 @@ class WindowManager {
         }
     }
     
-    /// When true, shows album art as transparent background in browser window (default: true)
-    var showBrowserArtworkBackground: Bool {
-        get {
-            // Default to true (enabled) if not set
-            if UserDefaults.standard.object(forKey: "showBrowserArtworkBackground") == nil {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: "showBrowserArtworkBackground")
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "showBrowserArtworkBackground")
-            // Trigger browser redraw
-            plexBrowserWindowController?.window?.contentView?.needsDisplay = true
-        }
-    }
     
     @discardableResult
     func loadSkin(from url: URL, userDefaults: UserDefaults = .standard) -> Bool {

@@ -615,11 +615,9 @@ class ContextMenuBuilder {
         menu.addItem(spectrumWindowItem)
 
         menu.addItem(buildVisualizationsMenuItem())
-        if wm.isRunningModernUI {
-            let libraryWindowItem = NSMenuItem(title: "Library Window", action: nil, keyEquivalent: "")
-            libraryWindowItem.submenu = buildLibraryBackdropMenu()
-            menu.addItem(libraryWindowItem)
-        }
+        let libraryWindowItem = NSMenuItem(title: "Library Window", action: nil, keyEquivalent: "")
+        libraryWindowItem.submenu = buildLibraryBackdropMenu()
+        menu.addItem(libraryWindowItem)
         if wm.isRunningModernUI,
            AppCapabilities.supports(.compactWindowVisualsMenu) {
             let compactWindowItem = NSMenuItem(title: "Compact Window", action: nil, keyEquivalent: "")
@@ -655,6 +653,17 @@ class ContextMenuBuilder {
                 ?? libraryBackdropFallbackPresenter,
             action: #selector(MenuActions.setLibraryBackdropMode(_:))
         )
+    }
+
+    /// The Library (or Compact) Background submenu a browser offers atop its row, column and
+    /// empty-space menus; nil for a compact window without a Visuals menu.
+    static func browserBackdropMenuItem(compact: Bool, presenter: CavaPresenter?) -> NSMenuItem? {
+        guard !compact || AppCapabilities.supports(.compactWindowVisualsMenu) else { return nil }
+        let item = NSMenuItem(title: compact ? "Compact Background" : "Library Background", action: nil, keyEquivalent: "")
+        item.submenu = compact
+            ? buildCompactBackdropMenu(presenter: presenter)
+            : buildLibraryBackdropMenu(presenter: presenter)
+        return item
     }
 
     private static func buildBrowserBackdropMenu(
@@ -1285,16 +1294,8 @@ class ContextMenuBuilder {
             optionsMenu.addItem(durationItem)
         }
         
+        // The library window's art and Cava backdrop live in Visuals > Library Window.
         optionsMenu.addItem(NSMenuItem.separator())
-        
-        // Modern/Metal expose window-specific Art and Cava + Art choices in Visuals.
-        // Keep the legacy global toggle only for the classic browser.
-        if !wm.isRunningModernUI {
-            let artworkBgItem = NSMenuItem(title: "Browser Album Art Background", action: #selector(MenuActions.toggleBrowserArtworkBackground), keyEquivalent: "")
-            artworkBgItem.target = MenuActions.shared
-            artworkBgItem.state = wm.showBrowserArtworkBackground ? .on : .off
-            optionsMenu.addItem(artworkBgItem)
-        }
 
         return optionsMenu
     }
@@ -4478,10 +4479,6 @@ class MenuActions: NSObject {
         RadioPlaybackOptions.playlistLength = playlistLength
     }
     
-    @objc func toggleBrowserArtworkBackground() {
-        WindowManager.shared.showBrowserArtworkBackground.toggle()
-    }
-
     // MARK: - Sleep Timer
 
     @objc func startSleepTimerMinutes(_ sender: NSMenuItem) {

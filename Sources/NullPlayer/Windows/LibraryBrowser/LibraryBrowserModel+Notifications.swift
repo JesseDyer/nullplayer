@@ -25,11 +25,19 @@ extension LibraryBrowserModel {
             (#selector(embyLibraryContentDidPreload), EmbyManager.libraryContentDidPreloadNotification),
             (#selector(embyConnectionStateDidChange), EmbyManager.connectionStateDidChangeNotification),
             (#selector(subsonicMusicFolderDidChange), SubsonicManager.musicFolderDidChangeNotification),
+            (#selector(playHistoryDidChange), MediaLibraryStore.playHistoryDidChangeNotification),
             // External source selection (e.g. Subsonic/Jellyfin menu > Show in Library Browser)
             (#selector(handleSetBrowserSource(_:)), NSNotification.Name("SetBrowserSource")),
         ]
         for (selector, name) in observers {
             center.addObserver(self, selector: selector, name: name, object: nil)
+        }
+    }
+
+    @objc private func playHistoryDidChange() {
+        Task { @MainActor [weak self] in
+            guard let self, self.browseMode.isHistoryMode else { return }
+            self.history.scheduleRefresh()
         }
     }
 

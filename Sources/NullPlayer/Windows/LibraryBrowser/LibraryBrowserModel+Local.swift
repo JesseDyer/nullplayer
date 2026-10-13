@@ -3,6 +3,25 @@ import Foundation
 /// The Local source: the media library store, paged for Artists and Albums.
 extension LibraryBrowserModel {
 
+    /// The banner under the list while a local watch folder is offline, or nil.
+    var offlineBannerText: String? {
+        guard isLocalSource, !offlineWatchFolders.isEmpty else { return nil }
+        let count = offlineWatchFolders.reduce(0) { $0 + $1.totalCount }
+        let names = offlineWatchFolders.map { $0.url.lastPathComponent }.joined(separator: ", ")
+        return "⚠  \"\(names)\" offline — \(count) track\(count == 1 ? "" : "s") unavailable"
+    }
+
+    /// A local track or episode whose file is on an offline volume; its row is drawn dimmed.
+    func isOffline(_ item: LibraryBrowserItem) -> Bool {
+        let url: URL
+        switch item.type {
+        case .localTrack(let track): url = track.url
+        case .localEpisode(let episode): url = episode.url
+        default: return false
+        }
+        return offlineVolumePrefixes.contains { url.path.hasPrefix($0) }
+    }
+
     func loadLocalData() {
         isLoading = false
         errorMessage = nil
