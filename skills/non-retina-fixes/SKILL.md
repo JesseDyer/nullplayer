@@ -155,19 +155,15 @@ self.setNeedsDisplay(contentRect)
 
 **Solution**: Apply the same targeted redraw approach to the loading spinner animation.
 
-```swift
-// In startLoadingAnimation():
+The spinner's tick is `LibraryBrowserCoordinator.spinnerTick`, which asks its view for
+`host.redraw(.list)` while the rows are busy and `.serverBar` while only the library scan runs. The
+classic view answers `.list` with the list area alone:
 
-// Only redraw the list area where the loading spinner is displayed
-var listY = self.Layout.titleBarHeight + self.Layout.serverBarHeight + self.Layout.tabBarHeight
-if self.browseMode == .search {
-    listY += self.Layout.searchBarHeight
-}
-let listHeight = self.bounds.height - listY - self.Layout.statusBarHeight
-// Convert coordinates
-let nativeY = self.Layout.statusBarHeight
-let listRect = NSRect(x: 0, y: nativeY, width: self.bounds.width, height: listHeight)
-self.setNeedsDisplay(listRect)
+```swift
+case .list:
+    // Only the list area, so menu items don't shimmer on non-Retina displays.
+    let area = listLayout().area
+    setNeedsDisplay(convertFromSkinCoordinates(NSRect(x: 0, y: area.minY, width: bounds.width, height: area.height)))
 ```
 
 ## Files Changed

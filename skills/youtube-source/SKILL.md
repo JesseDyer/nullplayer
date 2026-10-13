@@ -193,10 +193,12 @@ yt-dlp --flat-playlist -J --playlist-end 20 \
   `&`, `+`, `#` survive); `parseChannelSearch` (pure) reads each entry's `channel_id`,
   `uploader_id` (`@handle`, **may be null**), `channel_follower_count`, `description`, and avatar.
   yt-dlp reports Topic channels with a follower count of 1.
-- **Submit-only**: a search is a network call, so it runs on Enter, never per keystroke. The classic
-  browser otherwise searches as you type — for the YouTube source its key handler only edits the
-  query. Once a query has run, Enter acts on the selected row; Refresh re-runs the query; returning
-  to the tab reuses results of an unchanged query (`youtubeSearchQuery`).
+- **Submit-only**: a search is a network call, so it runs on Enter, never per keystroke — as every
+  source's Search tab does. Typing edits `LibraryBrowserModel.searchQuery`; Enter
+  (`submitSearch`) copies it to `searchedQuery`, the query every search runs on. Enter runs a search
+  while `hasUnsubmittedSearch` (typed but not yet run, or run and failed), otherwise it acts on the
+  selected row; Refresh re-runs the query; returning to the tab reuses the results of an unchanged
+  query (`YouTubeChannelSearch.submit` compares its normalized form with the last successful one).
 - Results build as a `.header` "Channels (N)" plus one **`.youtubeChannel(result.asChannel)`** row
   each, so expand/preview/download reuse the Channels-tab paths (`expandedYouTubeChannels`,
   `YouTubeChannelUploads`). `hasYouTubeColumns` and `applyYouTubeColumnSort` accept the search view

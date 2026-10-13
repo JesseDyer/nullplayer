@@ -993,9 +993,25 @@ library name (server sources) or the source name (Local, Radio, YouTube) — "Mu
 unconfigured prompt) is the one switch over the source; the draw and the natural-width measure both
 read it. A server's library field grows from its minimum (`minLibraryFieldWidth` 80 pt modern,
 `minLibraryFieldChars` 10 classic) to the free space before the right-side buttons, and scrolls when
-even that is short. The draw owns the scroll state: it writes the server and library field widths
-(zero when no server shows), resets an offset when its name changes, and starts the tick on
-overflow; the tick only advances offsets from those widths and stops when nothing overflows.
+even that is short. The scroll lives in `LibraryBrowserCoordinator` (`serverName` / `libraryName`,
+each a `Marquee`): the draw calls `showNames` (a changed name scrolls from its start), draws each
+name at its `offset`, and reports how far each travels before it wraps through `namesDrawn` (0 when
+it fits), which starts the tick on overflow; the tick only advances offsets and stops when nothing
+overflows.
+
+**`LibraryBrowserCoordinator`** (`Windows/LibraryBrowser/LibraryBrowserCoordinator.swift`) is the
+non-drawing half both views share. It takes the model's `onChange` and passes each change to
+`LibraryBrowserList` and the view (`Host.redraw`, `updateHistory`, `visibilityChanged`); follows
+minimize, occlusion, the docked-group highlight (`isHighlighted`), the library scan and row
+thumbnail loads; routes clicks on the server bar's buttons, the tabs, Sort and the search bar
+(`mouseDown`, before `list.mouseDown`) and file drops; runs the loading and scan spinners
+(`drawSpinner`, at its own step); and tears the model, actions and list down. Each view draws the
+controls and records where in `coordinator.rects`. **Each band resets its own rects as it draws**
+(`beginServerBar`, the tab bar's `rects.tabs.removeAll`), never the whole set at the top of `draw`:
+both views have a fast path that redraws the server bar alone on every marquee tick, and a full
+reset there wipes the tab and Sort rects. What the list area shows comes from
+`LibraryBrowserModel.listState` (not linked, loading, error, rows), and an empty list's text from
+`emptyMessage(enterKey:)`.
 
 **`LibraryArtLens`** (`Windows/LibraryArt/LibraryArtLens.swift`) owns the mode, the art view
 standing in for the list, and the tree navigation. `LibraryBrowserList` makes the one lens per
@@ -1113,7 +1129,9 @@ and asking for it there would pull every description during preload).
 `area` (below the tab and search bars, full inner width; the loading, error and art views fill it),
 `header` (the column-header rect and its columns, `nil` when the list has no columns), `rows`
 (under the header, left of the scrollbar and alphabet index), `alphabet`, and `banner` (the
-offline-volume banner under `area`, `nil` when no watch folder is offline). `LibraryBrowserList`
+offline-volume banner under `area`, `nil` when no watch folder is offline). Both views build it with
+`LibraryBrowserListLayout(content:bannerHeight:…)`, which splits everything under the tab and search
+bars the same way for both; a view passes only its metrics and coordinate flip. `LibraryBrowserList`
 reads it for scrolling, clicks, the header and the menus, in the layout's own coordinates
 (`isFlipped`). Drawing, every hit test, every column-width calculation and every
 scroll range read it; a site that needs the columns or the group their widths are keyed by takes
@@ -1128,7 +1146,8 @@ on one condition when drawn and another when hit-tested, so every click landed o
   list height; counting them hid the last row (M8).
 - **The header band matches at any x** (`isInHeaderBand`), so a right-click above the alphabet
   index opens the column menu, in both browsers.
-- The modern alphabet index stops under the header; the classic one spans `area`'s full height.
+- The modern alphabet index stops under the header; the classic one spans `area`'s full height
+  (`alphabetBesideHeader`).
 
 **One header, every row under it (M19).** The list has one column header, Finder-style:
 - `currentColumnGroup()` → `LibraryColumnVisibility.headerGroup`: the most detailed music group
