@@ -13,11 +13,11 @@ import SwiftUI
 // =============================================================================
 
 /// Plex browser view with skin-style skin support
-class PlexBrowserView: NSView {
+class ClassicLibraryBrowserView: NSView {
     
     // MARK: - Properties
     
-    weak var controller: PlexBrowserWindowController?
+    weak var controller: ClassicLibraryBrowserWindowController?
 
     /// The browser's source, tab, rows and caches; this view draws them. Column visibility and
     /// the tab-slot choices are kept apart from the modern browser's, under "Classic" keys.
@@ -426,7 +426,7 @@ class PlexBrowserView: NSView {
     /// Build the browser as a `.wal` skin's embedded library surface (Phase 13.8).
     ///
     /// Everything the classic window supplies has to be injected instead, because there is no
-    /// `PlexBrowserWindowController` here: the palette and the content scale come from the skin, and
+    /// `ClassicLibraryBrowserWindowController` here: the palette and the content scale come from the skin, and
     /// the link sheet is presented by whoever owns the hosting window. The browsing behaviour —
     /// servers, tabs, search, CoverFlow, history — is the same code either way.
     convenience init(embeddedFrame frame: NSRect,

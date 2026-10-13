@@ -1673,7 +1673,7 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
     /// skin's own furniture around inside it — then cropped to the panel's own frame and recomposed:
     /// the four corners at 1:1, the four edge strips stretched along their axis, and the centre left
     /// out. **The centre is a hole, not a fill**: our content goes there, and the ring path cuts the
-    /// same hole for the same reason (`PlexBrowserView.drawWinampModernChrome`, and the `Scooby Doo`
+    /// same hole for the same reason (`ClassicLibraryBrowserView.drawWinampModernChrome`, and the `Scooby Doo`
     /// case behind it).
     ///
     /// Stretched, not tiled. A one-piece panel authored no edge pieces, so there is nothing that

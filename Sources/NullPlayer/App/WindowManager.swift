@@ -1533,7 +1533,7 @@ class WindowManager {
         case projectMWindowController?.window:
             return SkinElements.ProjectM.defaultSize
         case plexBrowserWindowController?.window:
-            return PlexBrowserWindowController.defaultSize
+            return ClassicLibraryBrowserWindowController.defaultSize
         case sonosWindowController?.window:
             return CGSize(width: width, height: 270 * scale)
         default:
@@ -2814,7 +2814,7 @@ class WindowManager {
         case .nullPlayerModern:
             plexBrowserWindowController = ModernLibraryBrowserWindowController()
         case .classic, .wmp:
-            plexBrowserWindowController = PlexBrowserWindowController()
+            plexBrowserWindowController = ClassicLibraryBrowserWindowController()
         }
         markModeDependentWindow(plexBrowserWindowController?.window)
     }

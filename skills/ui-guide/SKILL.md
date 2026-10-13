@@ -699,7 +699,7 @@ UI label is **UI Size** with mutually-exclusive percentage rows: **50%**, **90%*
 - **Source of truth**: `WindowManager.uiScaleLevel`; the legacy `isDoubleSize` API remains a compatibility shim (`true` writes 150%, reads are true for any non-100% value).
 - **Modern UI**: live toggle — `ModernSkinElements.scaleFactor` is computed (`baseScaleFactor * sizeMultiplier`). Do NOT cache `scaleFactor` in a `let` property. Views should refresh renderers on `.doubleSizeDidChange`.
 - **Classic UI**: also live (no restart). `MenuActions.setUIScaleLevel(_:)` assigns `WindowManager.uiScaleLevel`; `applyDoubleSize(previousScale:)` resizes every window in place using the exact `newScale / oldScale` transition ratio. Classic views self-scale their skin rendering from their own `bounds`, so resizing is enough -- **but** they're layer-backed with `.onSetNeedsDisplay`, so a bare resize leaves a stale, stretched "ghost" of the old size (visible until the window is recomposited, e.g. by switching Spaces). `applyDoubleSize()` ends by walking every visible window's view tree (`forceRedrawTree`) setting `needsDisplay = true` + `displayIfNeeded()` to force the repaint.
-- **Classic Library content**: the Library window remains freely stretchable, so its fonts must not derive from window bounds. `PlexBrowserView.contentScale` uses `WindowManager.classicScaleMultiplier` to scale bitmap text, system fonts, row height, column-header height, and matching text hit-test measurements. Manual Library resizing therefore adds space without changing text size, while changing **UI Size** scales the text and row metrics.
+- **Classic Library content**: the Library window remains freely stretchable, so its fonts must not derive from window bounds. `ClassicLibraryBrowserView.contentScale` uses `WindowManager.classicScaleMultiplier` to scale bitmap text, system fonts, row height, column-header height, and matching text hit-test measurements. Manual Library resizing therefore adds space without changing text size, while changing **UI Size** scales the text and row metrics.
 - **Fast switching guard**: `WindowManager` tracks the last applied level separately from the requested level. If another UI Size change arrives during a resize pass, it records the pending value and applies only the final requested level after the current pass finishes, using the last actually-applied scale as the ratio base.
 - **Startup restoration**: `uiScaleLevel` is restored in `AppStateManager.restoreSettingsState()` before sub-windows are shown, so saved enlarged geometry is not double-applied during restore. Scale and window frames restore only when the saved and running `PlayerUIMode` values match exactly; Modern and Metal share controller families but have incompatible geometry and therefore count as a mismatch. A mismatch starts at 100% and uses default frames while mode-independent audio/EQ/playlist state still restores. Saved states without `uiScaleLevel` fall back from legacy `isDoubleSize=true` to 150% only for an exact-mode restore.
 - **App-state policy**: See `../app-state/SKILL.md` for session restore scope, preference ownership, edition scoping, and reset rules.
@@ -839,7 +839,7 @@ Compact Mode is a WindowManager state transition, not a second main window style
 
 Key implementation details:
 - `WindowManager.enterCompactMode(revealWindow:)` snapshots regular windows, establishes the compact window's presence on the current Space, detaches docked child windows, orders regular windows out, switches the app to `.accessory`, **re-activates NullPlayer** (`NSApp.activate`) so the `.accessory` transition doesn't hand the Space to a fullscreen app, creates the status item, and owns the Compact Mode state (`regular`, `compactVisible`, `compactHidden`). See the Spaces gotchas below.
-- `Windows/CompactMode/CompactModeWindowController.swift` owns a private browser controller (`PlexBrowserWindowController` or `ModernLibraryBrowserWindowController`) and calls `setCompactMode(true)`. Do not replace this with a custom compact-only view; Compact Mode must keep the same browser compact surface and embedded compact player bar behavior as the old implementation.
+- `Windows/CompactMode/CompactModeWindowController.swift` owns a private browser controller (`ClassicLibraryBrowserWindowController` or `ModernLibraryBrowserWindowController`) and calls `setCompactMode(true)`. Do not replace this with a custom compact-only view; Compact Mode must keep the same browser compact surface and embedded compact player bar behavior as the old implementation.
 - Compact updates are forwarded through the compact controller (`updateCompactBarTime`, `updateCompactBarTrack`, `updateCompactBarPlaybackState`) so playback state stays live while the regular windows are hidden.
 - The status item left-click toggles compact visibility. Right-click opens the compact menu. Hidden compact mode remains in `.accessory` until explicitly exited.
 - Exiting Compact Mode removes the status item, switches back to `.regular`, rebuilds the main menu asynchronously, restores the regular window snapshot, then reattaches/restores docked windows. It then **bounces the activation policy** (`.accessory` → `.regular` back-to-back) to force the menu bar to re-own, and calls `reassertRegularActivation()` (activate + make the main window key + re-apply the Dock icon) on the next runloop turn. See the `.accessory → .regular` menu-bar gotcha below.
@@ -1107,7 +1107,7 @@ and asking for it there would pull every description during preload).
 
 ## Library browser list layout (both browsers)
 
-`ModernLibraryBrowserView` and `PlexBrowserView` each work out the list's geometry in one place,
+`ModernLibraryBrowserView` and `ClassicLibraryBrowserView` each work out the list's geometry in one place,
 `listLayout()`, returning a `LibraryBrowserListLayout` (`Windows/LibraryBrowser/LibraryBrowserList.swift`):
 `area` (below the tab and search bars, full inner width; the loading, error and art views fill it),
 `header` (the column-header rect and its columns, `nil` when the list has no columns), `rows`
@@ -1152,7 +1152,7 @@ on one condition when drawn and another when hit-tested, so every click landed o
 Every library list row that can carry art draws it as a small circle before its title; hovering
 the circle shows the art large, in its own shape, beside the row. Shared code lives in
 `Utilities/` and `Windows/LibraryBrowser/`; each browser view (`ModernLibraryBrowserView`,
-`PlexBrowserView`) only draws.
+`ClassicLibraryBrowserView`) only draws.
 
 **Per browser** — the touch points, mirrored in both views:
 - `LibraryBrowserArt.rowThumbnailSource(for:)` (shared) maps a display item to a `LibraryRowThumbnails.Source` (a cache key

@@ -356,7 +356,7 @@ The Library Browser's Data tab is the `.history` case (displayed as "Data"), bac
 
 **Charts in the Data tab overview:**
 - Listening heatmap (`ContributionHeatmapView`, GitHub-style, trailing year) — coloured from the skin
-  in every mode through `ContributionHeatmapTheme`: `PlexBrowserView` builds it from
+  in every mode through `ContributionHeatmapTheme`: `ClassicLibraryBrowserView` builds it from
   `currentPlaylistColors()` (the classic skin's playlist colours, or the `.wal`/`.wmz` surface style,
   hot end = `currentText`), the Modern library and stats window from `init(modernSkin:)` (hot end =
   the spectrum top, so metal finishes stay bright). An accent under 1.8:1 against the background

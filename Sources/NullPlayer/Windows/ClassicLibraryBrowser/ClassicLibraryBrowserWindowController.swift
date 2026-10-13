@@ -1,11 +1,11 @@
 import AppKit
 
 /// Controller for the Plex browser window (classic skin mode)
-class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProviding {
+class ClassicLibraryBrowserWindowController: NSWindowController, LibraryBrowserWindowProviding {
     
     // MARK: - Properties
     
-    private var browserView: PlexBrowserView!
+    private var browserView: ClassicLibraryBrowserView!
     /// The window's content outside Compact Mode: the browser over its Cava backdrop, as siblings
     /// so Cava repaints independently beneath the browser's translucent list.
     private var contentContainer: NSView!
@@ -55,7 +55,7 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
     private func setupWindow() {
         guard let window = window else { return }
         
-        window.isMovableByWindowBackground = false  // Custom drag handling in PlexBrowserView
+        window.isMovableByWindowBackground = false  // Custom drag handling in ClassicLibraryBrowserView
         
         // On non-Retina displays, use opaque window to prevent compositing artifacts
         let backingScale = NSScreen.main?.backingScaleFactor ?? 2.0
@@ -82,7 +82,7 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
     }
     
     private func setupView() {
-        browserView = PlexBrowserView(frame: NSRect(origin: .zero, size: Self.defaultSize))
+        browserView = ClassicLibraryBrowserView(frame: NSRect(origin: .zero, size: Self.defaultSize))
         browserView.controller = self
         browserView.autoresizingMask = [.width, .height]
         contentContainer = NSView(frame: browserView.frame)
@@ -110,17 +110,17 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
         let plexManager = PlexManager.shared
         if plexManager.isLinked && plexManager.servers.isEmpty {
             if case .connecting = plexManager.connectionState {
-                NSLog("PlexBrowserWindowController: Already connecting, skipping refresh")
+                NSLog("ClassicLibraryBrowserWindowController: Already connecting, skipping refresh")
             } else {
                 Task {
                     do {
-                        NSLog("PlexBrowserWindowController: No servers cached, refreshing...")
+                        NSLog("ClassicLibraryBrowserWindowController: No servers cached, refreshing...")
                         try await plexManager.refreshServers()
                         await MainActor.run {
                             self.browserView.model.reloadData()
                         }
                     } catch {
-                        NSLog("PlexBrowserWindowController: Failed to refresh servers: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
+                        NSLog("ClassicLibraryBrowserWindowController: Failed to refresh servers: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
                     }
                 }
             }
@@ -297,7 +297,7 @@ class PlexBrowserWindowController: NSWindowController, LibraryBrowserWindowProvi
 
 // MARK: - NSWindowDelegate
 
-extension PlexBrowserWindowController: NSWindowDelegate {
+extension ClassicLibraryBrowserWindowController: NSWindowDelegate {
     func windowDidResize(_ notification: Notification) {
         browserView.needsDisplay = true
     }

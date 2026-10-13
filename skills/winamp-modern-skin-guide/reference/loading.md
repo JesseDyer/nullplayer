@@ -754,7 +754,7 @@ layouts — **exactly one** holder meets all three, and the sweep diff is one PN
 
 #### The library window has a width floor of NullPlayer's, not the skin's
 
-The Media Library holder hosts NullPlayer's own browser (the Classic `PlexBrowserView`), which is
+The Media Library holder hosts NullPlayer's own browser (`ClassicLibraryBrowserView`), which is
 laid out for its own room, not for the skin's. A component that needs room declares it in
 `WinampModernComponentRegistry.minimumHolderWidth(for:)` — only `.library`, at 440 skin px — and
 `WasabiSceneRenderer.hostedComponentFloorWidth` turns that into a window width for any container

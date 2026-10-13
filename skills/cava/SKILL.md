@@ -230,7 +230,7 @@ written by older reset logic without discarding a real user choice.
 | `Windows/MainWindow/MainWindowView.swift` | Classic inline Cava rendering + lifecycle |
 | `Windows/ModernMainWindow/ModernMainWindowView.swift` | Modern inline Cava rendering + lifecycle |
 | `Windows/LibraryBrowser/BrowserBackdropView.swift` | Library/Compact Cava backdrop view and its sibling placement (`BrowserBackdrop`), shared by both browser views |
-| `Windows/ModernLibraryBrowser/ModernLibraryBrowserView.swift`, `Windows/PlexBrowser/PlexBrowserView.swift` | Each view's backdrop look (`backdropLook`), translucency and when Cava shows |
+| `Windows/ModernLibraryBrowser/ModernLibraryBrowserView.swift`, `Windows/ClassicLibraryBrowser/ClassicLibraryBrowserView.swift` | Each view's backdrop look (`backdropLook`), translucency and when Cava shows |
 | `App/AppStateManager.swift` | State capture/restore: `isCavaVisible`, `cavaWindowFrame` |
 | `NullPlayerCore/Audio/CavaCore.swift` | DSP engine (pure Swift vDSP FFT + smoothing) |
 

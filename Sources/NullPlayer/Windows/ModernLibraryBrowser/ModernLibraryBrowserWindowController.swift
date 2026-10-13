@@ -2,7 +2,7 @@ import AppKit
 
 /// Controller for the library browser window (modern skin).
 /// Conforms to `LibraryBrowserWindowProviding` so WindowManager can use it interchangeably
-/// with the classic `PlexBrowserWindowController`.
+/// with `ClassicLibraryBrowserWindowController`.
 ///
 /// This controller has ZERO dependencies on the classic skin system.
 class ModernLibraryBrowserWindowController: NSWindowController, LibraryBrowserWindowProviding {

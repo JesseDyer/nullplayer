@@ -6,9 +6,9 @@ import NullPlayerCore
 // =============================================================================
 // MODERN LIBRARY BROWSER VIEW - Library browser with modern skin chrome
 // =============================================================================
-// Comprehensive port of PlexBrowserView.swift to use the modern skin engine.
+// Comprehensive port of ClassicLibraryBrowserView.swift to use the modern skin engine.
 //
-// Key differences from classic PlexBrowserView:
+// Key differences from classic ClassicLibraryBrowserView:
 // 1. ZERO dependencies on classic skin system (Skin/, SkinRenderer, SkinLoader, SkinElements)
 // 2. Uses ModernSkinRenderer for window chrome (title bar, borders, control buttons)
 // 3. Uses ModernSkinEngine for skin loading and change notifications

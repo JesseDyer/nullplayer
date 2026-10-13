@@ -135,7 +135,7 @@ while y >= contentTop - tileHeight {
 
 **Solution**: Use `setNeedsDisplay(rect)` to only redraw the visualization content area.
 
-**Implementation** in `PlexBrowserView.swift`:
+**Implementation** in `ClassicLibraryBrowserView.swift`:
 
 ```swift
 // In the visualizer timer callback:
@@ -173,7 +173,7 @@ self.setNeedsDisplay(listRect)
 ## Files Changed
 
 1. **`Skin/SkinRenderer.swift`** - NSImage rendering for title bars, playlist tile fixes
-2. **`Windows/PlexBrowser/PlexBrowserView.swift`** - Rounded coordinates, targeted redraws
+2. **`Windows/ClassicLibraryBrowser/ClassicLibraryBrowserView.swift`** - Rounded coordinates, targeted redraws
 3. **`Windows/Playlist/PlaylistView.swift`** - Rounded scroll offset
 
 ## Key Learnings
