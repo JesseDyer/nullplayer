@@ -919,9 +919,10 @@ The regular Library and Compact surfaces each support a durable visual mode: **O
 **Visuals > Compact Window** and in the corresponding surface's context menus.
 
 The classic browser (Classic, and the `.wal` fallback, `.wmz` and Audion library windows) has its
-own Library Window choice, `ClassicLibraryBackdropMode` (`BrowserBackdropMode.classicLibraryMode`):
-while it is unset the legacy `showBrowserArtworkBackground` toggle reads as Art (on) or Off (off), so
-Classic keeps its look until Cava is picked. Its Cava covers the list area only (`BrowserBackdrop`'s
+own Library Window choice, `ClassicLibraryBackdropMode` (registered default Art,
+`BrowserBackdropMode.classicDefaultMode`); `migrateLegacyArtworkPreference` seeds it once from the
+legacy `showBrowserArtworkBackground` toggle (on → Art, off → Off), so Classic keeps its look until
+Cava is picked. Its Cava covers the list area only (`BrowserBackdrop`'s
 `region`), so a hosted frame's keyed-out corners stay clear. It never shows in classic Compact Mode
 or in the `.wal` embedded library holder, which has no controller. Classic resolves the Compact mode
 to Off.

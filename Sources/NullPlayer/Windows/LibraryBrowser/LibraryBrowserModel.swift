@@ -62,6 +62,16 @@ final class LibraryBrowserModel: NSObject {
     }
 
     var searchQuery: String = ""
+    /// The query last submitted with Enter, which every search runs on. Typing changes only
+    /// `searchQuery`, so a reload while the user types (a preload landing, a source switch) still
+    /// shows the submitted query's results, and the typed one reads as not yet run.
+    private(set) var searchedQuery = ""
+
+    /// Enter on the Search tab: run what was typed.
+    func submitSearch() {
+        searchedQuery = searchQuery
+        loadDataForCurrentMode()
+    }
 
     /// The Data tab's play history, refreshed while that tab shows.
     let history = PlayHistoryAgent()
@@ -90,6 +100,49 @@ final class LibraryBrowserModel: NSObject {
     }
     var errorMessage: String? {
         didSet { onChange?(.loading) }
+    }
+
+    /// What the list area shows, outside the Data tab: a state in place of the rows, or the rows
+    /// (which Flow / Tiles may stand in for).
+    enum ListState: Equatable {
+        case notLinked
+        case loading
+        case error(String)
+        case rows
+    }
+
+    var listState: ListState {
+        if needsPlexLink { return .notLinked }
+        if isLoading { return .loading }
+        if let errorMessage { return .error(errorMessage) }
+        return .rows
+    }
+
+    /// A Plex source with no Plex account linked: the server bar offers the link sheet instead.
+    var needsPlexLink: Bool {
+        currentSource.isPlex && !PlexManager.shared.isLinked
+    }
+
+    /// What an empty list says. `enterKey` is how the view names the Return key.
+    func emptyMessage(enterKey: String) -> String {
+        let plexLibrary = currentSource.isPlex ? PlexManager.shared.currentLibrary : nil
+        switch browseMode {
+        case .artists, .albums:
+            if currentSource.isPlex, plexLibrary?.isMusicLibrary != true { return "This library doesn't contain music" }
+            return "No \(browseMode.title.lowercased()) found"
+        case .movies:
+            if currentSource.isPlex, plexLibrary?.isMovieLibrary != true { return "This library doesn't contain movies" }
+            return "No movies found"
+        case .shows:
+            if currentSource.isPlex, plexLibrary?.isShowLibrary != true { return "This library doesn't contain TV shows" }
+            return "No TV shows found"
+        case .plists: return "No playlists found"
+        case .folders: return "No folders found"
+        // Search runs on Enter: until then, nothing has been searched.
+        case .search: return searchQuery.isEmpty || hasUnsubmittedSearch ? "Type and press \(enterKey) to search" : "No results found"
+        case .radio: return "No radio stations found"
+        case .history: return "No play history recorded yet"
+        }
     }
 
     /// Bumped by every reload; a load that finds it changed was superseded and drops its result.
@@ -291,10 +344,11 @@ final class LibraryBrowserModel: NSObject {
     var isYouTubeChannelSearch: Bool {
         currentSource.isYouTube && browseMode == .search
     }
-    /// A YouTube channel search typed but not yet run: Enter submits it. Once its results
-    /// are showing, Enter acts on the selected row (subscribe / expand) instead.
-    var hasUnsubmittedYouTubeSearch: Bool {
-        isYouTubeChannelSearch && youtubeSearch.isUnsubmitted(searchQuery)
+    /// A search typed but not yet run, or run and failed: Enter runs it, and until then the tab has
+    /// no results to report. Once its results are showing, Enter acts on the selected row instead.
+    var hasUnsubmittedSearch: Bool {
+        guard browseMode == .search, !searchQuery.isEmpty else { return false }
+        return searchQuery != searchedQuery || errorMessage != nil
     }
 
     /// The label of each tab slot, in `LibraryBrowseMode.tabs` order: a two-way slot shows what
@@ -541,7 +595,7 @@ final class LibraryBrowserModel: NSObject {
 
     /// Clear every server cache and reload the current tab.
     func refreshData() {
-        if case .plex = currentSource, !PlexManager.shared.isLinked { return }
+        if needsPlexLink { return }
         let generation = invalidateActiveLoads()
         clearAllCachedData()
         rowsReplaced()

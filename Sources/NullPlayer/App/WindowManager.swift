@@ -171,35 +171,31 @@ enum BrowserBackdropMode: Int, CaseIterable {
     static let defaultMode: BrowserBackdropMode = .cavaAndArt
     static let compactPreferenceKey = "compactBackdropMode"
     static let libraryPreferenceKey = "libraryBackdropMode"
-    static let legacyArtworkPreferenceKey = "showBrowserArtworkBackground"
-    static let preferenceKeys = [compactPreferenceKey, libraryPreferenceKey]
-    /// The classic view's library window (Classic, and the `.wal`, `.wmz` and Audion windows).
-    /// Kept apart from Original/Metal's, and never seeded by the legacy migration below.
+    /// The classic view's library window (Classic, and the `.wal`, `.wmz` and Audion windows),
+    /// kept apart from Original/Metal's. Art by default, as the classic browser always was.
     static let classicLibraryPreferenceKey = "ClassicLibraryBackdropMode"
+    static let classicDefaultMode: BrowserBackdropMode = .art
+    static let legacyArtworkPreferenceKey = "showBrowserArtworkBackground"
+    static let preferenceKeys = [compactPreferenceKey, libraryPreferenceKey, classicLibraryPreferenceKey]
 
-    /// The classic view's library backdrop: its own choice, else the legacy artwork toggle (on, its
-    /// default, is Art; off is Off), so Classic looks as it did until Cava is picked.
-    static func classicLibraryMode(in defaults: UserDefaults) -> BrowserBackdropMode {
-        if defaults.object(forKey: classicLibraryPreferenceKey) != nil {
-            return BrowserBackdropMode(rawValue: defaults.integer(forKey: classicLibraryPreferenceKey)) ?? .art
-        }
-        return defaults.object(forKey: legacyArtworkPreferenceKey) as? Bool == false ? .off : .art
-    }
-
-    /// Preserve the legacy modern-browser artwork choice while adopting Cava as the new default.
-    /// Existing window-specific selections always win, and an installation with no legacy choice
-    /// continues to resolve through the registered Cava + Art default.
+    /// Carry the legacy artwork toggle into each window's own choice: Original/Metal adopt Cava and
+    /// keep the art choice; the classic view keeps exactly the art choice. Existing window-specific
+    /// selections always win, and an installation with no legacy choice resolves through the
+    /// registered defaults.
     static func migrateLegacyArtworkPreference(
         in defaults: UserDefaults,
         persistentDomainName: String
     ) {
         let persistedPreferences = defaults.persistentDomain(forName: persistentDomainName) ?? [:]
         guard persistedPreferences[legacyArtworkPreferenceKey] != nil else { return }
-        let migratedMode: BrowserBackdropMode = defaults.bool(forKey: legacyArtworkPreferenceKey)
-            ? .cavaAndArt
-            : .cava
-        for preferenceKey in preferenceKeys where persistedPreferences[preferenceKey] == nil {
-            defaults.set(migratedMode.rawValue, forKey: preferenceKey)
+        let showsArt = defaults.bool(forKey: legacyArtworkPreferenceKey)
+        let migratedModes: [String: BrowserBackdropMode] = [
+            compactPreferenceKey: showsArt ? .cavaAndArt : .cava,
+            libraryPreferenceKey: showsArt ? .cavaAndArt : .cava,
+            classicLibraryPreferenceKey: showsArt ? .art : .off,
+        ]
+        for (preferenceKey, mode) in migratedModes where persistedPreferences[preferenceKey] == nil {
+            defaults.set(mode.rawValue, forKey: preferenceKey)
         }
     }
 
@@ -482,12 +478,14 @@ class WindowManager {
         compactWindowController?.refreshCompactBackdrop()
     }
 
-    /// Backdrop of the library window: Original/Metal's, or the classic view's own.
+    /// Where the library window's backdrop is saved: Original/Metal's key, or the classic view's own.
+    private var libraryBackdropPreferenceKey: String {
+        isRunningModernUI ? BrowserBackdropMode.libraryPreferenceKey : BrowserBackdropMode.classicLibraryPreferenceKey
+    }
+
     var libraryBackdropMode: BrowserBackdropMode {
-        guard isRunningModernUI else { return BrowserBackdropMode.classicLibraryMode(in: .standard) }
-        return BrowserBackdropMode(
-            rawValue: UserDefaults.standard.integer(forKey: BrowserBackdropMode.libraryPreferenceKey)
-        ) ?? .defaultMode
+        BrowserBackdropMode(rawValue: UserDefaults.standard.integer(forKey: libraryBackdropPreferenceKey))
+            ?? (isRunningModernUI ? .defaultMode : .classicDefaultMode)
     }
 
     var libraryBackdropPresenter: CavaPresenter? {
@@ -495,8 +493,7 @@ class WindowManager {
     }
 
     func setLibraryBackdropMode(_ mode: BrowserBackdropMode) {
-        let key = isRunningModernUI ? BrowserBackdropMode.libraryPreferenceKey : BrowserBackdropMode.classicLibraryPreferenceKey
-        UserDefaults.standard.set(mode.rawValue, forKey: key)
+        UserDefaults.standard.set(mode.rawValue, forKey: libraryBackdropPreferenceKey)
         plexBrowserWindowController?.refreshLibraryBackdrop()
     }
 
@@ -1052,7 +1049,8 @@ class WindowManager {
             "compactModeEnabled": false,
             "compactWindowEnabled": false,
             BrowserBackdropMode.compactPreferenceKey: BrowserBackdropMode.defaultMode.rawValue,
-            BrowserBackdropMode.libraryPreferenceKey: BrowserBackdropMode.defaultMode.rawValue
+            BrowserBackdropMode.libraryPreferenceKey: BrowserBackdropMode.defaultMode.rawValue,
+            BrowserBackdropMode.classicLibraryPreferenceKey: BrowserBackdropMode.classicDefaultMode.rawValue
         ])
     }
     

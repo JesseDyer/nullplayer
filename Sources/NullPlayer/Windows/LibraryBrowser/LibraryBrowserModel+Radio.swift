@@ -42,8 +42,8 @@ extension LibraryBrowserModel {
     }
 
     func buildRadioSearchItems() {
-        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { displayItems = []; return }
-        displayItems = RadioManager.shared.searchStations(query: searchQuery).map { station in
+        guard !searchedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { displayItems = []; return }
+        displayItems = RadioManager.shared.searchStations(query: searchedQuery).map { station in
             LibraryBrowserItem(id: "radio-search-\(station.id.uuidString)", title: station.name,
                                info: RadioManager.shared.normalizedGenre(for: station),
                                indentLevel: 0, hasChildren: false, type: .radioStation(station))

@@ -259,23 +259,23 @@ extension LibraryBrowserModel {
     func buildLocalSearchItems() {
         var rows: [LibraryBrowserItem] = []
         defer { displayItems = rows }
-        guard !searchQuery.isEmpty else { return }
+        guard !searchedQuery.isEmpty else { return }
         let store = MediaLibraryStore.shared
 
-        let matchingArtistNames = store.searchArtistNames(query: searchQuery)
+        let matchingArtistNames = store.searchArtistNames(query: searchedQuery)
         if !matchingArtistNames.isEmpty {
             rows.append(LibraryBrowserItem(id: "header-local-artists", title: "Artists (\(matchingArtistNames.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             let albumsByArtist = store.albumsForArtistsBatch(matchingArtistNames)
             rows += matchingArtistNames.map { localArtistItem($0, albumCount: albumsByArtist[$0]?.count ?? 0, indentLevel: 1) }
         }
 
-        let matchingAlbums = store.searchAlbumSummaries(query: searchQuery)
+        let matchingAlbums = store.searchAlbumSummaries(query: searchedQuery)
         if !matchingAlbums.isEmpty {
             rows.append(LibraryBrowserItem(id: "header-local-albums", title: "Albums (\(matchingAlbums.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             rows += matchingAlbums.flatMap { localAlbumRows($0, indentLevel: 1) }
         }
 
-        let matchingTracks = store.searchTracks(query: searchQuery, limit: 200, offset: 0)
+        let matchingTracks = store.searchTracks(query: searchedQuery, limit: 200, offset: 0)
         if !matchingTracks.isEmpty {
             rows.append(LibraryBrowserItem(id: "header-local-tracks", title: "Tracks (\(matchingTracks.count))", info: nil, indentLevel: 0, hasChildren: false, type: .header))
             rows += matchingTracks.map {
@@ -284,7 +284,7 @@ extension LibraryBrowserModel {
         }
 
         // YouTube channels and downloads (tracks already listed above are left out)
-        rows += youtubeRows.localSearch(query: searchQuery, excluding: Set(matchingTracks.map(\.url)))
+        rows += youtubeRows.localSearch(query: searchedQuery, excluding: Set(matchingTracks.map(\.url)))
             .map { LibraryBrowserItem($0) }
     }
 

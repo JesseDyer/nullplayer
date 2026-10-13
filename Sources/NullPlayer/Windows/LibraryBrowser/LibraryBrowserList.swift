@@ -29,6 +29,33 @@ struct LibraryBrowserListLayout {
         let group: LibraryColumnVisibilityGroup?
     }
 
+    /// Split `content` — everything under the tab bar (and search bar) — into the list's parts,
+    /// in the view's own coordinates: the banner along the bottom, then the header along the top
+    /// of the rows, with the alphabet index and scrollbar down the right. `alphabetBesideHeader`
+    /// runs the index the list's full height rather than starting under the header.
+    init(content: NSRect, bannerHeight: CGFloat,
+         columns: [LibraryBrowserColumn], group: LibraryColumnVisibilityGroup?, headerHeight: CGFloat,
+         scrollbarWidth: CGFloat, alphabetWidth: CGFloat, alphabetBesideHeader: Bool,
+         rowHeight: CGFloat, scale: CGFloat, isFlipped: Bool) {
+        let top: CGRectEdge = isFlipped ? .minYEdge : .maxYEdge
+        let bottom: CGRectEdge = isFlipped ? .maxYEdge : .minYEdge
+        let (banner, area) = content.divided(atDistance: bannerHeight, from: bottom)
+        let headerHeight = columns.isEmpty ? 0 : headerHeight
+        let listWidth = area.width - scrollbarWidth - alphabetWidth
+        let (headerRect, rows) = NSRect(x: area.minX, y: area.minY, width: listWidth, height: area.height)
+            .divided(atDistance: headerHeight, from: top)
+        let alphabet = NSRect(x: area.minX + listWidth, y: area.minY, width: alphabetWidth, height: area.height)
+
+        self.area = area
+        self.header = columns.isEmpty ? nil : Header(rect: headerRect, columns: columns, group: group)
+        self.rows = rows
+        self.alphabet = alphabetBesideHeader ? alphabet : alphabet.divided(atDistance: headerHeight, from: top).remainder
+        self.banner = bannerHeight > 0 ? banner : nil
+        self.rowHeight = rowHeight
+        self.scale = scale
+        self.isFlipped = isFlipped
+    }
+
     /// How far `y` lies below the top of `rect`.
     func depth(of y: CGFloat, in rect: NSRect) -> CGFloat {
         isFlipped ? y - rect.minY : rect.maxY - y
@@ -82,9 +109,7 @@ final class LibraryBrowserList {
             rows: { [unowned self] in model.displayItems },
             isSearch: { [unowned self] in model.browseMode == .search },
             selectedIndex: { [unowned self] in model.selectedIndices.min() },
-            isBlocked: { [unowned self] in
-                model.isLoading || model.errorMessage != nil || (model.currentSource.isPlex && !PlexManager.shared.isLinked)
-            },
+            isBlocked: { [unowned self] in model.listState != .rows },
             style: host.artStyle,
             item: { [unowned self] in art.artItem(for: $0) },
             isExpanded: { [unowned self] in model.isExpanded($0) },
@@ -436,10 +461,9 @@ final class LibraryBrowserList {
         let selected = model.selectedIndices.first.flatMap { items.indices.contains($0) ? $0 : nil }
 
         switch event.keyCode {
-        case 36: // Enter: run a typed search, else play or open the selected row
-            if model.browseMode == .search, !model.searchQuery.isEmpty,
-               !model.isYouTubeChannelSearch || model.hasUnsubmittedYouTubeSearch {
-                model.loadDataForCurrentMode()
+        case 36: // Enter: run a search typed since the last one, else play or open the selected row
+            if model.hasUnsubmittedSearch {
+                model.submitSearch()
             } else if event.modifierFlags.contains(.shift) {
                 actions.runOnSelection(.playNext)
             } else if event.modifierFlags.contains(.option) {
@@ -472,14 +496,7 @@ final class LibraryBrowserList {
             let step = event.modifierFlags.contains(.shift) ? tabs.count - 1 : 1
             model.selectTab(tabs[(current + step) % tabs.count], doubleClick: false)
         case 49 where model.browseMode != .search: // Space: play / pause
-            let wm = WindowManager.shared
-            if wm.isVideoActivePlayback {
-                wm.toggleVideoPlayPause()
-            } else if wm.audioEngine.state == .playing {
-                wm.audioEngine.pause()
-            } else {
-                wm.audioEngine.play()
-            }
+            MainWindowKeys.togglePlayPause()
         case 125: // Down
             if let last = model.selectedIndices.max() { select(last + 1) }
         case 126: // Up

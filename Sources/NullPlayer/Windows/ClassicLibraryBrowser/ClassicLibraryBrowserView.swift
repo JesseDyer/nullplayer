@@ -65,20 +65,14 @@ class ClassicLibraryBrowserView: NSView {
     /// Where the list sits, in skin coordinates (top-left origin).
     private func listLayout() -> LibraryBrowserListLayout {
         let size = originalWindowSize
-        let bannerHeight = model.offlineBannerText == nil ? 0 : 18 * contentScale
-        let area = NSRect(x: Layout.leftBorder, y: listTopY,
-                          width: size.width - Layout.leftBorder - Layout.rightBorder,
-                          height: size.height - listTopY - Layout.statusBarHeight - bannerHeight)
         let (columns, group) = list.headerColumns()
-        let headerHeight = columns.isEmpty ? 0 : columnHeaderHeight
-        let width = area.width - Layout.scrollbarWidth - Layout.alphabetWidth
         return LibraryBrowserListLayout(
-            area: area,
-            header: columns.isEmpty ? nil : .init(rect: NSRect(x: area.minX, y: area.minY, width: width, height: headerHeight),
-                                                  columns: columns, group: group),
-            rows: NSRect(x: area.minX, y: area.minY + headerHeight, width: width, height: area.height - headerHeight),
-            alphabet: NSRect(x: area.minX + width, y: area.minY, width: Layout.alphabetWidth, height: area.height),
-            banner: bannerHeight > 0 ? NSRect(x: area.minX, y: area.maxY, width: area.width, height: bannerHeight) : nil,
+            content: NSRect(x: Layout.leftBorder, y: listTopY,
+                            width: size.width - Layout.leftBorder - Layout.rightBorder,
+                            height: size.height - listTopY - Layout.statusBarHeight),
+            bannerHeight: model.offlineBannerText == nil ? 0 : 18 * contentScale,
+            columns: columns, group: group, headerHeight: columnHeaderHeight,
+            scrollbarWidth: Layout.scrollbarWidth, alphabetWidth: Layout.alphabetWidth, alphabetBesideHeader: true,
             rowHeight: itemHeight, scale: contentScale, isFlipped: true
         )
     }
@@ -88,39 +82,36 @@ class ClassicLibraryBrowserView: NSView {
         view: { [unowned self] in self },
         presentLinkSheet: { [unowned self] in presentLinkSheet() },
         ratingStarColor: { NSColor(srgbRed: 0.98, green: 0.78, blue: 0.20, alpha: 1.0) },
-        busyChanged: { [unowned self] in
-            updateLoadingAnimation()
-            needsDisplay = true
-        }
+        busyChanged: { [unowned self] in coordinator.busyChanged() }
+    ))
+
+    /// Routes the model's changes, the window's events and the clicks above the list, and runs the
+    /// names' scroll and the spinners. The controls are drawn here in skin coordinates, which
+    /// `coordinator.rects` records.
+    private lazy var coordinator = LibraryBrowserCoordinator(view: self, model: model, actions: actions, list: list, host: .init(
+        redraw: { [unowned self] region in
+            switch region {
+            case .all:
+                needsDisplay = true
+            case .list:
+                // Only the list area, so menu items don't shimmer on non-Retina displays.
+                let area = listLayout().area
+                setNeedsDisplay(convertFromSkinCoordinates(NSRect(x: 0, y: area.minY, width: bounds.width, height: area.height)))
+            case .serverBar:
+                setNeedsDisplay(NSRect(x: 0, y: bounds.height - Layout.titleBarHeight - Layout.serverBarHeight,
+                                       width: bounds.width, height: Layout.serverBarHeight))
+            }
+        },
+        updateHistory: { [unowned self] in updateHistoryHostingVisibility() },
+        visibilityChanged: { [unowned self] in backdrop.reload() }
     ))
 
     private var historyHostingView: NSHostingView<StatsContentView>?
-
-    /// Loading animation
-    private var loadingAnimationTimer: Timer?
-    private var loadingAnimationFrame: Int = 0
-    /// Local library scan animation (server bar spinner)
-    private var isLibraryScanning = false
-    
-    /// Server name scrolling animation
-    private var serverNameScrollOffset: CGFloat = 0
-    private var libraryNameScrollOffset: CGFloat = 0
-    private var serverScrollTimer: Timer?
-    private var lastServerName: String = ""
-    private var lastLibraryName: String = ""
-    /// How far the server and library names travel before their scroll wraps, written by
-    /// drawServerBar each draw for the scroll tick; zero while a name fits its field or the bar
-    /// shows no server.
-    private var serverNameCycleWidth: CGFloat = 0
-    private var libraryNameCycleWidth: CGFloat = 0
 
     /// Cached skin renderer — avoids recreating (and discarding its whiteTextImage cache) every frame
     private var cachedRenderer: SkinRenderer?
     private var cachedRendererSkinPath: String?
 
-    /// Highlight state for drag-mode visual feedback
-    private var isHighlighted = false
-    
     /// Scrolling, clicks, keys and menus on the rows, and Flow / Tiles standing in for them.
     /// Classic's taller, freely stretchable window keeps the Flow label under the centred cover.
     private lazy var list = LibraryBrowserList(
@@ -141,16 +132,7 @@ class ClassicLibraryBrowserView: NSView {
                     ? ContextMenuBuilder.browserBackdropMenuItem(compact: false, presenter: backdropPresenter) : nil
             }
         ))
-    /// The List / Flow / Tiles buttons in the server bar, as last drawn (skin coordinates).
-    private var viewModeButtonRects: [(mode: LibraryViewMode, rect: NSRect)] = []
 
-    private var refreshButtonRect: NSRect = .zero
-    private var sourceButtonRect: NSRect = .zero
-    private var libraryButtonRect: NSRect = .zero
-    private var addButtonRect: NSRect = .zero
-    private var tabButtonRects: [NSRect] = []
-    private var sortButtonRect: NSRect = .zero
-    
     /// Button being pressed (for visual feedback)
     private var pressedButton: SkinRenderer.PlexBrowserButtonType?
     
@@ -452,7 +434,6 @@ class ClassicLibraryBrowserView: NSView {
     
     private func setupView() {
         wantsLayer = true
-        
 
         // A `.wal` colour-theme switch recolours this browser (Phase 16). The embedded case is told
         // directly through `applyWinampModernStyle`; a fallback window has no such handle.
@@ -462,112 +443,32 @@ class ClassicLibraryBrowserView: NSView {
             name: .hostedSurfaceStyleDidChange,
             object: nil
         )
-        // Redraw when a YouTube row thumbnail / avatar finishes loading
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(libraryRowThumbnailDidLoad),
-            name: LibraryRowThumbnails.didLoadNotification,
-            object: nil
-        )
-        
+
         // Register for drag and drop (local files)
         registerForDraggedTypes([.fileURL])
-        
-        // Initial data load
-        model.onChange = { [weak self] in self?.modelDidChange($0) }
-        model.reloadData()
-        
-        // Start server name scroll animation
-        startServerNameScroll()
-        
+
+        coordinator.start()
+
         // Load artwork for currently playing track (if any)
         art.onBackgroundChange = { [weak self] in self?.needsDisplay = true }
         art.showPlayingTrack(WindowManager.shared.audioEngine.currentTrack)
-        
+
         // Set up accessibility identifiers for UI testing
         setupAccessibility()
         updateHistoryHostingVisibility()
-        
-        // Observe window visibility changes to pause/resume the server-name scroll
-        NotificationCenter.default.addObserver(self, selector: #selector(plexWindowDidMiniaturize),
-                                               name: NSWindow.didMiniaturizeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexWindowDidDeminiaturize),
-                                               name: NSWindow.didDeminiaturizeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(plexWindowDidChangeOcclusionState),
-                                               name: NSWindow.didChangeOcclusionStateNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(libraryScanProgressChanged),
-                                               name: MediaLibrary.scanProgressNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(connectedWindowHighlightDidChange(_:)),
-                                               name: .connectedWindowHighlightDidChange, object: nil)
     }
-    
+
     // MARK: - Accessibility
-    
+
     /// Set up accessibility identifiers for UI testing
     private func setupAccessibility() {
         setAccessibilityIdentifier("plexBrowserView")
         setAccessibilityRole(.group)
         setAccessibilityLabel("Plex Browser")
     }
-    
-    /// Stop timers when Plex browser window is minimized to save CPU
-    @objc private func plexWindowDidMiniaturize(_ notification: Notification) {
-        guard notification.object as? NSWindow == window else { return }
-        // Stop timers when minimized to save CPU
-        stopServerNameScroll()
-        backdrop.reload()
-    }
-    
-    /// Restart timers when Plex browser window is restored from minimized state
-    @objc private func plexWindowDidDeminiaturize(_ notification: Notification) {
-        guard notification.object as? NSWindow == window else { return }
-        // Restart timers when restored
-        startServerNameScroll()
-        backdrop.reload()
-    }
-    
-    /// Handle window occlusion state changes to pause/resume timers for CPU efficiency
-    @objc private func plexWindowDidChangeOcclusionState(_ notification: Notification) {
-        guard notification.object as? NSWindow == window else { return }
-        if window?.occlusionState.contains(.visible) == true {
-            // Window became visible - restart timers
-            startServerNameScroll()
-        } else {
-            // Window became occluded - stop timers to save CPU
-            stopServerNameScroll()
-        }
-        backdrop.reload()
-    }
-    
-    /// The model's rows, loading state, source or tab changed.
-    private func modelDidChange(_ change: LibraryBrowserModel.Change) {
-        list.modelDidChange(change)
-        switch change {
-        case .rows, .reveal, .columns:
-            needsDisplay = true
-        case .loading:
-            updateLoadingAnimation()
-            needsDisplay = true
-        case .rowsReplaced:
-            if model.browseMode.isHistoryMode { updateHistoryHostingVisibility() }
-        case .rebuilt:
-            break
-        case .loaded:
-            // The offline banner (local source, a folder offline) takes list height from Flow / Tiles.
-            needsLayout = true
-        case .source:
-            needsLayout = true   // the offline banner shows on the local source only
-            startServerNameScroll()
-        case .browseMode:
-            updateHistoryHostingVisibility()
-            needsDisplay = true
-        }
-    }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        stopLoadingAnimation()
-        stopServerNameScroll()
         backdrop.stop()
     }
 
@@ -578,20 +479,14 @@ class ClassicLibraryBrowserView: NSView {
     /// AppKit's autorelease pool, so `WindowManager.teardownModeDependentWindows()` calls this
     /// *before* closing the window.
     func prepareForUITeardown() {
-        model.cancelAll()
+        coordinator.teardown()
         art.cancel()
-        actions.cancelAll()
         backdrop.remove()
-
-        // Timers (timers with a target/captured self can also pin the view alive).
-        stopLoadingAnimation()
-        stopServerNameScroll()
-        list.teardown()
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        startServerNameScroll()
+        coordinator.startMarquee()
         updateHistoryHostingFrame()
         list.clampHorizontalScrollOffset()
     }
@@ -928,19 +823,16 @@ class ClassicLibraryBrowserView: NSView {
                         drawSearchBar(in: context, drawBounds: drawBounds, colors: colors, renderer: renderer)
                     }
 
-                    if model.browseMode.isHistoryMode {
-                        // SwiftUI-hosted history content is rendered via an embedded subview.
-                    } else {
-                        // Draw list area or connection status
-                        // Only check Plex link status if using Plex source
-                        let needsPlexLink = model.currentSource.isPlex && !PlexManager.shared.isLinked
-                        if needsPlexLink {
+                    // The Data tab's SwiftUI-hosted history content is rendered via an embedded subview.
+                    if !model.browseMode.isHistoryMode {
+                        switch model.listState {
+                        case .notLinked:
                             drawNotLinkedState(in: context, colors: colors, renderer: renderer)
-                        } else if model.isLoading {
+                        case .loading:
                             drawLoadingState(in: context, colors: colors, renderer: renderer)
-                        } else if let error = model.errorMessage {
+                        case .error(let error):
                             drawErrorState(in: context, message: error, colors: colors, renderer: renderer)
-                        } else if list.lens.isPresenting {
+                        case .rows where list.lens.isPresenting:
                             // The Flow / Tiles view renders the art; just fill the list area
                             // background so the interior isn't left stale behind it.
                             let layout = listLayout()
@@ -949,7 +841,7 @@ class ClassicLibraryBrowserView: NSView {
                                 context.fill(layout.area)
                             }
                             drawAlphabetIndex(in: context, rect: layout.alphabet, colors: colors, renderer: renderer)
-                        } else {
+                        case .rows:
                             drawListArea(in: context, layout: listLayout(), colors: colors, renderer: renderer)
                         }
                     }
@@ -966,7 +858,7 @@ class ClassicLibraryBrowserView: NSView {
 
         context.restoreGState()
 
-        if isHighlighted {
+        if coordinator.isHighlighted {
             NSColor.white.withAlphaComponent(0.15).setFill()
             bounds.fill()
         }
@@ -1027,7 +919,7 @@ class ClassicLibraryBrowserView: NSView {
             let icon = NSRect(x: x, y: textY - textScale, width: side, height: side)
             mode.drawIcon(in: icon, color: list.lens.mode == mode ? colors.currentText : colors.normalText,
                           context: context)
-            viewModeButtonRects.append((mode, icon.insetBy(dx: -1.5 * chromeScale, dy: -3 * textScale)))
+            coordinator.rects.viewModes.append((mode, icon.insetBy(dx: -1.5 * chromeScale, dy: -3 * textScale)))
             x += side + 3 * chromeScale
         }
         return leadingX
@@ -1072,19 +964,13 @@ class ClassicLibraryBrowserView: NSView {
         let prefixWidth = ClassicLibraryTab.textWidth(prefix, scale: textScale, style: winampModernStyle)
         let sourceNameStartX = barRect.minX + toolbarLeftInset + prefixWidth
         
-        refreshButtonRect = .zero
-        viewModeButtonRects = []
-        sourceButtonRect = .zero
-        libraryButtonRect = .zero
-        addButtonRect = .zero
-        serverNameCycleWidth = 0
-        libraryNameCycleWidth = 0
+        coordinator.beginServerBar(in: NSRect(x: 0, y: barY, width: drawBounds.width, height: Layout.serverBarHeight))
 
         let content = model.sourceBarContent
         if case .unconfigured(let prompt) = content {
             let promptWidth = ClassicLibraryTab.textWidth(prompt, scale: textScale, style: winampModernStyle)
             drawScaledSkinText(prompt, at: NSPoint(x: barRect.midX - promptWidth / 2, y: textY), scale: textScale, renderer: renderer, in: context)
-            sourceButtonRect = barRect
+            coordinator.rects.source = barRect
             return
         }
 
@@ -1097,7 +983,7 @@ class ClassicLibraryBrowserView: NSView {
         // corner beside it.
         let refreshWidth = closesFromCorner
             ? refreshTextWidth + 2 * chromeScale : barRect.maxX - refreshX
-        refreshButtonRect = NSRect(x: refreshX, y: barRect.minY, width: refreshWidth, height: barRect.height)
+        coordinator.rects.refresh = NSRect(x: refreshX, y: barRect.minY, width: refreshWidth, height: barRect.height)
         let accessoryX = drawViewModeButtons(
             before: refreshX, textY: textY, textScale: textScale, chromeScale: chromeScale,
             context: context
@@ -1108,7 +994,7 @@ class ClassicLibraryBrowserView: NSView {
             let sourceText = model.withItemCount(name)
             drawScaledWhiteSkinText(sourceText, at: NSPoint(x: sourceNameStartX, y: textY), scale: textScale, renderer: renderer, in: context)
             let sourceTextWidth = ClassicLibraryTab.textWidth(sourceText, scale: textScale, style: winampModernStyle)
-            sourceButtonRect = NSRect(x: barRect.minX, y: barRect.minY,
+            coordinator.rects.source = NSRect(x: barRect.minX, y: barRect.minY,
                                       width: sourceNameStartX + sourceTextWidth - barRect.minX,
                                       height: barRect.height)
 
@@ -1116,48 +1002,29 @@ class ClassicLibraryBrowserView: NSView {
             let addText = "+ADD"
             let addX = sourceNameStartX + sourceTextWidth + 28 * chromeScale
             drawScaledSkinText(addText, at: NSPoint(x: addX, y: textY), scale: textScale, renderer: renderer, in: context)
-            addButtonRect = NSRect(x: addX, y: barRect.minY,
+            coordinator.rects.add = NSRect(x: addX, y: barRect.minY,
                                    width: ClassicLibraryTab.textWidth(addText, scale: textScale, style: winampModernStyle) + 8 * chromeScale,
                                    height: barRect.height)
 
             // Scan animation: small spinner at center of bar while library is scanning
-            if case .local = model.currentSource, isLibraryScanning {
-                let cx = barRect.midX
-                let cy = barRect.midY
-                let innerR: CGFloat = 3
+            if case .local = model.currentSource, coordinator.isLibraryScanning {
                 let outerR: CGFloat = 8
-                let n = 8
-                let step = CGFloat.pi * 2 / CGFloat(n)
-                let textColor = accentTextColor(renderer)
-                for i in 0..<n {
-                    let angle = CGFloat(i) * step - CGFloat.pi / 2 + CGFloat(loadingAnimationFrame) * step
-                    textColor.withAlphaComponent(CGFloat(i + 1) / CGFloat(n) * 0.9).setStroke()
-                    context.setLineWidth(2)
-                    context.move(to: CGPoint(x: cx + cos(angle) * innerR, y: cy + sin(angle) * innerR))
-                    context.addLine(to: CGPoint(x: cx + cos(angle) * outerR, y: cy + sin(angle) * outerR))
-                    context.strokePath()
-                }
+                coordinator.drawSpinner(in: context, center: CGPoint(x: barRect.midX, y: barRect.midY),
+                                        innerRadius: 3, outerRadius: outerR, lineWidth: 2,
+                                        color: accentTextColor(renderer), maxAlpha: 0.9)
                 let scanText = "SCANNING"
-                let scanX = cx + outerR + 6
+                let scanX = barRect.midX + outerR + 6
                 drawScaledSkinText(scanText, at: NSPoint(x: scanX, y: textY), scale: textScale, renderer: renderer, in: context)
             }
 
         case .server(let serverName, let library):
-            // A changed name scrolls from its start.
-            if serverName != lastServerName {
-                lastServerName = serverName
-                serverNameScrollOffset = 0
-            }
-            if library != lastLibraryName {
-                lastLibraryName = library
-                libraryNameScrollOffset = 0
-            }
+            coordinator.showNames(server: serverName, library: library)
 
             // Server name right after "Source:", in a fixed-width field
             let serverNameMaxWidth = serverFieldChars * scaledCharWidth
-            serverNameCycleWidth = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
+            let serverCycle = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
                               availableWidth: serverNameMaxWidth, scale: textScale,
-                              scrollOffset: serverNameScrollOffset,
+                              scrollOffset: coordinator.serverName.offset,
                               renderer: renderer, in: context)
 
             // Library label and name after the server field
@@ -1169,20 +1036,18 @@ class ClassicLibraryBrowserView: NSView {
             let libraryText = model.withItemCount(library)
             // The field grows into the free space before the right cluster; it scrolls when even that is short.
             let libraryNameMaxWidth = max(Self.minLibraryFieldChars * scaledCharWidth, accessoryX - 24 * chromeScale - libraryX)
-            libraryNameCycleWidth = drawScrollingText(libraryText, startX: libraryX, textY: textY,
+            let libraryCycle = drawScrollingText(libraryText, startX: libraryX, textY: textY,
                               availableWidth: libraryNameMaxWidth, scale: textScale,
-                              scrollOffset: libraryNameScrollOffset,
+                              scrollOffset: coordinator.libraryName.offset,
                               renderer: renderer, in: context)
 
-            sourceButtonRect = NSRect(x: barRect.minX, y: barRect.minY,
+            coordinator.rects.source = NSRect(x: barRect.minX, y: barRect.minY,
                                       width: libraryLabelX - barRect.minX,
                                       height: barRect.height)
-            libraryButtonRect = NSRect(x: libraryLabelX, y: barRect.minY,
+            coordinator.rects.library = NSRect(x: libraryLabelX, y: barRect.minY,
                                        width: libraryX + libraryNameMaxWidth - libraryLabelX,
                                        height: barRect.height)
-            if serverNameCycleWidth > 0 || libraryNameCycleWidth > 0 {
-                startServerNameScroll()
-            }
+            coordinator.namesDrawn(serverCycle: serverCycle, libraryCycle: libraryCycle)
 
         case .unconfigured:
             break  // Drawn above, without the right-side buttons.
@@ -1269,7 +1134,7 @@ class ClassicLibraryBrowserView: NSView {
                                      horizontalScale: chromeScale)
 
         var tabX = tabsStartX
-        tabButtonRects.removeAll(keepingCapacity: true)
+        coordinator.rects.tabs.removeAll(keepingCapacity: true)
         for (index, mode) in modes.enumerated() {
             let tabWidth = tabWidths[index]
             let tabRect = NSRect(x: tabX, y: tabBarY,
@@ -1287,13 +1152,13 @@ class ClassicLibraryBrowserView: NSView {
             ClassicLibraryTab.draw(label, isSelected: isSelected, in: tabRect, boxInsetX: 3 * chromeScale,
                                    textScale: textScale, colors: colors, renderer: renderer,
                                    style: winampModernStyle, context: context)
-            tabButtonRects.append(tabRect)
+            coordinator.rects.tabs.append(tabRect)
         }
         
         // Draw sort indicator on the right
         let sortRect = NSRect(x: tabBarRect.maxX - tabRightInset - sortWidth,
                               y: tabBarY, width: sortWidth, height: Layout.tabBarHeight)
-        sortButtonRect = sortRect
+        coordinator.rects.sort = sortRect
         let rawSortX = sortRect.minX + 4 * chromeScale
         let rawSortY = tabBarY + (Layout.tabBarHeight - scaledCharHeight) / 2
         let sortX = shouldRound ? round(rawSortX) : rawSortX
@@ -1304,6 +1169,7 @@ class ClassicLibraryBrowserView: NSView {
     
     private func drawSearchBar(in context: CGContext, drawBounds: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
         let searchY = listTopY - Layout.searchBarHeight
+        coordinator.rects.searchBar = NSRect(x: 0, y: searchY, width: drawBounds.width, height: Layout.searchBarHeight)
         let searchRect = NSRect(x: Layout.leftBorder + Layout.padding, y: searchY + 3,
                                width: drawBounds.width - Layout.leftBorder - Layout.rightBorder - Layout.padding * 2,
                                height: Layout.searchBarHeight - 6)
@@ -1324,9 +1190,8 @@ class ClassicLibraryBrowserView: NSView {
             path.stroke()
         }
         
-        // Search text historically renders at the bitmap font's native size at 100%.
-        // Preserve that baseline while still following UI Size.
-        let textScale = contentScale
+        // The same size as the server bar's and tab labels' text, following UI Size.
+        let textScale = bitmapTextScale
         let charHeight = SkinElements.TextFont.charHeight * textScale
         let textY = searchRect.minY + (searchRect.height - charHeight) / 2
         
@@ -1345,13 +1210,6 @@ class ClassicLibraryBrowserView: NSView {
         let displayText = model.searchQuery.isEmpty ? placeholder : model.searchQuery
         drawScaledSkinText(displayText, at: NSPoint(x: searchRect.minX + 6, y: textY),
                            scale: textScale, renderer: renderer, in: context, color: fieldTextColor)
-
-        // Draw cursor if focused
-        if isFocused && !model.searchQuery.isEmpty {
-            let cursorX = searchRect.minX + 6 + ClassicLibraryTab.textWidth(model.searchQuery, scale: textScale, style: winampModernStyle) + 1
-            (fieldTextColor ?? colors.normalText).setFill()
-            context.fill(CGRect(x: cursorX, y: textY, width: max(1, contentScale), height: charHeight))
-        }
     }
     
     private func drawNotLinkedState(in context: CGContext, colors: PlaylistColors, renderer: SkinRenderer) {
@@ -1389,54 +1247,14 @@ class ClassicLibraryBrowserView: NSView {
     
     private func drawLoadingState(in context: CGContext, colors: PlaylistColors, renderer: SkinRenderer) {
         let listRect = listLayout().area
-        
-        let centerY = listRect.midY
-        let centerX = listRect.midX
-        
-        // Draw animated spinner
-        let innerRadius: CGFloat = 5
-        let outerRadius: CGFloat = 12
-        let numSegments = 8
-        let segmentAngle = CGFloat.pi * 2 / CGFloat(numSegments)
-        
-        for i in 0..<numSegments {
-            let angle = CGFloat(i) * segmentAngle - CGFloat.pi / 2 + CGFloat(loadingAnimationFrame) * segmentAngle
-            let alpha = CGFloat(i + 1) / CGFloat(numSegments)
-            
-            colors.normalText.withAlphaComponent(alpha).setStroke()
-            context.setLineWidth(2.5)
-            
-            let startX = centerX + cos(angle) * innerRadius
-            let startY = centerY + sin(angle) * innerRadius
-            let endX = centerX + cos(angle) * outerRadius
-            let endY = centerY + sin(angle) * outerRadius
-            
-            context.move(to: CGPoint(x: startX, y: startY))
-            context.addLine(to: CGPoint(x: endX, y: endY))
-            context.strokePath()
-        }
-        
-        // Start animation timer if not running
-        startLoadingAnimation()
+        coordinator.drawSpinner(in: context, center: CGPoint(x: listRect.midX, y: listRect.midY),
+                                innerRadius: 5, outerRadius: 12, lineWidth: 2.5, color: colors.normalText)
     }
 
     /// Small inline spinner used on a downloading YouTube video row.
     private func drawRowSpinner(in context: CGContext, center: CGPoint, radius: CGFloat, colors: PlaylistColors) {
-        let innerRadius = radius * 0.45
-        let outerRadius = radius
-        let numSegments = 8
-        let segmentAngle = CGFloat.pi * 2 / CGFloat(numSegments)
-        context.saveGState()
-        for i in 0..<numSegments {
-            let angle = CGFloat(i) * segmentAngle - CGFloat.pi / 2 + CGFloat(loadingAnimationFrame) * segmentAngle
-            let alpha = CGFloat(i + 1) / CGFloat(numSegments)
-            colors.normalText.withAlphaComponent(alpha).setStroke()
-            context.setLineWidth(1.5)
-            context.move(to: CGPoint(x: center.x + cos(angle) * innerRadius, y: center.y + sin(angle) * innerRadius))
-            context.addLine(to: CGPoint(x: center.x + cos(angle) * outerRadius, y: center.y + sin(angle) * outerRadius))
-            context.strokePath()
-        }
-        context.restoreGState()
+        coordinator.drawSpinner(in: context, center: center, innerRadius: radius * 0.45, outerRadius: radius,
+                                lineWidth: 1.5, color: colors.normalText)
     }
 
     private func drawErrorState(in context: CGContext, message: String, colors: PlaylistColors, renderer: SkinRenderer) {
@@ -1461,42 +1279,8 @@ class ClassicLibraryBrowserView: NSView {
     }
     
     private func drawEmptyState(in context: CGContext, listRect: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
-        // Determine empty message based on mode and library type
-        let library = PlexManager.shared.currentLibrary
-        let message: String
-        
-        switch model.browseMode {
-        case .artists, .albums:
-            if library?.isMusicLibrary == true {
-                message = "No \(model.browseMode.title.lowercased()) found"
-            } else {
-                message = "This library doesn't contain music"
-            }
-        case .movies:
-            if library?.isMovieLibrary == true {
-                message = "No movies found"
-            } else {
-                message = "This library doesn't contain movies"
-            }
-        case .shows:
-            if library?.isShowLibrary == true {
-                message = "No TV shows found"
-            } else {
-                message = "This library doesn't contain TV shows"
-            }
-        case .plists:
-            message = "No playlists found"
-        case .folders:
-            message = "No folders found"
-        case .search:
-            // Search runs on Enter: until then, nothing has been searched.
-            message = model.searchQuery.isEmpty || model.hasUnsubmittedYouTubeSearch ? "Type and press Enter to search" : "No results found"
-        case .radio:
-            message = "No radio stations found"
-        case .history:
-            return
-        }
-        
+        let message = model.emptyMessage(enterKey: "Enter")
+
         // Draw using green skin text, centered
         let charHeight = SkinElements.TextFont.charHeight
         let textScale = bitmapTextScale
@@ -1906,112 +1690,6 @@ class ClassicLibraryBrowserView: NSView {
         // This function is kept for potential future use but draws nothing
     }
     
-    // MARK: - Loading Animation
-    
-    private func startLoadingAnimation() {
-        guard loadingAnimationTimer == nil else { return }
-        // Use .common run loop mode so timer continues during context menu display
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.loadingAnimationFrame += 1
-            if self.actions.rowsAreBusy {
-                // Only redraw the list area where the loading spinner is displayed
-                // This prevents menu items from shimmering on non-Retina displays
-                let area = self.listLayout().area
-                self.setNeedsDisplay(self.convertFromSkinCoordinates(
-                    NSRect(x: 0, y: area.minY, width: self.bounds.width, height: area.height)))
-            } else if self.isLibraryScanning {
-                // Redraw server bar only for the scan spinner
-                let nativeY = self.bounds.height - self.Layout.titleBarHeight - self.Layout.serverBarHeight
-                self.setNeedsDisplay(NSRect(x: 0, y: nativeY, width: self.bounds.width, height: self.Layout.serverBarHeight))
-            } else {
-                self.stopLoadingAnimation()
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        loadingAnimationTimer = timer
-    }
-
-    /// Run the spinner timer while the rows or the library scan have something in flight.
-    private func updateLoadingAnimation() {
-        if actions.rowsAreBusy || isLibraryScanning { startLoadingAnimation() } else { stopLoadingAnimation() }
-    }
-
-    private func stopLoadingAnimation() {
-        loadingAnimationTimer?.invalidate()
-        loadingAnimationTimer = nil
-        loadingAnimationFrame = 0
-    }
-
-    @objc private func connectedWindowHighlightDidChange(_ notification: Notification) {
-        let highlighted = notification.userInfo?["highlightedWindows"] as? Set<NSWindow> ?? []
-        let newValue = highlighted.contains { $0 === window }
-        if isHighlighted != newValue {
-            isHighlighted = newValue
-            needsDisplay = true
-        }
-    }
-
-    @objc private func libraryScanProgressChanged() {
-        let scanning = MediaLibrary.shared.isScanning
-        guard scanning != isLibraryScanning else { return }
-        isLibraryScanning = scanning
-        updateLoadingAnimation()
-        if !scanning { needsDisplay = true }
-    }
-
-
-    // MARK: - Server Name Scroll Animation
-    
-    private func startServerNameScroll() {
-        guard serverScrollTimer == nil else { return }
-        serverScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.067, repeats: true) { [weak self] _ in
-            self?.handleServerNameScrollTick()
-        }
-    }
-    
-    private func stopServerNameScroll() {
-        serverScrollTimer?.invalidate()
-        serverScrollTimer = nil
-        serverNameScrollOffset = 0
-        libraryNameScrollOffset = 0
-    }
-    
-    private func handleServerNameScrollTick() {
-        guard let window = window,
-              window.isVisible,
-              window.occlusionState.contains(.visible) else { return }
-        updateServerNameScroll()
-    }
-    
-    private func updateServerNameScroll() {
-        let serverBarArea = NSRect(x: 0, y: bounds.height - Layout.titleBarHeight - Layout.serverBarHeight,
-                                   width: bounds.width, height: Layout.serverBarHeight)
-        // The cycles are drawServerBar's: zero unless a server's name overflows its field.
-        let serverNeedsScroll = serverNameCycleWidth > 0
-        let libraryNeedsScroll = libraryNameCycleWidth > 0
-        if !serverNeedsScroll && !libraryNeedsScroll {
-            let hadOffset = serverNameScrollOffset != 0 || libraryNameScrollOffset != 0
-            stopServerNameScroll()
-            if hadOffset { setNeedsDisplay(serverBarArea) }
-            return
-        }
-
-        if serverNeedsScroll {
-            serverNameScrollOffset += 1
-            if serverNameScrollOffset >= serverNameCycleWidth { serverNameScrollOffset = 0 }
-        } else {
-            serverNameScrollOffset = 0
-        }
-        if libraryNeedsScroll {
-            libraryNameScrollOffset += 1
-            if libraryNameScrollOffset >= libraryNameCycleWidth { libraryNameScrollOffset = 0 }
-        } else {
-            libraryNameScrollOffset = 0
-        }
-        setNeedsDisplay(serverBarArea)
-    }
-    
     // MARK: - Public Methods
     
     func skinDidChange() {
@@ -2078,47 +1756,12 @@ class ClassicLibraryBrowserView: NSView {
             : SkinnedSurfaceChrome.closeButtonRect(in: NSRect(origin: .zero, size: originalSize),
                                                    captionHeight: Layout.titleBarHeight, width: 20)
         // The corner closes except where the server bar draws a control into it.
-        if closesFromCorner, refreshButtonRect.contains(skinPoint) || viewModeButton(at: skinPoint) != nil {
+        let rects = coordinator.rects
+        if closesFromCorner, rects.refresh.contains(skinPoint) || rects.viewModes.contains(where: { $0.rect.contains(skinPoint) }) {
             return false
         }
         return closeRect.contains(skinPoint)
     }
-
-    private func viewModeButton(at skinPoint: NSPoint) -> LibraryViewMode? {
-        viewModeButtonRects.first(where: { $0.rect.contains(skinPoint) })?.mode
-    }
-
-    /// Check if point is in server bar
-    private func hitTestServerBar(at skinPoint: NSPoint) -> Bool {
-        let serverBarY = Layout.titleBarHeight
-        return skinPoint.y >= serverBarY && skinPoint.y < serverBarY + Layout.serverBarHeight
-    }
-    
-    /// Check if point is in tab bar and return tab index
-    private func hitTestTabBar(at skinPoint: NSPoint) -> LibraryBrowseMode? {
-        let tabY = Layout.titleBarHeight + Layout.serverBarHeight
-        guard skinPoint.y >= tabY && skinPoint.y < tabY + Layout.tabBarHeight else { return nil }
-
-        for (index, rect) in tabButtonRects.enumerated()
-        where rect.contains(skinPoint) && index < LibraryBrowseMode.tabs.count {
-            return LibraryBrowseMode.tabs[index]
-        }
-        return nil
-    }
-    
-    /// Check if point is in sort indicator area
-    private func hitTestSortIndicator(at skinPoint: NSPoint) -> Bool {
-        let tabY = Layout.titleBarHeight + Layout.serverBarHeight
-        guard skinPoint.y >= tabY && skinPoint.y < tabY + Layout.tabBarHeight else { return false }
-        return sortButtonRect.contains(skinPoint)
-    }
-    
-    /// Check if point is in search bar
-    private func hitTestSearchBar(at skinPoint: NSPoint) -> Bool {
-        guard model.browseMode == .search else { return false }
-        return skinPoint.y >= listTopY - Layout.searchBarHeight && skinPoint.y < listTopY
-    }
-    
 
     // MARK: - Cursor Tracking
     
@@ -2170,44 +1813,8 @@ class ClassicLibraryBrowserView: NSView {
             return
         }
 
-        // Check server bar
-        if hitTestServerBar(at: skinPoint) {
-            if let mode = viewModeButton(at: skinPoint) {
-                list.lens.mode = mode
-                needsDisplay = true
-                return
-            }
-            // For local files, radio, or subsonic - always handle the click
-            // For Plex - check if linked first
-            if case .plex = model.currentSource, !PlexManager.shared.isLinked {
-                presentLinkSheet()
-            } else {
-                handleServerBarClick(at: skinPoint, event: event)
-            }
-            return
-        }
-
-        // Check sort indicator (in tab bar area, on the right)
-        if hitTestSortIndicator(at: skinPoint) {
-            popDown(actions.sortMenu(), from: event)
-            return
-        }
-        
-        // Check tab bar
-        if let slot = hitTestTabBar(at: skinPoint) {
-            model.selectTab(slot, doubleClick: event.clickCount == 2)
-            window?.makeFirstResponder(self)
-            return
-        }
-        
-        // Check search bar
-        if hitTestSearchBar(at: skinPoint) {
-            window?.makeFirstResponder(self)
-            return
-        }
-        
-        // The column header, alphabet index and rows
-        if list.mouseDown(at: skinPoint, event: event) { return }
+        // The server bar, tabs, Sort and search; then the column header, alphabet index and rows
+        if coordinator.mouseDown(at: skinPoint, event: event) || list.mouseDown(at: skinPoint, event: event) { return }
 
         // Title bar - start window drag (can undock)
         if hitTestTitleBar(at: skinPoint) {
@@ -2219,26 +1826,6 @@ class ClassicLibraryBrowserView: NSView {
         } else if isEmbeddedInSkin {
             embeddedWindowDrag.prime(event, window: window)
         }
-    }
-    private func handleServerBarClick(at skinPoint: NSPoint, event: NSEvent) {
-        if refreshButtonRect.contains(skinPoint) {
-            model.refreshCurrentSource()
-            return
-        }
-
-        if addButtonRect.contains(skinPoint), let menu = actions.addMenu() {
-            popDown(menu, from: event)
-        } else if libraryButtonRect.contains(skinPoint), let menu = actions.libraryMenu() {
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-        } else if sourceButtonRect.contains(skinPoint) {
-            popDown(actions.sourceMenu(), from: event)
-        }
-    }
-
-    /// A server-bar menu, dropped down from the click.
-    private func popDown(_ menu: NSMenu, from event: NSEvent) {
-        menu.popUp(positioning: nil, at: NSPoint(x: event.locationInWindow.x, y: event.locationInWindow.y - 5),
-                   in: window?.contentView)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -2290,17 +1877,11 @@ class ClassicLibraryBrowserView: NSView {
     // MARK: - Drag and Drop (Local Files and Playlists)
     
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let items = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else {
-            return []
-        }
-        return LocalFileDiscovery.hasSupportedDropContent(items, includeVideo: true, includePlaylists: true) ? .copy : []
+        coordinator.dragOperation(for: sender)
     }
-    
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let items = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else {
-            return false
-        }
-        return actions.addDroppedItems(items)
+        coordinator.performDrop(sender)
     }
     
     override func scrollWheel(with event: NSEvent) {
@@ -2320,9 +1901,5 @@ class ClassicLibraryBrowserView: NSView {
 
     override func keyDown(with event: NSEvent) {
         if !list.keyDown(event) { super.keyDown(with: event) }
-    }
-
-    @objc private func libraryRowThumbnailDidLoad() {
-        needsDisplay = true
     }
 }

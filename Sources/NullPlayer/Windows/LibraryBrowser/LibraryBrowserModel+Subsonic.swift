@@ -59,10 +59,10 @@ extension LibraryBrowserModel {
                     }
                     self.buildSubsonicPlaylistItems()
                 case .search:
-                    if self.searchQuery.isEmpty {
+                    if self.searchedQuery.isEmpty {
                         self.displayItems = []
                     } else {
-                        self.subsonicSearchResults = try await manager.searchWithArtistAlbums(query: self.searchQuery)
+                        self.subsonicSearchResults = try await manager.searchWithArtistAlbums(query: self.searchedQuery)
                         guard self.isLoadContextActive(generation, source: expectedSource) else { return }
                         self.buildSubsonicSearchItems()
                     }

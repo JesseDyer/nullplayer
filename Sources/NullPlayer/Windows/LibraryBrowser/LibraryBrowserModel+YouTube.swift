@@ -19,11 +19,11 @@ extension LibraryBrowserModel {
         displayItems = youtubeRows.channels(YouTubeManager.shared.channels).map { LibraryBrowserItem($0) }
     }
 
-    /// Search tab (YouTube source): run the typed query as a YouTube channel search, or show
+    /// Search tab (YouTube source): run the submitted query as a YouTube channel search, or show
     /// the results of an unchanged one; `force` (Refresh) re-runs it.
     func loadYouTubeSearchResults(force: Bool = false) {
         errorMessage = nil
-        let started = youtubeSearch.submit(searchQuery, force: force) { [weak self] error in
+        let started = youtubeSearch.submit(searchedQuery, force: force) { [weak self] error in
             guard let self, self.isYouTubeChannelSearch else { return }
             self.isLoading = false
             if let error {

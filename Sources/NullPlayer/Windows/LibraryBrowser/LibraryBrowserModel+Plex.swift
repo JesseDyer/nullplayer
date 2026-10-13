@@ -88,10 +88,10 @@ extension LibraryBrowserModel {
                     }
                     self.buildPlexPlaylistItems()
                 case .search:
-                    if self.searchQuery.isEmpty {
+                    if self.searchedQuery.isEmpty {
                         self.displayItems = []
                     } else {
-                        self.plex.searchResults = try await pm.searchWithArtistAlbums(query: self.searchQuery)
+                        self.plex.searchResults = try await pm.searchWithArtistAlbums(query: self.searchedQuery)
                         guard self.isLoadContextActive(generation, source: expectedSource) else { return }
                         self.buildSearchItems()
                     }

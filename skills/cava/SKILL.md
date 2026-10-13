@@ -25,9 +25,8 @@ browser list-area renderer and geometry; there is no second full-window artwork 
 windows default to **Cava + Art** on first use while preserving an existing saved selection. On
 upgrade, the legacy `showBrowserArtworkBackground` choice seeds only absent window-specific keys:
 enabled becomes Cava + Art and disabled becomes Cava, so adopting Cava does not re-enable artwork.
-The classic browser's choice is its own key, `ClassicLibraryBackdropMode`
-(`BrowserBackdropMode.classicLibraryMode`), read while that toggle is still unset as on → Art,
-off → Off, so Classic keeps its look until Cava is picked.
+The classic browser's choice is its own key, `ClassicLibraryBackdropMode` (default Art), seeded
+by the same migration as on → Art, off → Off, so Classic keeps its look until Cava is picked.
 
 Cava is the shipped default for the embedded main-window visualization in every bundled modern
 skin and every built-in Metal finish. Classic UI continues to default the embedded visualization
