@@ -245,7 +245,7 @@ of the library, the main thread included, for the whole pass on a slow network v
 `URL(string:)`, and requires a non-nil `scheme` from the latter. On current Foundation
 `URL(string:)` accepts a bare path and returns a **schemeless, non-file** URL instead of nil, which
 silently disabled the legacy plain-path repair branch. The same defect hit every playlist loader —
-see `Playlist.resolveEntry`, and L5 in `docs/local-library/backlog.md`.
+see `Playlist.resolveEntry`.
 
 ## LocalFileDiscovery Utility
 
