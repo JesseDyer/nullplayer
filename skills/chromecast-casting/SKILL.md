@@ -302,9 +302,11 @@ the inflight queue, so a next/prev press waits behind at most one render, under 
 activity bar (`MainWindowProviding.showActivity`, every skin). `castableFile` only answers; only a
 successful cast calls `EQCast.didCast(_:from:device:)`, which records the render being cast (the
 file Delete Cache keeps — a superseded or failed request must not replace it) and pre-renders the
-first 3 of `AudioEngine.upcomingIndices` (shuffle order, then wrap-around with repeat — except
-shuffle with repeat, which draws a new order at the wrap and so stops at the end; it never realigns
-the shuffle order). `stopCasting` and
+first 3 of `AudioEngine.upcomingIndices` (the rest of the list or shuffle order; repeat without
+shuffle is repeat-one, so just the current track, which re-renders after a profile edit; shuffle
+with repeat draws a new order at the wrap and so stops at the end; it never realigns the shuffle
+order). A render waiting out an older curve's render returns nil if `stop()` ran meanwhile, and
+`castTrack` drops a cast superseded during its render. `stopCasting` and
 `stopCastingSync` stop the pre-render; `_stopCastingAndAwaitTeardownCore` does not, because the
 video-track switch runs it.
 

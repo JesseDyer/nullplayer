@@ -54,6 +54,8 @@ actor EQCastCache {
     /// The last step reported per in-flight path, so progress only climbs.
     private var reported: [String: Int] = [:]
     private var prefetchTask: Task<Void, Never>?
+    /// Bumped by `stop()`, so a render waiting out an older curve does not start after it.
+    private var stops = 0
     private var usageBytes: Int64?
     private var measuring: URL?
 
@@ -78,8 +80,9 @@ actor EQCastCache {
     /// is never joined: it finishes for its own callers, then this one starts.
     func render(_ track: Track, progress: (@Sendable (Phase, Int) -> Void)? = nil) async -> URL? {
         guard let target = target(for: track), let root = Self.folder else { return nil }
-        let path = target.file.path
+        let path = target.file.path, stopsBefore = stops
         while let running = inFlight[path], running.entry != target.entry { _ = await running.task.value }
+        guard stops == stopsBefore else { return nil }
         if isCurrent(target) { return target.file }
         if let progress { listeners[path, default: []].append(progress) }
         if let running = inFlight[path] { return await running.task.value }
@@ -100,6 +103,7 @@ actor EQCastCache {
     }
 
     func stop() {
+        stops += 1
         prefetchTask?.cancel()
         prefetchTask = nil
         inFlight.values.forEach { $0.task.cancel() }
@@ -361,7 +365,7 @@ enum EQCast {
 
     /// The rendered file to cast instead of `track`, or nil to cast the original. A render shows on
     /// the activity bar; `generation` false means the request was superseded and nothing renders.
-    static func castableFile(for track: Track, device: CastDeviceType, generation: () -> Bool) async -> URL? {
+    static func castableFile(for track: Track, device: CastDeviceType, generation: @MainActor () -> Bool) async -> URL? {
         let cache = EQCastCache.shared
         var file: URL?
         switch await cache.cached(track, device: device) {

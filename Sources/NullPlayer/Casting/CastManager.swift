@@ -1135,7 +1135,14 @@ class CastManager {
         let needsJellyfinProxy = track.jellyfinId != nil && device.type == .sonos
         let needsEmbyProxy = track.embyId != nil && device.type == .sonos
 
-        let eqFile = await EQCast.castableFile(for: track, device: device.type, generation: { true })
+        // A stop during the render cancels it; without this check the original would be cast anyway.
+        let generation = await MainActor.run { castTrackGeneration }
+        let eqFile = await EQCast.castableFile(for: track, device: device.type,
+                                               generation: { generation == self.castTrackGeneration })
+        guard await MainActor.run(body: { generation == castTrackGeneration }) else {
+            NSLog("CastManager: castTrack '%@' abandoned - superseded during EQ Cast render", track.title)
+            return
+        }
         if eqFile != nil { effectiveContentType = "audio/flac" }
 
         if eqFile == nil, track.url.scheme == "http" || track.url.scheme == "https" {

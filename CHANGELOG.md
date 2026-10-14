@@ -103,6 +103,10 @@
   render covered the whole queue, downloading every server track; it now covers the next three. A
   track whose profile is edited while it renders is cast with the edit, not the old curve, and
   Delete Cache no longer removes the file a receiver is playing after a skipped or failed cast.
+- **Stopping a cast during its EQ Cast render stays stopped** — stopping while the first track
+  rendered still cast the original; it no longer does, and a render waiting on an older curve no
+  longer starts after the stop. With repeat on (and shuffle off), EQ Cast no longer pre-renders
+  tracks that will not play next.
 
 ## 0.32.2
 
