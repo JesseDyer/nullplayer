@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 
 /// The artwork fetches both library browser views make the same way, and the one cache they share.
 @MainActor
@@ -110,26 +109,13 @@ enum LibraryArtwork {
                           url: SubsonicManager.shared.coverArtURL(coverArtId: coverArt, size: 400))
     }
 
-    /// A local file's embedded art: the common metadata, then its ID3 and iTunes atoms.
-    static func local(url: URL) async -> NSImage? {
-        let cacheKey = NSString(string: "local:\(url.path)")
+    /// The image cached under `key`, else `load`'s, cached when it finds one.
+    static func cached(_ key: String, _ load: () async -> NSImage?) async -> NSImage? {
+        let cacheKey = NSString(string: key)
         if let cached = cache.object(forKey: cacheKey) { return cached }
-
-        let asset = AVURLAsset(url: url)
-        do {
-            let groups = [try await asset.load(.metadata),
-                          try await asset.loadMetadata(for: .id3Metadata),
-                          try await asset.loadMetadata(for: .iTunesMetadata)]
-            for item in groups.joined() where item.commonKey == .commonKeyArtwork {
-                if let data = try await item.load(.dataValue), let image = NSImage(data: data) {
-                    cache.setObject(image, forKey: cacheKey)
-                    return image
-                }
-            }
-        } catch {
-            NSLog("LibraryArtwork: Failed to load local artwork: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
-        }
-        return nil
+        guard let image = await load() else { return nil }
+        cache.setObject(image, forKey: cacheKey)
+        return image
     }
 
     /// An album cover from the iTunes Search API, for a track with no art of its own.
@@ -239,15 +225,10 @@ enum LibraryArtwork {
     }
 
     private static func serverImage(cacheKey: String, request: URLRequest?) async -> NSImage? {
-        let key = NSString(string: cacheKey)
-        if let cached = cache.object(forKey: key) { return cached }
-        guard let request else { return nil }
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let image = NSImage(data: data) else { return nil }
-            cache.setObject(image, forKey: key)
-            return image
-        } catch { return nil }
+        await cached(cacheKey) {
+            guard let request, let (data, response) = try? await URLSession.shared.data(for: request),
+                  (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return NSImage(data: data)
+        }
     }
 }

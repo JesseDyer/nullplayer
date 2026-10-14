@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import QuartzCore
 
 /// The main window view for the modern skin system.
@@ -1052,7 +1051,7 @@ class ModernMainWindowView: NSView {
                 if let cached = Self.artworkCache.object(forKey: key) {
                     image = cached
                 } else {
-                    image = await self.loadLocalArtwork(url: track.url)
+                    image = await LocalArtwork.image(for: track.url)
                     if let img = image { Self.artworkCache.setObject(img, forKey: key) }
                 }
             } else if let url = track.serverArtworkURL(size: 400) ?? Self.webArtworkURL(track.artworkThumb) {
@@ -1090,23 +1089,6 @@ class ModernMainWindowView: NSView {
         currentArtworkImage = nil
         currentArtworkTrackId = nil
         marqueeLayer.artworkImage = nil
-    }
-
-    private func loadLocalArtwork(url: URL) async -> NSImage? {
-        guard !Task.isCancelled else { return nil }
-        let asset = AVURLAsset(url: url)
-        do {
-            for format in [try await asset.load(.metadata),
-                           try await asset.loadMetadata(for: .id3Metadata),
-                           try await asset.loadMetadata(for: .iTunesMetadata)] {
-                for item in format {
-                    if item.commonKey == .commonKeyArtwork,
-                       let data = try? await item.load(.dataValue),
-                       let img = NSImage(data: data) { return img }
-                }
-            }
-        } catch {}
-        return nil
     }
 
     @objc private func trackDidFailToLoad(_ notification: Notification) {
