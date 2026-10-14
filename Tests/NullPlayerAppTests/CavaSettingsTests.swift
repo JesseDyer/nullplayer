@@ -354,12 +354,21 @@ final class CavaSettingsTests: XCTestCase {
 
         defaults.set(MainWindowVisMode.fire.rawValue, forKey: "mainWindowVisMode")
         defaults.set(MainWindowVisMode.cava.rawValue, forKey: "modernMainWindowVisMode")
+        defaults.set(SpectrumQualityMode.flame.rawValue, forKey: "spectrumQualityMode")
+        defaults.set("City Night", forKey: "visClassicLastProfileName.spectrumWindow")
         WindowManager.shared.writeClassicVisualizationDefaultKeys(
-            for: .all, defaults: defaults, includesMainWindowMode: false
+            for: .all, defaults: defaults, onlyIfUnset: true
         )
 
         XCTAssertEqual(defaults.string(forKey: "mainWindowVisMode"), MainWindowVisMode.fire.rawValue)
         XCTAssertEqual(defaults.string(forKey: "modernMainWindowVisMode"), MainWindowVisMode.cava.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "spectrumQualityMode"), SpectrumQualityMode.flame.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "visClassicLastProfileName.spectrumWindow"), "City Night")
+        // A key never written is seeded with Classic's default.
+        XCTAssertEqual(
+            defaults.string(forKey: "visClassicLastProfileName.mainWindow"),
+            WindowManager.classicVisClassicProfileName
+        )
     }
 
     func testClassicSkinRestorePreservesCavaAppearanceWhileExplicitLoadResetsIt() throws {

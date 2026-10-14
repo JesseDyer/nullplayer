@@ -50,7 +50,7 @@ final class WMPClassicVisualizationDefaultsTests: XCTestCase {
 
     /// The six keys the `.wmz` session was losing, pinned so a change to Classic's defaults cannot
     /// quietly widen what a reset or a Classic entry overwrites. A skin load writes the same keys
-    /// minus the two main-window modes (`includesMainWindowMode: false`).
+    /// only where a key was never written (`onlyIfUnset: true`).
     func testClassicDefaultsWriteTheSixScopedVisualizationKeys() throws {
         let suiteName = "WMPClassicVisualizationDefaultsTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

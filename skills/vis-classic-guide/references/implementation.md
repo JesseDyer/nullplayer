@@ -373,10 +373,13 @@ the outgoing family's shared profile keys:
   the shared Spectrum key (still holding Classic's or Original's profile) is re-matched once the
   skin's style resolves.
 
-`applyClassicVisualizationDefaults` — which runs at every launch in every mode, because the classic
-skin is loaded regardless — is gated by `appliesClassicVisualizationDefaults(family:)`, true for
-`.classic` only. It used to admit `.wal` (which answers false to `isRunningModernUI` and
-`isRunningWMPUI` alike), so every `.wal` launch reset the Spectrum window to vis_classic / "Purple Neon".
+`seedClassicVisualizationDefaults` runs at every launch in every mode, because the classic skin is
+loaded regardless, and is gated by `appliesClassicVisualizationDefaults(family:)`, true for `.classic`
+only. It used to admit `.wal` (which answers false to `isRunningModernUI` and `isRunningWMPUI` alike),
+so every `.wal` launch reset the Spectrum window to vis_classic / "Purple Neon". It writes only keys
+never saved before (`onlyIfUnset: true`) — a fresh install's fallbacks are Classic mode and the first
+profile alphabetically — and a Classic skin pick writes nothing: Classic skins carry no visualization
+settings, so rewriting them on a load only discarded the user's choice.
 
 Preserving instead (the old `loadPreferredSkin(for:)` default of `true`) carried classic's
 `vis_classic` mode and `"Purple Neon"` profile into a modern skin instead of applying Cava and

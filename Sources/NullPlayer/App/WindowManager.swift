@@ -5014,7 +5014,6 @@ class WindowManager {
             if resetCavaAppearance {
                 CavaSettings.resetAppearanceForSkinChange()
             }
-            applyClassicVisualizationDefaults(notify: true)
             notifySkinChanged()
             return true
         } catch {
@@ -5037,7 +5036,7 @@ class WindowManager {
             do {
                 currentSkin = try SkinLoader.shared.load(from: URL(fileURLWithPath: lastPath))
                 currentSkinPath = lastPath
-                applyClassicVisualizationDefaults(notify: false)
+                seedClassicVisualizationDefaults()
                 return
             } catch {
                 NSLog("Failed to restore last skin: \(error)")
@@ -5048,7 +5047,7 @@ class WindowManager {
         if let bundledURL = findBundledClassicSkin("NullPlayer-Silver") {
             do {
                 currentSkin = try SkinLoader.shared.load(from: bundledURL)
-                applyClassicVisualizationDefaults(notify: false)
+                seedClassicVisualizationDefaults()
                 return
             } catch {
                 NSLog("Failed to load bundled skin: \(error)")
@@ -5057,7 +5056,7 @@ class WindowManager {
         
         // 3. Fallback: unskinned native macOS rendering
         currentSkin = SkinLoader.shared.loadDefault()
-        applyClassicVisualizationDefaults(notify: false)
+        seedClassicVisualizationDefaults()
     }
     
     private func findBundledClassicSkin(_ name: String) -> URL? {
@@ -5110,7 +5109,6 @@ class WindowManager {
                 currentSkinPath = nil
                 UserDefaults.standard.removeObject(forKey: WindowManager.lastClassicSkinPathKey)
                 CavaSettings.resetAppearanceForSkinChange()
-                applyClassicVisualizationDefaults(notify: true)
                 notifySkinChanged()
                 return
             } catch {
@@ -5122,7 +5120,6 @@ class WindowManager {
         currentSkinPath = nil
         UserDefaults.standard.removeObject(forKey: WindowManager.lastClassicSkinPathKey)
         CavaSettings.resetAppearanceForSkinChange()
-        applyClassicVisualizationDefaults(notify: true)
         notifySkinChanged()
     }
 
@@ -5159,35 +5156,37 @@ class WindowManager {
     /// `VisualizationPreferences.reset` calls this when the classic UI is active so a
     /// reset restores classic's own defaults instead of the modern skin engine's
     /// current skin (which would wrongly apply e.g. NeonWave's "Lavender Pink Tips").
-    /// Classic skin loads pass `includesMainWindowMode: false`: every reader already treats a
-    /// missing mode as Spectrum, so a load has nothing to seed and must not override a mode
-    /// the user chose.
+    /// The Classic launch passes `onlyIfUnset: true`: it seeds a fresh install, whose fallbacks
+    /// (Classic mode in the Spectrum window, the first profile alphabetically) are not Classic's
+    /// defaults, and never overrides a choice the user already saved.
     /// The caller is responsible for posting the appropriate refresh notifications.
     func writeClassicVisualizationDefaultKeys(
         for scope: VisualizationPreferenceResetScope,
         defaults: UserDefaults = .standard,
-        includesMainWindowMode: Bool = true
+        onlyIfUnset: Bool = false
     ) {
+        func put(_ value: Any, _ key: String) {
+            if !onlyIfUnset || defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
         let classicProfile = Self.classicVisClassicProfileName
 
         if scope == .mainWindow || scope == .all {
-            if includesMainWindowMode {
-                let spectrumMode = MainWindowVisMode.spectrum.rawValue
-                defaults.set(spectrumMode, forKey: "mainWindowVisMode")
-                defaults.set(spectrumMode, forKey: "modernMainWindowVisMode")
-            }
-            defaults.set(classicProfile, forKey: "visClassicLastProfileName.mainWindow")
-            defaults.set(true, forKey: "visClassicFitToWidth.mainWindow")
+            put(MainWindowVisMode.spectrum.rawValue, "mainWindowVisMode")
+            put(MainWindowVisMode.spectrum.rawValue, "modernMainWindowVisMode")
+            put(classicProfile, "visClassicLastProfileName.mainWindow")
+            put(true, "visClassicFitToWidth.mainWindow")
         }
         if scope == .spectrumWindow || scope == .all {
-            defaults.set(SpectrumQualityMode.visClassicExact.rawValue, forKey: "spectrumQualityMode")
-            defaults.set(classicProfile, forKey: "visClassicLastProfileName.spectrumWindow")
-            defaults.set(true, forKey: "visClassicFitToWidth.spectrumWindow")
+            put(SpectrumQualityMode.visClassicExact.rawValue, "spectrumQualityMode")
+            put(classicProfile, "visClassicLastProfileName.spectrumWindow")
+            put(true, "visClassicFitToWidth.spectrumWindow")
         }
 
         // Legacy fallback keys are still read by VisClassicBridge.
-        defaults.set(classicProfile, forKey: "visClassicLastProfileName")
-        defaults.set(true, forKey: "visClassicFitToWidth")
+        put(classicProfile, "visClassicLastProfileName")
+        put(true, "visClassicFitToWidth")
     }
 
     /// Which families may have Classic's visualization defaults written over their session.
@@ -5201,7 +5200,11 @@ class WindowManager {
         family == .classic
     }
 
-    private func applyClassicVisualizationDefaults(notify: Bool) {
+    /// Seeds Classic's visualization defaults at launch, writing only keys never written before.
+    /// A Classic skin carries no visualization settings, so a skin load — at launch or a pick —
+    /// must not override what the user chose (M38); a reset or a switch into Classic still writes
+    /// all of them.
+    private func seedClassicVisualizationDefaults() {
         // Classic and modern skins are independent. WindowManager still loads the
         // remembered classic skin at startup so it is ready if the user switches UI
         // modes, but its visualization defaults must not overwrite modern scoped
@@ -5216,34 +5219,7 @@ class WindowManager {
         // skin loads at every launch in every mode, every `.wal` launch reset the Spectrum window to
         // "Purple Neon". `.wal` and `.wmz` now match a profile to the skin instead.
         guard Self.appliesClassicVisualizationDefaults(family: runningControllerFamily) else { return }
-
-        let classicProfile = Self.classicVisClassicProfileName
-        writeClassicVisualizationDefaultKeys(for: .all, defaults: .standard, includesMainWindowMode: false)
-
-        guard notify else { return }
-
-        NotificationCenter.default.post(name: NSNotification.Name("MainWindowVisChanged"), object: nil)
-        NotificationCenter.default.post(name: NSNotification.Name("SpectrumSettingsChanged"), object: nil)
-        NotificationCenter.default.post(
-            name: .visClassicProfileCommand,
-            object: nil,
-            userInfo: ["command": "load", "profileName": classicProfile, "target": "mainWindow"]
-        )
-        NotificationCenter.default.post(
-            name: .visClassicProfileCommand,
-            object: nil,
-            userInfo: ["command": "load", "profileName": classicProfile, "target": "spectrumWindow"]
-        )
-        NotificationCenter.default.post(
-            name: .visClassicProfileCommand,
-            object: nil,
-            userInfo: ["command": "fitToWidth", "enabled": true, "target": "mainWindow"]
-        )
-        NotificationCenter.default.post(
-            name: .visClassicProfileCommand,
-            object: nil,
-            userInfo: ["command": "fitToWidth", "enabled": true, "target": "spectrumWindow"]
-        )
+        writeClassicVisualizationDefaultKeys(for: .all, defaults: .standard, onlyIfUnset: true)
     }
     
     private func notifySkinChanged() {

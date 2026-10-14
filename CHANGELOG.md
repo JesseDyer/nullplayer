@@ -82,6 +82,9 @@
   as tracks and artists do. Art added through Edit Tags shows without a relaunch.
 - **Original Art and Audio Analysis windows drag with Hide Title Bars on** — their top edge drags
   the window again instead of opening the star rating or clicking into a pane.
+- **Classic keeps your visualization choices** — a Spectrum window mode or vis_classic profile
+  picked in Classic now survives a relaunch and a Classic skin pick instead of going back to
+  vis_classic / "Purple Neon". A reset and a switch into Classic still restore Classic's defaults.
 
 ## 0.32.2
 
