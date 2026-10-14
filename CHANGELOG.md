@@ -85,6 +85,9 @@
 - **Classic keeps your visualization choices** — a Spectrum window mode or vis_classic profile
   picked in Classic now survives a relaunch and a Classic skin pick instead of going back to
   vis_classic / "Purple Neon". A reset and a switch into Classic still restore Classic's defaults.
+- **Library Browser refresh icon in WMP, Winamp Modern and Audion skins** — the source bar's "F5"
+  label is now a refresh arrow, and the List / Cover Flow / Tiles buttons get a little more room.
+  Classic skins are unchanged.
 
 ## 0.32.2
 

@@ -337,7 +337,7 @@ class ClassicLibraryBrowserView: NSView {
         let prefixWidth = textWidth("Source: ")
         let minimumGap: CGFloat = 12
 
-        var rightWidth = trailingInset + textWidth("F5")
+        var rightWidth = trailingInset + refreshLabelWidth(textScale: textScale)
         if list.lens.hasItems {
             rightWidth += 12 + viewModeButtonsWidth(textScale: textScale, chromeScale: 1)
         }
@@ -870,7 +870,7 @@ class ClassicLibraryBrowserView: NSView {
             mode.drawIcon(in: icon, color: list.lens.mode == mode ? colors.currentText : colors.normalText,
                           context: context)
             coordinator.rects.viewModes.append((mode, icon.insetBy(dx: -1.5 * chromeScale, dy: -3 * textScale)))
-            x += side + 3 * chromeScale
+            x += side + viewModeGap(chromeScale: chromeScale)
         }
         return leadingX
     }
@@ -880,9 +880,20 @@ class ClassicLibraryBrowserView: NSView {
         (SkinElements.TextFont.charHeight + 2) * textScale
     }
 
+    private func refreshLabelWidth(textScale: CGFloat) -> CGFloat {
+        // The symbol pads itself inside its box, so it gets a larger one to match the view-mode icons.
+        winampModernStyle != nil ? viewModeIconSide(textScale: textScale) * 1.5
+            : ClassicLibraryTab.textWidth("F5", scale: textScale, style: nil)
+    }
+
     private func viewModeButtonsWidth(textScale: CGFloat, chromeScale: CGFloat) -> CGFloat {
         let count = CGFloat(LibraryViewMode.allCases.count)
-        return count * viewModeIconSide(textScale: textScale) + (count - 1) * 3 * chromeScale
+        return count * viewModeIconSide(textScale: textScale) + (count - 1) * viewModeGap(chromeScale: chromeScale)
+    }
+
+    /// A hosting skin's proportional font sits looser than the bitmap sheet, so its icons get more air.
+    private func viewModeGap(chromeScale: CGFloat) -> CGFloat {
+        (winampModernStyle != nil ? 6 : 3) * chromeScale
     }
     
     private func drawServerBar(in context: CGContext, drawBounds: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
@@ -924,11 +935,30 @@ class ClassicLibraryBrowserView: NSView {
             return
         }
 
-        // Right side: F5 refresh label, with the view-mode buttons before it
-        let refreshText = "F5"
-        let refreshTextWidth = ClassicLibraryTab.textWidth(refreshText, scale: textScale, style: winampModernStyle)
+        // Right side: refresh (F5 in classic, the modern browser's arrow icon in a hosting skin),
+        // with the view-mode buttons before it
+        let refreshTextWidth = refreshLabelWidth(textScale: textScale)
         let refreshX = barRect.maxX - refreshTextWidth - toolbarRightInset
-        drawScaledSkinText(refreshText, at: NSPoint(x: refreshX, y: textY), scale: textScale, renderer: renderer, in: context)
+        if winampModernStyle != nil {
+            let side = refreshLabelWidth(textScale: textScale)
+            let icon = NSRect(x: refreshX, y: textY - textScale - (side - viewModeIconSide(textScale: textScale)) / 2,
+                              width: side, height: side)
+            let config = NSImage.SymbolConfiguration(pointSize: side, weight: .bold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [accentTextColor(renderer)]))
+            if let symbol = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?
+                .withSymbolConfiguration(config) {
+                let fit = min(side / symbol.size.width, side / symbol.size.height)
+                let size = NSSize(width: symbol.size.width * fit, height: symbol.size.height * fit)
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+                symbol.draw(in: NSRect(x: icon.midX - size.width / 2, y: icon.midY - size.height / 2,
+                                       width: size.width, height: size.height),
+                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        } else {
+            drawScaledSkinText("F5", at: NSPoint(x: refreshX, y: textY), scale: textScale, renderer: renderer, in: context)
+        }
         // Under a corner close F5 owns its label plus a 2pt hit margin, so the close keeps the
         // corner beside it.
         let refreshWidth = closesFromCorner
