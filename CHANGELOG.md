@@ -80,6 +80,8 @@
   first track has no art shows another track's, an artist's art comes from their own albums rather
   than any track whose title contains their name, and a selected album falls back to a web cover
   as tracks and artists do. Art added through Edit Tags shows without a relaunch.
+- **Original Art and Audio Analysis windows drag with Hide Title Bars on** — their top edge drags
+  the window again instead of opening the star rating or clicking into a pane.
 
 ## 0.32.2
 
