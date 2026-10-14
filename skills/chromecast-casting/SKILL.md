@@ -299,9 +299,12 @@ http/proxy branch, is registered with `LocalMediaServer` like any local file, an
 `audio/flac`. `castNewTrack` passes `{ myGeneration == self.castTrackGeneration }`, so a superseded
 request does not start a render; its existing `currentGen1` guard covers the wait. A render holds
 the inflight queue, so a next/prev press waits behind at most one render, under the main window's
-activity bar (`MainWindowProviding.showActivity`, every skin). After a successful cast
-`EQCast.prefetchUpcoming(from:device:)` pre-renders `AudioEngine.upcomingIndices` (shuffle order,
-then wrap-around with repeat; it never realigns the shuffle order). `stopCasting` and
+activity bar (`MainWindowProviding.showActivity`, every skin). `castableFile` only answers; only a
+successful cast calls `EQCast.didCast(_:from:device:)`, which records the render being cast (the
+file Delete Cache keeps — a superseded or failed request must not replace it) and pre-renders the
+first 3 of `AudioEngine.upcomingIndices` (shuffle order, then wrap-around with repeat — except
+shuffle with repeat, which draws a new order at the wrap and so stops at the end; it never realigns
+the shuffle order). `stopCasting` and
 `stopCastingSync` stop the pre-render; `_stopCastingAndAwaitTeardownCore` does not, because the
 video-track switch runs it.
 
@@ -316,7 +319,7 @@ folder's `eqcast.json` maps file name → `{source, key, profileID, curve}`: a p
 edited in place under the same id, so a render is reused only while the whole curve matches.
 
 **Threading.** The actor resolves on its own `EQProfileStore(busyTimeout: 2)` connection — never the
-main thread's `shared` — so a whole-playlist pre-render does no SQLite reads on main; without the
+main thread's `shared` — so pre-rendering does no SQLite reads on main; without the
 busy timeout a read during a main-thread write would fail and read as Inherit. CastManager reads the
 engine on main and hands the actor tracks; UI updates (activity bar, `EQCast.usageBytes`) are
 fire-and-forget pushes to main. `eqcast.json` is read and written on the actor, so two renders in
@@ -329,7 +332,9 @@ original. `EQProfileKernel` runs the curve in 32k-frame chunks at the source's o
 samples are hard-clipped at ±1.0 and quantised to Int16 — Core Audio writes 16-bit FLAC only from an
 Int16 client format (Float32 gives 24-bit), and Sonos S1 decodes only 16-bit FLAC. The file is
 written as `<name>.part.flac` (`AVAudioFile` takes the type from the extension) and renamed into
-place. Callers for the same file share one render; progress is reported per 5% step and only ever
+place. Callers for the same file and curve share one render (`inFlight` holds the entry with the
+task); a request for a newer curve waits for the older render to finish, never joins it, so a profile
+edited mid-render is not cast with its old curve. Progress is reported per 5% step and only ever
 climbs. Delete Cache keeps the file being cast, because `LocalMediaServer` serves it by path.
 
 **Logs:** `[eqcast]` — rendering, rendered, reusing, and why a render failed.

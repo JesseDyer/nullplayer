@@ -372,8 +372,8 @@ other local effects are not.
   Plex, Jellyfin, Navidrome/Subsonic and Emby tracks are covered (server tracks are downloaded
   first). Radio, `.cue` tracks, video and sources with more than two channels are cast as before.
 - The first track waits for its render; the bar at the top of the main window shows *EQ Cast:
-  preparing … — first track takes a moment…* (or *downloading …*) with a percentage. The tracks
-  that play next, in shuffle order when shuffle is on, are rendered in the background while you
+  preparing … — first track takes a moment…* (or *downloading …*) with a percentage. The next
+  three tracks, in shuffle order when shuffle is on, are rendered in the background while you
   cast, so later tracks usually start at once.
 - A render is reused until the profile's curve changes; editing a profile re-renders what is coming
   up. Setting a track to **Off** or turning off **EQ Profiles** casts the original; its render stays.

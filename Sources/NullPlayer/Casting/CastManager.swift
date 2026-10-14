@@ -1189,7 +1189,7 @@ class CastManager {
         NSLog("CastManager: castTrack URL: %@, contentType: %@", finalCastURL.redacted, contentType)
         
         try await cast(to: device, url: finalCastURL, metadata: metadata, startPosition: startPosition)
-        await EQCast.prefetchUpcoming(from: resolvedAudioEngine, device: device.type)
+        await EQCast.didCast(eqFile, from: resolvedAudioEngine, device: device.type)
     }
     
     /// Cast a new track to the already connected device (for next/previous)
@@ -1500,7 +1500,7 @@ class CastManager {
                 // Sonos/DLNA don't provide status updates - start timer immediately
                 resolvedAudioEngine.startCastPlayback(from: 0)
             }
-            EQCast.prefetchUpcoming(from: resolvedAudioEngine, device: session.device.type)
+            EQCast.didCast(eqFile, from: resolvedAudioEngine, device: session.device.type)
             NotificationCenter.default.post(name: Self.playbackStateDidChangeNotification, object: nil)
 
             // Close the video player if it was showing a video cast that this audio cast supersedes.

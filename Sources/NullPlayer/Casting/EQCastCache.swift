@@ -48,7 +48,8 @@ actor EQCastCache {
     }
 
     private let resolver: EQProfileResolver
-    private var inFlight: [String: Task<URL?, Never>] = [:]
+    /// Keyed by path, with the entry being rendered: a profile edit keeps the path but changes the entry.
+    private var inFlight: [String: (entry: Entry, task: Task<URL?, Never>)] = [:]
     private var listeners: [String: [@Sendable (Phase, Int) -> Void]] = [:]
     /// The last step reported per in-flight path, so progress only climbs.
     private var reported: [String: Int] = [:]
@@ -73,15 +74,17 @@ actor EQCastCache {
     }
 
     /// The rendered file, or nil when it could not be made (the original is cast). Callers for the
-    /// same file share one render; `progress` gets each 5% step.
+    /// same file and curve share one render; `progress` gets each 5% step. A render of an older curve
+    /// is never joined: it finishes for its own callers, then this one starts.
     func render(_ track: Track, progress: (@Sendable (Phase, Int) -> Void)? = nil) async -> URL? {
         guard let target = target(for: track), let root = Self.folder else { return nil }
-        if isCurrent(target) { return target.file }
         let path = target.file.path
+        while let running = inFlight[path], running.entry != target.entry { _ = await running.task.value }
+        if isCurrent(target) { return target.file }
         if let progress { listeners[path, default: []].append(progress) }
-        if let running = inFlight[path] { return await running.value }
+        if let running = inFlight[path] { return await running.task.value }
         let task = Task { await perform(track, target, root: root) }
-        inFlight[path] = task
+        inFlight[path] = (target.entry, task)
         return await task.value
     }
 
@@ -99,13 +102,13 @@ actor EQCastCache {
     func stop() {
         prefetchTask?.cancel()
         prefetchTask = nil
-        inFlight.values.forEach { $0.cancel() }
+        inFlight.values.forEach { $0.task.cancel() }
     }
 
     /// Empties the folder except `inUse`, the file being cast: the media server reads it by path.
     func deleteCache(keeping inUse: URL?) async {
         stop()
-        for task in inFlight.values { _ = await task.value }
+        for running in inFlight.values { _ = await running.task.value }
         guard let root = Self.folder else { return }
         let keep = inUse.map { [$0, $0.deletingLastPathComponent().appendingPathComponent(Self.metadataName)] }?
             .map { $0.resolvingSymlinksInPath().path } ?? []
@@ -382,15 +385,19 @@ enum EQCast {
                 hideActivity()
             }
         }
-        castingFile = file
         return file
     }
 
-    /// After a cast: pre-render the tracks that play next, in play order.
-    static func prefetchUpcoming(from engine: AudioEngine, device: CastDeviceType) {
+    /// How many of the tracks that play next are pre-rendered after each cast.
+    private static let lookahead = 3
+
+    /// After a successful cast: `file` is the render now playing (nil for an original), which Delete
+    /// Cache keeps; then the next `lookahead` tracks in play order are pre-rendered.
+    static func didCast(_ file: URL?, from engine: AudioEngine, device: CastDeviceType) {
+        castingFile = file
         guard EQCastCache.isEnabled else { return }
         _ = profileObserver
-        let tracks = engine.upcomingIndices.map { engine.playlist[$0] }
+        let tracks = engine.upcomingIndices.prefix(lookahead).map { engine.playlist[$0] }
         upcoming = (tracks, device)
         Task { await EQCastCache.shared.prefetch(tracks, device: device) }
     }

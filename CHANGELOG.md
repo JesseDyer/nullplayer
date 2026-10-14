@@ -99,6 +99,10 @@
 - **Reference Tuning and the Equalizer shape streamed audio as they do local files** — on a
   server or radio stream the pitch shift now comes before the Equalizer, as it already did for
   local files, so the same EQ curve lands on the same notes whichever source is playing.
+- **EQ Cast renders only the next three tracks, and keeps up with profile edits** — the background
+  render covered the whole queue, downloading every server track; it now covers the next three. A
+  track whose profile is edited while it renders is cast with the edit, not the old curve, and
+  Delete Cache no longer removes the file a receiver is playing after a skipped or failed cast.
 
 ## 0.32.2
 
