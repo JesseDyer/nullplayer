@@ -257,6 +257,31 @@ see `Playlist.resolveEntry`.
 - Deduplication by normalized path; one-pass `isRegularFile`, `fileSize`, `contentModificationDate` resource-key reads.
 - `includePlaylists: Bool = false` (on both `discoverMedia` and `discoverMediaStreaming`) — when true, `.m3u`/`.pls`/`.m3u8` files are collected into `LocalFileDiscoveryResult.playlistFiles`. Only the library scan (`importMedia`) passes `true`. Playlists are a **third** classification: the early `guard isAudio || isVideo || isPlaylist` includes them, but they do **not** flow through the audio batch flush (`onAudioBatch`) and are **not** in the `allURLs` computed property (callers treat `allURLs` as importable audio/video — a `.m3u` must never be imported as a track).
 
+## Local Artwork
+
+`Utilities/LocalArtwork.swift` is the one resolver for a local file's cover, the local
+counterpart of `Track.serverArtworkURL`. Every view that draws local art calls it — the library
+browser rows and background, playlist row thumbnails, the Original playlist and main window, Now
+Playing (and so the Art window and `.wal` `<AlbumArt>`), WMP and the CLI. Never read
+`commonKeyArtwork` anywhere else: the nine copies it replaced disagreed on which metadata formats
+they read.
+
+- `image(for: url)` — the file's embedded art (common, ID3 and iTunes metadata), else its album's,
+  else a `cover` / `folder` / `front` / `album` `.jpg`/`.jpeg`/`.png` in its folder.
+- `image(forAlbum: albumId)` — the first of `tracksForAlbum` with embedded art, else a folder image
+  beside any of them. `image(forArtist:)` walks `albumsForArtist` — never a text search, which
+  matched "Yes" to "Yesterday".
+- `embeddedImage(in:)` / `embeddedImages(in:)` — the file's own pictures only, for the tag editor
+  (which must not show a sibling's art as the file's), the Art window's double-click cycling and
+  YouTube downloads.
+- A file's album comes from `MediaLibraryStore.albumId(containing:)`, which owns the
+  `"albumArtist|album"` key; a file the library has not scanned skips straight to its folder.
+- Results, misses included, are cached per file and per album and dropped on every
+  `MediaLibrary.libraryDidChangeNotification`, so art added through Edit Tags or found by a scan
+  shows without a relaunch. A `cover.jpg` dropped in from Finder shows after the next scan.
+- The browser keeps its own copy in `LibraryArtwork.cache` (`LibraryArtwork.cached`) under
+  `local:` / `local-album:` / `local-artist:` keys, which Flow / Tiles read synchronously.
+
 ## Video import
 
 Dropping a video on the main window or playlist plays it (`video-playback` § *Entry points*), as

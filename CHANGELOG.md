@@ -73,6 +73,13 @@
   row is loading, and picking a Subsonic folder or a Jellyfin or Emby library loads it once instead
   of two or three times. A Jellyfin show or season that reports no count no longer reads "0
   seasons", as in Emby.
+- **Local files without embedded art borrow their album's** — a local track with no art of its own
+  now shows the first embedded art among its album's tracks, else a `cover`, `folder`, `front` or
+  `album` image in its folder, everywhere art is drawn: the Library, the playlist, the Original
+  main window, the Art window, Now Playing, Windows Media Player skins and the CLI. An album whose
+  first track has no art shows another track's, an artist's art comes from their own albums rather
+  than any track whose title contains their name, and a selected album falls back to a web cover
+  as tracks and artists do. Art added through Edit Tags shows without a relaunch.
 
 ## 0.32.2
 

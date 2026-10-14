@@ -72,8 +72,12 @@ final class LibraryBrowserArt: NSObject {
             guard let coverArt else { return (nil, { nil }) }
             return ("subsonic:\(coverArt)", { await LibraryArtwork.subsonic(coverArt: coverArt, cacheKey: "subsonic:\(coverArt)") })
         }
+        /// Local art, kept in the browser's cache under `key` so Flow / Tiles can draw it at once.
+        func local(_ key: String, _ resolve: @escaping () async -> NSImage?) -> LibraryArtwork.ItemArtwork {
+            (key, { await LibraryArtwork.cached(key, resolve) })
+        }
         func local(_ url: URL) -> LibraryArtwork.ItemArtwork {
-            ("local:\(url.path)", { await LibraryArtwork.local(url: url) })
+            local("local:\(url.path)") { await LocalArtwork.image(for: url) }
         }
 
         switch item.type {
@@ -92,23 +96,9 @@ final class LibraryBrowserArt: NSObject {
                 return await LibraryArtwork.moviePoster(title: movie.title, year: movie.year)
             })
         case .localAlbum(let album):
-            // Resolve the album's first track off the main thread (inside the throttled loader) —
-            // never synchronously here, since this runs for every item on each list rebuild.
-            return (nil, {
-                let track: LibraryTrack?
-                if let first = album.tracks.first {
-                    track = first
-                } else {
-                    track = await Task.detached { MediaLibraryStore.shared.tracksForAlbum(album.id).first }.value
-                }
-                guard let track else { return nil }
-                return await LibraryArtwork.local(url: track.url)
-            })
+            return local("local-album:\(album.id)") { await LocalArtwork.image(forAlbum: album.id) }
         case .localArtist(let artist):
-            return (nil, {
-                guard let track = await Self.firstTrack(of: artist) else { return nil }
-                return await LibraryArtwork.local(url: track.url)
-            })
+            return local("local-artist:\(artist.name)") { await LocalArtwork.image(forArtist: artist.name) }
         case .localTrack(let track): return local(track.url)
         case .localMovie(let movie): return local(movie.url)
         case .localEpisode(let episode): return local(episode.url)
@@ -142,21 +132,20 @@ final class LibraryBrowserArt: NSObject {
         }
     }
 
-    private static func firstTrack(of artist: Artist) async -> LibraryTrack? {
-        await Task.detached { MediaLibraryStore.shared.searchTracks(query: artist.name, limit: 1, offset: 0).first }.value
-    }
-
-    /// A local track's or artist's art, else an album cover found on the web.
+    /// A local track's, album's or artist's art, else an album cover found on the web.
     private func localArtworkOrWeb(_ item: LibraryBrowserItem) async -> NSImage? {
         if let image = await itemArtwork(for: item).load() { return image }
-        let track: LibraryTrack?
         switch item.type {
-        case .localTrack(let localTrack): track = localTrack
-        case .localArtist(let artist): track = await Self.firstTrack(of: artist)
-        default: track = nil
+        case .localTrack(let track):
+            return await LibraryArtwork.web(artist: track.artist, album: track.album, title: track.title)
+        case .localAlbum(let album):
+            return await LibraryArtwork.web(artist: album.artist, album: album.name, title: nil)
+        case .localArtist(let artist):
+            let album = await Task.detached { MediaLibraryStore.shared.albumsForArtist(artist.name).first }.value
+            return await LibraryArtwork.web(artist: artist.name, album: album?.name, title: nil)
+        default:
+            return nil
         }
-        guard let track else { return nil }
-        return await LibraryArtwork.web(artist: track.artist, album: track.album, title: track.title)
     }
 
     // MARK: - Background
@@ -283,7 +272,7 @@ final class LibraryBrowserArt: NSObject {
             guard let itemId = track.artworkThumb else { return nil }
             return await LibraryArtwork.emby(itemId: itemId)
         } else if track.url.isFileURL {
-            if let image = await LibraryArtwork.local(url: track.url) { return image }
+            if let image = await LocalArtwork.image(for: track.url) { return image }
             if track.mediaType == .video { return await LibraryArtwork.moviePoster(title: track.title, year: nil) }
             return await LibraryArtwork.web(artist: track.artist, album: track.album, title: track.title)
         } else if RadioManager.shared.isActive {
@@ -296,7 +285,7 @@ final class LibraryBrowserArt: NSObject {
 
     private func selectionArtwork(_ item: LibraryBrowserItem) async -> NSImage? {
         switch item.type {
-        case .localTrack, .localArtist:
+        case .localTrack, .localAlbum, .localArtist:
             return await localArtworkOrWeb(item)
         case .subsonicPlaylist(let playlist):
             guard let coverArt = playlist.coverArt else { return nil }
@@ -314,7 +303,7 @@ final class LibraryBrowserArt: NSObject {
             // A download carries its own embedded art; otherwise the 16:9 thumbnail.
             var image: NSImage?
             if let fileURL = YouTubeManager.shared.coverArtFile(for: video.videoId) {
-                image = await LibraryArtwork.local(url: fileURL)
+                image = await LocalArtwork.embeddedImage(in: fileURL)
             }
             if image == nil, let thumb = video.thumbnailURL {
                 image = await LibraryArtwork.remote(urlString: thumb.absoluteString, cacheNamespace: "youtube")
@@ -323,7 +312,7 @@ final class LibraryBrowserArt: NSObject {
         case .youtubeChannel(let channel):
             guard let avatar = channel.avatarURL(side: 512) else { return nil }
             return await LibraryArtwork.remote(urlString: avatar.absoluteString, cacheNamespace: "youtube")?.squareCenterCropped()
-        case .movie, .episode, .album, .artist, .show, .season, .track, .localAlbum,
+        case .movie, .episode, .album, .artist, .show, .season, .track,
              .subsonicTrack, .subsonicAlbum, .subsonicArtist,
              .jellyfinTrack, .jellyfinAlbum, .jellyfinArtist, .jellyfinMovie, .jellyfinShow, .jellyfinSeason, .jellyfinEpisode,
              .embyTrack, .embyAlbum, .embyArtist, .embyMovie, .embyShow, .embySeason, .embyEpisode:

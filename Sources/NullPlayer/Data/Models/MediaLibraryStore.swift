@@ -1162,6 +1162,11 @@ final class MediaLibraryStore {
         }
     }
 
+    /// The `tracksForAlbum` key of the album `url` belongs to; nil for a file not in the library.
+    func albumId(containing url: URL) -> String? {
+        track(forURL: url).map { "\($0.albumArtist ?? "")|\($0.album ?? "Unknown Album")" }
+    }
+
     func trackCount() -> Int {
         guard let db = db else { return 0 }
         do {
