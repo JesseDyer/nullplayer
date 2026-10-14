@@ -2930,6 +2930,9 @@ class ContextMenuBuilder {
             outputMenu.addItem(refreshCastItem)
         }
 
+        outputMenu.addItem(NSMenuItem.separator())
+        MainActor.assumeIsolated { outputMenu.addItem(EQCastMenu.item()) }
+
         return outputMenu
     }
     
@@ -3172,7 +3175,10 @@ class ContextMenuBuilder {
                 outputMenu.addItem(deviceItem)
             }
         }
-        
+
+        outputMenu.addItem(NSMenuItem.separator())
+        MainActor.assumeIsolated { outputMenu.addItem(EQCastMenu.item()) }
+
         outputItem.submenu = outputMenu
         return outputItem
     }

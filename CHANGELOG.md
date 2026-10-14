@@ -28,6 +28,14 @@
   fader caps and response graph glow on a dark skin. Faders carry dB notches, the preamp has dB
   guides, HEADROOM, SAVE and RENAME are greyed when they would do nothing, and **View** switches
   the faceplate.
+- **EQ Cast: cast with your EQ profiles** — **Output ▸ EQ Cast** renders a track with its EQ
+  profile into a FLAC in a folder you choose and casts that to Sonos or Chromecast, so the
+  profile is no longer lost when casting. Covers local files and Plex, Jellyfin, Navidrome/Subsonic
+  and Emby tracks. The first track waits for its render under a progress bar at the top of the main
+  window; the tracks that play next are rendered in the background while you cast. A render is
+  reused until its profile's curve changes. The menu shows the cache's size, opens the folder and
+  deletes the cache (keeping the track being cast). Only the profile is rendered, not the
+  Equalizer window's EQ.
 - **Docking no longer flashes a large outline in Original skins** — docking or undocking a window
   briefly showed the group's old drop shadow stretched to its new size.
 - **An active tab in Original-Metal lights up as the green display** — in the Library and the
@@ -91,6 +99,14 @@
 - **Reference Tuning and the Equalizer shape streamed audio as they do local files** — on a
   server or radio stream the pitch shift now comes before the Equalizer, as it already did for
   local files, so the same EQ curve lands on the same notes whichever source is playing.
+- **EQ Cast renders only the next three tracks, and keeps up with profile edits** — the background
+  render covered the whole queue, downloading every server track; it now covers the next three. A
+  track whose profile is edited while it renders is cast with the edit, not the old curve, and
+  Delete Cache no longer removes the file a receiver is playing after a skipped or failed cast.
+- **Stopping a cast during its EQ Cast render stays stopped** — stopping while the first track
+  rendered still cast the original; it no longer does, and a render waiting on an older curve no
+  longer starts after the stop. With repeat on (and shuffle off), EQ Cast no longer pre-renders
+  tracks that will not play next.
 
 ## 0.32.2
 

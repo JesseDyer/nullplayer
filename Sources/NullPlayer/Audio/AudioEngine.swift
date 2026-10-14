@@ -1257,7 +1257,18 @@ class AudioEngine {
         guard repeatEnabled else { return nil }
         return preparedRepeatShuffleOrder().first
     }
-    
+
+    /// The tracks still to play, in play order: the rest of the shuffle order (or of the list).
+    /// Repeat without shuffle is repeat-one, so only the current track. Shuffle with repeat stops at
+    /// the end: the wrap draws a new order (`preparedRepeatShuffleOrder`). Reads only — nothing is realigned.
+    var upcomingIndices: [Int] {
+        if repeatEnabled && !shuffleEnabled { return playlist.indices.contains(currentIndex) ? [currentIndex] : [] }
+        let shuffled = shuffleEnabled && shufflePlaybackOrder.count == playlist.count
+        let order = shuffled ? shufflePlaybackOrder : Array(playlist.indices)
+        let position = min(max(shuffled ? shufflePlaybackPosition : currentIndex, -1), order.count - 1)
+        return Array(order[(position + 1)...])
+    }
+
     @objc private func handleSpectrumSettingsChanged() {
         if let saved = UserDefaults.standard.string(forKey: "spectrumNormalizationMode"),
            let mode = SpectrumNormalizationMode(rawValue: saved) {

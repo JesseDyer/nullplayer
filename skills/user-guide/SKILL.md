@@ -270,6 +270,7 @@ Import discovery is now unified across classic + modern entry points (main windo
 - Group management while casting
 - Local file streaming via embedded server
 - Network stream proxying for Subsonic/Jellyfin
+- EQ profiles via **Output ▸ EQ Cast** (see *EQ Cast*)
 
 ### Chromecast
 - Audio and video casting
@@ -358,7 +359,30 @@ Equalizer window never changes a profile, and a profile never changes it.
   **File Info** ends with an *EQ Profile:* line (e.g. `Warm (album)`, `Off (track)`, `None`).
 - **Turning it off — Playback ▸ EQ Profiles** (on by default): off, no assigned profile is applied;
   assignments are kept. The Studio still plays its edit while open.
-- Profiles do not apply while casting, or to video.
+- Profiles do not apply while casting unless EQ Cast is on (below), and never to video.
+
+### EQ Cast
+Casts a track with its EQ profile. Sonos and Chromecast play the original file, so without
+this the profile is lost when casting. Only the profile is rendered: the Equalizer window's EQ and
+other local effects are not.
+
+- **Output ▸ EQ Cast ▸ Enabled** (off by default). Turning it on with no folder chosen asks for one
+  first. Turning it off casts originals again and keeps the rendered files.
+- A track with a profile is rendered into a FLAC in the cache folder, then cast. Local files and
+  Plex, Jellyfin, Navidrome/Subsonic and Emby tracks are covered (server tracks are downloaded
+  first). Radio, `.cue` tracks, video and sources with more than two channels are cast as before.
+- The first track waits for its render; the bar at the top of the main window shows *EQ Cast:
+  preparing … — first track takes a moment…* (or *downloading …*) with a percentage. The next
+  three tracks, in shuffle order when shuffle is on, are rendered in the background while you
+  cast, so later tracks usually start at once.
+- A render is reused until the profile's curve changes; editing a profile re-renders what is coming
+  up. Setting a track to **Off** or turning off **EQ Profiles** casts the original; its render stays.
+- To Sonos, files Sonos can't play (ALAC, AIFF, above 48 kHz) are skipped as before and never
+  rendered. Renders are 16-bit, so hot boosts can clip; lower the preamp (**Headroom**) if you hear it.
+- **Cache Size** shows the folder's size. **Choose Cache Folder…** moves future renders (the old
+  files stay put; a folder the library scans is warned about, since renders would be imported as
+  duplicates). **Show in Finder** opens it. **Delete Cache…** removes every render except the one
+  being cast.
 
 ### Playback Options
 - **Gapless Playback**: Seamless track transitions (local files)
