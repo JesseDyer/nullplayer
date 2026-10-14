@@ -289,7 +289,7 @@ Playback Speed is also owned by `PitchTuningController`, but it is a tempo/time-
 
 Local graph: `playerNode + crossfadePlayerNode → mixerNode → profileNode → localPitchNode → eqNode → WOW → mainMixerNode` (the profile node is EQ Profiles', below). Placing the pitch node **after** the mixer means a single node handles both the primary and crossfade players, and the spectrum tap on `mixerNode` keeps capturing pre-pitch (source) frequencies — the analyzer shows the source content's spectrum, not the shifted output. This is a deliberate trade-off; moving the tap onto `localPitchNode` would invert it.
 
-Streaming graph: each `StreamingAudioPlayer` receives its own node from `PitchTuningController.makeStreamingPitchNode()` and attaches it via `AudioStreaming.AudioPlayer.attach(node:)` after the EQ node. These streaming pitch nodes only carry Reference Tuning cents: they always keep `node.rate = 1.0`. Streaming tempo is applied through AudioStreaming's own private `rateNode` via `StreamingAudioPlayer.rate` / `AudioPlayer.rate`. This avoids double-applying rate when Reference Tuning and Playback Speed are used together.
+Streaming graph: each `StreamingAudioPlayer` receives its own node from `PitchTuningController.makeStreamingPitchNode()` and attaches it between the profile node and the EQ node, the same place as the local chain (AudioStreaming wires custom nodes in attach order). These streaming pitch nodes only carry Reference Tuning cents: they always keep `node.rate = 1.0`. Streaming tempo is applied through AudioStreaming's own private `rateNode` via `StreamingAudioPlayer.rate` / `AudioPlayer.rate`. This avoids double-applying rate when Reference Tuning and Playback Speed are used together.
 
 When `AudioEngine.setPlaybackSpeed(_:)` changes the rate, it updates the controller, persists the preference, applies the rate to the active primary streaming player, and applies it to the crossfade streaming player if one exists. Newly-created streaming players must immediately inherit `tuningController.rate`.
 
@@ -346,7 +346,8 @@ two stages in series, both always heard: 31 graphic bands, then a 4-band paramet
 
 - Local: `mixerNode → profileNode → localPitchNode → eqNode → WOW → mainMixerNode`. The spectrum and
   full-stereo taps on `mixerNode` are therefore **pre-profile**.
-- Streaming: `player.attach(nodes: [balanceNode, profileNode, eqNode])`, the node handed in like
+- Streaming: `player.attach(nodes: [balanceNode, profileNode, pitchNode, eqNode, wowNode])` — the
+  local order, since AudioStreaming chains in attach order; the profile node is handed in like
   `pitchNode`/`wowNode`. AudioStreaming's `frameFiltering` reads `engine.mainMixerNode`, so the
   streaming feeds are **post-profile, post-EQ, post-SRS**.
 - Casting and video have no local graph, so no profile.

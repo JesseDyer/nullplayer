@@ -88,6 +88,9 @@
 - **Library Browser refresh icon in WMP, Winamp Modern and Audion skins** — the source bar's "F5"
   label is now a refresh arrow, and the List / Cover Flow / Tiles buttons get a little more room.
   Classic skins are unchanged.
+- **Reference Tuning and the Equalizer shape streamed audio as they do local files** — on a
+  server or radio stream the pitch shift now comes before the Equalizer, as it already did for
+  local files, so the same EQ curve lands on the same notes whichever source is playing.
 
 ## 0.32.2
 
