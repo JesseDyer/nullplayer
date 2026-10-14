@@ -135,7 +135,7 @@ The menu is built and handled by `CavaPresenter` itself (an `NSObject` with `@ob
 ## Persistence (AppStateManager)
 
 - **Window visibility/frame:** Visibility is restored in either UI mode. The exact saved frame is restored only when the saved and running UI modes match; otherwise Cava opens at the target mode's default stack position. During a live cross-family skin switch, a detached Cava window keeps its exact floating frame through the temporary UI Size collapse, including when Compact Window is the active main surface; docked Cava geometry is recomputed with the target stack.
-- **Durable preferences:** `CavaSettings` (UserDefaults) — mode selection, bar count, gradient colors — persist independently of Remember State
+- **Durable preferences:** `CavaSettings` (UserDefaults) — mode selection, bar count, gradient colors — persist independently of Save State on Quit
 - **Restoration:** On launch, if Cava was visible, `showCava(at:)` repositions it at the saved frame (or default stack position if no frame saved)
 
 ## Settings (CavaSettings)

@@ -393,7 +393,7 @@ other local effects are not.
 - **SRS**: **WOW Effect** (stereo widening) and **TruBass** (bass enhancement), each Off / 25% / 50% / 75% / 100%, plus a **Headphones** toggle that tunes TruBass for headphones (off = normal speakers). App-wide in every skin, shared with a `.wmz`'s SRS controls, persisted across launches, unavailable while casting. DSP: `../wmp-skin-guide/reference/audio-enhancements.md`.
 - **EQ Profiles**: on/off for assigned EQ profiles; see *EQ Profiles* above. Unavailable while casting.
 - **Balance**: Stereo pan submenu (slider plus Left / Center / Right presets), backed by `engine.balance` and mirrored by the classic Balance Slider sprite. Gives Original and Original-Metal UI and menu-only/Compact workflows access to balance without a face slider. Persists across launches.
-- **Remember State on Quit**: Restores window layout, audio/EQ state, and playlist contents, but not the selected track, seek position, or playing state. See `../app-state/SKILL.md` for the complete persistence and reset policy.
+- **Save State on Quit**: Restores window layout, audio/EQ state, and playlist contents, but not the selected track, seek position, or playing state. See `../app-state/SKILL.md` for the complete persistence and reset policy.
 
 ### Sleep Timer
 Accessible via **Playback > Sleep Timer** (or the right-click context menu).

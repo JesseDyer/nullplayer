@@ -5,11 +5,11 @@ description: NullPlayer session-state restoration, AppStateManager, AppPersisten
 
 # App State
 
-## Remember State On Quit
+## Save State on Quit
 
 `AppStateManager` saves and restores session state (v2) for window visibility and layout, audio and EQ state, and playlist contents. It intentionally does not save or restore the selected or current track, seek position, or playing state, so launch starts paused with no track loaded solely because state was restored.
 
-Remember State is **on by default** (`register(defaults:)`; an explicit menu choice wins). Saving is not
+Save State on Quit is **on by default** (`register(defaults:)`; an explicit menu choice wins). Saving is not
 only on quit: power loss, a crash or a force quit never reach `applicationWillTerminate`, so the
 launch calls `startAutosave` from the `restoreSettingsState` completion in `AppDelegate`, once both
 restores have applied — every 10 s, plus before system sleep and power-off. Never start it earlier: it
@@ -50,7 +50,7 @@ When adding state:
 
 EQ profiles are not session state. Profiles and their assignments live in their own SQLite
 database, `~/Library/Application Support/NullPlayer/eq_profiles.db` (`EQProfileStore`; schema in
-`audio-system` § *EQ Profiles*), read whatever Remember State says — an assignment is a standing default. Their
+`audio-system` § *EQ Profiles*), read whatever Save State on Quit says — an assignment is a standing default. Their
 preferences are UserDefaults: `eqProfilesEnabled` (default on), `equalizerStudioFaceplate`,
 `equalizerStudioLinked` (default on), `equalizerStudioMode` (`graphic` by default), and EQ Cast's
 `eqCastEnabled` (default off) and `eqCastFolder` (a path; the rendered files and their `eqcast.json`
