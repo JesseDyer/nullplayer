@@ -2,7 +2,7 @@ import AppKit
 import NullPlayerCore
 
 /// Manages saving and restoring the complete application state.
-/// When "Remember State On Quit" is enabled (context menu toggle), saves app state
+/// When "Save State on Quit" is enabled (context menu toggle), saves app state
 /// on quit and restores on launch.
 ///
 /// ## Saved State (AppState struct, v2)

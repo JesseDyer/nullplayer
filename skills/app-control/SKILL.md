@@ -122,7 +122,7 @@ a past session, silently.
 - It quits any running NullPlayer first — including another session's. Say so before using it
   while someone else's run is up.
 - **Nothing to restore afterwards.** Session restoration is disabled with the *launch argument*
-  `-rememberStateEnabled NO`, never a `defaults write`, so the saved Remember State is untouched
+  `-rememberStateEnabled NO`, never a `defaults write`, so the saved Save State on Quit choice is untouched
   and there is no restore trap to race. (The old recipes' trap ran the instant a non-interactive
   `read </dev/tty` failed — restoring the previous skin and `rememberStateEnabled=1` while the app
   was still starting. That was the wrong-skin bug.)
@@ -253,7 +253,7 @@ read -r WID _ X Y W H _ < <("$WH" windows --pid "$PID" --size 289x283)   # the s
   during load and then hidden". The hiding was the harness's own `closeaux`. Before blaming the
   app for a window that appears or vanishes, check what the previous run's toggles left behind.
   `closeaux` unticks **every** checked Windows-menu item past Main Window, so it also turns off
-  **Save State on Exit**: a run that relies on quit-and-restore must close windows by toggling only
+  **Save State on Quit**: a run that relies on quit-and-restore must close windows by toggling only
   the `windowitems` rows whose checked column is `1` (2026-10-08, M20: the saved state silently
   stopped updating).
 - **A contextual menu is not drivable. That is Route D.**

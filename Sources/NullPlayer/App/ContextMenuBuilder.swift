@@ -93,8 +93,8 @@ class ContextMenuBuilder {
         menu.addItem(minimizeAll)
         menu.addItem(NSMenuItem.separator())
 
-        // Exit
-        let exit = NSMenuItem(title: "Exit", action: #selector(MenuActions.exit), keyEquivalent: "")
+        // Quit
+        let exit = NSMenuItem(title: "Quit", action: #selector(MenuActions.exit), keyEquivalent: "")
         exit.target = MenuActions.shared
         menu.addItem(exit)
 
@@ -127,7 +127,7 @@ class ContextMenuBuilder {
     }
 
     /// Winamp's File menu is its "get something to play" entry point, which here is the two openers
-    /// `MenuActions` already owns plus the URL ripper, and Exit at the foot where Winamp puts it.
+    /// `MenuActions` already owns plus the URL ripper, and Quit at the foot where Winamp puts it.
     private static func buildWinampModernFileMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -139,7 +139,7 @@ class ContextMenuBuilder {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let exit = NSMenuItem(title: "Exit", action: #selector(MenuActions.exit), keyEquivalent: "")
+        let exit = NSMenuItem(title: "Quit", action: #selector(MenuActions.exit), keyEquivalent: "")
         exit.target = MenuActions.shared
         menu.addItem(exit)
         return menu
@@ -272,7 +272,7 @@ class ContextMenuBuilder {
 
         menu.addItem(NSMenuItem.separator())
 
-        let rememberState = NSMenuItem(title: "Save State on Exit", action: #selector(MenuActions.toggleRememberState), keyEquivalent: "")
+        let rememberState = NSMenuItem(title: "Save State on Quit", action: #selector(MenuActions.toggleRememberState), keyEquivalent: "")
         rememberState.target = MenuActions.shared
         rememberState.state = AppStateManager.shared.isEnabled ? .on : .off
         menu.addItem(rememberState)
@@ -339,7 +339,7 @@ class ContextMenuBuilder {
 
         menu.addItem(NSMenuItem.separator())
 
-        let rememberState = NSMenuItem(title: "Remember State On Quit", action: #selector(MenuActions.toggleRememberState), keyEquivalent: "")
+        let rememberState = NSMenuItem(title: "Save State on Quit", action: #selector(MenuActions.toggleRememberState), keyEquivalent: "")
         rememberState.target = MenuActions.shared
         rememberState.state = AppStateManager.shared.isEnabled ? .on : .off
         menu.addItem(rememberState)
@@ -4967,7 +4967,7 @@ class MenuActions: NSObject {
     @objc func resetSavedState() {
         let alert = NSAlert()
         alert.messageText = "Reset Saved State?"
-        alert.informativeText = "This clears only the Remember State on Quit snapshot used to restore windows and playlist contents on launch. Preferences such as skins, visualization settings, library columns, server accounts, and compact mode are not changed."
+        alert.informativeText = "This clears only the Save State on Quit snapshot used to restore windows and playlist contents on launch. Preferences such as skins, visualization settings, library columns, server accounts, and compact mode are not changed."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Reset")
         alert.addButton(withTitle: "Cancel")

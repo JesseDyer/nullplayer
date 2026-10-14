@@ -30,7 +30,7 @@ Dedicated Metal-based spectrum analyzer providing larger, more detailed view tha
 Participates in the docking system with Main, EQ, and Playlist:
 - Docks and moves with the window group
 - Opens below the current vertical stack
-- State saved with "Remember State on Quit"
+- State saved with "Save State on Quit"
 
 ## Quality Modes
 

@@ -107,6 +107,8 @@
   rendered still cast the original; it no longer does, and a render waiting on an older curve no
   longer starts after the stop. With repeat on (and shuffle off), EQ Cast no longer pre-renders
   tracks that will not play next.
+- **Context menus use macOS naming** — "Exit" is now "Quit", and both state menu items read
+  "Save State on Quit" ([#554](https://github.com/ad-repo/nullplayer/issues/554)).
 
 ## 0.32.2
 
