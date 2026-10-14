@@ -52,7 +52,9 @@ EQ profiles are not session state. Profiles and their assignments live in their 
 database, `~/Library/Application Support/NullPlayer/eq_profiles.db` (`EQProfileStore`; schema in
 `audio-system` § *EQ Profiles*), read whatever Remember State says — an assignment is a standing default. Their
 preferences are UserDefaults: `eqProfilesEnabled` (default on), `equalizerStudioFaceplate`,
-`equalizerStudioLinked` (default on), `equalizerStudioMode` (`graphic` by default). Only the Equalizer Studio window is in `AppState`
+`equalizerStudioLinked` (default on), `equalizerStudioMode` (`graphic` by default), and EQ Cast's
+`eqCastEnabled` (default off) and `eqCastFolder` (a path; the rendered files and their `eqcast.json`
+live there, not in Application Support). Only the Equalizer Studio window is in `AppState`
 (`isEqualizerStudioVisible`, `equalizerStudioWindowFrame`, `decodeIfPresent`); it is not a
 centre-stack window. Its full saved frame is restored (`setFrame`, then grown to the running
 family's minimum), but only when the saved UI mode matches, as for every window; otherwise it opens

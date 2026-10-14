@@ -14,6 +14,8 @@ NullPlayer implements Google Cast Protocol v2 for casting audio and video to Chr
 | `Casting/CastProtocol.swift` | Protocol implementation, message encoding/decoding, session controller |
 | `Casting/ChromecastManager.swift` | Device discovery (mDNS), connection management, public API |
 | `Casting/CastManager.swift` | High-level casting coordinator for all device types |
+| `Casting/EQCastCache.swift` | EQ Cast: the render cache and its `EQCast` seam (see *EQ Cast*) |
+| `App/EQCastMenu.swift` | **Output ▸ EQ Cast ▸** |
 | `scripts/test_chromecast.swift` | Standalone test script for debugging |
 
 ## Discovery
@@ -283,6 +285,54 @@ the range handler and the full-file handler must stream.
   yields no bytes leaves the cast client waiting for a body that will never arrive. Subsequent read
   errors propagate through the body sequence so the connection fails instead of ending as a false
   successful short response.
+
+## EQ Cast
+
+Receivers play the raw file, so a track's EQ profile is lost when it is cast. EQ Cast (**Output ▸
+EQ Cast**, one global toggle, all device types) renders the track with its resolved profile into a
+FLAC in a user-picked folder and casts that instead. Only the profile is rendered — not the
+Equalizer window's EQ or other local DSP. User-facing behaviour: `user-guide` § *EQ Cast*.
+
+**Seam.** `CastManager.castTrack` and `castNewTrack` call
+`EQCast.castableFile(for:device:generation:)` before their URL block; a non-nil file skips the
+http/proxy branch, is registered with `LocalMediaServer` like any local file, and is cast as
+`audio/flac`. `castNewTrack` passes `{ myGeneration == self.castTrackGeneration }`, so a superseded
+request does not start a render; its existing `currentGen1` guard covers the wait. A render holds
+the inflight queue, so a next/prev press waits behind at most one render, under the main window's
+activity bar (`MainWindowProviding.showActivity`, every skin). After a successful cast
+`EQCast.prefetchUpcoming(from:device:)` pre-renders `AudioEngine.upcomingIndices` (shuffle order,
+then wrap-around with repeat; it never realigns the shuffle order). `stopCasting` and
+`stopCastingSync` stop the pre-render; `_stopCastingAndAwaitTeardownCore` does not, because the
+video-track switch runs it.
+
+**Cache** (`actor EQCastCache`). Settings are UserDefaults `eqCastEnabled` and `eqCastFolder`.
+`cached(_:device:)` checks, cheapest first: enabled, folder set, audio, not radio, not a cue
+sub-track; then `EQProfileResolver.activeProfile(for:)` (nil → `.skip`, nothing deleted); then, for
+Sonos only, `isSonosCompatible` with `resolveSonosSampleRate`, so an excluded file is never
+pre-rendered. A file lives at `<folder>/<eqProfileSource>/<artist>/<album>/<Title> [<hash8>].flac`
+(components through `YouTubeManager.sanitizedPathComponent`; `hash8` is SHA-256 of
+`source \0 track key`, since `Track` has no track number and `hashValue` is per launch). The album
+folder's `eqcast.json` maps file name → `{source, key, profileID, curve}`: a profile's curve is
+edited in place under the same id, so a render is reused only while the whole curve matches.
+
+**Threading.** The actor resolves on its own `EQProfileStore(busyTimeout: 2)` connection — never the
+main thread's `shared` — so a whole-playlist pre-render does no SQLite reads on main; without the
+busy timeout a read during a main-thread write would fail and read as Inherit. CastManager reads the
+engine on main and hands the actor tracks; UI updates (activity bar, `EQCast.usageBytes`) are
+fire-and-forget pushes to main. `eqcast.json` is read and written on the actor, so two renders in
+one folder cannot race on it.
+
+**Render.** A server track is downloaded first (`URLSession.download`, from
+`PlexManager.getCastableStreamURL ?? track.url`, into a temp file in the cache root). `AVAudioFile`
+decodes; more than two channels or an undecodable source (e.g. Opus) fails, and a failure casts the
+original. `EQProfileKernel` runs the curve in 32k-frame chunks at the source's own rate, then the
+samples are hard-clipped at ±1.0 and quantised to Int16 — Core Audio writes 16-bit FLAC only from an
+Int16 client format (Float32 gives 24-bit), and Sonos S1 decodes only 16-bit FLAC. The file is
+written as `<name>.part.flac` (`AVAudioFile` takes the type from the extension) and renamed into
+place. Callers for the same file share one render; progress is reported per 5% step and only ever
+climbs. Delete Cache keeps the file being cast, because `LocalMediaServer` serves it by path.
+
+**Logs:** `[eqcast]` — rendering, rendered, reusing, and why a render failed.
 
 ## Key Implementation Gotcha: Data Slice Indexing
 

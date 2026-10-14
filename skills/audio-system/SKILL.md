@@ -350,7 +350,8 @@ two stages in series, both always heard: 31 graphic bands, then a 4-band paramet
   local order, since AudioStreaming chains in attach order; the profile node is handed in like
   `pitchNode`/`wowNode`. AudioStreaming's `frameFiltering` reads `engine.mainMixerNode`, so the
   streaming feeds are **post-profile, post-EQ, post-SRS**.
-- Casting and video have no local graph, so no profile.
+- Casting and video have no local graph, so no profile. EQ Cast casts a render of the track with its
+  profile instead (`chromecast-casting` § *EQ Cast*).
 
 The Studio's analyser (`StudioRTA`, on `.audioStereoPCMFullDataUpdated`) follows from that: for a
 local file it adds the auditioned curve to the pre-profile feed; for a stream it shows the feed as
@@ -377,7 +378,9 @@ and the global toggle (`eqProfilesEnabled`, default on, in the `UserDefaults` it
 to the database; each change writes only its rows, bumps `revision` and posts `.eqProfilesDidChange`:
 the controller re-resolves, and `WindowManager` runs `reloadPlaylistViews()`, which repaints every
 queue's row marker — Classic, Modern, the `.wal` playlist and a `.wmz` `<PLAYLIST>` (its host
-snapshot is refreshed first, since the marker rides on it). Main thread only.
+snapshot is refreshed first, since the marker rides on it). One connection per thread: `shared` is
+the main thread's. EQ Cast's cache opens its own with `busyTimeout:`, since a read that hits a
+main-thread write would otherwise fail and read as Inherit.
 
 `EQProfileResolver` (`Audio/EQProfileResolver.swift`, `.shared` over `EQProfileStore.shared`) is
 everything above storage: the `Track` scope keys, `resolve`, `assign(level:tracks:)`, the queue

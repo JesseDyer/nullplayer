@@ -42,7 +42,7 @@ extension Track {
 }
 
 /// What the store's assignments mean for a track — which profile resolves, whether a queue row is
-/// marked — and how that is worded. Main thread only.
+/// marked — and how that is worded. Runs on its store's thread: `shared` is the main thread's.
 final class EQProfileResolver {
     static let shared = EQProfileResolver(store: .shared)
 

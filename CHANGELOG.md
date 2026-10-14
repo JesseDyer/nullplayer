@@ -28,6 +28,14 @@
   fader caps and response graph glow on a dark skin. Faders carry dB notches, the preamp has dB
   guides, HEADROOM, SAVE and RENAME are greyed when they would do nothing, and **View** switches
   the faceplate.
+- **EQ Cast: cast with your EQ profiles** — **Output ▸ EQ Cast** renders a track with its EQ
+  profile into a FLAC in a folder you choose and casts that to Sonos or Chromecast, so the
+  profile is no longer lost when casting. Covers local files and Plex, Jellyfin, Navidrome/Subsonic
+  and Emby tracks. The first track waits for its render under a progress bar at the top of the main
+  window; the tracks that play next are rendered in the background while you cast. A render is
+  reused until its profile's curve changes. The menu shows the cache's size, opens the folder and
+  deletes the cache (keeping the track being cast). Only the profile is rendered, not the
+  Equalizer window's EQ.
 - **Docking no longer flashes a large outline in Original skins** — docking or undocking a window
   briefly showed the group's old drop shadow stretched to its new size.
 - **An active tab in Original-Metal lights up as the green display** — in the Library and the
