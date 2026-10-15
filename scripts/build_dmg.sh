@@ -37,7 +37,6 @@ DIST_DIR="$REPO_ROOT/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
-FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 # Parse arguments
@@ -67,28 +66,11 @@ assemble_app "$APP_BUNDLE"
 # a `notarytool store-credentials` profile) for a Gatekeeper-clean, notarized release
 if [[ -n "${DEVELOPER_ID:-}" ]]; then
     log_info "Code signing app bundle as $DEVELOPER_ID (hardened runtime)..."
-    sign() { codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$1"; }
+    sign_app_bundle "$APP_BUNDLE" --options runtime --timestamp --sign "$DEVELOPER_ID"
 else
     log_info "Code signing app bundle (ad-hoc)..."
-    sign() { codesign --force --sign - "$1" 2>/dev/null || true; }
+    sign_app_bundle "$APP_BUNDLE" --sign -
 fi
-
-# Sign all frameworks and dylibs first (inside-out signing order)
-for framework in "$FRAMEWORKS_DIR/"*.framework; do
-    if [[ -d "$framework" ]]; then
-        sign "$framework"
-    fi
-done
-
-for dylib in "$FRAMEWORKS_DIR/"*.dylib; do
-    if [[ -f "$dylib" && ! -L "$dylib" ]]; then
-        sign "$dylib"
-    fi
-done
-
-# Sign the main executable and app bundle last
-sign "$APP_BUNDLE"
-codesign --verify --strict "$APP_BUNDLE"
 log_success "Code signing complete"
 
 log_success "App bundle created at $APP_BUNDLE"
