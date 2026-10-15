@@ -83,7 +83,7 @@ final class WinampModernB140Tests: XCTestCase {
             frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
                                                   xuiTag: frame.xuiTag, hasArtwork: frame.hasArtwork,
                                                   exemplar: frame.exemplar,
-                                                  scriptClient: frame.scriptClient),
+                                                  clientInsets: frame.clientInsets),
             frameID: "f", contentGroupID: "c", componentName: "Cava",
             location: WalSourceLocation(path: "test"))
         XCTAssertEqual(nodes.count, 1)
@@ -103,7 +103,7 @@ final class WinampModernB140Tests: XCTestCase {
             frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
                                                   xuiTag: frame.xuiTag, hasArtwork: frame.hasArtwork,
                                                   exemplar: frame.exemplar,
-                                                  scriptClient: frame.scriptClient),
+                                                  clientInsets: frame.clientInsets),
             frameID: "f", contentGroupID: "c", componentName: "Cava",
             location: WalSourceLocation(path: "test"))
         XCTAssertEqual(nodes.count, 2)
@@ -134,7 +134,7 @@ final class WinampModernB140Tests: XCTestCase {
             frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
                                                   xuiTag: frame.xuiTag, hasArtwork: frame.hasArtwork,
                                                   exemplar: frame.exemplar,
-                                                  scriptClient: frame.scriptClient),
+                                                  clientInsets: frame.clientInsets),
             frameID: "f", contentGroupID: "c", componentName: "Cava",
             location: WalSourceLocation(path: "test"))
         let group = try XCTUnwrap(nodes.last)

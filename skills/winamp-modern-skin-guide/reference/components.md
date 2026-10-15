@@ -913,8 +913,8 @@ offset within the frame"*: a 343x145 meter drew in 303x75.
 markup around it: `<script file="scripts/standardframe.maki" param="25,28,-40,-70,0,0,1,1"/>` is
 `x,y,w,h,relatx,relaty,relatw,relath`, applied by `standardframe.maki` to the group named by
 `content=`. **51 of the 67 corpus archives write one** (`grep -rhio 'standardframe[^>]*param="[^"]*"'`),
-so this is the majority shape, not HeadAMP's quirk. `WasabiSurfaceSynthesizer.scriptClientRect` reads
-it, walking `inherit_group` the way `hasContentScript` does — a skin that states none keeps exactly
+so this is the majority shape, not HeadAMP's quirk. `WasabiSurfaceSynthesizer.clientInsets(of:definitions:)` reads
+it, walking `inherit_group` through `inheritanceChain` — a skin that states none keeps exactly
 the behaviour it had.
 
 Three rules follow, and the skin itself is never edited: what changes is which frame *we* instantiate
@@ -931,9 +931,8 @@ and where *our* group sits inside it.
   it. An author's *side* padding is asymmetric wherever it is padding for contents we do not supply:
   HeadAMP's `25,28,-40,-50` is 25 left against 15 right, and a meter placed there reads as pushed
   right — which is exactly what the reporter said next. So where the frame's groupdef (or one it
-  inherits) carries `background=`, both sides move out to the **larger** inset
-  (`WasabiSurfaceSynthesizer.centredSides`); the smaller would draw over artwork the author kept clear,
-  and the cost of the larger is a little of the skin's base texture on the thin side. **Without a
+  inherits) carries `background=`, both sides move out to the **larger** inset; the smaller would
+  draw over artwork the author kept clear, and the cost of the larger is a little of the skin's base texture on the thin side. **Without a
   `background=`, the thin side's padding is desktop**, so the skin's own sides are kept: PionNer_AMP2's
   23 against 19 showed a 4px see-through column (#556).
 - **Top and bottom are always the skin's own (#556).** The first version of this rule centred them
