@@ -357,7 +357,11 @@ Shadows (Every Family)*). Trace: `NP_SKIN_SHADOW_TRACE=1` (`reference/harness.md
 - **The shadow pulls; the view only invalidates.** `SkinWindowShadow` is attached with the outline
   render as its `shape`, watches the window's move, resize, key and occlusion notifications itself,
   and pulls at most once per `shadowShapeInterval` (250 ms), leading edge first with a trailing pull
-  for the end of an animation, and never while the window is hidden.
+  for the end of an animation, and never while the window is hidden. **Only a pull that rebuilt the
+  shadow spends the interval**: one click on PionNer_AMP2's EQ tab swaps the tab's image, then 14 ms
+  later moves the drawer, and the swap's unchanged-outline pull held the drawer's for 250 ms with the
+  open drawer's shadow still drawn — a ghost outline of the closed drawer. Cost of the change,
+  20 s of playback: cPro2 Dark Aluminum 8 unchanged pulls, Big Bento Modern 14.
 - **What invalidates it is an event that can move the outline, never invalidation.** Layer FX
   invalidates the window 30 times a second and a playing skin writes readouts every tick, so neither
   `repaintRequested` nor `needsDisplay` is a trigger. The triggers are a layout switch, a canvas
