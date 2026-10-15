@@ -113,6 +113,13 @@
   tall title bar, such as PionNer_AMP2 and XENERGY1, the Spectrum Analyzer and other NullPlayer
   windows left a see-through or solid-colour band below their contents. They now fill the skin's
   frame ([#556](https://github.com/ad-repo/nullplayer/issues/556)).
+- **No more ghost outline trailing a dragged window** — after the app was hidden and shown again,
+  dragging a skinned window (the Original main window, for one) left its drop shadow behind or
+  ahead of it as a window-sized outline until the window was docked or the skin changed. Every
+  skin family's shadow now stays under its window.
+- **Closing a `.wal` drawer no longer leaves its outline behind** — closing PionNer_AMP2's EQ
+  drawer, and similar drawers in other Winamp Modern skins, left the open drawer's shadow on screen
+  for a moment.
 
 ## 0.32.2
 

@@ -821,6 +821,14 @@ geometry as an exact match.
   the stack regroups. Trace: `stale <size>`. A member's
   outline is its content view's layer, so a skin-shadowed window's content view must be
   layer-backed (`wantsLayer`) or it casts nothing and leaves a hole in its group's shadow.
+- **An app unhide re-links every shadow.** After the app is hidden and shown again, AppKit keeps the
+  shadow a child of its window (`parent` still names it) but carries it the wrong distance on every
+  drag — up to twice as far, measured on an Original main window with no code of ours touching the
+  shadow during the hide — so it slid off the skin as a window-sized outline until something
+  re-linked it. `SkinWindowShadow.relink()` removes and re-adds the child on
+  `NSApplication.didUnhideNotification`. Trace: `relink after unhide`; a `reassert frame` line names
+  the shadow's frame before (`was=`) and after (`want=`), so a shadow not following its window shows
+  as one such line per drag step.
 - **AppKit's shadow stays** on transient panels (skin-loading overlay, row thumbnail preview, Audion
   slider popups), on the app-authored `.wmz` fallback player, and on the Compact Mode window: it
   fades by `alphaValue`, which AppKit's shadow follows and a separate shadow window does not, so

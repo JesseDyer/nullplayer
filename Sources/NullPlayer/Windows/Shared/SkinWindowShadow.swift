@@ -83,7 +83,7 @@ final class SkinWindowShadow {
     nonisolated static let isTraceEnabled = ProcessInfo.processInfo.environment["NP_SKIN_SHADOW_TRACE"] == "1"
 
     let shadowWindow = SkinShadowWindow()
-    /// The fewest seconds between two pulls of `shape`. A `.wal` outline is a render made for the
+    /// The fewest seconds after a pull that rebuilt the shadow before the next pull of `shape`. A `.wal` outline is a render made for the
     /// purpose, on the main thread; a `.wmz` one is the frame the window already presented.
     private let minimumInterval: CFTimeInterval
     private weak var parent: NSWindow?
@@ -156,6 +156,10 @@ final class SkinWindowShadow {
                                                   object: parent, queue: .main) {
             [weak self] _ in MainActor.assumeIsolated { self?.reassert() }
         })
+        parentObservers.append(center.addObserver(forName: NSApplication.didUnhideNotification,
+                                                  object: nil, queue: .main) {
+            [weak self] _ in MainActor.assumeIsolated { self?.relink() }
+        })
         parentObservers.append(center.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: parent, queue: .main) {
                 [weak self] _ in MainActor.assumeIsolated { self?.parentOcclusionDidChange() }
@@ -189,6 +193,18 @@ final class SkinWindowShadow {
             shadowWindow.order(.below, relativeTo: parent.windowNumber)
             trace("reassert order")
         }
+    }
+
+    /// **An unhide leaves the child linked but carried wrong.** After the app is hidden and shown
+    /// again AppKit moves this child twice as far as its parent on every drag, so the shadow runs
+    /// ahead of the skin as a window-sized outline. Measured on an Original main window: no code of
+    /// ours touched the shadow during the hide. Removing and adding the child again resets it.
+    private func relink() {
+        guard let parent, shadowWindow.parent === parent else { return }
+        parent.removeChildWindow(shadowWindow)
+        parent.addChildWindow(shadowWindow, ordered: .below)
+        reassertFrame()
+        trace("relink after unhide")
     }
 
     private var isMoveCheckScheduled = false
@@ -227,8 +243,9 @@ final class SkinWindowShadow {
             shadowWindow.contentView?.layer?.contents = nil
             lastFingerprint = nil
         }
+        let was = shadowWindow.frame
         shadowWindow.setFrame(frame, display: false)
-        trace("reassert frame \(Int(outline.width))x\(Int(outline.height))")
+        trace("reassert frame \(Int(outline.width))x\(Int(outline.height)) was=\(was) want=\(frame) childOf=\(shadowWindow.parent === parent)")
     }
 
     private func outlineFrame(of parent: NSWindow) -> NSRect {
@@ -365,6 +382,11 @@ final class SkinWindowShadow {
         case .failed:
             trace("failed \(detail)")
         case .same:
+            // **Only a pull that moved the shadow spends `minimumInterval`.** One click on
+            // `PionNer_AMP2`'s EQ tab swaps the tab's image and, 14 ms later, moves the drawer. The
+            // swap's pull found the outline unchanged, yet held the drawer's for the whole
+            // interval with the open drawer's shadow still drawn: a ghost outline of the drawer.
+            lastPull = 0
             trace("same \(detail)")
         case .rebuilt(let fingerprint, let image):
             lastFingerprint = fingerprint
