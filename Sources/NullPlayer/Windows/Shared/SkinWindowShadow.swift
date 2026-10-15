@@ -93,6 +93,7 @@ final class SkinWindowShadow {
     private var name: String?
     private var shape: () -> [CGImage] = { [] }
     private var parentObservers: [NSObjectProtocol] = []
+    private var parentAlphaObservation: NSKeyValueObservation?
     private var preferenceObserver: NSObjectProtocol?
     /// `isEnabledPreference`, cached from its notification: read on every drag step. False while
     /// `isSuppressed` too.
@@ -165,6 +166,15 @@ final class SkinWindowShadow {
             forName: NSWindow.didChangeOcclusionStateNotification, object: parent, queue: .main) {
                 [weak self] _ in MainActor.assumeIsolated { self?.parentOcclusionDidChange() }
             })
+        // **The shadow wears its window's alpha.** It is a window of its own, so a window held
+        // invisible — a `.wmz` hosted window waits up to 2 s at launch for its frame
+        // (`HostedWindowBorderLayout.hold`) — cast an empty shadow box until it was revealed.
+        parentAlphaObservation = parent.observe(\.alphaValue, options: [.initial]) { [weak self] _, _ in
+            MainActor.assumeIsolated {
+                guard let self, let parent = self.parent else { return }
+                self.shadowWindow.alphaValue = parent.alphaValue
+            }
+        }
         isParentOnScreen = parent.occlusionState.contains(.visible)
         reassert()
         invalidateShape("attach")
@@ -173,6 +183,7 @@ final class SkinWindowShadow {
     func detach() {
         parentObservers.forEach(NotificationCenter.default.removeObserver)
         parentObservers.removeAll()
+        parentAlphaObservation = nil
         shadowWindow.parent?.removeChildWindow(shadowWindow)
         shadowWindow.orderOut(nil)
         parent = nil

@@ -829,6 +829,11 @@ geometry as an exact match.
   `NSApplication.didUnhideNotification`. Trace: `relink after unhide`; a `reassert frame` line names
   the shadow's frame before (`was=`) and after (`want=`), so a shadow not following its window shows
   as one such line per drag step.
+- **The shadow wears its window's alpha.** `SkinWindowShadow` observes the parent's `alphaValue`
+  and copies it to the shadow window, so any code that hides a skin window by alpha hides its shadow
+  too. A `.wmz` hosted window restored at launch is held at alpha 0 while its frame renders
+  (`HostedWindowBorderLayout.hold`, up to ~2 s on Combat_Flight_Simulator_3's Library) and cast an
+  empty shadow box for the whole hold before this. Only the final alpha is followed, not a fade.
 - **AppKit's shadow stays** on transient panels (skin-loading overlay, row thumbnail preview, Audion
   slider popups), on the app-authored `.wmz` fallback player, and on the Compact Mode window: it
   fades by `alphaValue`, which AppKit's shadow follows and a separate shadow window does not, so

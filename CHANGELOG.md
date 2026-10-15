@@ -120,6 +120,9 @@
 - **Closing a `.wal` drawer no longer leaves its outline behind** — closing PionNer_AMP2's EQ
   drawer, and similar drawers in other Winamp Modern skins, left the open drawer's shadow on screen
   for a moment.
+- **No empty shadow box at launch in Windows Media Player skins** — a NullPlayer window restored
+  at launch, such as the Library under Combat_Flight_Simulator_3, cast its drop shadow for up to
+  two seconds before the window itself appeared. The shadow now appears with its window.
 
 ## 0.32.2
 
