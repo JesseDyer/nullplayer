@@ -144,7 +144,7 @@ final class EQProfileTests: XCTestCase {
         profiles.assign(.profile(b.id), level: .artist, tracks: [track])
         profiles.assign(.profile(a.id), level: .track, tracks: [track])
         store.delete(a.id)
-        XCTAssertNil(profiles.assignment(at: .track, of: track))
+        XCTAssertNil(profiles.store.assignment(track.eqProfileScope(at: .track)!))
         XCTAssertEqual(profiles.resolve(track)?.profile?.name, "B")
     }
 
@@ -157,8 +157,8 @@ final class EQProfileTests: XCTestCase {
 
         let reloaded = EQProfileResolver(store: EQProfileStore(path: storePath, defaults: defaults))
         XCTAssertEqual(reloaded.store.profiles, [a])
-        XCTAssertEqual(reloaded.assignment(at: .track, of: track), .profile(a.id))
-        XCTAssertEqual(reloaded.assignment(at: .artist, of: track), .off)
+        XCTAssertEqual(reloaded.store.assignment(track.eqProfileScope(at: .track)!), .profile(a.id))
+        XCTAssertEqual(reloaded.store.assignment(track.eqProfileScope(at: .artist)!), .off)
     }
 
     func testAnUnreadableDatabaseIsNeverOverwritten() throws {
@@ -192,9 +192,9 @@ final class EQProfileTests: XCTestCase {
         let pruned = expectation(description: "pruned")
         profiles.pruneMissingLocalTracks { pruned.fulfill() }
         wait(for: [pruned], timeout: 5)
-        XCTAssertEqual(tracks.map { profiles.assignment(at: .track, of: $0) != nil },
+        XCTAssertEqual(tracks.map { profiles.store.assignment($0.eqProfileScope(at: .track)!) != nil },
                        [true, false, true, true, true, true, true])
-        XCTAssertNotNil(profiles.assignment(at: .artist, of: local(gone)), "only track level is pruned")
+        XCTAssertNotNil(profiles.store.assignment(local(gone).eqProfileScope(at: .artist)!), "only track level is pruned")
     }
 
     func testAWMPRowsMarkerIsNotAQueueChange() {

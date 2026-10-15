@@ -403,8 +403,9 @@ the track artists a compilation's assignment was keyed on; such a row shows noth
 and folders pass nil, which ticks nothing. A pick still fetches the row's tracks and assigns to their
 scopes. **Every write is a menu pick**: nothing else calls `assign` except the launch prune, so a
 track-level row nobody chose came from a menu acting on more rows than the user meant. The queue
-views decide that set: Classic (`PlaylistView`), Original (`ModernPlaylistView`) and WMP select an
-unselected row on right-click, while the `.wal` Misc ▸ Assign acts on the bridge's selection
+views decide that set: Classic, Original and WMP build their menu with
+`PlaylistMenuBuilder.menu(target:clickedRow:state:)`, which selects a right-clicked row outside the
+selection first (`PlaylistMenuTarget.selectForMenu`), while the `.wal` Misc ▸ Assign acts on the bridge's selection
 (`tasks/MISC_TASKS.md` M48).
 
 At launch `pruneMissingLocalTracks()` drops `local` track-level assignments whose file is gone (a

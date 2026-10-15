@@ -55,6 +55,14 @@ extension EQProfileScope {
     }
 }
 
+extension Array where Element == EQProfileScope {
+    /// The scopes from `level` down; empty when there is none at `level`. Every scope list is
+    /// ordered track, album, artist (`Track.eqProfileScopes`, `containers`), a missing level omitted.
+    func from(_ level: EQProfileLevel) -> [EQProfileScope] {
+        Array(drop { $0.level != level })
+    }
+}
+
 /// What the store's assignments mean for a track — which profile resolves, whether a queue row is
 /// marked — and how that is worded. Runs on its store's thread: `shared` is the main thread's.
 final class EQProfileResolver {
@@ -94,24 +102,13 @@ final class EQProfileResolver {
         return (profile, match.level)
     }
 
-    /// What is set at `level` itself for `track`: nil is Inherit.
-    func assignment(at level: EQProfileLevel, of track: Track) -> EQProfileAssignment? {
-        track.eqProfileScope(at: level).flatMap(store.assignment)
-    }
-
     /// nil is Inherit. Album level keys every distinct (artist, album) pair among `tracks`, so a
-    /// compilation is covered whole; artist level every distinct artist.
-    func assign(_ assignment: EQProfileAssignment?, level: EQProfileLevel, tracks: [Track]) {
+    /// compilation is covered whole; artist level every distinct artist. Returns the scopes written.
+    @discardableResult
+    func assign(_ assignment: EQProfileAssignment?, level: EQProfileLevel, tracks: [Track]) -> Set<EQProfileScope> {
         let scopes = Set(tracks.compactMap { $0.eqProfileScope(at: level) })
-        // Every write is a menu pick; a count above one at track level is a multi-row selection.
-        let name = switch assignment {
-        case nil: "Inherit"
-        case .off: "Off"
-        case .profile(let id): store.profile(id)?.name ?? id.uuidString
-        }
-        NSLog("[eqprofile] assign %@ at %@ level to %d scope(s) from %d track(s): %@", name, level.rawValue,
-              scopes.count, tracks.count, tracks.prefix(3).map(\.title).joined(separator: ", "))
         store.assign(assignment, scopes: scopes)
+        return scopes
     }
 
     /// Whether a profile is running on `track` when it plays: audio (video has no local graph) and

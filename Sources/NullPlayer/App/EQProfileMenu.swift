@@ -45,8 +45,7 @@ enum EQProfileMenu {
         let resolver = EQProfileResolver.shared
         let submenu = NSMenu()
         submenu.autoenablesItems = false
-        // Each item's scopes from `level` down; empty where it has no scope at `level`.
-        let chains = current?.map { Array($0.drop { $0.level != level }) }
+        let chains = current?.map { $0.from(level) }
         let settings = chains?.map { $0.first.flatMap(resolver.store.assignment) } ?? []
         if let chains, !chains.isEmpty, settings.allSatisfy({ $0 == nil }) {
             let inherited = Set(chains.map { resolver.setting(of: $0) })
@@ -97,7 +96,11 @@ enum EQProfileMenu {
             Task { @MainActor in
                 do {
                     let tracks = try await request.resolve()
-                    EQProfileResolver.shared.assign(request.assignment, level: request.level, tracks: tracks)
+                    let scopes = EQProfileResolver.shared.assign(request.assignment, level: request.level, tracks: tracks)
+                    // A count above one at track level is a menu acting on a multi-row selection.
+                    NSLog("[eqprofile] assign %@ at %@ level to %d scope(s) from %d track(s): %@", sender.title,
+                          request.level.rawValue, scopes.count, tracks.count,
+                          tracks.prefix(3).map(\.title).joined(separator: ", "))
                 } catch is CancellationError {
                 } catch {
                     NSLog("[eqprofile] assign failed: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
