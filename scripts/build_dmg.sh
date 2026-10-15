@@ -45,6 +45,12 @@ if [[ "${1:-}" == "--skip-build" ]]; then
     SKIP_BUILD=true
 fi
 
+# Notarizing needs a Developer ID signature; fail before the build rather than ship ad-hoc
+if [[ -n "${NOTARY_PROFILE:-}" && -z "${DEVELOPER_ID:-}" ]]; then
+    log_error "NOTARY_PROFILE is set but DEVELOPER_ID is not; notarization needs a Developer ID signature"
+    exit 1
+fi
+
 # Release products directory, as SwiftPM reports it for the build system assemble_app uses
 # (see scripts/lib/swiftpm.sh)
 source "$(dirname "$0")/lib/swiftpm.sh"
