@@ -272,6 +272,21 @@ func click(_ x: Double, _ y: Double, clickState: Int64 = 1) {
     up?.post(tap: .cghidEventTap)
 }
 
+/// A right-button click: opens the view's contextual menu, which stays up for Accessibility
+/// (`menu.applescript ctxpick`) to work and close.
+func rclick(_ x: Double, _ y: Double) {
+    let p = CGPoint(x: x, y: y)
+    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .right)?
+        .post(tap: .cghidEventTap)
+    usleep(120_000)
+    for type in [CGEventType.rightMouseDown, .rightMouseUp] {
+        let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .right)
+        event?.setIntegerValueField(.mouseEventClickState, value: 1)
+        event?.post(tap: .cghidEventTap)
+        usleep(80_000)
+    }
+}
+
 /// Two clicks at one point, the second carrying `clickState == 2`.
 func dblclick(_ x: Double, _ y: Double) {
     click(x, y, clickState: 1)
@@ -452,6 +467,12 @@ case "dblclick":
     }
     requireNullPlayer(at: CGPoint(x: x, y: y), verb: "dblclick")
     dblclick(x, y)
+case "rclick":
+    guard args.count == 4, let x = Double(args[2]), let y = Double(args[3]) else {
+        FileHandle.standardError.write("usage: winhelper rclick <x> <y>\n".data(using: .utf8)!); exit(1)
+    }
+    requireNullPlayer(at: CGPoint(x: x, y: y), verb: "rclick")
+    rclick(x, y)
 case "scroll":
     guard args.count >= 6, let x = Double(args[2]), let y = Double(args[3]),
           let count = Int(args[4]), let delta = Int32(args[5]) else {

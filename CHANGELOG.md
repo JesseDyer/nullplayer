@@ -128,6 +128,12 @@
   when `DEVELOPER_ID` is set, and notarizes and staples the DMG when `NOTARY_PROFILE` names a
   `notarytool` keychain profile, so macOS opens the downloaded app without a Gatekeeper warning.
   Without them it still builds the ad-hoc signed DMG.
+- **Library rows show their EQ profile** — right-click ▸ Assign EQ Profile on a library track,
+  album or artist now ticks what is set there and shows what it inherits, as the queue already did.
+- **A queue right-click acts on the row you clicked** — in Classic and Original skins, right-clicking
+  a row outside the selection now selects it first, as Windows Media Player skins already did.
+  Before, the menu acted on whatever was selected, so Assign EQ Profile could set a whole album
+  when you meant one track.
 
 ## 0.32.2
 

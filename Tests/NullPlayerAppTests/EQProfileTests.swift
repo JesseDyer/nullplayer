@@ -116,6 +116,27 @@ final class EQProfileTests: XCTestCase {
         XCTAssertTrue(tracks.allSatisfy { profiles.resolve($0)?.profile?.name == "A" })
     }
 
+    /// A library album or artist row keys itself from its own names, so its menu reads what assigning
+    /// its fetched tracks wrote, and what it inherits starts below its own level.
+    @MainActor
+    func testALibraryRowKeysLikeItsTracksWithoutFetchingThem() {
+        let profiles = makeResolver()
+        let a = profiles.store.add(name: "A", curve: curve(3))!
+        let track = Track(url: URL(string: "http://server/a")!, title: "a", artist: "Wet Leg", album: "moisturizer",
+                          plexRatingKey: "42", plexServerId: "srv1")
+        let albumRow = EQProfileScope.containers(source: EQProfileScope.source(.plex, serverId: "srv1"),
+                                                 artist: "Wet Leg", album: "moisturizer")
+        XCTAssertEqual(albumRow, Array(track.eqProfileScopes.dropFirst()))
+        let artistRow = LibraryPlayable.localArtist(Artist(id: "Wet Leg", name: " Wet Leg ", albums: []))
+        XCTAssertEqual(artistRow.eqProfileScopes, [[EQProfileScope(level: .artist, source: "local", key: "wet leg")]])
+
+        profiles.assign(.off, level: .artist, tracks: [track])
+        profiles.assign(.profile(a.id), level: .album, tracks: [track])
+        XCTAssertEqual(profiles.setting(of: albumRow), "A (album)")
+        XCTAssertEqual(profiles.setting(of: Array(albumRow.dropFirst())), "Off (artist)")
+        XCTAssertNil(profiles.setting(of: []), "a row with no scope at its level inherits nothing")
+    }
+
     func testDeletingAProfileDropsItsAssignments() {
         let profiles = makeResolver(), store = profiles.store
         let a = store.add(name: "A", curve: curve(3))!, b = store.add(name: "B", curve: curve(6))!

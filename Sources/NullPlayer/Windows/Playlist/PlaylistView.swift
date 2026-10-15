@@ -2084,6 +2084,13 @@ class PlaylistView: NSView {
     // MARK: - Context Menu
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        // A right-click on an unselected row selects it first, so the menu acts on the row clicked.
+        if let index = hitTestTrackList(at: convertToSkinCoordinates(convert(event.locationInWindow, from: nil))),
+           !selectedIndices.contains(index) {
+            selectedIndices = [index]
+            selectionAnchor = index
+            needsDisplay = true
+        }
         let menu = NSMenu()
         let engine = WindowManager.shared.audioEngine
         let tracks = engine.playlist

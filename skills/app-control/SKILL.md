@@ -51,7 +51,7 @@ Two consequences, stated as facts:
 | **A — Don't launch the GUI** | The question is about a skin's scene, geometry, hit map, script, or any pure logic | seconds |
 | **B — Launch preconfigured, don't click** | You need the running app in a specific mode / skin / playback state | one launch |
 | **C — Drive it yourself** | The defect needs a click, drag, hover, or a view switch | one launch + CGEvents |
-| **D — Hand the user a loaded session** | Judgment ("does it look right"), contextual menus, anything a synthetic right-click cannot do | interactive |
+| **D — Hand the user a loaded session** | Judgment ("does it look right") — never a contextual menu, which is Route C | interactive |
 | **E — Measure** | Always. Every route ends here | — |
 
 **Not this skill:** `skin-screenshots` is the gallery GIF sweep and nothing else.
@@ -206,6 +206,7 @@ read -r WID _ X Y W H _ < <("$WH" windows --pid "$PID" --size 289x283)   # the s
 | `winhelper capture-region <x> <y> <w> <h> <out.png>` | the **screen** over a rect (`screencapture -R`), top-left points as `windows` — everything on top of it included, so raise the build first. The only way to see a `.wmz`/`.wal` window's drop shadow, which is a separate window; capture the window plus ~40 pt each side |
 | `winhelper click <x> <y>` | `mouseMoved`, then down/up **with `mouseEventClickState = 1`** |
 | `winhelper dblclick <x> <y>` | two clicks, the second at `clickState = 2` |
+| `winhelper rclick <x> <y>` | a right-button click: opens the view's contextual menu, which stays up for Accessibility to read and pick from (below) |
 | `winhelper clickdiff <x> <y> [--pid <n>] [--size <w>x<h>] [--settle <s>]` | the window-frame check: `before` rows, a `click`, a wait (1 s default), `after` rows, then one `changed`/`gone`/`new` line per window; **exits 2 when nothing changed**. `dblclickdiff` is the same with `dblclick`. `--size` filters only the *before* listing |
 | `winhelper scroll <x> <y> <count> <delta> [line\|precise] [h]` | `count` wheel events at one point; `precise` is a trackpad (points), `line` (the default) a mouse wheel (lines); `h` posts the delta on the horizontal axis (negative scrolls content left) |
 | `winhelper key <pid> <keycode> [shift\|option\|command\|control …]` | a key down/up posted to that process (`CGEvent.postToPid`), delivered to its key window. System Events `key code` from an agent shell was dropped with no error (2026-10-08). Check which window is key first: a keystroke to the wrong one reads like a dead shortcut |
@@ -256,7 +257,20 @@ read -r WID _ X Y W H _ < <("$WH" windows --pid "$PID" --size 289x283)   # the s
   **Save State on Quit**: a run that relies on quit-and-restore must close windows by toggling only
   the `windowitems` rows whose checked column is `1` (2026-10-08, M20: the saved state silently
   stopped updating).
-- **A contextual menu is not drivable. That is Route D.**
+- **A contextual menu is drivable: `rclick`, then Accessibility.** The open menu is an `AXMenu`
+  child of the window it was opened on (it shows in `windows` as a layer-101 row). Address every
+  element by its full path, never a stored reference (`set m to UI element 1 …` resolves to a dead
+  `menu "<title>"`); a submenu is `click` on its item, then `UI element 1 of` that item:
+  ```applescript
+  tell application "System Events" to tell (first process whose unix id is <pid>)
+    title of every UI element of UI element 1 of window "Playlist"      -- the items
+    click UI element 11 of UI element 1 of window "Playlist"            -- open a submenu
+    click UI element 1 of UI element 1 of UI element 11 of UI element 1 of window "Playlist"
+  end tell
+  ```
+  **An item's `enabled` is not state:** a menu that autoenables reports its own validation, not
+  the `isEnabled` the code set — read the effect from the log. Measured 2026-10-15 on the Classic
+  and Original queues' Assign EQ Profile menu, through the `[eqprofile] assign` line.
 - **`capture` refuses a picture that is not the window.** `screencapture -l` returns a
   **full-screen** image for an off-screen or stale id, and the **whole docked group** for a window
   with attached windows (a 197x194 pt `.wmz` pane came back 950x890 pt, it plus two docked
@@ -282,8 +296,8 @@ one `performSlider` per point and **exactly one** commit; a commit per move is t
 
 ## Route D — hand the user a loaded session
 
-Applies to judgment ("does it look right"), contextual menus, and anything a synthetic gesture
-cannot do. **The agent owns the process and the log; the user owns the mouse.**
+Applies to judgment ("does it look right") and anything a synthetic gesture cannot do. A
+contextual menu is not that: `rclick` plus Accessibility drives it (Route C). **The agent owns the process and the log; the user owns the mouse.**
 
 1. Launch it yourself with `launch.sh` (Route B) and wait for `LAUNCH PASS`. The user runs nothing.
 2. Tell the user it is up, on which skin, and what to look at.
