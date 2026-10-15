@@ -3,10 +3,11 @@
 Every Winamp 5.x Modern skin NullPlayer has been tested against, what grade it gets, and what is
 known to be outstanding on it. **Measured 2026-09-06** against `a916b38a`, over the 79 archives
 installed on the test machine — **75 distinct skins**, because four archives are byte-identical copies
-circulating under a second filename.
+circulating under a second filename. Two more, PiOnNeR_AMP2 and XENERGY (the #556 reporting skins),
+were added on 2026-10-14 from the same kind of headless pass, at `5578de74`.
 
-Current picture: **50 B · 25 C**, of which 6 letters come from a
-person using the skin and 69 are provisional (below).
+Current picture: **52 B · 25 C**, of which 6 letters come from a
+person using the skin and 71 are provisional (below).
 
 ## How the grades were arrived at, and how far to trust them
 
@@ -114,6 +115,7 @@ this skin at all — usually because the skin predates the feature, not because 
 | **Nokia_5220**<br>`The_Nokia_5220_XpressMusic.wal` | — | B<br><sub>provisional</sub> | Fully skinned | nothing outstanding that a headless pass can see |
 | **Nullsoft Winamp 2000 SP4**<br>`Nullsoft.Winamp.2000.SP4.Lite.wal` | Initial Graphics by Zsolt Vajda // Coding by Victor Brocaz // Modified by Gordon Freeman | B<br><sub>provisional</sub> | Fully skinned | 7 bitmap id(s) it references do not resolve, leaving a visible gap: `window.normal.left2`, `window.normal.middle2`, `window.plvis.display.bg`, `window.shade.region.bottom.left`, `window.shade.region.bottom.right`, `window.shade.region.top.left`…; 2 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click |
 | **Overdrive 2**<br>`Overdrive_2.wal` | Ian Novack aka Spoonman aka Novispoon | C<br><sub>provisional</sub> | Partly skinned | 1 bitmap id(s) it references do not resolve, leaving a visible gap: `player.anim.volume`; no library window of its own; 8 NullPlayer-owned window(s) open in the plain frame — no reusable standard frame (B110/B140); 2 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click |
+| **PiOnNeR_AMP2**<br>`PionNer_AMP2.wal` | Marcelo Caetano Martins Muniz | B<br><sub>provisional</sub> | Fully skinned | 1 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click; its synthesized playlist and library windows may draw plain (synthesis reads its standard frame as artwork-less) |
 | **Pokemon DS**<br>`PokemonDS.wal` | SpaceKitty | B<br><sub>provisional</sub> | Fully skinned | nothing outstanding that a headless pass can see |
 | **Pure Inspired for Winamp**<br>`Pure Inspired.wal`<br><sub>also installed as `pure_inspired_for_winamp_by_marisa85_d35ix2r.wal`</sub> | Marisa85 | B<br><sub>provisional</sub> | Fully skinned | 1 bitmap id(s) it references do not resolve, leaving a visible gap: `img/bt_caN.png` |
 | **S7Reflex**<br>`S7Reflex.wal` | daniel sioneanu | B<br><sub>provisional</sub> | Fully skinned | 22 bitmap id(s) it references do not resolve, leaving a visible gap: `drawer.button.close.bg`, `player.button.repeat.bg`, `player.button.shuffle.bg`, `player.display.bg.center`, `player.display.bg.left`, `player.display.bg.right`…; 6 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click |
@@ -132,6 +134,7 @@ this skin at all — usually because the skin predates the feature, not because 
 | **Winamp5 Base Skin**<br>`nullsoft_media_player_10_forked_by_hb860-d7h03zd.wal` | — | C<br><sub>provisional</sub> | Fully skinned | 4 bitmap id(s) it references do not resolve, leaving a visible gap: `component.bottom.left.corner`, `component.bottom.right.corner`, `component.bottom.stretch`, `component.top.right.corner`; unimplemented MAKI: `getmode` ×2, `onleftbuttondown` ×2; 3 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click; 2 error-severity load finding(s) |
 | **Winamp5 Base Skin**<br>`winampmodern566.wal` | — | B<br><sub>provisional</sub> | Fully skinned | 10 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click |
 | **Windpws Media Player 11 BlueVU**<br>`WMP11-BlueVU.wal` | X - Man | B<br><sub>provisional</sub> | Fully skinned | 1 bitmap id(s) it references do not resolve, leaving a visible gap: `seeker.bg.vertical.right`; 5 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click; 3 error-severity load finding(s) |
+| **XENERGY**<br>`XENERGY1.wal` | daniel sioneanu | B<br><sub>provisional</sub> | Fully skinned | 16 bitmap id(s) it references do not resolve, leaving a visible gap: `player.button.repeat.bg`, `player.button.shuffle.bg`, `player.display.bg.center`, `player.display.bg.left`, `player.display.bg.right`, `player.display.center`…; 5 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click |
 | **ZDL-AMP SIX-TRACK REEL-TO-REEL WA-3**<br>`ZDL_Reel-To-Reel_Analog_Tape_Machine.wal` | Mike Zee | B<br><sub>provisional</sub> | Fully skinned | 4 object(s) a script hooks the mouse on that markup hit-testing rejects — they may not respond to a click |
 
 ## Known issues that affect every skin
@@ -192,4 +195,4 @@ show any of them.
 5. The six live letters come from `/wal-skin-report` sessions driven by a person and are unchanged.
 
 Per-skin engineering notes live in `skills/winamp-modern-skin-guide/skins/` — one file per skin, all
-75 covered; the index is `skills/winamp-modern-skin-guide/skins.md`.
+77 covered; the index is `skills/winamp-modern-skin-guide/skins.md`.

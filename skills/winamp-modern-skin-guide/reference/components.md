@@ -926,17 +926,25 @@ and where *our* group sits inside it.
   costs 70 rows against its no-status frame's 50, around a 145-row window. Flavours are now ordered by
   what their client rect leaves, and the old order only breaks ties — including the tie every skin
   that states no rect is in.
-- **The client is centred on the *larger* of each opposing inset, and we place it ourselves.** An
-  author's padding is asymmetric wherever it is padding for contents we do not supply: HeadAMP's
-  `25,28,-40,-50` is 25 left against 15 right and 28 top against 22 bottom, and a meter placed there
-  reads as pushed right and sunk — which is exactly what the reporter said next. So the frame is
-  handed **no `content=`** (the same emission the exemplar branch uses) and our group sits beside it
-  at 25/25 and 28/28. **Larger, not smaller**: the smaller inset would centre it too, and would draw
-  our surface over artwork the author kept clear on the thicker side — Big Bento's 44px title band
-  against a 24px bottom. The cost of the larger is a little more of the skin's own background texture
-  on the thin side, which reads as an even mat.
-- **The window is grown by twice that border**, through `Frame.floor(under:)`, the same rule the
-  exemplar branch already followed.
+- **We place the client ourselves, and centre its sides only over a painted background.** The frame
+  is handed **no `content=`** (the same emission the exemplar branch uses) and our group sits beside
+  it. An author's *side* padding is asymmetric wherever it is padding for contents we do not supply:
+  HeadAMP's `25,28,-40,-50` is 25 left against 15 right, and a meter placed there reads as pushed
+  right — which is exactly what the reporter said next. So where the frame's groupdef (or one it
+  inherits) carries `background=`, both sides move out to the **larger** inset
+  (`WasabiSurfaceSynthesizer.centredSides`); the smaller would draw over artwork the author kept clear,
+  and the cost of the larger is a little of the skin's base texture on the thin side. **Without a
+  `background=`, the thin side's padding is desktop**, so the skin's own sides are kept: PionNer_AMP2's
+  23 against 19 showed a 4px see-through column (#556).
+- **Top and bottom are always the skin's own (#556).** The first version of this rule centred them
+  too, and a frame's top is its title band while its bottom is a thin bezel: mirroring one onto the
+  other left a band under the client that the frame never paints — 30px of desktop on PionNer_AMP2
+  (43 against 13), a 13px strip of base texture on XENERGY1 (23 against 10), and the same on Darjah 1,
+  Formamp, both Love is War Mikus, the Hatsune Miku skin and PaddPreview. Keeping the skin's own
+  bottom also makes a status flavour pay for its empty strip, so PionNer_AMP2 now takes its no-status
+  frame.
+- **The window is grown by that border**, through `Frame.floor(under:)`, the same rule the exemplar
+  branch already followed.
 
 **A hosted window's geometry is decided in two places, and they are different objects.** Sizing reads
 `WinampModernHostedFrameDescriptor`; placement is emitted by

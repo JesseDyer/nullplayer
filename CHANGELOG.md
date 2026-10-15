@@ -109,6 +109,10 @@
   tracks that will not play next.
 - **Context menus use macOS naming** — "Exit" is now "Quit", and both state menu items read
   "Save State on Quit" ([#554](https://github.com/ad-repo/nullplayer/issues/554)).
+- **Winamp Modern skins frame NullPlayer's windows without a gap at the bottom** — on skins with a
+  tall title bar, such as PionNer_AMP2 and XENERGY1, the Spectrum Analyzer and other NullPlayer
+  windows left a see-through or solid-colour band below their contents. They now fill the skin's
+  frame ([#556](https://github.com/ad-repo/nullplayer/issues/556)).
 
 ## 0.32.2
 

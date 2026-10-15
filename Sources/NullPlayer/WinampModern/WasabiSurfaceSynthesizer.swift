@@ -370,29 +370,25 @@ enum WasabiSurfaceSynthesizer {
             self.scriptClient = scriptClient
         }
 
-        /// The border this frame draws around a window of **ours**, per side, in skin pixels.
-        ///
-        /// The skin's own number is asymmetric wherever the author left padding on one side for
-        /// contents Winamp supplies and we do not — HeadAMP's status frame states `25,28,-40,-70`,
-        /// which is 25 left against 15 right and 28 top against 42 bottom, and a meter placed there
-        /// reads as pushed right and sunk. Ours is the **larger** of each opposing pair, so the client
-        /// is centred and still clears everything the author kept clear on either side. Nothing about
-        /// the skin changes: this places the group we synthesized, in the window we synthesized.
-        var symmetricBorder: CGSize? {
+        /// The border this frame draws around a window of **ours**, per side, in skin pixels — the
+        /// `scriptClient` rect, whose sides `scriptClientRect`'s caller has already centred where
+        /// that is safe (`centredSides`). Nothing about the skin changes: this places the group we
+        /// synthesized, in the window we synthesized.
+        var clientBorder: (left: CGFloat, right: CGFloat, top: CGFloat, bottom: CGFloat)? {
             guard exemplar == nil, let rect = scriptClient else { return nil }
-            let horizontal = max(rect.minX, rect.width - rect.minX)
-            let vertical = max(rect.minY, rect.height - rect.minY)
-            guard horizontal > 0, vertical > 0 else { return nil }
-            return CGSize(width: horizontal, height: vertical)
+            let right = rect.width - rect.minX
+            let bottom = rect.height - rect.minY
+            guard rect.minX > 0 || right > 0, rect.minY > 0 || bottom > 0 else { return nil }
+            return (rect.minX, right, rect.minY, bottom)
         }
 
         /// What this frame's border costs the window: the exemplar's own content rect where the skin
         /// lays its windows out itself — a `w="-66" h="-92"` client area is a 66x92 border around it —
-        /// and otherwise twice the symmetric border we place our own client inside.
+        /// and otherwise the border we place our own client inside.
         var chromeInset: CGSize {
             guard let exemplar else {
-                guard let border = symmetricBorder else { return .zero }
-                return CGSize(width: 2 * border.width, height: 2 * border.height)
+                guard let border = clientBorder else { return .zero }
+                return CGSize(width: border.left + border.right, height: border.top + border.bottom)
             }
             let width = Double(exemplar.content["w"] ?? "") ?? 0
             let height = Double(exemplar.content["h"] ?? "") ?? 0
@@ -516,7 +512,10 @@ enum WasabiSurfaceSynthesizer {
                               hasArtwork: hasArtwork(definition, definitions: definitions, depth: 0),
                               exemplar: nil,
                               scriptClient: scriptClientRect(definition, definitions: definitions,
-                                                             depth: 0))
+                                                             depth: 0).map {
+                                  paintsBackground(definition, definitions: definitions, depth: 0)
+                                      ? centredSides($0) : $0
+                              })
             declared.append((border: frame.chromeInset.width + frame.chromeInset.height,
                              order: order, frame: frame))
         }
@@ -768,7 +767,7 @@ enum WasabiSurfaceSynthesizer {
                            componentName: String, location: WalSourceLocation) -> [WalXMLNode] {
         let fullBleed = ["x": "0", "y": "0", "w": "0", "h": "0", "relatw": "1", "relath": "1"]
         guard let exemplar = frame.exemplar else {
-            guard let border = frame.symmetricBorder else {
+            guard let border = frame.clientBorder else {
                 return [WalXMLNode(name: frame.xuiTag, attributes: fullBleed.merging([
                     "id": frameID,
                     "content": contentGroupID,
@@ -785,8 +784,9 @@ enum WasabiSurfaceSynthesizer {
                 ]) { _, new in new }, location: location),
                 WalXMLNode(name: "group", attributes: [
                     "id": contentGroupID,
-                    "x": String(Int(border.width)), "y": String(Int(border.height)),
-                    "w": String(Int(-2 * border.width)), "h": String(Int(-2 * border.height)),
+                    "x": String(Int(border.left)), "y": String(Int(border.top)),
+                    "w": String(Int(-(border.left + border.right))),
+                    "h": String(Int(-(border.top + border.bottom))),
                     "relatw": "1", "relath": "1",
                 ], location: location),
             ]
@@ -902,6 +902,30 @@ enum WasabiSurfaceSynthesizer {
         guard let parent = definition.attribute("inherit_group"),
               let inherited = definitions[fold(parent)] else { return nil }
         return scriptClientRect(inherited, definitions: definitions, depth: depth + 1)
+    }
+
+    /// `rect` with both sides moved out to the larger of the two, so our client is centred.
+    ///
+    /// The skin's sides are asymmetric wherever the author left padding on one side for contents
+    /// Winamp supplies and we do not — HeadAMP states `25,28,-40,-50`, 25 left against 15 right, and
+    /// a meter placed there reads as pushed right (B140). Only the sides: a frame's top is its title
+    /// band and its bottom a thin bezel, and mirroring one onto the other left a band under the client
+    /// (#556 — XENERGY1's 23 against 10 showed a strip of base texture, PionNer_AMP2's 43 against 13
+    /// thirty pixels of desktop). Only where `paintsBackground`, because the side we pad is then base
+    /// texture; on a frame with none it is desktop (PionNer_AMP2's 23 against 19).
+    private static func centredSides(_ rect: CGRect) -> CGRect {
+        let side = max(rect.minX, rect.width - rect.minX)
+        return CGRect(x: side, y: rect.minY, width: 2 * side, height: rect.height)
+    }
+
+    /// Whether the frame's groupdef, or one it inherits, paints `background=` under its whole area.
+    private static func paintsBackground(_ definition: WalXMLNode,
+                                         definitions: [String: WalXMLNode], depth: Int) -> Bool {
+        guard depth <= maximumInheritanceDepth else { return false }
+        if definition.attribute("background") != nil { return true }
+        guard let parent = definition.attribute("inherit_group"),
+              let inherited = definitions[fold(parent)] else { return false }
+        return paintsBackground(inherited, definitions: definitions, depth: depth + 1)
     }
 
     private static func scriptNodes(in node: WalXMLNode) -> [WalXMLNode] {
