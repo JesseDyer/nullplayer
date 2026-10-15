@@ -54,9 +54,9 @@ enum BundleHelper {
         "\(appVersion).\(buildNumber)"
     }
 
-    /// Only the Mac App Store build is sandboxed. App Review rejects external payment links
-    /// there, so donation links are hidden in it.
-    static let isAppStoreBuild = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    /// `build_mas.sh` stamps this key into the Mac App Store bundle. App Review rejects external
+    /// payment links there, so donation links are hidden in it.
+    static let isAppStoreBuild = Bundle.main.object(forInfoDictionaryKey: "NullPlayerAppStoreBuild") as? Bool == true
 
     // MARK: - Resources
     

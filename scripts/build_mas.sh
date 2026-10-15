@@ -157,6 +157,9 @@ log_info "Embedding provisioning profile..."
 cp "$MAS_PROVISION_PROFILE" "$APP_BUNDLE/Contents/embedded.provisionprofile"
 log_success "Provisioning profile embedded"
 
+# Mark the bundle as the App Store build (BundleHelper.isAppStoreBuild hides donation links)
+/usr/libexec/PlistBuddy -c "Add :NullPlayerAppStoreBuild bool true" "$APP_BUNDLE/Contents/Info.plist"
+
 # Sign inside-out; only the app bundle carries the entitlements
 log_info "Code signing app bundle with entitlements..."
 sign_app_bundle "$APP_BUNDLE" --sign "$MAS_APP_IDENTITY" --timestamp \
