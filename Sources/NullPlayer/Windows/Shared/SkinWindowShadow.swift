@@ -83,8 +83,9 @@ final class SkinWindowShadow {
     nonisolated static let isTraceEnabled = ProcessInfo.processInfo.environment["NP_SKIN_SHADOW_TRACE"] == "1"
 
     let shadowWindow = SkinShadowWindow()
-    /// The fewest seconds after a pull that rebuilt the shadow before the next pull of `shape`. A `.wal` outline is a render made for the
-    /// purpose, on the main thread; a `.wmz` one is the frame the window already presented.
+    /// The fewest seconds after a pull that rebuilt the shadow before the next pull of `shape`. A
+    /// `.wal` outline is a render made for the purpose, on the main thread; a `.wmz` one is the
+    /// frame the window already presented.
     private let minimumInterval: CFTimeInterval
     private weak var parent: NSWindow?
     /// The trace's name for the window; nil reads the window's title when tracing, which an owner
