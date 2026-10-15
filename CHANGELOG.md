@@ -113,6 +113,11 @@
   tall title bar, such as PionNer_AMP2 and XENERGY1, the Spectrum Analyzer and other NullPlayer
   windows left a see-through or solid-colour band below their contents. They now fill the skin's
   frame ([#556](https://github.com/ad-repo/nullplayer/issues/556)).
+- **Support on Ko-fi** — the About window has a Ko-fi button (not in the App Store build).
+- **Signed and notarized DMG** — `build_dmg.sh` signs with a Developer ID and the hardened runtime
+  when `DEVELOPER_ID` is set, and notarizes and staples the DMG when `NOTARY_PROFILE` names a
+  `notarytool` keychain profile, so macOS opens the downloaded app without a Gatekeeper warning.
+  Without them it still builds the ad-hoc signed DMG.
 
 ## 0.32.2
 

@@ -492,8 +492,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 40 buttons, 36 disclaimer, 28 OK. Size the window from that total rather than
         // hardcoding a height, so the panel keeps an even bottom margin instead of a dead gap
         // (it was 540pt tall, leaving 132pt of empty background under the OK button).
+        // The Ko-fi row adds 40 outside the App Store: only the MAS build is sandboxed, and
+        // App Review rejects external payment links there.
+        let showsKofi = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] == nil
         let windowWidth: CGFloat = 340
-        let contentHeight: CGFloat = 466
+        let contentHeight: CGFloat = showsKofi ? 506 : 466
         let bottomPadding: CGFloat = 24
         let windowHeight: CGFloat = contentHeight + bottomPadding
         
@@ -614,7 +617,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         addLinkButton("Reddit", icon: brandIcon("reddit"), url: "https://www.reddit.com/r/NullPlayer/",
                       x: buttonStartX + (buttonWidth + buttonSpacing) * 2, width: buttonWidth)
         y -= buttonHeight + 12
-        
+        if showsKofi {
+            addLinkButton("Support on Ko-fi", icon: brandIcon("kofi"), url: "https://ko-fi.com/nullplayer",
+                          x: buttonStartX, width: totalButtonWidth)
+            y -= buttonHeight + 12
+        }
+
         // Disclaimer
         let disclaimerLabel = NSTextField(wrappingLabelWithString: "This is a clean room project")
         disclaimerLabel.font = NSFont.systemFont(ofSize: 12)
