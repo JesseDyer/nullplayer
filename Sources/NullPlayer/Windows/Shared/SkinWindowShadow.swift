@@ -57,8 +57,8 @@ final class SkinShadowWindow: NSWindow {
 /// from then on it watches the window's move, key, resize and occlusion notifications and the
 /// preference, and repairs its own link, order and frame. The owner's one job is
 /// `invalidateShape` when its content may have moved the outline. A pull waits for the window to be
-/// on screen, for the previous build to land and for `minimumInterval`, so any number of
-/// invalidations cost one pull of the newest shape.
+/// on screen, for the previous build to land and for `minimumInterval` after the last rebuild, so
+/// any number of invalidations cost one pull of the newest shape.
 @MainActor
 final class SkinWindowShadow {
     /// One key for every family. Default on.
@@ -83,7 +83,7 @@ final class SkinWindowShadow {
     nonisolated static let isTraceEnabled = ProcessInfo.processInfo.environment["NP_SKIN_SHADOW_TRACE"] == "1"
 
     let shadowWindow = SkinShadowWindow()
-    /// The fewest seconds after a pull that rebuilt the shadow before the next pull of `shape`. A
+    /// The fewest seconds after a rebuild of the shadow before the next pull of `shape`. A
     /// `.wal` outline is a render made for the purpose, on the main thread; a `.wmz` one is the
     /// frame the window already presented.
     private let minimumInterval: CFTimeInterval
@@ -199,13 +199,13 @@ final class SkinWindowShadow {
     /// **An unhide leaves the child linked but carried wrong.** After the app is hidden and shown
     /// again AppKit moves this child twice as far as its parent on every drag, so the shadow runs
     /// ahead of the skin as a window-sized outline. Measured on an Original main window: no code of
-    /// ours touched the shadow during the hide. Removing and adding the child again resets it.
+    /// ours touched the shadow during the hide. Breaking the link lets `reassert` add it again, which
+    /// resets it — and only for a window that is visible, with the shadow enabled.
     private func relink() {
         guard let parent, shadowWindow.parent === parent else { return }
-        parent.removeChildWindow(shadowWindow)
-        parent.addChildWindow(shadowWindow, ordered: .below)
-        reassertFrame()
         trace("relink after unhide")
+        parent.removeChildWindow(shadowWindow)
+        reassert()
     }
 
     private var isMoveCheckScheduled = false
@@ -246,7 +246,7 @@ final class SkinWindowShadow {
         }
         let was = shadowWindow.frame
         shadowWindow.setFrame(frame, display: false)
-        trace("reassert frame \(Int(outline.width))x\(Int(outline.height)) was=\(was) want=\(frame) childOf=\(shadowWindow.parent === parent)")
+        trace("reassert frame \(Int(outline.width))x\(Int(outline.height)) was=\(was) want=\(frame)")
     }
 
     private func outlineFrame(of parent: NSWindow) -> NSRect {
@@ -289,7 +289,11 @@ final class SkinWindowShadow {
                                                          qos: .userInitiated)
     /// Why the shape was last invalidated, while a pull is owed. Only the newest matters.
     private var pendingTrigger: String?
-    private var lastPull: CFAbsoluteTime = 0
+    /// **Only a rebuild starts `minimumInterval`.** One click on `PionNer_AMP2`'s EQ tab swaps the
+    /// tab's image and, 14 ms later, moves the drawer. When the swap's unchanged-outline pull started
+    /// the interval, it held the drawer's pull for 250 ms with the open drawer's shadow still drawn:
+    /// a ghost outline of the drawer. A stale or failed pull starts nothing either.
+    private var lastRebuild: CFAbsoluteTime = 0
     private var isPullScheduled = false
     private var isBuilding = false
 
@@ -309,7 +313,7 @@ final class SkinWindowShadow {
     }
 
     /// The window's outline may have moved. The shape is pulled once the window is on screen, the
-    /// previous build has landed and `minimumInterval` has passed since the last pull; the alpha
+    /// previous build has landed and `minimumInterval` has passed since the last rebuild; the alpha
     /// is compared off the main thread, and the shadow is rebuilt only when it moved.
     func invalidateShape(_ trigger: String) {
         guard isActive else { return }
@@ -320,7 +324,7 @@ final class SkinWindowShadow {
     private func pullShapeWhenDue() {
         guard let trigger = pendingTrigger, let parent, isEnabled, isParentOnScreen,
               !isBuilding, !isPullScheduled else { return }
-        let wait = lastPull + minimumInterval - CFAbsoluteTimeGetCurrent()
+        let wait = lastRebuild + minimumInterval - CFAbsoluteTimeGetCurrent()
         if wait > 0 {
             // Leading edge at once, the rest coalesced into one trailing pull that catches the
             // end of an animation.
@@ -335,7 +339,6 @@ final class SkinWindowShadow {
         }
         pendingTrigger = nil
         let started = CFAbsoluteTimeGetCurrent()
-        lastPull = started
         let layers = shape()
         guard !layers.isEmpty else { return }
         // Pulling a `.wal` outline is main-thread work the build's own (off-main) timing cannot see.
@@ -383,13 +386,9 @@ final class SkinWindowShadow {
         case .failed:
             trace("failed \(detail)")
         case .same:
-            // **Only a pull that moved the shadow spends `minimumInterval`.** One click on
-            // `PionNer_AMP2`'s EQ tab swaps the tab's image and, 14 ms later, moves the drawer. The
-            // swap's pull found the outline unchanged, yet held the drawer's for the whole
-            // interval with the open drawer's shadow still drawn: a ghost outline of the drawer.
-            lastPull = 0
             trace("same \(detail)")
         case .rebuilt(let fingerprint, let image):
+            lastRebuild = CFAbsoluteTimeGetCurrent()
             lastFingerprint = fingerprint
             shadowWindow.contentView?.layer?.contents = image
             trace("rebuild \(detail)")
