@@ -160,7 +160,7 @@ The rule is now the first declared layout, Winamp's own.
 
 One file per measured skin. A pointer that says "read `skins.md` for skin X" resolves here in one hop.
 
-**33 of these are structural stubs, written 2026-09-06 from the corpus census and marked *not graded (confidence: low)*.** They record what one headless render at rest found — shape, surfaces, control and script counts, artwork — and nothing about whether the skin draws right or responds. Do not read one as a skin report; `/wal-skin-report` replaces it when a skin gets a live pass.
+**33 of these are structural stubs, written 2026-09-06 from the corpus census and marked *not graded (confidence: low)*, and two more (PiOnNeR_AMP2, XENERGY) were added the same way on 2026-10-14 as the reporting skins for #556.** They record what one headless render at rest found — shape, surfaces, control and script counts, artwork — and nothing about whether the skin draws right or responds. Do not read one as a skin report; `/wal-skin-report` replaces it when a skin gets a live pass.
 
 | Skin | File |
 |---|---|
@@ -233,6 +233,8 @@ One file per measured skin. A pointer that says "read `skins.md` for skin X" res
 | HeadAMP | [skins/headamp.md](skins/headamp.md) |
 | cPro — Venus ALPHA Port | [skins/cpro-venus.md](skins/cpro-venus.md) |
 | cPro2 — Styler ×3 | [skins/cpro2-styler.md](skins/cpro2-styler.md) |
+| PiOnNeR_AMP2 | [skins/pionner-amp2.md](skins/pionner-amp2.md) |
+| XENERGY | [skins/xenergy1.md](skins/xenergy1.md) |
 
 The other skins in the table above are rows only, and stay rows until one is measured with
 `/wal-skin-report`. When that happens, add `skins/<skin>.md` and a row here.
