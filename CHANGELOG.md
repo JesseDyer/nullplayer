@@ -123,6 +123,11 @@
 - **No empty shadow box at launch in Windows Media Player skins** — a NullPlayer window restored
   at launch, such as the Library under Combat_Flight_Simulator_3, cast its drop shadow for up to
   two seconds before the window itself appeared. The shadow now appears with its window.
+- **Support on Ko-fi** — the About window has a Ko-fi button (not in the App Store build).
+- **Signed and notarized DMG** — `build_dmg.sh` signs with a Developer ID and the hardened runtime
+  when `DEVELOPER_ID` is set, and notarizes and staples the DMG when `NOTARY_PROFILE` names a
+  `notarytool` keychain profile, so macOS opens the downloaded app without a Gatekeeper warning.
+  Without them it still builds the ad-hoc signed DMG.
 
 ## 0.32.2
 
