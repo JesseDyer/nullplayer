@@ -207,6 +207,10 @@ final class WMPMainView: NSView, NSViewToolTipOwner {
     func playlistContentDidChange() {
         widgetViews.values.compactMap { $0 as? WMPPlaylistSurfaceView }.forEach { $0.queueDidChange() }
     }
+
+    func playlistMarkersDidChange() {
+        widgetViews.values.compactMap { $0 as? WMPPlaylistSurfaceView }.forEach { $0.needsDisplay = true }
+    }
     /// Resolves a widget's container shape to a mask image. The image store lives on the
     /// controller, so the view asks rather than decodes; nil is a skin that authored no shape.
     var regionMaskProvider: ((WMPWidgetRegionMask) -> CGImage?)?

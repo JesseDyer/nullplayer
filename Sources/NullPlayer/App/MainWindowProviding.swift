@@ -60,6 +60,10 @@ protocol MainWindowProviding: ModeDependentWindow {
     /// selection onto the playing row and repaints, as the Classic and Modern playlists' `reloadData`
     /// do (M48). Classic, Original and Audion keep no queue here.
     func playlistContentDidChange()
+
+    /// The queue's ∿ EQ profile row markers changed; the queue and its selection did not. A skin
+    /// that draws its own queue repaints it.
+    func playlistMarkersDidChange()
 }
 
 // MARK: - Default Implementations
@@ -79,6 +83,8 @@ extension MainWindowProviding {
     func clampRestoredFrame(_ frame: NSRect) -> NSRect { frame }
 
     func playlistContentDidChange() {}
+
+    func playlistMarkersDidChange() {}
 
     func showActivity(_ message: String) {
         guard let content = window?.contentView else { return }
