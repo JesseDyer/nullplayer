@@ -206,5 +206,6 @@ model does not model yet — Corona's drawer is one — so a kind-only test repo
 no playlist and opens ours on top of it. What decides this routing is what the skin *declares*, not
 how much of it this engine hosts today.
 
-The restore path passes `switchingViews: false`: a saved session must never move the user to a
-different view at launch.
+The launch restore and a mode-switch rebuild take the same route as a toggle: `theme.openView` puts
+the panel *beside* the player rather than switching the user off their view, so there is nothing for
+a restore to avoid. (An earlier `switchingViews:` flag kept restore off this route; it is gone.)

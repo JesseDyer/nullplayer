@@ -151,6 +151,14 @@
   Spectrum. Reset Skin to Default still applies the skin's own mode, or Spectrum when it has none.
 - **Closing a visualizer mid-frame no longer crashes** — a spectrum or main-window analyzer torn
   down while the GPU was still drawing a frame could crash the app.
+- **Switching UI modes keeps your windows open or closed** — a playlist, equalizer or library drawn
+  by a Winamp Modern or Windows Media Player skin was not carried across a mode switch, so it came
+  back closed. Entering a Winamp Modern skin also no longer reopens panels you had closed.
+- **A docked Equalizer Studio survives a mode switch** — it closed along with the main window it
+  was docked to.
+- **Windows Media Player skins reopen their own panels** — a playlist or equalizer in a separate
+  view of the skin now comes back at launch and after a mode switch, as the skin's own button
+  opens it, instead of staying closed.
 
 ## 0.32.2
 
