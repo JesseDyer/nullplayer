@@ -25,7 +25,20 @@ final class ActivityCenter: NSObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.collapsedKey) }
     }
 
-    private override init() {}
+    private override init() {
+        super.init()
+        // Follow the player to another display. Any window's move is posted; only the main
+        // window's matters, and the controller can be swapped by a skin change, so match by object.
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeScreenNotification,
+                                               object: nil, queue: .main) { note in
+            MainActor.assumeIsolated {
+                guard !self.labels.isEmpty,
+                      note.object as? NSWindow === WindowManager.shared.mainWindowController?.window
+                else { return }
+                self.place()
+            }
+        }
+    }
 
     /// Show a spinner row for `id`, or update its message if it is already showing.
     func show(id: String, message: String) {

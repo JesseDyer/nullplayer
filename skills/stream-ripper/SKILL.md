@@ -5,7 +5,7 @@ description: Rip a media URL to FLAC/MP3/MP4 via yt-dlp — quality-first format
 
 # Stream Ripper
 
-Paste a URL and download it to a local file: lossless **FLAC**, **MP3**, or a playback-safe **H.264/AAC MP4 video at a chosen resolution/bitrate profile** (720p/2.5 Mbps, 1080p/4 Mbps recommended, 1080p/8 Mbps high quality, 1440p/16 Mbps, 4K/35 Mbps, Full/50 Mbps max). Implemented entirely in `Sources/NullPlayer/StreamRipper/StreamRipper.swift`, wired into the menu via `App/ContextMenuBuilder.swift`, with progress shown via `App/MainWindowProviding.swift`.
+Paste a URL and download it to a local file: lossless **FLAC**, **MP3**, or a playback-safe **H.264/AAC MP4 video at a chosen resolution/bitrate profile** (720p/2.5 Mbps, 1080p/4 Mbps recommended, 1080p/8 Mbps high quality, 1440p/16 Mbps, 4K/35 Mbps, Full/50 Mbps max). Implemented entirely in `Sources/NullPlayer/StreamRipper/StreamRipper.swift`, wired into the menu via `App/ContextMenuBuilder.swift`, with progress shown via `App/ActivityCenter.swift`.
 
 ## Quick Start (user)
 
@@ -13,7 +13,7 @@ Paste a URL and download it to a local file: lossless **FLAC**, **MP3**, or a pl
 2. Paste a URL (the field pre-fills from the clipboard when it holds an `http(s)` link)
 3. Pick an output type: **Audio — FLAC (lossless)**, **Audio — MP3**, or video at **1080p / 4 Mbps** / **720p / 2.5 Mbps** / **1080p / 8 Mbps** / **1440p / 16 Mbps** / **4K / 35 Mbps** / **Full / 50 Mbps**
 4. Choose a destination folder (defaults to Downloads)
-5. A spinner + message appears at the top of the main window during the rip
+5. A spinner row appears in the NullPlayer notification panel (top-right of the screen) during the rip
 6. When done: **Play Now**, **Reveal in Finder**, or **Done**
 
 ## Requirements
@@ -25,7 +25,7 @@ Ripping shells out to a **system-installed** `yt-dlp` (+ `ffmpeg`) — nothing i
 - **`StreamRipper`** (`@MainActor final class`, `.shared` singleton) owns the whole flow:
   `promptForInput()` (URL + format popup) → `promptForDestinationFolder()` (NSOpenPanel) → `rip(...)`.
 - **Menu**: `ContextMenuBuilder.buildMenuBarStreamingSubmenu` adds the single **Rip URL…** item. Action: `MenuActions.ripURL()` → `MainActor.assumeIsolated { StreamRipper.shared.promptAndRip() }` (menu clicks are already on the main thread).
-- **The rip runs off the main thread** (`DispatchQueue.global`); UI (alerts, activity band) is dispatched back to main.
+- **The rip runs off the main thread** (`DispatchQueue.global`); UI (alerts, activity panel row) is dispatched back to main.
 
 ## yt-dlp invocation (quality-first)
 

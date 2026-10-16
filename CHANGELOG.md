@@ -26,8 +26,8 @@
 - **EQ Cast: cast with your EQ profiles** — **Output ▸ EQ Cast** renders a track with its EQ
   profile into a file in a folder you choose and casts that to Sonos or Chromecast, so the
   profile is no longer lost when casting. Covers local files and Plex, Jellyfin, Navidrome/Subsonic
-  and Emby tracks. The first track waits for its render under a progress bar at the top of the main
-  window; the next three tracks are rendered in the background while you cast. A render is reused
+  and Emby tracks. The first track waits for its render under a progress row in the NullPlayer
+  notification panel; the next three tracks are rendered in the background while you cast. A render is reused
   until its profile's curve changes. The menu shows the cache's size, opens the folder and deletes
   the cache (keeping the track being cast). Only the profile is rendered, not the Equalizer
   window's EQ.
