@@ -26,6 +26,8 @@ is, labelled `OUTPUT`. Adding the curve to a stream would count it twice.
 
 ## Ownership
 
+### Controller
+
 `EQProfileController` (`Audio/EQProfileController.swift`) holds its nodes in an `AudioUnitFanout`
 (`Audio/AudioUnitFanout.swift`, shared with SRS's `WMPWOWController`): the local node, replaced by
 `replaceLocalNode()` in `replaceFailedAudioGraph` as `PitchTuningController` replaces its pitch node
@@ -38,16 +40,29 @@ The local graph is `AudioEngine.localEffectChain`, in signal order; setup, rebui
 replacement all walk it (`attachLocalGraph`, `connectLocalGraph`), so a new local stage is one entry
 there.
 
+### Store and schema
+
 `EQProfileStore` (`Audio/EQProfileStore.swift`, which also holds `EQCurve` and the scope types) is
 storage only: the profiles and their assignments, in SQLite
 (`~/Library/Application Support/NullPlayer/eq_profiles.db`, set up like `RadioStationRatingsStore`),
 and the global toggle (`eqProfilesEnabled`, default on, in the `UserDefaults` it is given). Reads go
 to the database; each change writes only its rows, bumps `revision` and posts `.eqProfilesDidChange`:
-the controller re-resolves, and `WindowManager` runs `reloadPlaylistViews()`, which repaints every
+the controller re-resolves, and `WindowManager` runs `redrawPlaylistViews()`, which repaints every
 queue's row marker — Classic, Modern, the `.wal` playlist and a `.wmz` `<PLAYLIST>` (its host
 snapshot is refreshed first, since the marker rides on it). One connection per thread: `shared` is
 the main thread's. EQ Cast's cache opens its own with `busyTimeout:`, since a read that hits a
 main-thread write would otherwise fail and read as Inherit.
+
+| Table | Columns | Notes |
+|---|---|---|
+| `eq_profiles` | `id` (UUID text, key), `name`, `curve` | `curve` is `EQCurve` as JSON, clamped on read; an undecodable one reads flat and is logged |
+| `eq_profile_assignments` | `level`, `source`, `scope_key` (together the key), `profile_id` | NULL `profile_id` is **Off**; `ON DELETE CASCADE` from `eq_profiles` (the connection sets `PRAGMA foreign_keys = ON`), so deleting a profile drops its assignments |
+
+A database that cannot be opened (an unreadable file, no Application Support) is logged as
+`[eqprofile] database unavailable: …` and leaves the store empty: nothing is written or announced,
+so the file on disk is never replaced. `init(path: nil)` is an in-memory database.
+
+### Resolver, scopes and markers
 
 `EQProfileResolver` (`Audio/EQProfileResolver.swift`, `.shared` over `EQProfileStore.shared`) is
 everything above storage: the `Track` scope keys, `resolve`, `assign(level:tracks:)`, the queue
@@ -59,6 +74,14 @@ queue row's title. Classic and Modern call `queueTitle(for:)`; the `.wal` and `.
 coding: a marker change is not a queue change (`WMPObjectModel.queueGeneration`) and no script reads it.
 `Track.playlistTitle` does not consult profiles.
 
+Scopes (`Track.eqProfileScopes`, in the resolver's file; an `EQProfileScope` per level), most specific first, names
+lower-cased and trimmed, a level omitted when its names are empty. `source` is `plex:<serverId>`
+etc., `local`, `youtube` or `radio`. `key` is: at track level the service id (file path plus
+`@cueStartOffset` for a cue track; the stream URL for radio, which has only this scope); at album
+level `<artist>|<album>` (the artist is in it because `Track` has no album artist or album id); at
+artist level the artist. Album level assigns every distinct (artist, album) pair among the row's
+tracks, so a compilation is covered whole.
+
 A **Library row** draws `∿` the same way (`LibraryBrowserListPainter` → `queueTitle(_:marked:)`) when a
 profile is active on every one of its items (`appliesProfile(toRow:)`). Its scopes come from
 `LibraryBrowserActions.eqProfileScopes(for:)`: a play row's `LibraryPlayable.eqProfileScopes` (the
@@ -68,6 +91,8 @@ it was built, never by opening the file while drawing. `isEQMarked` caches each 
 `LibraryBrowserModel.eqMarkers` (`LibraryRowEQMarkers`), dropped when the rows are replaced or the
 store's `revision` moves, so a paint reads no store; `.eqProfilesDidChange` repaints the browser
 beside the queues.
+
+### Assign EQ Profile
 
 **Assign EQ Profile ▸** is `EQProfileMenu` (`App/EQProfileMenu.swift`). It ticks from each item's
 scopes, most specific first: `assignment` at the menu's level, and `setting(of:)` over the scopes from
@@ -79,21 +104,23 @@ level shows unticked), a local album's stored tracks, and for a server album or 
 (normalisation and the `<artist>|<album>` key in one place). The row's album artist can differ from
 the track artists a compilation's assignment was keyed on; such a row shows nothing ticked. Playlists
 and folders pass nil, which ticks nothing. A pick still fetches the row's tracks and assigns to their
-scopes. **Every write is a menu pick**: nothing else calls `assign` except the launch prune, so a
-track-level row nobody chose came from a menu acting on more rows than the user meant. The queue
-views decide that set: Classic, Original and WMP build their menu with
-`PlaylistMenuBuilder.menu(target:clickedRow:state:)`, which selects a right-clicked row outside the
-selection first (`PlaylistMenuTarget.selectForMenu`), while the `.wal` Misc ▸ Assign acts on the bridge's selection.
-A selection indexes rows of the queue as it was, so **every queue change re-bases it onto the playing
-row** (empty with nothing playing): Classic and Original in `reloadData`, `.wal` and WMP through
-`MainWindowProviding.playlistContentDidChange()`, all reached from `WindowManager.reloadPlaylistViews`.
-An assignment is not a queue change: `.eqProfilesDidChange` only repaints (`redrawPlaylistViews`,
-`MainWindowProviding.playlistMarkersDidChange()`), so the ∿ markers update and the selection the user
-just assigned to stays put. Routing it through `reloadPlaylistViews` collapsed that selection in every
-family.
-Before that, a selection outlived Add to Queue or a replaced queue in WMP and `.wal`, and Assign wrote
-to rows nobody picked (M48, measured 2026-10-15 with Select All ▸ Sort ▸ Reverse ▸ Assign: one scope
-in all four families).
+scopes. **Every write is a menu pick**: nothing else writes assignments except the launch prune, so a
+track-level row nobody chose came from a menu acting on more rows than the user meant.
+
+The set it acts on is the queue view's selection: Classic, Original and WMP right-click through
+`PlaylistMenuBuilder.menu(target:clickedRow:state:)`, which selects a clicked row outside the
+selection first, and `.wal` Misc ▸ Assign uses the bridge's selection. Every queue change re-bases
+that selection onto the playing row, and an assignment only repaints (`.eqProfilesDidChange` →
+`redrawPlaylistViews`, `MainWindowProviding.playlistMarkersDidChange()`), so the selection survives
+it. The re-base itself is the queue views': `winamp-modern-skin-guide/reference/components.md`,
+`wmp-skin-guide/reference/windows/native-windows.md`.
+
+**Playback ▸ EQ Profiles ▸** (`EQProfileMenu.playbackOptionsItem`) holds the other two writes, both
+by profile rather than by scope: **Unassign Profile ▸** lists each profile with assignment rows
+(`assignmentCounts()`, Off rows not counted) and `unassign(_:)` deletes every row naming it, at
+every level and source, as Inherit would; **Remove All Assignments…** runs `removeAllAssignments()`,
+which deletes every row, Off included, so a leftover Off cannot block a later assignment below it.
+Both ask first and keep the profiles.
 
 At launch `pruneMissingLocalTracks()` drops `local` track-level assignments whose file is gone (a
 cue key's `@<offset>` stripped), checking files off the main thread; a path under an unmounted
@@ -101,14 +128,7 @@ cue key's `@<offset>` stripped), checking files off the main thread; a path unde
 keyed by path rather than library id: a queue track opened from Finder has no library id, so a
 moved file loses its profile.
 
-| Table | Columns | Notes |
-|---|---|---|
-| `eq_profiles` | `id` (UUID text, key), `name`, `curve` | `curve` is `EQCurve` as JSON, clamped on read; an undecodable one reads flat and is logged |
-| `eq_profile_assignments` | `level`, `source`, `scope_key` (together the key), `profile_id` | NULL `profile_id` is **Off**; `ON DELETE CASCADE` from `eq_profiles` (the connection sets `PRAGMA foreign_keys = ON`), so deleting a profile drops its assignments |
-
-A database that cannot be opened (an unreadable file, no Application Support) is logged as
-`[eqprofile] database unavailable: …` and leaves the store empty: nothing is written or announced,
-so the file on disk is never replaced. `init(path: nil)` is an in-memory database.
+### Curve
 
 `EQCurve` is the stored curve: per channel (`left`, `right`, `curve[channel]`) a `Channel` of 31
 `bands`, a `parametric` strip and a `preamp`. `EQProfileDesign.sections(for:sampleRate:)` (the
@@ -124,19 +144,6 @@ returns `EQParametric.sectionCount` (5) slots, identity where off or at 0 dB, so
 and its filter state across a change. The kernel runs `EQProfileCoefficients.sectionCount` (36) slots per
 channel: the faders' 31, then the strip's 5. A curve saved before the strip decodes it flat
 (`EQCurve.Channel.init(from:)`).
-
-The Studio's GRAPHIC / PARAMETRIC button picks which stage's controls are shown; it is a view
-setting, not part of the profile. Every curve drawn is both stages, and a band fader's cap is drawn
-at its own value plus the strip's response at its centre (`ChannelResponse.stripAtCentres`), so the faders sit on the
-curve; dragging changes only the fader's own value.
-
-Scopes (`Track.eqProfileScopes`, in the resolver's file; an `EQProfileScope` per level), most specific first, names
-lower-cased and trimmed, a level omitted when its names are empty. `source` is `plex:<serverId>`
-etc., `local`, `youtube` or `radio`. `key` is: at track level the service id (file path plus
-`@cueStartOffset` for a cue track; the stream URL for radio, which has only this scope); at album
-level `<artist>|<album>` (the artist is in it because `Track` has no album artist or album id); at
-artist level the artist. Album level assigns every distinct (artist, album) pair among the row's
-tracks, so a compilation is covered whole.
 
 ## Equalizer Studio
 
@@ -168,12 +175,16 @@ The one place profiles are made and edited (`Windows/EqualizerStudio/`; what the
 - **View** (`EqualizerStudioView`): header, toolbar, and two channel panels (L above R). Each panel
   is an analyser over 31 faders, or in parametric mode a response graph over the strip's dials
   (`StudioStrip`), plus a preamp. A double-click resets a fader or dial. An empty-area press moves
-  the window.
+  the window. The GRAPHIC / PARAMETRIC button picks which stage's controls are shown; it is a view
+  setting (`equalizerStudioMode`), not part of the profile. Every curve drawn is both stages, and a
+  band fader's cap is drawn at its own value plus the strip's response at its centre
+  (`ChannelResponse.stripAtCentres`), so the faders sit on the curve; dragging changes only the
+  fader's own value.
 - **Faceplate** (`StudioFaceplate`): Console or Boutique (`equalizerStudioFaceplate`). Both are drawn
   in the hosting skin's surface style, or Classic's / Original's surface roles. Meter colours come
   from the skin (an Original skin's EQ colours, or a Classic skin's `viscolor.txt`). Boutique on a dark
   skin draws through the Metal bloom (`StudioBloom` → `BloomPostProcessor`). Buttons are the
-  Library's tabs (`ModernLibraryTab`; see `original-skin-guide`).
+  Library's tabs, drawn by the same code (`ModernLibraryTab`, `ClassicLibraryTab`).
 - **Analyser** (`StudioRTA`): per-channel 31-band dBFS from `.audioStereoPCMFullDataUpdated`
   (consumer `equalizerStudio`, gated while open). An 8192-sample ring per channel and a Hann FFT run
   on a serial queue, so only finished levels reach main. For what is added on top per pipeline, see
@@ -271,6 +282,7 @@ track with none, `Off`, or profiles disabled, so a missing line *is* the answer.
 processing: open the Studio, raise a preamp to +12, and the snapshot's `mainMixerPeak` should rise
 ×3.98; BYPASS returns it exactly. `[eqprofile] pruned <n> assignment(s) for missing files` is the
 launch prune; silent when nothing was gone. `[eqprofile] assign <Inherit|Off|profile> at <level>
-level to <n> scope(s) from <n> track(s): <first titles>` is every menu pick, in release builds too.
-A count above one at track level from a single click is a menu acting on a whole selection. To
+level to <n> scope(s) from <n> track(s): <first titles>` is every Assign pick, in release builds
+too; `[eqprofile] unassign <menu item title> from all scopes` and `[eqprofile] remove all assignments` are
+the Playback ▸ EQ Profiles writes. A count above one at track level from a single click is a menu acting on a whole selection. To
 drive a pick without the user, use `winhelper rclick` and Accessibility (`app-control`, Route C).
