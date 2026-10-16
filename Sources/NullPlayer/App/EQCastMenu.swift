@@ -87,10 +87,10 @@ enum EQCastMenu {
             alert.addButton(withTitle: "Delete")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            EQCast.showActivity("EQ Cast: deleting cache…")
+            ActivityCenter.shared.show(id: "eqcast-delete", message: "EQ Cast: deleting cache…")
             Task {
                 await EQCastCache.shared.deleteCache(keeping: EQCast.castingFile)
-                EQCast.hideActivity()
+                ActivityCenter.shared.hide(id: "eqcast-delete")
             }
         }
     }

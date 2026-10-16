@@ -145,6 +145,11 @@
 - **Sorting a cue sheet's tracks keeps the playing track** — Reverse, Sort and Randomize on a queue
   holding several tracks of one cue sheet marked the first of them as playing, though the track you
   were hearing played on.
+- **Rip and EQ Cast progress shows in a NullPlayer notification panel** — it moved off the main
+  window, where it was drawn over skin art or onto empty space in Winamp Modern, Windows Media
+  Player and Audion skins, into a small panel at the top-right of the screen. A rip and an EQ Cast
+  render running together each get their own row instead of overwriting one another, and the
+  panel's chevron collapses it to one line.
 
 ### Build and internals
 

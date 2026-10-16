@@ -341,8 +341,8 @@ private final class DownloadProgress: NSObject, URLSessionTaskDelegate, @uncheck
     }
 }
 
-/// The one seam CastManager calls, on main: which file to cast, the render's progress on the main
-/// window's activity bar, and the upcoming tracks to pre-render.
+/// The one seam CastManager calls, on main: which file to cast, the render's progress in the
+/// ActivityCenter, and the upcoming tracks to pre-render.
 @MainActor
 enum EQCast {
     /// The cache folder's size; nil while it is measured. Pushed by the cache.
@@ -352,6 +352,7 @@ enum EQCast {
     /// The last pre-render list; nil until the session's first, so the first cast says it takes a moment.
     private static var upcoming: (tracks: [Track], device: CastDeviceType)?
     private static var activity: UUID?
+    private static let renderActivityID = "eqcast-render"
 
     /// A profile edit re-renders what is coming up.
     private static let profileObserver = NotificationCenter.default.addObserver(
@@ -364,7 +365,7 @@ enum EQCast {
     }
 
     /// The rendered file to cast instead of `track`, or nil to cast the original. A render shows on
-    /// the activity bar; `generation` false means the request was superseded and nothing renders.
+    /// the ActivityCenter; `generation` false means the request was superseded and nothing renders.
     static func castableFile(for track: Track, device: CastDeviceType, generation: @MainActor () -> Bool) async -> URL? {
         let cache = EQCastCache.shared
         var file: URL?
@@ -378,15 +379,15 @@ enum EQCast {
             guard generation() else { return nil }
             let token = UUID(), title = track.title, first = upcoming == nil
             activity = token
-            showActivity(line(title, track.url.isFileURL ? .rendering : .downloading, 0, first: first))
+            ActivityCenter.shared.show(id: renderActivityID, message: line(title, track.url.isFileURL ? .rendering : .downloading, 0, first: first))
             file = await cache.render(track) { phase, percent in
                 Task { @MainActor in
-                    if activity == token { showActivity(line(title, phase, percent, first: first)) }
+                    if activity == token { ActivityCenter.shared.show(id: renderActivityID, message: line(title, phase, percent, first: first)) }
                 }
             }
             if activity == token {
                 activity = nil
-                hideActivity()
+                ActivityCenter.shared.hide(id: renderActivityID)
             }
         }
         return file
@@ -429,18 +430,6 @@ enum EQCast {
         Task { await EQCastCache.shared.measureUsage() }
     }
 
-    static func showActivity(_ message: String) {
-        guard !AudioEngine.isHeadless else { return }
-        WindowManager.shared.mainWindowController?.showActivity(message)
-    }
-
-    static func hideActivity() {
-        guard !AudioEngine.isHeadless else { return }
-        WindowManager.shared.mainWindowController?.hideActivity()
-    }
-
-    // ponytail: one shared overlay, so a rip and a render at once overwrite each other's message;
-    // add a message stack if that is ever seen.
     private static func line(_ title: String, _ phase: EQCastCache.Phase, _ percent: Int, first: Bool) -> String {
         switch phase {
         case .downloading: return "EQ Cast: downloading \(title) \(percent)%"

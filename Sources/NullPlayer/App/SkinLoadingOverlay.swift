@@ -142,7 +142,7 @@ final class SkinLoadingOverlay {
 
     /// A resizable rounded-rect mask; `NSVisualEffectView` stretches it from the cap insets, so the
     /// corners stay circular at any panel size.
-    private static func roundedMask(cornerRadius radius: CGFloat) -> NSImage {
+    static func roundedMask(cornerRadius radius: CGFloat) -> NSImage {
         let edge = radius * 2 + 1
         let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
             NSColor.black.setFill()

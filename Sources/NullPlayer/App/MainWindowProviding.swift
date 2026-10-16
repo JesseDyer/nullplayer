@@ -41,13 +41,6 @@ protocol MainWindowProviding: ModeDependentWindow {
     /// Mark the window content as needing redraw
     func setNeedsDisplay()
 
-    /// Show (or update) a transient activity indicator with a spinner + message,
-    /// overlaid on the main window. Used for background work like ripping.
-    func showActivity(_ message: String)
-
-    /// Remove the activity indicator overlay.
-    func hideActivity()
-
     /// Constrain a frame restored from saved state to what this window can actually render.
     ///
     /// Classic and NullPlayer-modern main windows are fixed-size, so their saved frame is always
@@ -68,9 +61,6 @@ protocol MainWindowProviding: ModeDependentWindow {
 
 // MARK: - Default Implementations
 
-private let activityOverlayID = NSUserInterfaceItemIdentifier("MainWindowActivityOverlay")
-private let activityLabelID = NSUserInterfaceItemIdentifier("MainWindowActivityLabel")
-
 extension MainWindowProviding {
     var isWindowVisible: Bool {
         window?.isVisible == true
@@ -85,49 +75,6 @@ extension MainWindowProviding {
     func playlistContentDidChange() {}
 
     func playlistMarkersDidChange() {}
-
-    func showActivity(_ message: String) {
-        guard let content = window?.contentView else { return }
-
-        // Reuse the existing overlay if it is already showing.
-        if let existing = content.subviews.first(where: { $0.identifier == activityOverlayID }) {
-            (existing.subviews.first { $0.identifier == activityLabelID } as? NSTextField)?.stringValue = message
-            content.addSubview(existing, positioned: .above, relativeTo: nil) // keep on top
-            return
-        }
-
-        let barHeight: CGFloat = 22
-        // Pinned to the TOP of the window (macOS origin is bottom-left).
-        let bar = NSView(frame: NSRect(x: 0, y: content.bounds.height - barHeight, width: content.bounds.width, height: barHeight))
-        bar.identifier = activityOverlayID
-        bar.autoresizingMask = [.width, .minYMargin]
-        bar.wantsLayer = true
-        bar.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.78).cgColor
-
-        let spinner = NSProgressIndicator(frame: NSRect(x: 6, y: (barHeight - 14) / 2, width: 14, height: 14))
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isIndeterminate = true
-        spinner.startAnimation(nil)
-        bar.addSubview(spinner)
-
-        let label = NSTextField(labelWithString: message)
-        label.identifier = activityLabelID
-        label.font = .systemFont(ofSize: 10)
-        label.textColor = .white
-        label.lineBreakMode = .byTruncatingTail
-        label.frame = NSRect(x: 26, y: (barHeight - 14) / 2, width: content.bounds.width - 32, height: 14)
-        label.autoresizingMask = [.width]
-        bar.addSubview(label)
-
-        content.addSubview(bar, positioned: .above, relativeTo: nil)
-    }
-
-    func hideActivity() {
-        window?.contentView?.subviews
-            .first { $0.identifier == activityOverlayID }?
-            .removeFromSuperview()
-    }
 }
 
 /// A main window whose size is its skin's own canvas (`.wal`, `.wmz`, an Audion face): UI Size

@@ -1414,6 +1414,23 @@ component window. Pinned moves bypass the clamp by design, so tiler changes can 
 test Itemskin explicitly. The sweep carries each recorded frame with its window (B156); test Ebonite
 too, whose script also carries its frames itself.
 
+## Activity notifications
+
+Background-work progress (a rip, an EQ Cast render or cache delete) shows in `App/ActivityCenter.swift`:
+one borderless, non-activating floating panel at the top-right of the visible frame of the screen
+holding the main window, 16pt inset — the same for every skin family, because `.wal`, `.wmz` and
+Audion players are arbitrary shapes a bar inside the player cannot fit. Native look
+(`NSVisualEffectView` `.hudWindow`, rounded by `SkinLoadingOverlay.roundedMask`, never
+`layer.cornerRadius`), a faded app icon on the left, a "NullPlayer" header, and one spinner row per job.
+
+- `ActivityCenter.shared.show(id:message:)` adds a row, or updates that id's label in place;
+  `hide(id:)` removes it, and the panel orders out when the last row goes. Headless is a no-op here.
+- Ids: `rip-<uuid>` (one per rip), `eqcast-render`, `eqcast-delete`.
+- The header chevron collapses the rows to "NullPlayer — N running"; the state persists in
+  `activityCenterCollapsed`. The panel takes clicks for that, but never activates the app.
+
+NSAlerts (rip complete/failed) are not routed here.
+
 ## Related Documentation
 
 - **non-retina-fixes skill** - Fixes for rendering artifacts on 1x displays (blue lines, tile seams, text shimmering)
