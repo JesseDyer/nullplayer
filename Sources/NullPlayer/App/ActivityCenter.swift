@@ -49,6 +49,7 @@ final class ActivityCenter: NSObject {
         let row = NSStackView(views: [spinner, label])
         row.spacing = 8
         rows.addArrangedSubview(row)
+        row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
         labels[id] = label
         place()
     }
@@ -135,11 +136,12 @@ final class ActivityCenter: NSObject {
         text.alignment = .leading
         text.spacing = 6
         header.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
+        rows.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
 
         let outer = NSStackView(views: [icon, text])
         outer.alignment = .top
-        outer.spacing = 10
-        outer.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        outer.spacing = 12
+        outer.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
         outer.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(outer)
         NSLayoutConstraint.activate([
@@ -147,6 +149,11 @@ final class ActivityCenter: NSObject {
             outer.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             outer.topAnchor.constraint(equalTo: container.topAnchor),
             outer.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            // A `.top`-aligned stack does not make its bottom hold the taller arranged view, so
+            // without this the panel is sized to the icon and clips the rows below it.
+            text.bottomAnchor.constraint(lessThanOrEqualTo: outer.bottomAnchor, constant: -outer.edgeInsets.bottom),
+            // The text column runs to the right inset, so the padding is even on every side.
+            text.trailingAnchor.constraint(equalTo: outer.trailingAnchor, constant: -outer.edgeInsets.right),
         ])
 
         panel.contentView = container
