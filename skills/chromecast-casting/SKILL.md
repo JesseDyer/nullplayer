@@ -298,8 +298,8 @@ Equalizer window's EQ or other local DSP. User-facing behaviour: `user-guide` §
 http/proxy branch, is registered with `LocalMediaServer` like any local file, and is cast as
 `audio/flac`. `castNewTrack` passes `{ myGeneration == self.castTrackGeneration }`, so a superseded
 request does not start a render; its existing `currentGen1` guard covers the wait. A render holds
-the inflight queue, so a next/prev press waits behind at most one render, under the main window's
-activity bar (`MainWindowProviding.showActivity`, every skin). `castableFile` only answers; only a
+the inflight queue, so a next/prev press waits behind at most one render, under its row in the
+activity panel (`ActivityCenter`, id `eqcast-render`; see **ui-guide**). `castableFile` only answers; only a
 successful cast calls `EQCast.didCast(_:from:device:)`, which records the render being cast (the
 file Delete Cache keeps — a superseded or failed request must not replace it) and pre-renders the
 first 3 of `AudioEngine.upcomingIndices` (the rest of the list or shuffle order; repeat without
@@ -323,7 +323,7 @@ edited in place under the same id, so a render is reused only while the whole cu
 **Threading.** The actor resolves on its own `EQProfileStore(busyTimeout: 2)` connection — never the
 main thread's `shared` — so pre-rendering does no SQLite reads on main; without the
 busy timeout a read during a main-thread write would fail and read as Inherit. CastManager reads the
-engine on main and hands the actor tracks; UI updates (activity bar, `EQCast.usageBytes`) are
+engine on main and hands the actor tracks; UI updates (activity panel, `EQCast.usageBytes`) are
 fire-and-forget pushes to main. `eqcast.json` is read and written on the actor, so two renders in
 one folder cannot race on it.
 
