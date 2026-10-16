@@ -3546,11 +3546,8 @@ class WindowManager {
     func reloadPlaylistViews() {
         playlistWindowController?.reloadPlaylist()
         compactWindowController?.reloadPlaylist()
-        // A `.wal` skin draws its own playlist; it has no controller to reload, only a repaint.
-        winampModernSurfaces?.surfaceContentDidChange()
-        // A `.wmz` `<PLAYLIST>` takes its rows from host refreshes; this repaints what they cannot
-        // see change, the EQ profile row marker.
-        (mainWindowController as? WMPMainWindowController)?.playlistContentDidChange()
+        // A `.wal` or `.wmz` skin draws its own queue, with no controller to reload.
+        mainWindowController?.playlistContentDidChange()
     }
 
     // MARK: - Library History

@@ -154,6 +154,10 @@ CornerAmp ships playlist + EQ, Winamp Modern ships playlist + library. The engin
   `PE_REM`'s Crop work on (`playlistSetSelection` / `playlistRemoveRows`). A click collapses both to
   one row. Both new calls have protocol defaults over the single-row ones, so a host without a
   selection model of its own — every test fake — still conforms.
+- **A queue change re-bases the selection (M48).** `WindowManager.reloadPlaylistViews` reaches the
+  controller's `playlistContentDidChange()`, which calls the bridge's `playlistQueueDidChange()`:
+  the selection becomes the playing row, or empty. That callback fires *inside* every engine queue
+  edit, so a bridge mutator reads the selection before calling the engine and writes it after.
 - **The selection bar follows playback.** On every track change the controller's `updateTrackInfo`
   calls `playlistFollowCurrentTrack()` and then `revealPlaylistRow` on every container view (the
   playlist holder usually lives in an auxiliary `pledit` window, not the player), matching what the

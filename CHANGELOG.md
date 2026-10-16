@@ -134,6 +134,11 @@
   a row outside the selection now selects it first, as Windows Media Player skins already did.
   Before, the menu acted on whatever was selected, so Assign EQ Profile could set a whole album
   when you meant one track.
+- **A queue change no longer keeps an old selection** — in Windows Media Player and Winamp Modern
+  skins, adding to, sorting or replacing the queue now moves the selection to the playing track, as
+  Classic and Original skins already did. Before, rows selected in the old queue stayed selected,
+  so Assign EQ Profile (in a Winamp Modern skin, Misc ▸ Assign EQ Profile) could set tracks you
+  never picked.
 
 ## 0.32.2
 

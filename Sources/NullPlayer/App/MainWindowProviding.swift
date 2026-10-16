@@ -55,6 +55,11 @@ protocol MainWindowProviding: ModeDependentWindow {
     /// layout's `minimum_*`/`maximum_*`, so a frame saved in another session (or another skin) can
     /// be smaller than anything the scene can draw. The saved top-left is always preserved.
     func clampRestoredFrame(_ frame: NSRect) -> NSRect
+
+    /// The play queue changed. A skin that draws its own queue (`.wal`, `.wmz`) re-bases its
+    /// selection onto the playing row and repaints, as the Classic and Modern playlists' `reloadData`
+    /// do (M48). Classic, Original and Audion keep no queue here.
+    func playlistContentDidChange()
 }
 
 // MARK: - Default Implementations
@@ -72,6 +77,8 @@ extension MainWindowProviding {
     }
 
     func clampRestoredFrame(_ frame: NSRect) -> NSRect { frame }
+
+    func playlistContentDidChange() {}
 
     func showActivity(_ message: String) {
         guard let content = window?.contentView else { return }
