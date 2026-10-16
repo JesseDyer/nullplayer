@@ -171,6 +171,28 @@ final class EQProfileTests: XCTestCase {
         XCTAssertEqual(profiles.resolve(track)?.profile?.name, "B")
     }
 
+    /// Counts are scopes per profile and level, Off left out; unassigning keeps the profile, and
+    /// removing all takes the Off rows too.
+    func testUnassignAndRemoveAllKeepTheProfiles() {
+        let profiles = makeResolver(), store = profiles.store
+        let a = store.add(name: "A", curve: curve(3))!, b = store.add(name: "B", curve: curve(6))!
+        let one = local("/1.flac"), two = local("/2.flac")
+        profiles.assign(.profile(a.id), level: .track, tracks: [one, two])
+        profiles.assign(.profile(a.id), level: .album, tracks: [one])
+        profiles.assign(.profile(b.id), level: .artist, tracks: [one])
+        profiles.assign(.off, level: .track, tracks: [local("/3.flac")])
+        XCTAssertEqual(store.assignmentCounts(), [a.id: [.track: 2, .album: 1], b.id: [.artist: 1]])
+
+        store.unassign(a.id)
+        XCTAssertEqual(store.assignmentCounts(), [b.id: [.artist: 1]])
+        XCTAssertEqual(profiles.resolve(one)?.profile?.name, "B")
+
+        store.removeAllAssignments()
+        XCTAssertEqual(store.assignmentCounts(), [:])
+        XCTAssertNil(store.assignment(local("/3.flac").eqProfileScope(at: .track)!), "Off rows go too")
+        XCTAssertEqual(store.profiles.count, 2)
+    }
+
     func testProfilesAndAssignmentsSurviveAReload() {
         let profiles = EQProfileResolver(store: EQProfileStore(path: storePath, defaults: defaults))
         let a = profiles.store.add(name: "A", curve: curve(5))!

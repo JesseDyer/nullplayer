@@ -363,8 +363,13 @@ Equalizer window never changes a profile, and a profile never changes it.
 - **Seeing it:** a queue row whose track has a profile running shows **∿** before its title — as
   does a Library row (track, album, artist, station or downloaded video) whose every track runs one — and
   **File Info** ends with an *EQ Profile:* line (e.g. `Warm (album)`, `Off (track)`, `None`).
-- **Turning it off — Playback ▸ EQ Profiles** (on by default): off, no assigned profile is applied;
-  assignments are kept. The Studio still plays its edit while open.
+- **Turning it off — Playback ▸ EQ Profiles ▸ Enabled** (on by default): off, no assigned profile
+  is applied; assignments are kept. The Studio still plays its edit while open.
+- **Clearing assignments — Playback ▸ EQ Profiles:** **Unassign Profile ▸** lists each assigned
+  profile with what it is set on (`Warm — 1 artist, 2 albums, 5 tracks`; an album counts once, Off
+  is not listed) and, after a confirm, removes it everywhere. **Remove All Assignments…** clears
+  every assignment, Off included. Both keep the profiles, cannot be undone, and stay available
+  while casting.
 - Profiles do not apply while casting unless EQ Cast is on (below), and never to video.
 
 ### EQ Cast
@@ -397,7 +402,7 @@ other local effects are not.
 - **Reference Tuning**: Pitch-shift playback to a different reference frequency. Presets for Off, 432 Hz, 440 Hz, and a Custom… dialog (source/target Hz, ±2400 cents). Applies to local files and HTTP streams; unavailable while casting because remote renderers have no local audio graph to insert the pitch shifter into. Persists across launches; the CLI also accepts `--tuning`, `--tuning-source`, and `--tuning-offset-cents` as session-only overrides.
 - **Playback Speed**: Tempo-preserving speed control from `0.25×` to `4.0×`, with presets plus Custom…. Applies to local files and HTTP streams; unavailable while casting. Persists across launches.
 - **SRS**: **WOW Effect** (stereo widening) and **TruBass** (bass enhancement), each Off / 25% / 50% / 75% / 100%, plus a **Headphones** toggle that tunes TruBass for headphones (off = normal speakers). App-wide in every skin, shared with a `.wmz`'s SRS controls, persisted across launches, unavailable while casting. DSP: `../wmp-skin-guide/reference/audio-enhancements.md`.
-- **EQ Profiles**: on/off for assigned EQ profiles; see *EQ Profiles* above. Unavailable while casting.
+- **EQ Profiles ▸**: **Enabled** (on/off for assigned EQ profiles; unavailable while casting), **Unassign Profile ▸**, **Remove All Assignments…** and **Equalizer Studio…**; see *EQ Profiles* above.
 - **Balance**: Stereo pan submenu (slider plus Left / Center / Right presets), backed by `engine.balance` and mirrored by the classic Balance Slider sprite. Gives Original and Original-Metal UI and menu-only/Compact workflows access to balance without a face slider. Persists across launches.
 - **Save State on Quit**: Restores window layout, audio/EQ state, and playlist contents, but not the selected track, seek position, or playing state. See `../app-state/SKILL.md` for the complete persistence and reset policy.
 
