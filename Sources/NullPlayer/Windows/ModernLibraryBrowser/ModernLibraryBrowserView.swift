@@ -926,7 +926,7 @@ class ModernLibraryBrowserView: NSView {
             let textH = font.pointSize + 4 * m
 
             let serverNameMaxWidth = Self.serverFieldWidth * hm
-            let serverCycle = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
+            let server = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
                                                 availableWidth: serverNameMaxWidth, scrollOffset: coordinator.serverName.offset,
                                                 textHeight: textH, attributes: dataAttrs, in: context)
 
@@ -938,7 +938,7 @@ class ModernLibraryBrowserView: NSView {
             let libraryText = model.withItemCount(library)
             // The field grows into the free space before the right cluster; it scrolls when even that is short.
             let libraryNameMaxWidth = max(Self.minLibraryFieldWidth * hm, visEndX - 24 * hm - libraryX)
-            let libraryCycle = drawScrollingText(libraryText, startX: libraryX, textY: textY,
+            let libraryName = drawScrollingText(libraryText, startX: libraryX, textY: textY,
                                                  availableWidth: libraryNameMaxWidth, scrollOffset: coordinator.libraryName.offset,
                                                  textHeight: textH, attributes: dataAttrs, in: context)
 
@@ -946,9 +946,9 @@ class ModernLibraryBrowserView: NSView {
                                       width: sourceNameStartX + serverNameMaxWidth - barRect.minX,
                                       height: barRect.height)
             coordinator.rects.library = NSRect(x: libraryLabelX, y: barRect.minY,
-                                       width: libraryX + min(libraryNameMaxWidth, libraryText.size(withAttributes: dataAttrs).width) - libraryLabelX,
+                                       width: libraryX + libraryName.width - libraryLabelX,
                                        height: barRect.height)
-            coordinator.namesDrawn(serverCycle: serverCycle, libraryCycle: libraryCycle)
+            coordinator.namesDrawn(serverCycle: server.cycle, libraryCycle: libraryName.cycle)
 
         case .unconfigured(let prompt):
             let promptWidth = prompt.size(withAttributes: prefixAttrs).width
@@ -959,14 +959,15 @@ class ModernLibraryBrowserView: NSView {
     
     /// Draw text with circular scrolling when it overflows the available width.
     /// Uses NSAttributedString drawing (system font) rather than bitmap sprites. Returns how far
-    /// the text travels before the scroll wraps, or 0 when it fits and does not scroll.
+    /// the text travels before the scroll wraps, or 0 when it fits and does not scroll, and the
+    /// width it drew.
     private func drawScrollingText(_ text: String,
                                    startX: CGFloat, textY: CGFloat,
                                    availableWidth: CGFloat,
                                    scrollOffset: CGFloat,
                                    textHeight: CGFloat,
                                    attributes: [NSAttributedString.Key: Any],
-                                   in context: CGContext) -> CGFloat {
+                                   in context: CGContext) -> (cycle: CGFloat, width: CGFloat) {
         let textWidth = (text as NSString).size(withAttributes: attributes).width
 
         // Text fits — draw once with a simple clip, no scrolling artifacts.
@@ -975,7 +976,7 @@ class ModernLibraryBrowserView: NSView {
             context.clip(to: NSRect(x: startX, y: textY, width: availableWidth, height: textHeight))
             drawText(text, at: NSPoint(x: startX, y: textY), withAttributes: attributes, context: context)
             context.restoreGState()
-            return 0
+            return (0, textWidth)
         }
 
         let separatorWidth = textWidth * 0.3  // 30% gap before repeat
@@ -992,7 +993,7 @@ class ModernLibraryBrowserView: NSView {
         }
 
         context.restoreGState()
-        return totalCycleWidth
+        return (totalCycleWidth, availableWidth)
     }
 
     /// Draw string text without inheriting parent content alpha attenuation.

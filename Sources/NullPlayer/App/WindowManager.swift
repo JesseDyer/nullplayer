@@ -862,7 +862,7 @@ class WindowManager {
     /// Windows that should move together with the dragging window
     private var dockedWindowsToMove: [NSWindow] = []
 
-    private let seamlessStackShadow = SeamlessStackShadow()
+    private lazy var seamlessStackShadow = SeamlessStackShadow { [unowned self] in self.seamlessStackLayout() }
     
     /// Store relative offsets of docked windows from the dragging window's origin
     /// This prevents drift during fast movement by maintaining exact relative positions
@@ -6806,6 +6806,8 @@ class WindowManager {
         if window === compactWindowController?.window {
             return newOrigin
         }
+        // Ahead of the guards below: a snap or a carried child reshapes a stack as surely as a drag.
+        if isSeamlessDocking { seamlessStackShadow.setNeedsCast() }
 
         // Programmatic frame changes should never re-enter snap logic.
         if isSnappingWindow {
@@ -7228,7 +7230,10 @@ class WindowManager {
     /// Find all windows that are docked (touching) the given window
     /// Any connected group of 2+ eligible windows moves together, regardless of main-window membership.
     func findDockedWindows(to window: NSWindow) -> [NSWindow] {
-        let candidateWindows = groupMovableWindows()
+        findDockedWindows(to: window, among: groupMovableWindows())
+    }
+
+    private func findDockedWindows(to window: NSWindow, among candidateWindows: [NSWindow]) -> [NSWindow] {
         guard candidateWindows.contains(where: { $0 === window }) else { return [] }
         
         var dockedWindows: [NSWindow] = []
@@ -7255,11 +7260,13 @@ class WindowManager {
     }
 
     /// Every connected group of two or more docked windows.
-    private func dockedGroups() -> [[NSWindow]] {
+    /// `excluded` takes no part, so a window it bridged leaves its neighbours in separate groups.
+    private func dockedGroups(excluding excluded: NSWindow?) -> [[NSWindow]] {
+        let candidates = groupMovableWindows().filter { $0 !== excluded }
         var grouped = Set<ObjectIdentifier>()
-        return groupMovableWindows().compactMap { window in
+        return candidates.compactMap { window in
             guard !grouped.contains(ObjectIdentifier(window)) else { return nil }
-            let docked = findDockedWindows(to: window)
+            let docked = findDockedWindows(to: window, among: candidates)
             guard !docked.isEmpty else { return nil }
             let group = [window] + docked
             grouped.formUnion(group.map(ObjectIdentifier.init))
@@ -7267,15 +7274,22 @@ class WindowManager {
         }
     }
 
-    /// Regroup the seamless Original stack shadows. Runs after every view has taken the layout, its
-    /// corner masks included. A stack the drag carries whole — a group drag, or the player's docked
-    /// children — cannot change shape, and regrouping it mid-move reads its members a step apart,
-    /// so it stands until the drop. A window dragged out alone regroups as it goes.
-    private func updateSeamlessStackShadow() {
-        guard draggingWindow == nil || dockedWindowsToMove.isEmpty else { return }
-        let seamless = isRunningModernUI
-            && (ModernSkinEngine.shared.currentSkin?.config.window.seamlessDocking ?? 0) > 0
-        seamlessStackShadow.cast(stacks: seamless ? dockedGroups() : [], main: mainWindowController?.window)
+    /// The stacks the seamless Original shadows regroup to, read after every view has taken the
+    /// layout, its corner masks included. A stack the drag carries whole — a group drag, or the player's docked
+    /// children — cannot change shape, and regrouping it mid-move reads its members a step apart
+    /// and pulls the stack apart, so it stands until the drop.
+    ///
+    /// **A window dragged alone casts its own shadow until the drop.** Joined to a stack it would
+    /// cast — or carry, as the player does — the stack's shadow, and the shadow is its child: every
+    /// step along a neighbour's side, and the pull away, dragged the neighbour's outline with it.
+    private func seamlessStackLayout() -> SeamlessStackShadow.Layout? {
+        guard draggingWindow == nil || dockedWindowsToMove.isEmpty else { return nil }
+        return .init(stacks: isSeamlessDocking ? dockedGroups(excluding: draggingWindow) : [],
+                     main: mainWindowController?.window)
+    }
+
+    private var isSeamlessDocking: Bool {
+        isRunningModernUI && (ModernSkinEngine.shared.currentSkin?.config.window.seamlessDocking ?? 0) > 0
     }
 
     /// Check if two windows are docked (touching edges)
@@ -7311,7 +7325,7 @@ class WindowManager {
         edgeOcclusionSegmentsCache.removeAll(keepingCapacity: true)
         sharpCornersCache.removeAll(keepingCapacity: true)
         NotificationCenter.default.post(name: .windowLayoutDidChange, object: nil)
-        updateSeamlessStackShadow()
+        seamlessStackShadow.cast()
     }
 
     /// Post a connectedWindowHighlightDidChange notification.

@@ -1003,7 +1003,7 @@ class ClassicLibraryBrowserView: NSView {
 
             // Server name right after "Source:", in a fixed-width field
             let serverNameMaxWidth = serverFieldChars * scaledCharWidth
-            let serverCycle = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
+            let server = drawScrollingText(serverName, startX: sourceNameStartX, textY: textY,
                               availableWidth: serverNameMaxWidth, scale: textScale,
                               scrollOffset: coordinator.serverName.offset,
                               renderer: renderer, in: context)
@@ -1017,7 +1017,7 @@ class ClassicLibraryBrowserView: NSView {
             let libraryText = model.withItemCount(library)
             // The field grows into the free space before the right cluster; it scrolls when even that is short.
             let libraryNameMaxWidth = max(Self.minLibraryFieldChars * scaledCharWidth, accessoryX - 24 * chromeScale - libraryX)
-            let libraryCycle = drawScrollingText(libraryText, startX: libraryX, textY: textY,
+            let libraryName = drawScrollingText(libraryText, startX: libraryX, textY: textY,
                               availableWidth: libraryNameMaxWidth, scale: textScale,
                               scrollOffset: coordinator.libraryName.offset,
                               renderer: renderer, in: context)
@@ -1026,9 +1026,9 @@ class ClassicLibraryBrowserView: NSView {
                                       width: libraryLabelX - barRect.minX,
                                       height: barRect.height)
             coordinator.rects.library = NSRect(x: libraryLabelX, y: barRect.minY,
-                                       width: libraryX + min(libraryNameMaxWidth, ClassicLibraryTab.textWidth(libraryText, scale: textScale, style: winampModernStyle)) - libraryLabelX,
+                                       width: libraryX + libraryName.width - libraryLabelX,
                                        height: barRect.height)
-            coordinator.namesDrawn(serverCycle: serverCycle, libraryCycle: libraryCycle)
+            coordinator.namesDrawn(serverCycle: server.cycle, libraryCycle: libraryName.cycle)
 
         case .unconfigured:
             break  // Drawn above, without the right-side buttons.
@@ -1037,17 +1037,18 @@ class ClassicLibraryBrowserView: NSView {
 
     /// Draw text in a field `availableWidth` wide, circularly scrolling when it overflows. Returns
     /// how far the text travels before the scroll wraps — what the scroll tick wraps its offset at —
-    /// or 0 when it fits and does not scroll.
+    /// or 0 when it fits and does not scroll — and the width it drew.
     private func drawScrollingText(_ text: String, startX: CGFloat, textY: CGFloat,
                                    availableWidth: CGFloat, scale: CGFloat,
                                    scrollOffset: CGFloat,
-                                   renderer: SkinRenderer, in context: CGContext) -> CGFloat {
+                                   renderer: SkinRenderer, in context: CGContext) -> (cycle: CGFloat, width: CGFloat) {
         let charHeight = SkinElements.TextFont.charHeight
         let scaledCharHeight = charHeight * scale
-        
-        guard ClassicLibraryTab.textWidth(text, scale: scale, style: winampModernStyle) > availableWidth else {
+
+        let textWidth = ClassicLibraryTab.textWidth(text, scale: scale, style: winampModernStyle)
+        guard textWidth > availableWidth else {
             drawScaledWhiteSkinText(text, at: NSPoint(x: startX, y: textY), scale: scale, renderer: renderer, in: context)
-            return 0
+            return (0, textWidth)
         }
         // One cycle is the text and a separator for a seamless wrap, measured as the one run drawn.
         let fullText = text + "   "
@@ -1071,7 +1072,7 @@ class ClassicLibraryBrowserView: NSView {
         }
         
         context.restoreGState()
-        return totalCycleWidth
+        return (totalCycleWidth, availableWidth)
     }
     
     private func drawTabBar(in context: CGContext, drawBounds: NSRect, colors: PlaylistColors, renderer: SkinRenderer) {
