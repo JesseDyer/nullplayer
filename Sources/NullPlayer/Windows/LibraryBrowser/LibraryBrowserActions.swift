@@ -183,6 +183,24 @@ final class LibraryBrowserActions: NSObject {
         }
     }
 
+    /// Each of the row's items' EQ profile scopes, most specific first: a play row's own
+    /// (`LibraryPlayable.eqProfileScopes`), a station's, a video's audio download. nil for none.
+    func eqProfileScopes(for item: LibraryBrowserItem) -> [[EQProfileScope]]? {
+        switch item.type {
+        case .radioStation(let station): return [station.toTrack().eqProfileScopes]
+        case .youtubeVideo: return item.audioFile.map { [[.youtubeTrack(audioFile: $0)]] }
+        default: return playable(for: item)?.eqProfileScopes
+        }
+    }
+
+    /// Whether the row's title draws after `∿`: read once per row per list and store revision.
+    func isEQMarked(_ item: LibraryBrowserItem) -> Bool {
+        let resolver = EQProfileResolver.shared
+        return model.eqMarkers.marked(item.id, revision: resolver.store.revision) {
+            eqProfileScopes(for: item).map(resolver.appliesProfile(toRow:)) ?? false
+        }
+    }
+
     /// The row as tracks for the play verbs; nil for a row with no basic play menu (radio,
     /// YouTube, containers that only expand).
     func playable(for item: LibraryBrowserItem) -> LibraryPlayable? {

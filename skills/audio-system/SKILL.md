@@ -392,6 +392,16 @@ queue row's title. Classic and Modern call `queueTitle(for:)`; the `.wal` and `.
 coding: a marker change is not a queue change (`WMPObjectModel.queueGeneration`) and no script reads it.
 `Track.playlistTitle` does not consult profiles.
 
+A **Library row** draws `∿` the same way (`LibraryBrowserListPainter` → `queueTitle(_:marked:)`) when a
+profile is active on every one of its items (`appliesProfile(toRow:)`). Its scopes come from
+`LibraryBrowserActions.eqProfileScopes(for:)`: a play row's `LibraryPlayable.eqProfileScopes` (the
+menu's own, so the tick and the marker agree), a station's track, and a YouTube video's
+`EQProfileScope.youtubeTrack(audioFile:)`, keyed on the audio download its row found on disk when
+it was built, never by opening the file while drawing. `isEQMarked` caches each row's marker by row id in
+`LibraryBrowserModel.eqMarkers` (`LibraryRowEQMarkers`), dropped when the rows are replaced or the
+store's `revision` moves, so a paint reads no store; `.eqProfilesDidChange` repaints the browser
+beside the queues.
+
 **Assign EQ Profile ▸** is `EQProfileMenu` (`App/EQProfileMenu.swift`). It ticks from each item's
 scopes, most specific first: `assignment` at the menu's level, and `setting(of:)` over the scopes from
 that level down for the *Inherited* line. Rows with tracks in hand pass `Track.eqProfileScopes`. A

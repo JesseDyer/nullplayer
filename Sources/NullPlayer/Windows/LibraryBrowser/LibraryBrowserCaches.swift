@@ -25,3 +25,21 @@ struct PlexBrowserCache {
     var playlistTracks: [String: [PlexTrack]] = [:]
     var searchResults: PlexSearchResults?
 }
+
+/// Each row's EQ profile marker by row id, for the store revision it was read at, so a paint reads
+/// no store. A new list starts empty (`LibraryBrowserModel.displayItems`).
+struct LibraryRowEQMarkers {
+    private var marks: [String: Bool] = [:]
+    private var revision = -1
+
+    mutating func marked(_ id: String, revision: Int, read: () -> Bool) -> Bool {
+        if revision != self.revision {
+            marks.removeAll()
+            self.revision = revision
+        }
+        if let marked = marks[id] { return marked }
+        let marked = read()
+        marks[id] = marked
+        return marked
+    }
+}

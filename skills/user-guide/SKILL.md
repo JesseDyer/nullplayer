@@ -360,7 +360,8 @@ Equalizer window never changes a profile, and a profile never changes it.
   holds at the time — tracks added later get none. An assignment follows the path, name or server
   id it was made against: moving or renaming a file, retagging an album or artist, or re-adding a
   server under a new id stops it matching, and that content falls through to the next level.
-- **Seeing it:** a queue row whose track has a profile running shows **∿** before its title, and
+- **Seeing it:** a queue row whose track has a profile running shows **∿** before its title — as
+  does a Library row (track, album, artist, station or downloaded video) whose every track runs one — and
   **File Info** ends with an *EQ Profile:* line (e.g. `Warm (album)`, `Off (track)`, `None`).
 - **Turning it off — Playback ▸ EQ Profiles** (on by default): off, no assigned profile is applied;
   assignments are kept. The Studio still plays its edit while open.

@@ -1121,7 +1121,8 @@ class ModernLibraryBrowserView: NSView {
             letterWithRows: selected,
             letterWithoutRows: skin.applyTextOpacity(to: skin.textDimColor.withAlphaComponent(0.3)))
         return LibraryBrowserListPainter(context: context, layout: layout, style: style, model: model, list: list,
-                                         art: art, youtubeVideos: actions.youtubeVideos, thumbnails: rowThumbnails,
+                                         art: art, youtubeVideos: actions.youtubeVideos, isEQMarked: actions.isEQMarked,
+                                         thumbnails: rowThumbnails,
                                          spinnerStep: coordinator.spinnerStep)
     }
     // MARK: - State Drawing Methods
