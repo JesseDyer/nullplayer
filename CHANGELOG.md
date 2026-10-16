@@ -75,6 +75,8 @@
   Before, the menu acted on whatever was selected.
 - **Context menus use macOS naming** — "Exit" is now "Quit", and both state menu items read
   "Save State on Quit" ([#554](https://github.com/ad-repo/nullplayer/issues/554)).
+- **Windows menu reordered and grouped** — Main Window, Library Browser and Playlist Editor come
+  first, then the equalizers, the visualizers, and the remaining windows, each group separated.
 
 ### Fixes
 
