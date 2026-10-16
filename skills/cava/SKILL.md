@@ -197,7 +197,7 @@ flags and applies the incoming skin's Cava transparency default. Modern skins de
 from `window.opacity < 1`; classic passes false:
 
 - Entering modern or metal clears them in
-  `ModernSkinEngine.configureSkinDependencies(preservePersistedProfiles:)` when persisted
+  `ModernSkinEngine.configureSkinDependencies(reason:)` when persisted
   visualization preferences are not being preserved.
 - Entering classic clears them in `WindowManager.prepareUIRuntime(for:)` via
   `CavaSettings.resetAppearanceForSkinChange()`, because the classic branch does not reload
@@ -323,7 +323,7 @@ Cava's *default* gradient tracks the active skin; a user pick (via the Color men
 they choose **Match Skin** or explicitly switch/reset skins. A same-skin app relaunch preserves the pick:
 - `CavaSettings.hasCustomColors` (UserDefaults) gates this. `effectiveLowColor`/`effectiveHighColor` return the user's stored colors when true, otherwise the in-memory skin default.
 - Explicit modern skin changes clear every Cava scope from
-  `ModernSkinEngine.configureSkinDependencies(preservePersistedProfiles:)` when persisted profiles are
+  `ModernSkinEngine.configureSkinDependencies(reason:)` when persisted profiles are
   not being preserved. Explicit classic loads clear them from `WindowManager.loadSkin(from:)` and
   `loadBundledDefaultSkin()`; launch restoration uses the preserving `restoreClassicSkin(from:)` path.
 - The skin default is pushed by the **skin-aware views** (they can import `Skin/`/`ModernSkin/`; `CavaSettings` can't), in `commonInit` and `skinDidChange`:

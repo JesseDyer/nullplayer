@@ -145,6 +145,12 @@
 - **Sorting a cue sheet's tracks keeps the playing track** — Reverse, Sort and Randomize on a queue
   holding several tracks of one cue sheet marked the first of them as playing, though the track you
   were hearing played on.
+- **Classic and Original remember their own main-window visualizer** — the mode you pick in a
+  Classic skin and the one you pick in an Original skin are now kept apart. Before, they shared one
+  setting, so switching to Original changed Classic's mode, and entering Classic reset it to
+  Spectrum. Reset Skin to Default still applies the skin's own mode, or Spectrum when it has none.
+- **Closing a visualizer mid-frame no longer crashes** — a spectrum or main-window analyzer torn
+  down while the GPU was still drawing a frame could crash the app.
 
 ## 0.32.2
 

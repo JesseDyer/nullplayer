@@ -31,7 +31,6 @@ final class VisualizationPreferencesTests: XCTestCase {
             postNotifications: false
         )
 
-        XCTAssertNil(defaults.object(forKey: "mainWindowVisMode"))
         XCTAssertNil(defaults.object(forKey: "cava.mainWindow.barCount"))
         XCTAssertNil(defaults.object(forKey: VisClassicBridge.PreferenceScope.mainWindow.lastProfileNameKey))
         XCTAssertNotNil(defaults.object(forKey: "spectrumQualityMode"))

@@ -330,16 +330,18 @@ final class CavaSettingsTests: XCTestCase {
         }
     }
 
-    func testClassicVisualizationDefaultIsSpectrumInMainWindow() throws {
+    func testClassicEntryKeepsMainWindowModeAndDefaultsSpectrumWindow() throws {
         let suiteName = "CavaSettingsTests.classicVisualizationDefault.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
+        defaults.set(MainWindowVisMode.fire.rawValue, forKey: "mainWindowVisMode")
         WindowManager.shared.writeClassicVisualizationDefaultKeys(for: .all, defaults: defaults)
 
+        // Entering Classic keeps the mode Classic last chose (M39); only a reset writes Spectrum.
         XCTAssertEqual(
             defaults.string(forKey: "mainWindowVisMode"),
-            MainWindowVisMode.spectrum.rawValue
+            MainWindowVisMode.fire.rawValue
         )
         XCTAssertEqual(
             defaults.string(forKey: "spectrumQualityMode"),

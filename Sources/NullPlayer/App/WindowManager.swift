@@ -5155,9 +5155,10 @@ class WindowManager {
     /// performed while the classic UI is active).
     static let classicVisClassicProfileName = "Purple Neon"
 
-    /// Writes the classic-UI visualization defaults (Classic spectrum in the main window,
-    /// vis_classic in the Spectrum window, "Purple Neon" profile + fit-to-width) for the
-    /// given reset scope, WITHOUT posting refresh notifications.
+    /// Writes the classic-UI visualization defaults (vis_classic in the Spectrum window,
+    /// "Purple Neon" profile + fit-to-width) for the given reset scope, WITHOUT posting refresh
+    /// notifications. It leaves the main-window mode alone: entering Classic keeps the mode Classic
+    /// last chose (M39), and only a reset writes Spectrum, in `VisualizationPreferences`.
     /// `VisualizationPreferences.reset` calls this when the classic UI is active so a
     /// reset restores classic's own defaults instead of the modern skin engine's
     /// current skin (which would wrongly apply e.g. NeonWave's "Lavender Pink Tips").
@@ -5178,8 +5179,6 @@ class WindowManager {
         let classicProfile = Self.classicVisClassicProfileName
 
         if scope == .mainWindow || scope == .all {
-            put(MainWindowVisMode.spectrum.rawValue, "mainWindowVisMode")
-            put(MainWindowVisMode.spectrum.rawValue, "modernMainWindowVisMode")
             put(classicProfile, "visClassicLastProfileName.mainWindow")
             put(true, "visClassicFitToWidth.mainWindow")
         }
@@ -8247,12 +8246,10 @@ class WindowManager {
             // at the wrong scale. reloadUI collapses uiScaleLevel to 1x before switching, so
             // this is normally 1.0 here; UI Size is re-applied via applyDoubleSize afterward.
             ModernSkinElements.applySizeMultiplier(uiScaleLevel.scaleFactor)
-            // A live UI-family switch is a skin change: apply the incoming skin's own
-            // visualization defaults instead of preserving the outgoing family's shared,
-            // window-scoped vis_classic profile keys (which would leak e.g. classic's
-            // "Purple Neon" into a modern skin). Launch/session-restore paths keep the
-            // default preserve=true.
-            ModernSkinEngine.shared.loadPreferredSkin(for: family, preservePersistedProfiles: false)
+            // `.familyEntry`: the incoming skin replaces the shared vis_classic profile keys (which
+            // would otherwise leak e.g. Classic's "Purple Neon" into a modern skin), and keeps the
+            // family's own main-window mode. See `ModernSkinLoadReason`.
+            ModernSkinEngine.shared.loadPreferredSkin(for: family, reason: .familyEntry)
         } else if targetMode.controllerFamily == .classic {
             if currentSkin == nil { loadDefaultSkin() }
             UserDefaults.standard.set(false, forKey: VisClassicBridge.PreferenceScope.spectrumWindow.transparentBgKey)
