@@ -130,7 +130,7 @@ https://github.com/ad-repo/nullplayer/releases/latest/download/NullPlayer.dmg
 
 Requires macOS 14 Sonoma or newer.
 
-NullPlayer is signed with an Apple Developer ID and notarized by Apple, so macOS opens it without a security warning.
+NullPlayer is signed with an Apple Developer ID and notarized by Apple, so it passes Gatekeeper's developer and notarization checks. macOS may still ask you to confirm the first launch.
 
 1. Open `NullPlayer.dmg`.
 2. Drag `NullPlayer.app` to Applications.
@@ -354,7 +354,7 @@ playing track's profile. Edit it and press **SAVE**.
 - Supported: local files and Plex, Jellyfin, Emby and Navidrome/Subsonic tracks. Cast as the
   original file: radio, tracks from a cue sheet, video, sources with more than two channels, and tracks with
   no profile or set to **Off**.
-- A render is reused until the profile's curve changes. Editing a profile re-renders the tracks
+- A render is reused while the assigned profile and its curve are unchanged. Editing a profile re-renders the tracks
   coming up next.
 - Renders are 16-bit. A curve with large boosts can clip; press **HEADROOM** in the Studio and
   save.

@@ -8,7 +8,7 @@ Requires macOS 14 Sonoma or newer.
 
 ## Install
 
-NullPlayer is signed with an Apple Developer ID and notarized by Apple, so macOS opens it without a security warning.
+NullPlayer is signed with an Apple Developer ID and notarized by Apple, so it passes Gatekeeper's developer and notarization checks. macOS may still ask you to confirm the first launch.
 
 1. Open `NullPlayer.dmg`.
 2. Drag `NullPlayer.app` to Applications.
