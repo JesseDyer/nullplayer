@@ -175,25 +175,28 @@ class ContextMenuBuilder {
         let supportsSkinnedAuxiliaryWindows = supportsSkinnedAuxiliaryWindows(for: wm.uiMode)
 
         menu.addItem(buildWindowItem("Main Window", visible: wm.mainWindowController?.window?.isVisible ?? false, action: #selector(MenuActions.toggleMainWindow)))
+        menu.addItem(buildWindowItem("Library Browser", visible: wm.isPlexBrowserVisible, action: #selector(MenuActions.togglePlexBrowser), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(buildSkinOwnableWindowItem("Playlist Editor", surface: .playlist, visible: wm.isPlaylistVisible, action: #selector(MenuActions.togglePlaylist), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(buildSkinOwnableWindowItem("Equalizer", surface: .equalizer, visible: wm.isEqualizerVisible, action: #selector(MenuActions.toggleEQ), enabled: supportsSkinnedAuxiliaryWindows))
         menu.addItem(buildWindowItem("Equalizer Studio", visible: wm.isEqualizerStudioVisible, action: #selector(MenuActions.toggleEqualizerStudio)))
-        menu.addItem(buildSkinOwnableWindowItem("Playlist Editor", surface: .playlist, visible: wm.isPlaylistVisible, action: #selector(MenuActions.togglePlaylist), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(buildWindowItem("Visualizations", visible: wm.isProjectMVisible, action: #selector(MenuActions.toggleProjectM), enabled: supportsSkinnedAuxiliaryWindows))
         menu.addItem(buildWindowItem("Spectrum Analyzer", visible: wm.isSpectrumVisible, action: #selector(MenuActions.toggleSpectrum), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("Audio Analyzer", visible: wm.isAudioAnalysisVisible, action: #selector(MenuActions.toggleAudioAnalysis), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("PeppyMeter", visible: wm.isPeppyMeterVisible, action: #selector(MenuActions.togglePeppyMeter), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("Art", visible: wm.isArtVisible, action: #selector(MenuActions.toggleArt), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("Flow", visible: wm.isNetworkMonitorVisible, action: #selector(MenuActions.toggleNetworkMonitor), enabled: supportsSkinnedAuxiliaryWindows))
         menu.addItem(buildWindowItem("Cava", visible: wm.isCavaVisible, action: #selector(MenuActions.toggleCava), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("Sonos Rooms", visible: wm.isSonosVisible, action: #selector(MenuActions.toggleSonos), enabled: supportsSkinnedAuxiliaryWindows))
         menu.addItem(buildWindowItem("Waveform", visible: wm.isWaveformVisible, action: #selector(MenuActions.toggleWaveform), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("Library Browser", visible: wm.isPlexBrowserVisible, action: #selector(MenuActions.togglePlexBrowser), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(buildWindowItem("Art", visible: wm.isArtVisible, action: #selector(MenuActions.toggleArt), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(buildWindowItem("PeppyMeter", visible: wm.isPeppyMeterVisible, action: #selector(MenuActions.togglePeppyMeter), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(buildWindowItem("Audio Analyzer", visible: wm.isAudioAnalysisVisible, action: #selector(MenuActions.toggleAudioAnalysis), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(buildWindowItem("Play History", visible: wm.isLibraryHistoryVisible,
                                      action: #selector(MenuActions.toggleLibraryHistory), enabled: supportsSkinnedAuxiliaryWindows))
-        menu.addItem(buildWindowItem("Visualizations", visible: wm.isProjectMVisible, action: #selector(MenuActions.toggleProjectM), enabled: supportsSkinnedAuxiliaryWindows))
         menu.addItem(buildSkinOwnableWindowItem("Video Player", surface: .video,
                                                 visible: wm.isVideoPlayerVisible,
                                                 action: #selector(MenuActions.toggleVideoPlayer),
                                                 enabled: wm.currentVideoPlayerController != nil))
+        menu.addItem(buildWindowItem("Sonos Rooms", visible: wm.isSonosVisible, action: #selector(MenuActions.toggleSonos), enabled: supportsSkinnedAuxiliaryWindows))
+        menu.addItem(buildWindowItem("Flow", visible: wm.isNetworkMonitorVisible, action: #selector(MenuActions.toggleNetworkMonitor), enabled: supportsSkinnedAuxiliaryWindows))
         menu.addItem(buildWindowItem("Debug Console", visible: wm.isDebugWindowVisible, action: #selector(MenuActions.toggleDebugConsole)))
 
         #if DEBUG
