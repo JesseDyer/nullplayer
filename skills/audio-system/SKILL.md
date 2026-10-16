@@ -395,8 +395,9 @@ coding: a marker change is not a queue change (`WMPObjectModel.queueGeneration`)
 **Assign EQ Profile ▸** is `EQProfileMenu` (`App/EQProfileMenu.swift`). It ticks from each item's
 scopes, most specific first: `assignment` at the menu's level, and `setting(of:)` over the scopes from
 that level down for the *Inherited* line. Rows with tracks in hand pass `Track.eqProfileScopes`. A
-library row passes `LibraryPlayable.eqProfileScopes`, read from the row without fetching: a track
-row's converted tracks, a local album's stored tracks, and for a server album or any artist row
+library row passes `LibraryPlayable.eqProfileScopes`, read from the row without fetching or touching the disk: a track
+row's converted tracks (a local track its own file, no cue lookup, so a cue-backed file's track
+level shows unticked), a local album's stored tracks, and for a server album or any artist row
 `EQProfileScope.containers(source:artist:album:)`, the same builder `Track.eqProfileScopes` uses
 (normalisation and the `<artist>|<album>` key in one place). The row's album artist can differ from
 the track artists a compilation's assignment was keyed on; such a row shows nothing ticked. Playlists

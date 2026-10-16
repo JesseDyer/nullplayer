@@ -96,6 +96,10 @@ enum LibraryPlayable {
     // assigned under their own artists shows unticked; fetch its tracks if that matters.
     @MainActor
     var eqProfileScopes: [[EQProfileScope]]? {
+        // ponytail: a local track keys on its own file, skipping `tracksInHand`'s cue lookup, which
+        // touches the disk (a sleeping share stalls the menu); a cue-backed file's track-level
+        // setting shows unticked. Resolve cue scopes off the main thread if that matters.
+        if case .localTrack(let track) = self { return [track.toTrack().eqProfileScopes] }
         if let tracks = tracksInHand { return tracks.map(\.eqProfileScopes) }
         /// A server album or artist row, keyed on the server the browser shows.
         func server(_ source: PlayHistorySource, _ serverId: String?, artist: String?, album: String? = nil) -> [[EQProfileScope]] {
