@@ -42,7 +42,7 @@ No Winamp or Windows Media Player skins or Audion faces are distributed with the
 - Library browser for Plex, Jellyfin, Emby, Navidrome/Subsonic, YouTube and local files, with List, Cover Flow and Tiles views
 - 21-band EQ (Original/Original-Metal) and 10-band EQ (Classic, Modern)
 - [EQ profiles](#quick-start-eq-profiles) — saved 31-band EQ curves with separate left and right channels and a parametric stage, assigned to tracks, albums or artists and applied whenever they play
-- [EQ Cast](#quick-start-eq-cast) — casts to Sonos and Chromecast with the track's EQ profile applied, by rendering the track to FLAC first
+- [EQ Cast](#quick-start-eq-cast) — casts to Sonos and Chromecast with the track's EQ profile applied, by rendering the track with its profile first
 - Gapless + Sweet Fades (configurable crossfade), volume normalization, play speed (0.25×–4×), and Reference Tuning (432/440 Hz/custom)
 - SRS inspired audio enhancements: WOW stereo widening and TruBass low-frequency enhancement plus a Headphones profile for TruBass
 - Stream Ripper — rip and import stream URLs to FLAC, MP3, or MP4 with metadata, cover art, and `.cue` sheets (requires `yt-dlp` + `ffmpeg`)
@@ -286,7 +286,7 @@ applied whenever that music plays.
 
 **Casting.** Sonos and Chromecast fetch and decode the file themselves, so audio processing done in
 NullPlayer never reaches them. The Sonos app's own EQ is limited to bass, treble and loudness.
-**EQ Cast** applies the profile before casting: it renders the track with its profile into a FLAC
+**EQ Cast** applies the profile before casting: it renders the track with its profile into a new
 file and casts that file instead of the original.
 
 ### Quick start: EQ profiles
@@ -302,7 +302,7 @@ flowchart LR
     end
     subgraph Cast["EQ Cast to Sonos / Chromecast"]
         direction LR
-        S2[Track] --> P2[EQ profile] --> F["FLAC render<br/>in the cache folder"] --> R[Speaker plays the render]
+        S2[Track] --> P2[EQ profile] --> F["Rendered track<br/>in the cache folder"] --> R[Speaker plays the render]
     end
 ```
 
@@ -352,13 +352,13 @@ playing track's profile. Edit it and press **SAVE**.
 - Only the profile is rendered. The Equalizer window and other effects (SRS, Reference Tuning,
   playback speed) are not applied.
 - Supported: local files and Plex, Jellyfin, Emby and Navidrome/Subsonic tracks. Cast as the
-  original file: radio, `.cue` tracks, video, sources with more than two channels, and tracks with
+  original file: radio, tracks from a cue sheet, video, sources with more than two channels, and tracks with
   no profile or set to **Off**.
 - A render is reused until the profile's curve changes. Editing a profile re-renders the tracks
   coming up next.
-- Renders are 16-bit FLAC. A curve with large boosts can clip; press **HEADROOM** in the Studio and
+- Renders are 16-bit. A curve with large boosts can clip; press **HEADROOM** in the Studio and
   save.
-- The folder is not cleared automatically, and every render is a full FLAC file.
+- The folder is not cleared automatically, and every render is a full copy of the track.
   **Output ▸ EQ Cast** shows the cache size; **Delete Cache…** removes every render except the one
   being cast.
 

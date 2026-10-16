@@ -24,7 +24,7 @@
   profile show **∿**, and File Info names it. A local file's assignment is dropped at launch once
   the file is gone; a drive that is not plugged in keeps its files' assignments.
 - **EQ Cast: cast with your EQ profiles** — **Output ▸ EQ Cast** renders a track with its EQ
-  profile into a FLAC in a folder you choose and casts that to Sonos or Chromecast, so the
+  profile into a file in a folder you choose and casts that to Sonos or Chromecast, so the
   profile is no longer lost when casting. Covers local files and Plex, Jellyfin, Navidrome/Subsonic
   and Emby tracks. The first track waits for its render under a progress bar at the top of the main
   window; the next three tracks are rendered in the background while you cast. A render is reused
