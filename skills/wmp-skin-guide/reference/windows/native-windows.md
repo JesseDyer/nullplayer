@@ -119,7 +119,7 @@ reasoning.
   `PlaylistMenuBuilder`'s menu (`App/PlaylistMenuBuilder.swift`), the one the Modern playlist shows —
   lifted into `App/` because this engine may not reach into `ModernPlaylistView`, and the Modern
   view now builds its menu there too. Queue edits go straight to `WindowManager.shared.audioEngine`,
-  as the Modern playlist's do; the next host refresh redraws the rows. Four rules hold it:
+  as the Modern playlist's do; the next host refresh redraws the rows. Five rules hold it:
   - **The selection is a set.** `selectedRows` takes Shift-click (a range from `selectionAnchor`),
     Cmd-click (toggle) and Shift+↑/↓, so Remove, Crop and Invert act on more than one row; Delete
     removes every selected row, highest index first. `selectedIndex` stays the cursor.
@@ -128,6 +128,10 @@ reasoning.
     survives it — otherwise the next track change would shrink it to one before the menu acted.
     An empty selection (Select None) is not re-seeded by a refresh either: only a cursor of `-1`
     (first load, a new library list) seeds from the playing row.
+  - **A queue change restarts the selection (M48).** `WMPMainWindowController.playlistContentDidChange()`
+    runs on every queue edit and calls `queueDidChange()` on each pane, which drops the selection so
+    the next `update` seeds it on the playing row — even a selection of several, since its indices
+    named rows of the old queue. A library preview is not the queue and keeps its selection.
   - **A library preview is read-only (W136).** While the pane shows a library playlist every row that
     edits the queue is disabled; Play and the selection rows still apply to what the pane shows.
   - **The pane's menu sets `autoenablesItems = false`; the Modern playlist's keeps the default.**

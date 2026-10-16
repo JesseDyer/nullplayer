@@ -2259,9 +2259,14 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     func updatePlaybackState() { refreshHostState() }
     /// `WindowManager.reloadPlaylistViews`: repaint every open `<PLAYLIST>`.
     func playlistContentDidChange() {
-        // The rows carry their EQ marker, which a paused player's snapshot would not pick up.
         refreshHostState()
         for presentation in materializer.openPresentations { presentation.mainView?.playlistContentDidChange() }
+    }
+
+    func playlistMarkersDidChange() {
+        // The rows carry their EQ marker, which a paused player's snapshot would not pick up.
+        refreshHostState()
+        for presentation in materializer.openPresentations { presentation.mainView?.playlistMarkersDidChange() }
     }
 
     /// The skin has already assigned a reserved pseudo-resource name by the time this completes.

@@ -980,7 +980,7 @@ class WindowManager {
     }
 
     @objc private func handleEQProfilesDidChange(_ notification: Notification) {
-        reloadPlaylistViews()
+        redrawPlaylistViews()
     }
 
     @objc private func handleHostedSurfaceStyleDidChange(_ notification: Notification) {
@@ -3546,11 +3546,16 @@ class WindowManager {
     func reloadPlaylistViews() {
         playlistWindowController?.reloadPlaylist()
         compactWindowController?.reloadPlaylist()
-        // A `.wal` skin draws its own playlist; it has no controller to reload, only a repaint.
-        winampModernSurfaces?.surfaceContentDidChange()
-        // A `.wmz` `<PLAYLIST>` takes its rows from host refreshes; this repaints what they cannot
-        // see change, the EQ profile row marker.
-        (mainWindowController as? WMPMainWindowController)?.playlistContentDidChange()
+        // A `.wal` or `.wmz` skin draws its own queue, with no controller to reload.
+        mainWindowController?.playlistContentDidChange()
+    }
+
+    /// Repaint every queue without reloading it: an EQ profile change moves the ∿ row markers, not
+    /// the queue, and a reload would drop the selection the user just assigned a profile to.
+    private func redrawPlaylistViews() {
+        playlistWindowController?.window?.contentView?.markSubtreeForDisplayAndLayout()
+        compactWindowController?.window?.contentView?.markSubtreeForDisplayAndLayout()
+        mainWindowController?.playlistMarkersDidChange()
     }
 
     // MARK: - Library History

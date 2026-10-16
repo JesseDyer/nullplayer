@@ -406,8 +406,17 @@ scopes. **Every write is a menu pick**: nothing else calls `assign` except the l
 track-level row nobody chose came from a menu acting on more rows than the user meant. The queue
 views decide that set: Classic, Original and WMP build their menu with
 `PlaylistMenuBuilder.menu(target:clickedRow:state:)`, which selects a right-clicked row outside the
-selection first (`PlaylistMenuTarget.selectForMenu`), while the `.wal` Misc ▸ Assign acts on the bridge's selection
-(`tasks/MISC_TASKS.md` M48).
+selection first (`PlaylistMenuTarget.selectForMenu`), while the `.wal` Misc ▸ Assign acts on the bridge's selection.
+A selection indexes rows of the queue as it was, so **every queue change re-bases it onto the playing
+row** (empty with nothing playing): Classic and Original in `reloadData`, `.wal` and WMP through
+`MainWindowProviding.playlistContentDidChange()`, all reached from `WindowManager.reloadPlaylistViews`.
+An assignment is not a queue change: `.eqProfilesDidChange` only repaints (`redrawPlaylistViews`,
+`MainWindowProviding.playlistMarkersDidChange()`), so the ∿ markers update and the selection the user
+just assigned to stays put. Routing it through `reloadPlaylistViews` collapsed that selection in every
+family.
+Before that, a selection outlived Add to Queue or a replaced queue in WMP and `.wal`, and Assign wrote
+to rows nobody picked (M48, measured 2026-10-15 with Select All ▸ Sort ▸ Reverse ▸ Assign: one scope
+in all four families).
 
 At launch `pruneMissingLocalTracks()` drops `local` track-level assignments whose file is gone (a
 cue key's `@<offset>` stripped), checking files off the main thread; a path under an unmounted

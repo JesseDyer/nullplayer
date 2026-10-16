@@ -97,13 +97,27 @@ final class WMPPlaylistSurfaceView: NSView {
         guard libraryRows != self.libraryRows else { return }
         // A different list under the same control starts at its top, unselected.
         self.libraryRows = libraryRows
+        firstVisibleIndex = 0
+        restartSelection()
+        needsDisplay = true
+    }
+
+    /// The queue changed under the selection, which indexes rows of the queue as it was: start it
+    /// again on the playing row, as the Classic and Modern playlists' `reloadData` do, so Assign EQ
+    /// Profile never writes to rows the user picked in a queue that is gone (M48). A library
+    /// playlist on screen is not the queue, and keeps its selection.
+    func queueDidChange() {
+        if libraryRows == nil { restartSelection() }
+        needsDisplay = true
+    }
+
+    /// Drop the selection; the next `update` seeds it on the playing row.
+    private func restartSelection() {
         selectedIndex = -1
         selectedRows = []
         selectionAnchor = nil
-        firstVisibleIndex = 0
         lastPlayingIndex = -1
         update(snapshot)
-        needsDisplay = true
     }
 
     func apply(style: SkinnedSurfaceStyle) {
