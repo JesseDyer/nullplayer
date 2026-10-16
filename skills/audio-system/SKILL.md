@@ -392,6 +392,23 @@ queue row's title. Classic and Modern call `queueTitle(for:)`; the `.wal` and `.
 coding: a marker change is not a queue change (`WMPObjectModel.queueGeneration`) and no script reads it.
 `Track.playlistTitle` does not consult profiles.
 
+**Assign EQ Profile ▸** is `EQProfileMenu` (`App/EQProfileMenu.swift`). It ticks from each item's
+scopes, most specific first: `assignment` at the menu's level, and `setting(of:)` over the scopes from
+that level down for the *Inherited* line. Rows with tracks in hand pass `Track.eqProfileScopes`. A
+library row passes `LibraryPlayable.eqProfileScopes`, read from the row without fetching or touching the disk: a track
+row's converted tracks (a local track its own file, no cue lookup, so a cue-backed file's track
+level shows unticked), a local album's stored tracks, and for a server album or any artist row
+`EQProfileScope.containers(source:artist:album:)`, the same builder `Track.eqProfileScopes` uses
+(normalisation and the `<artist>|<album>` key in one place). The row's album artist can differ from
+the track artists a compilation's assignment was keyed on; such a row shows nothing ticked. Playlists
+and folders pass nil, which ticks nothing. A pick still fetches the row's tracks and assigns to their
+scopes. **Every write is a menu pick**: nothing else calls `assign` except the launch prune, so a
+track-level row nobody chose came from a menu acting on more rows than the user meant. The queue
+views decide that set: Classic, Original and WMP build their menu with
+`PlaylistMenuBuilder.menu(target:clickedRow:state:)`, which selects a right-clicked row outside the
+selection first (`PlaylistMenuTarget.selectForMenu`), while the `.wal` Misc ▸ Assign acts on the bridge's selection
+(`tasks/MISC_TASKS.md` M48).
+
 At launch `pruneMissingLocalTracks()` drops `local` track-level assignments whose file is gone (a
 cue key's `@<offset>` stripped), checking files off the main thread; a path under an unmounted
 `/Volumes/<name>` is kept, and server, radio and YouTube rows are never touched. Local tracks stay
@@ -754,7 +771,10 @@ applied to the playing track (track change, assignment change, toggle) — nothi
 track with none, `Off`, or profiles disabled, so a missing line *is* the answer. Whether the node is
 processing: open the Studio, raise a preamp to +12, and the snapshot's `mainMixerPeak` should rise
 ×3.98; BYPASS returns it exactly. `[eqprofile] pruned <n> assignment(s) for missing files` is the
-launch prune; silent when nothing was gone.
+launch prune; silent when nothing was gone. `[eqprofile] assign <Inherit|Off|profile> at <level>
+level to <n> scope(s) from <n> track(s): <first titles>` is every menu pick, in release builds too.
+A count above one at track level from a single click is a menu acting on a whole selection. To
+drive a pick without the user, use `winhelper rclick` and Accessibility (`app-control`, Route C).
 
 ## Credential-safe logging
 

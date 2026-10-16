@@ -4,18 +4,19 @@ import AppKit
 /// assigns (library rows, queue rows, radio stations, YouTube videos) builds it here.
 @MainActor
 enum EQProfileMenu {
-    /// A row whose tracks must be fetched (library albums, artists, playlists): they are resolved
-    /// only when an item is chosen, so nothing is ticked.
-    static func addAssignItem(to menu: NSMenu, level: EQProfileLevel,
+    /// A library row, whose tracks are fetched only when an item is chosen. `scopes` is each of its
+    /// items' scopes, most specific first, known from the row itself; nil (a playlist, which has no
+    /// single level) ticks nothing.
+    static func addAssignItem(to menu: NSMenu, level: EQProfileLevel, scopes: [[EQProfileScope]]?,
                               resolve: @escaping @MainActor () async throws -> [Track]) {
-        build(into: menu, level: level, current: nil, resolve: resolve)
+        build(into: menu, level: level, current: scopes, resolve: resolve)
     }
 
     /// Tracks already in hand (a radio station, a downloaded video): what is set at `level` is
     /// ticked — a dash on each setting a mixed selection holds — and a setting inherited from below
     /// is shown on top.
     static func addAssignItem(to menu: NSMenu, level: EQProfileLevel, tracks: [Track]) {
-        build(into: menu, level: level, current: tracks) { tracks }
+        build(into: menu, level: level, current: tracks.map(\.eqProfileScopes)) { tracks }
     }
 
     /// The play queue's selected rows, at track level, in queue order; nothing when none is selected.
@@ -39,14 +40,15 @@ enum EQProfileMenu {
         "Assign EQ Profile (\(level.rawValue.capitalized))"
     }
 
-    private static func build(into menu: NSMenu, level: EQProfileLevel, current: [Track]?,
+    private static func build(into menu: NSMenu, level: EQProfileLevel, current: [[EQProfileScope]]?,
                               resolve: @escaping @MainActor () async throws -> [Track]) {
         let resolver = EQProfileResolver.shared
         let submenu = NSMenu()
         submenu.autoenablesItems = false
-        let settings = current?.map { resolver.assignment(at: level, of: $0) } ?? []
-        if let current, !current.isEmpty, settings.allSatisfy({ $0 == nil }) {
-            let inherited = Set(current.map { resolver.setting(of: $0) })
+        let chains = current?.map { $0.from(level) }
+        let settings = chains?.map { $0.first.flatMap(resolver.store.assignment) } ?? []
+        if let chains, !chains.isEmpty, settings.allSatisfy({ $0 == nil }) {
+            let inherited = Set(chains.map { resolver.setting(of: $0) })
             if inherited.count == 1, let setting = inherited.first.flatMap({ $0 }) {
                 let item = NSMenuItem(title: "Inherited: \(setting)", action: nil, keyEquivalent: "")
                 item.isEnabled = false
@@ -94,7 +96,11 @@ enum EQProfileMenu {
             Task { @MainActor in
                 do {
                     let tracks = try await request.resolve()
-                    EQProfileResolver.shared.assign(request.assignment, level: request.level, tracks: tracks)
+                    let scopes = EQProfileResolver.shared.assign(request.assignment, level: request.level, tracks: tracks)
+                    // A count above one at track level is a menu acting on a multi-row selection.
+                    NSLog("[eqprofile] assign %@ at %@ level to %d scope(s) from %d track(s): %@", sender.title,
+                          request.level.rawValue, scopes.count, tracks.count,
+                          tracks.prefix(3).map(\.title).joined(separator: ", "))
                 } catch is CancellationError {
                 } catch {
                     NSLog("[eqprofile] assign failed: %@", error.localizedDescription.redactingSensitiveURLQueryItems)

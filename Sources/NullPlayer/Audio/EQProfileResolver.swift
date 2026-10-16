@@ -4,10 +4,10 @@ extension Track {
     /// The source an assignment is scoped to: each media server by its id, then local, YouTube, radio.
     var eqProfileSource: String {
         switch playHistorySource {
-        case .plex: return "plex:\(plexServerId ?? "")"
-        case .subsonic: return "subsonic:\(subsonicServerId ?? "")"
-        case .jellyfin: return "jellyfin:\(jellyfinServerId ?? "")"
-        case .emby: return "emby:\(embyServerId ?? "")"
+        case .plex: return EQProfileScope.source(.plex, serverId: plexServerId)
+        case .subsonic: return EQProfileScope.source(.subsonic, serverId: subsonicServerId)
+        case .jellyfin: return EQProfileScope.source(.jellyfin, serverId: jellyfinServerId)
+        case .emby: return EQProfileScope.source(.emby, serverId: embyServerId)
         case .local, .youtube, .radio: return playHistorySource.rawValue
         }
     }
@@ -16,7 +16,6 @@ extension Track {
     /// are empty; radio has only a track scope. `Track` has no album artist or album id, so the album
     /// key carries the artist — otherwise every "Greatest Hits" in a source would share one assignment.
     var eqProfileScopes: [EQProfileScope] {
-        func norm(_ s: String?) -> String { (s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         let source = eqProfileSource
         let id: String
         switch playHistorySource {
@@ -28,16 +27,39 @@ extension Track {
         case .local, .youtube:
             id = (cueSourceURL ?? url).path + (cueStartOffset.map { "@\($0)" } ?? "")
         }
-        var scopes = [EQProfileScope(level: .track, source: source, key: id)]
-        guard playHistorySource != .radio else { return scopes }
-        let artist = norm(artist), album = norm(album)
-        if !album.isEmpty { scopes.append(EQProfileScope(level: .album, source: source, key: "\(artist)|\(album)")) }
-        if !artist.isEmpty { scopes.append(EQProfileScope(level: .artist, source: source, key: artist)) }
-        return scopes
+        let scope = EQProfileScope(level: .track, source: source, key: id)
+        guard playHistorySource != .radio else { return [scope] }
+        return [scope] + EQProfileScope.containers(source: source, artist: artist, album: album)
     }
 
     func eqProfileScope(at level: EQProfileLevel) -> EQProfileScope? {
         eqProfileScopes.first { $0.level == level }
+    }
+}
+
+extension EQProfileScope {
+    /// A server source carries its server's id.
+    static func source(_ source: PlayHistorySource, serverId: String?) -> String {
+        "\(source.rawValue):\(serverId ?? "")"
+    }
+
+    /// The album then artist scope for these names; a level is omitted when its names are empty.
+    /// A library album or artist row keys itself with this, without fetching its tracks.
+    static func containers(source: String, artist: String?, album: String?) -> [EQProfileScope] {
+        func norm(_ s: String?) -> String { (s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        let artist = norm(artist), album = norm(album)
+        var scopes: [EQProfileScope] = []
+        if !album.isEmpty { scopes.append(EQProfileScope(level: .album, source: source, key: "\(artist)|\(album)")) }
+        if !artist.isEmpty { scopes.append(EQProfileScope(level: .artist, source: source, key: artist)) }
+        return scopes
+    }
+}
+
+extension Array where Element == EQProfileScope {
+    /// The scopes from `level` down; empty when there is none at `level`. Every scope list is
+    /// ordered track, album, artist (`Track.eqProfileScopes`, `containers`), a missing level omitted.
+    func from(_ level: EQProfileLevel) -> [EQProfileScope] {
+        Array(drop { $0.level != level })
     }
 }
 
@@ -59,7 +81,12 @@ final class EQProfileResolver {
 
     /// The first level with an assignment: its profile, or nil for an explicit `Off`.
     func resolve(_ track: Track) -> (profile: EQProfile?, level: EQProfileLevel)? {
-        for scope in track.eqProfileScopes {
+        resolve(track.eqProfileScopes)
+    }
+
+    /// The first of `scopes`, most specific first, with an assignment.
+    func resolve(_ scopes: [EQProfileScope]) -> (profile: EQProfile?, level: EQProfileLevel)? {
+        for scope in scopes {
             switch store.assignment(scope) {
             case .profile(let id): if let profile = store.profile(id) { return (profile, scope.level) }
             case .off: return (nil, scope.level)
@@ -75,15 +102,13 @@ final class EQProfileResolver {
         return (profile, match.level)
     }
 
-    /// What is set at `level` itself for `track`: nil is Inherit.
-    func assignment(at level: EQProfileLevel, of track: Track) -> EQProfileAssignment? {
-        track.eqProfileScope(at: level).flatMap(store.assignment)
-    }
-
     /// nil is Inherit. Album level keys every distinct (artist, album) pair among `tracks`, so a
-    /// compilation is covered whole; artist level every distinct artist.
-    func assign(_ assignment: EQProfileAssignment?, level: EQProfileLevel, tracks: [Track]) {
-        store.assign(assignment, scopes: Set(tracks.compactMap { $0.eqProfileScope(at: level) }))
+    /// compilation is covered whole; artist level every distinct artist. Returns the scopes written.
+    @discardableResult
+    func assign(_ assignment: EQProfileAssignment?, level: EQProfileLevel, tracks: [Track]) -> Set<EQProfileScope> {
+        let scopes = Set(tracks.compactMap { $0.eqProfileScope(at: level) })
+        store.assign(assignment, scopes: scopes)
+        return scopes
     }
 
     /// Whether a profile is running on `track` when it plays: audio (video has no local graph) and
@@ -110,7 +135,11 @@ final class EQProfileResolver {
 
     /// What resolves for `track`: "Warm (album)" or "Off (track)"; nil when nothing is assigned.
     func setting(of track: Track) -> String? {
-        resolve(track).map { "\($0.profile?.name ?? "Off") (\($0.level.rawValue))" }
+        setting(of: track.eqProfileScopes)
+    }
+
+    func setting(of scopes: [EQProfileScope]) -> String? {
+        resolve(scopes).map { "\($0.profile?.name ?? "Off") (\($0.level.rawValue))" }
     }
 
     /// File Info's line: the setting, or "None" — and that profiles are off, when they are. nil for

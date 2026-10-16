@@ -1404,11 +1404,18 @@ class ModernPlaylistView: NSView {
     // MARK: - Context Menu
     
     override func menu(for event: NSEvent) -> NSMenu? {
-        PlaylistMenuBuilder.menu(target: self, state: .init(
-            selectedRows: selectedIndices,
-            hasTracks: !WindowManager.shared.audioEngine.playlist.isEmpty))
+        PlaylistMenuBuilder.menu(
+            target: self, clickedRow: hitTestTrackList(at: convert(event.locationInWindow, from: nil)),
+            state: .init(selectedRows: selectedIndices,
+                         hasTracks: !WindowManager.shared.audioEngine.playlist.isEmpty))
     }
-    
+
+    @objc func selectForMenu(_ row: Int) {
+        selectedIndices = [row]
+        selectionAnchor = row
+        needsDisplay = true
+    }
+
     @objc func playSelected(_ sender: Any?) {
         guard let index = selectedIndices.first else { return }
         WindowManager.shared.audioEngine.playTrack(at: index)

@@ -135,8 +135,10 @@ reasoning.
     is enabled and `isEnabled` is ignored — which is how the Modern playlist has always behaved, and
     the builder keeps it. The pane needs its disabled rows to hold, so it opts out.
   A right-click on an unselected row selects that row alone first; on a selected row it keeps the
-  selection. Verified live 2026-09-24; `WMPPlaylistMenuTests`. **A contextual menu cannot be driven
-  synthetically** (`app-control` Route D), so verify a change here with the user driving.
+  selection. That rule is the builder's (`menu(target:clickedRow:state:)`, through
+  `PlaylistMenuTarget.selectForMenu`), shared with the Classic and Modern playlists. Verified live
+  2026-09-24; `WMPPlaylistMenuTests`. Drive a change here with `winhelper rclick` plus Accessibility
+  (`app-control` Route C).
 - **A `.wmz` main window's width is not a zoom.** `playlistChromeScale` is
   `mainWindow.width / Skin.baseMainSize.width` — true of a *classic* player, whose 275px grid means
   its width is the size the user chose. A `.wmz` main window is the skin's own canvas: Corona's is

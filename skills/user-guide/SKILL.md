@@ -348,8 +348,13 @@ Equalizer window never changes a profile, and a profile never changes it.
   albums, artists, playlists and folders), queue rows, radio stations, and YouTube videos with a
   downloaded audio file (greyed with *Download the audio first* otherwise). Choices: **Inherit**
   (remove this level's setting), **Off** (no profile here, even if the album or artist has one), or a
-  profile. For queue rows and radio stations the current setting is ticked (a dash when the selected
-  rows differ), and a setting inherited from the album or artist is shown at the top.
+  profile. The current setting at that level is ticked (a dash when the selected rows differ), and
+  a setting inherited from a lower level is shown at the top as *Inherited: Warm (artist)*; **Inherit**
+  stays ticked then, since nothing is set at this level itself. Every row shows it except library
+  playlists and folders, which have no single level. A server album row reads its album artist, so a
+  compilation whose tracks were assigned under their own artists shows nothing ticked. In the
+  Classic, Original and WMP queues, a right-click on a row outside the selection selects that row
+  first, so the menu acts on the row clicked; inside the selection it acts on the whole selection.
 - **Which applies:** track over album over artist. Assignments are per source (Local, each media
   server, YouTube, Radio) and are kept until changed. A playlist or folder assigns to the tracks it
   holds at the time — tracks added later get none. An assignment follows the path, name or server
