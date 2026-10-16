@@ -36,6 +36,65 @@ enum EQProfileMenu {
         menu.addItem(item)
     }
 
+    /// Playback Options ▸ **EQ Profiles ▸** — the global toggle and the bulk cleanups. The cleanups
+    /// stay enabled while casting: `EQCastCache` re-prefetches on `.eqProfilesDidChange`.
+    static func playbackOptionsItem(castingActive: Bool) -> NSMenuItem {
+        let store = EQProfileStore.shared
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        // Assigned profiles on or off; assignments are kept either way.
+        let enabled = NSMenuItem(title: "Enabled", action: #selector(MenuTarget.toggleEnabled(_:)), keyEquivalent: "")
+        enabled.target = MenuTarget.shared
+        enabled.state = store.isEnabled ? .on : .off
+        if castingActive {
+            enabled.isEnabled = false
+            enabled.toolTip = "Not available while casting"
+        }
+        submenu.addItem(enabled)
+        submenu.addItem(.separator())
+
+        // Each assigned profile, with what it is assigned to; choosing one asks before removing it everywhere.
+        let counts = store.assignmentCounts()
+        let profiles = NSMenu()
+        profiles.autoenablesItems = false
+        for profile in store.sortedProfiles {
+            guard let levels = counts[profile.id] else { continue }
+            let item = NSMenuItem(title: label(profile, levels), action: #selector(MenuTarget.unassignProfile(_:)), keyEquivalent: "")
+            item.target = MenuTarget.shared
+            item.representedObject = profile
+            profiles.addItem(item)
+        }
+        let unassign = NSMenuItem(title: "Unassign Profile", action: nil, keyEquivalent: "")
+        unassign.submenu = profiles
+        unassign.isEnabled = !profiles.items.isEmpty
+        submenu.addItem(unassign)
+        let removeAll = NSMenuItem(title: "Remove All Assignments…", action: #selector(MenuTarget.removeAllAssignments(_:)), keyEquivalent: "")
+        removeAll.target = MenuTarget.shared
+        submenu.addItem(removeAll)
+        submenu.addItem(.separator())
+        submenu.addItem(studioItem())
+
+        let item = NSMenuItem(title: "EQ Profiles", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    private static func studioItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Equalizer Studio…", action: #selector(MenuTarget.openStudio(_:)), keyEquivalent: "")
+        item.target = MenuTarget.shared
+        return item
+    }
+
+    /// `Warm — 1 artist, 2 albums, 5 tracks`, most general level first.
+    private static func label(_ profile: EQProfile, _ counts: [EQProfileLevel: Int]) -> String {
+        let parts = EQProfileLevel.allCases.reversed().compactMap { level -> String? in
+            guard let n = counts[level], n > 0 else { return nil }
+            return "\(n) \(level.rawValue)\(n == 1 ? "" : "s")"
+        }
+        return "\(profile.name) — \(parts.joined(separator: ", "))"
+    }
+
     private static func title(_ level: EQProfileLevel) -> String {
         "Assign EQ Profile (\(level.rawValue.capitalized))"
     }
@@ -72,9 +131,7 @@ enum EQProfileMenu {
             for profile in profiles { add(profile.name, .profile(profile.id)) }
         }
         submenu.addItem(.separator())
-        let studio = NSMenuItem(title: "Equalizer Studio…", action: #selector(MenuTarget.openStudio(_:)), keyEquivalent: "")
-        studio.target = MenuTarget.shared
-        submenu.addItem(studio)
+        submenu.addItem(studioItem())
 
         let item = NSMenuItem(title: title(level), action: nil, keyEquivalent: "")
         item.submenu = submenu
@@ -88,6 +145,7 @@ enum EQProfileMenu {
     }
 
     /// `NSMenuItem.target` is weak, so the items share one long-lived target.
+    @MainActor
     private final class MenuTarget: NSObject {
         static let shared = MenuTarget()
 
@@ -106,6 +164,37 @@ enum EQProfileMenu {
                     NSLog("[eqprofile] assign failed: %@", error.localizedDescription.redactingSensitiveURLQueryItems)
                 }
             }
+        }
+
+        @objc func toggleEnabled(_ sender: NSMenuItem) {
+            EQProfileStore.shared.isEnabled.toggle()
+        }
+
+        @objc func unassignProfile(_ sender: NSMenuItem) {
+            guard let profile = sender.representedObject as? EQProfile,
+                  confirm("Unassign “\(profile.name)”?",
+                          "Removes the profile from every track, album and artist it is assigned to. The profile itself is kept. This cannot be undone.",
+                          button: "Unassign") else { return }
+            NSLog("[eqprofile] unassign %@ from all scopes", sender.title)
+            EQProfileStore.shared.unassign(profile.id)
+        }
+
+        @objc func removeAllAssignments(_ sender: NSMenuItem) {
+            guard confirm("Remove All EQ Profile Assignments?",
+                          "Every track, album and artist goes back to no profile, including ones set to Off. The profiles themselves are kept. This cannot be undone.",
+                          button: "Remove") else { return }
+            NSLog("[eqprofile] remove all assignments")
+            EQProfileStore.shared.removeAllAssignments()
+        }
+
+        private func confirm(_ message: String, _ info: String, button: String) -> Bool {
+            let alert = NSAlert()
+            alert.messageText = message
+            alert.informativeText = info
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: button)
+            alert.addButton(withTitle: "Cancel")
+            return alert.runModal() == .alertFirstButtonReturn
         }
 
         @objc func openStudio(_ sender: NSMenuItem) {

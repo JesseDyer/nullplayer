@@ -1254,15 +1254,7 @@ class ContextMenuBuilder {
         }
         optionsMenu.addItem(srsRoot)
 
-        // EQ Profiles: assigned profiles on or off; assignments are kept either way
-        let profilesItem = NSMenuItem(title: "EQ Profiles", action: #selector(MenuActions.toggleEQProfiles), keyEquivalent: "")
-        profilesItem.target = MenuActions.shared
-        profilesItem.state = EQProfileStore.shared.isEnabled ? .on : .off
-        if engine.isAnyCastingActive {
-            profilesItem.isEnabled = false
-            profilesItem.toolTip = "Not available while casting"
-        }
-        optionsMenu.addItem(profilesItem)
+        MainActor.assumeIsolated { optionsMenu.addItem(EQProfileMenu.playbackOptionsItem(castingActive: engine.isAnyCastingActive)) }
 
         optionsMenu.addItem(NSMenuItem.separator())
 
@@ -4462,10 +4454,6 @@ class MenuActions: NSObject {
         WindowManager.shared.audioEngine.balance = value
     }
     
-    @objc func toggleEQProfiles() {
-        EQProfileStore.shared.isEnabled.toggle()
-    }
-
     @objc func toggleSweetFade() {
         WindowManager.shared.audioEngine.sweetFadeEnabled.toggle()
     }
