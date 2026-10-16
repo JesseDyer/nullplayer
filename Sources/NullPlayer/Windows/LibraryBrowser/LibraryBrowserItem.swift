@@ -16,7 +16,9 @@ struct LibraryBrowserItem {
     let hasChildren: Bool
     let type: ItemType
     var titlePrefix: String? = nil
-    
+    /// A YouTube video row's audio download (`YouTubeRow.audioFile`).
+    var audioFile: URL? = nil
+
     enum ItemType {
         case artist(PlexArtist)
         case album(PlexAlbum)
@@ -146,7 +148,7 @@ extension LibraryBrowserItem {
         case .video(let video): type = .youtubeVideo(video)
         }
         self.init(id: row.id, title: row.title, info: row.info, indentLevel: row.indentLevel,
-                  hasChildren: row.hasChildren, type: type, titlePrefix: row.titlePrefix)
+                  hasChildren: row.hasChildren, type: type, titlePrefix: row.titlePrefix, audioFile: row.audioFile)
     }
 
     init(_ row: LocalFolderTree.Row) {

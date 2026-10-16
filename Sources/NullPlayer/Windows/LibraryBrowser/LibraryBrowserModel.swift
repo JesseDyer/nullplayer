@@ -95,8 +95,14 @@ final class LibraryBrowserModel: NSObject {
     }
 
     var displayItems: [LibraryBrowserItem] = [] {
-        didSet { onChange?(.rows) }
+        didSet {
+            eqMarkers = LibraryRowEQMarkers()
+            onChange?(.rows)
+        }
     }
+
+    /// The rows' `∿` markers, read by `LibraryBrowserActions.isEQMarked`.
+    var eqMarkers = LibraryRowEQMarkers()
 
     /// Whether the current tab is loading, or failed to.
     enum LoadState: Equatable {

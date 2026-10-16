@@ -1295,7 +1295,8 @@ class ClassicLibraryBrowserView: NSView {
             letterWithRows: colors.currentText,
             letterWithoutRows: colors.normalText.withAlphaComponent(0.3))
         return LibraryBrowserListPainter(context: context, layout: layout, style: style, model: model, list: list,
-                                         art: art, youtubeVideos: actions.youtubeVideos, thumbnails: rowThumbnails,
+                                         art: art, youtubeVideos: actions.youtubeVideos, isEQMarked: actions.isEQMarked,
+                                         thumbnails: rowThumbnails,
                                          spinnerStep: coordinator.spinnerStep)
     }
     /// The amber strip under the list while a local watch folder is offline.

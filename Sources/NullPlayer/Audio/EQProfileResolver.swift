@@ -53,6 +53,14 @@ extension EQProfileScope {
         if !artist.isEmpty { scopes.append(EQProfileScope(level: .artist, source: source, key: artist)) }
         return scopes
     }
+
+    /// A YouTube download's track scope, keyed as `Track.eqProfileScopes` keys its audio file but
+    /// without reading the file's tags. A video row's marker reads only this level.
+    // ponytail: every YouTube assign is track level (a video's menu, the queue's), so this is exact
+    // unless a library album or artist holds the download folder's files; read their tags if it does.
+    static func youtubeTrack(audioFile: URL) -> EQProfileScope {
+        EQProfileScope(level: .track, source: PlayHistorySource.youtube.rawValue, key: audioFile.path)
+    }
 }
 
 extension Array where Element == EQProfileScope {
@@ -98,7 +106,11 @@ final class EQProfileResolver {
 
     /// What runs on `track`: nil when profiles are off, nothing is assigned, or `Off` resolved.
     func activeProfile(for track: Track) -> (profile: EQProfile, level: EQProfileLevel)? {
-        guard store.isEnabled, let match = resolve(track), let profile = match.profile else { return nil }
+        activeProfile(for: track.eqProfileScopes)
+    }
+
+    func activeProfile(for scopes: [EQProfileScope]) -> (profile: EQProfile, level: EQProfileLevel)? {
+        guard store.isEnabled, let match = resolve(scopes), let profile = match.profile else { return nil }
         return (profile, match.level)
     }
 
@@ -122,6 +134,12 @@ final class EQProfileResolver {
         let applies = track.mediaType == .audio && activeProfile(for: track) != nil
         appliesCache[track.id] = applies
         return applies
+    }
+
+    /// A library row's marker: a profile is active on every one of its items' scopes, most specific
+    /// first (`LibraryBrowserActions.eqProfileScopes(for:)`). The list caches it per row.
+    func appliesProfile(toRow items: [[EQProfileScope]]) -> Bool {
+        !items.isEmpty && items.allSatisfy { activeProfile(for: $0) != nil }
     }
 
     /// A queue row's title as every playlist surface draws it: `∿` before it when `marked`.

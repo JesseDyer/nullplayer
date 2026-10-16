@@ -970,7 +970,7 @@ class WindowManager {
             name: .hostedSurfaceStyleDidChange,
             object: nil
         )
-        // Every queue's EQ profile row marker follows assignments and the global toggle.
+        // Every queue's and the library's EQ profile row marker follows assignments and the global toggle.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleEQProfilesDidChange(_:)),
@@ -981,6 +981,7 @@ class WindowManager {
 
     @objc private func handleEQProfilesDidChange(_ notification: Notification) {
         redrawPlaylistViews()
+        plexBrowserWindowController?.window?.contentView?.markSubtreeForDisplayAndLayout()
     }
 
     @objc private func handleHostedSurfaceStyleDidChange(_ notification: Notification) {

@@ -56,6 +56,8 @@ struct LibraryBrowserListPainter {
     let list: LibraryBrowserList
     let art: LibraryBrowserArt
     let youtubeVideos: YouTubeVideoActions
+    /// Whether a row's title draws after `∿` (`LibraryBrowserActions.isEQMarked`).
+    let isEQMarked: (LibraryBrowserItem) -> Bool
     let thumbnails: LibraryRowThumbnailTracker
     /// The spinners' step, advanced by the coordinator while one turns.
     let spinnerStep: Int
@@ -148,8 +150,8 @@ struct LibraryBrowserListPainter {
         let titleAttrs: [NSAttributedString.Key: Any] = [
             .font: style.titleFont, .foregroundColor: isSelected ? style.selectedTitle : style.title,
         ]
-        draw(item.shownTitle, in: NSRect(x: textX + titleInset, y: rect.minY + 2,
-                                         width: rect.width - indent - 60 - titleInset, height: layout.rowHeight - 4),
+        draw(shownTitle(item), in: NSRect(x: textX + titleInset, y: rect.minY + 2,
+                                          width: rect.width - indent - 60 - titleInset, height: layout.rowHeight - 4),
              titleAttrs)
 
         guard let info = item.info else { return }
@@ -180,7 +182,7 @@ struct LibraryBrowserListPainter {
             }
 
             let isTitle = column.id == .title
-            let value = isTitle ? item.shownTitle : item.columnValue(for: column)
+            let value = isTitle ? shownTitle(item) : item.columnValue(for: column)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: isTitle ? style.titleFont : style.detailFont,
                 .foregroundColor: isTitle ? (isSelected ? style.selectedTitle : style.title)
@@ -213,6 +215,11 @@ struct LibraryBrowserListPainter {
                 }
             }
         }
+    }
+
+    /// The title as drawn, after `∿` when the row plays with an EQ profile, as a queue row's is.
+    private func shownTitle(_ item: LibraryBrowserItem) -> String {
+        EQProfileResolver.queueTitle(item.shownTitle, marked: isEQMarked(item))
     }
 
     /// A small spinner at the leading edge of a row's title; returns how far the title moves right.

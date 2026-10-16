@@ -137,6 +137,29 @@ final class EQProfileTests: XCTestCase {
         XCTAssertNil(profiles.setting(of: []), "a row with no scope at its level inherits nothing")
     }
 
+    /// A library row is marked when a profile runs on every one of its items; its marker is read once
+    /// per store revision. A video row keys on its audio file as the queue's track does.
+    func testALibraryRowIsMarkedWhenEveryItemRunsAProfile() {
+        let profiles = makeResolver(), store = profiles.store
+        let a = store.add(name: "A", curve: curve(3))!
+        let tracks = ["X", "Y"].map { (name: String) in local("/\(name).flac", artist: name, album: "Now 42") }
+        let row = tracks.map(\.eqProfileScopes)
+        var markers = LibraryRowEQMarkers()
+        func marked() -> Bool { markers.marked("row", revision: store.revision) { profiles.appliesProfile(toRow: row) } }
+
+        XCTAssertFalse(marked())
+        profiles.assign(.profile(a.id), level: .track, tracks: [tracks[0]])
+        XCTAssertFalse(marked(), "one unassigned item leaves the row unmarked")
+        profiles.assign(.profile(a.id), level: .album, tracks: tracks)
+        XCTAssertTrue(marked(), "a store change drops the cached marker")
+        store.isEnabled = false
+        XCTAssertFalse(marked())
+        XCTAssertFalse(profiles.appliesProfile(toRow: []))
+
+        let video = Track(url: URL(fileURLWithPath: "/tmp/video.m4a"), title: "v", artist: "Channel", isYouTubeOrigin: true)
+        XCTAssertEqual(EQProfileScope.youtubeTrack(audioFile: video.url), video.eqProfileScopes.first)
+    }
+
     func testDeletingAProfileDropsItsAssignments() {
         let profiles = makeResolver(), store = profiles.store
         let a = store.add(name: "A", curve: curve(3))!, b = store.add(name: "B", curve: curve(6))!

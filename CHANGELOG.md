@@ -20,9 +20,10 @@
   together, a BYPASS per channel to hear one side without its curve, and you hear edits as you make
   them. It is a normal NullPlayer window: it wears each skin family's frame and colours, snaps and
   docks with the other windows, resizes, and stays open across a skin-family switch. Assign EQ
-  Profile ticks what a queue or Library row sets and shows what it inherits, queue rows with a
-  profile show **∿**, and File Info names it. A local file's assignment is dropped at launch once
-  the file is gone; a drive that is not plugged in keeps its files' assignments.
+  Profile ticks what a queue or Library row sets and shows what it inherits, queue and
+  Library rows with a profile show **∿**, and File Info names it. A local file's assignment is
+  dropped at launch once the file is gone; a drive that is not plugged in keeps its files'
+  assignments.
 - **EQ Cast: cast with your EQ profiles** — **Output ▸ EQ Cast** renders a track with its EQ
   profile into a file in a folder you choose and casts that to Sonos or Chromecast, so the
   profile is no longer lost when casting. Covers local files and Plex, Jellyfin, Navidrome/Subsonic
