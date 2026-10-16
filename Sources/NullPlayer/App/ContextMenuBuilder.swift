@@ -603,10 +603,10 @@ class ContextMenuBuilder {
         // Winamp Modern (.wal) drives its in-skin visualizer from the main window's own menu,
         // so the menu-bar entry is suppressed there. A `.wmz` skin draws its own player and hosts
         // this player's visuals in its authored effects rect, so WMP suppresses it too.
-        // Classic and NullPlayer modern keep it.
-        if !wm.uiMode.controllerFamily.hostsForeignSkin {
+        // Classic and NullPlayer modern keep it, each editing its own mode key.
+        if let modeKey = MainWindowVisMode.defaultsKey(for: wm.runningControllerFamily) {
             let mainWindowItem = NSMenuItem(title: "Main Window", action: nil, keyEquivalent: "")
-            mainWindowItem.submenu = buildMainVisualizationSubmenu()
+            mainWindowItem.submenu = buildMainVisualizationSubmenu(modeKey: modeKey)
             menu.addItem(mainWindowItem)
         }
 
@@ -1359,11 +1359,11 @@ class ContextMenuBuilder {
     // MARK: - Main Window Visualization Submenu
     
     /// Returns the submenu content for Main Window visualization settings
-    private static func buildMainVisualizationSubmenu() -> NSMenu {
+    private static func buildMainVisualizationSubmenu(modeKey: String) -> NSMenu {
         let visMenu = NSMenu()
         visMenu.autoenablesItems = false
         
-        let currentMode = UserDefaults.standard.string(forKey: "mainWindowVisMode")
+        let currentMode = UserDefaults.standard.string(forKey: modeKey)
             .flatMap { MainWindowVisMode(rawValue: $0) } ?? .spectrum
         
         // Mode submenu
@@ -4690,8 +4690,9 @@ class MenuActions: NSObject {
     // MARK: - Main Window Visualization Options
 
     @objc func setMainVisMode(_ sender: NSMenuItem) {
-        guard let mode = sender.representedObject as? MainWindowVisMode else { return }
-        UserDefaults.standard.set(mode.rawValue, forKey: "mainWindowVisMode")
+        guard let mode = sender.representedObject as? MainWindowVisMode,
+              let key = MainWindowVisMode.defaultsKey(for: WindowManager.shared.runningControllerFamily) else { return }
+        UserDefaults.standard.set(mode.rawValue, forKey: key)
         // Notify main window to update visualization mode
         NotificationCenter.default.post(name: NSNotification.Name("MainWindowVisChanged"), object: nil)
     }
