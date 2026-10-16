@@ -184,7 +184,7 @@ The app will:
 
 **EQ Cast:** with **Output ▸ EQ Cast** on, a track with an EQ profile is cast as a rendered 16-bit
 FLAC (S1 decodes only 16-bit FLAC) at the source's rate. A track that fails `isSonosCompatible` is
-skipped as before and never rendered. Mechanism: `chromecast-casting` § *EQ Cast*.
+skipped as before and never rendered. Mechanism: `eq-profiles` § *EQ Cast*.
 
 ### Managing Rooms While Casting
 
