@@ -1026,7 +1026,7 @@ class ClassicLibraryBrowserView: NSView {
                                       width: libraryLabelX - barRect.minX,
                                       height: barRect.height)
             coordinator.rects.library = NSRect(x: libraryLabelX, y: barRect.minY,
-                                       width: libraryX + libraryNameMaxWidth - libraryLabelX,
+                                       width: libraryX + min(libraryNameMaxWidth, ClassicLibraryTab.textWidth(libraryText, scale: textScale, style: winampModernStyle)) - libraryLabelX,
                                        height: barRect.height)
             coordinator.namesDrawn(serverCycle: serverCycle, libraryCycle: libraryCycle)
 

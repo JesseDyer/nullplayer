@@ -946,7 +946,7 @@ class ModernLibraryBrowserView: NSView {
                                       width: sourceNameStartX + serverNameMaxWidth - barRect.minX,
                                       height: barRect.height)
             coordinator.rects.library = NSRect(x: libraryLabelX, y: barRect.minY,
-                                       width: libraryX + libraryNameMaxWidth - libraryLabelX,
+                                       width: libraryX + min(libraryNameMaxWidth, libraryText.size(withAttributes: dataAttrs).width) - libraryLabelX,
                                        height: barRect.height)
             coordinator.namesDrawn(serverCycle: serverCycle, libraryCycle: libraryCycle)
 
