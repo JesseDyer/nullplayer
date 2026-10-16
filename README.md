@@ -295,14 +295,13 @@ Signal chain, playing locally and with EQ Cast:
 
 ```mermaid
 flowchart LR
-    subgraph Local["Playing on this Mac"]
-        direction LR
-        S1[Track] --> P1["EQ profile<br/>31 bands → parametric → preamp<br/>(L and R separately)"]
-        P1 --> T[Reference Tuning] --> E[Equalizer window] --> W["SRS<br/>WOW / TruBass"] --> O[Output device]
-    end
     subgraph Cast["EQ Cast to Sonos / Chromecast"]
         direction LR
         S2[Track] --> P2[EQ profile] --> F["Rendered track<br/>in the cache folder"] --> R[Speaker plays the render]
+    end
+    subgraph Local["Playing on this Mac"]
+        direction LR
+        S1[Track] --> P1[EQ profile] --> T[Reference Tuning] --> E[Equalizer window] --> W["SRS<br/>WOW / TruBass"] --> O[Output device]
     end
 ```
 
