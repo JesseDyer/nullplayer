@@ -41,6 +41,8 @@ No Winamp or Windows Media Player skins or Audion faces are distributed with the
 
 - Library browser for Plex, Jellyfin, Emby, Navidrome/Subsonic, YouTube and local files, with List, Cover Flow and Tiles views
 - 21-band EQ (Original/Original-Metal) and 10-band EQ (Classic, Modern)
+- [EQ profiles](#quick-start-eq-profiles) — saved 31-band EQ curves with separate left and right channels and a parametric stage, assigned to tracks, albums or artists and applied whenever they play
+- [EQ Cast](#quick-start-eq-cast) — casts to Sonos and Chromecast with the track's EQ profile applied, by rendering the track with its profile first
 - Gapless + Sweet Fades (configurable crossfade), volume normalization, play speed (0.25×–4×), and Reference Tuning (432/440 Hz/custom)
 - SRS inspired audio enhancements: WOW stereo widening and TruBass low-frequency enhancement plus a Headphones profile for TruBass
 - Stream Ripper — rip and import stream URLs to FLAC, MP3, or MP4 with metadata, cover art, and `.cue` sheets (requires `yt-dlp` + `ffmpeg`)
@@ -84,6 +86,7 @@ No Winamp or Windows Media Player skins or Audion faces are distributed with the
 - Cava spectrum analyzer — bar spectrum with mono/stereo modes, gradient presets, and configurable smoothing
 - PeppyMeter — skinnable analog VU meter with 25 templates and auto-switch mode
 - Flow network monitor — live throughput graph with selectable interface
+- Equalizer Studio — editor for EQ profiles: 31 faders and a 4-band parametric strip per channel, a spectrum analyser per channel, live preview ([quick start](#quick-start-eq-profiles))
 - Sonos Rooms — resizable room mixer with a checkbox and independent volume slider per room (usable before and during a cast)
 - Compact Mode — menu-bar-only app with embedded mini player (Classic, Original, and Original-Metal)
 
@@ -127,24 +130,17 @@ https://github.com/ad-repo/nullplayer/releases/latest/download/NullPlayer.dmg
 
 Requires macOS 14 Sonoma or newer.
 
-NullPlayer is not signed with an Apple Developer ID — that requires a paid Apple developer account, which this project does not have and has no plans to buy. Because of that, **macOS Gatekeeper will block the app on first launch** with an "app is damaged" or "cannot verify that it is free from malware" message. This is expected, not a sign anything is wrong. Clearing the quarantine flag is a required install step — run it every time you install or update via the DMG:
+NullPlayer is signed with an Apple Developer ID and notarized by Apple, so it passes Gatekeeper's developer and notarization checks. macOS may still ask you to confirm the first launch.
 
 1. Open `NullPlayer.dmg`.
 2. Drag `NullPlayer.app` to Applications.
-3. Clear the quarantine flag so macOS will open the app. Open **Terminal** (`Cmd + Space`, type `Terminal`, press Return) and run:
-
-   ```bash
-   xattr -cr /Applications/NullPlayer.app
-   ```
-4. Open NullPlayer from Applications.
+3. Open NullPlayer from Applications.
 
 See [docs/download.md](docs/download.md) for the same install steps in a short download-only page.
 
-> **Tip:** Don't want to run a Terminal command every time you update? Install with Homebrew (next section) instead — the cask clears the quarantine flag for you automatically, so the app just opens.
+### Install with Homebrew
 
-### Install with Homebrew (recommended — no security warnings)
-
-[Homebrew](https://brew.sh/) is a free package manager for macOS. This is the smoothest way to install NullPlayer: Homebrew removes the Gatekeeper quarantine flag automatically, so you never see the "app is damaged" warning, and updates are a single command.
+[Homebrew](https://brew.sh/) is a free package manager for macOS. Installing with it makes updates a single command.
 
 **New to Homebrew? Here's the whole thing, start to finish:**
 
@@ -174,7 +170,7 @@ See [docs/download.md](docs/download.md) for the same install steps in a short d
    ```bash
    brew install --cask ad-repo/nullplayer/nullplayer
    ```
-6. Open NullPlayer from your Applications folder or Launchpad — no security prompt.
+6. Open NullPlayer from your Applications folder or Launchpad.
 
 **Updating to a new release:**
 
@@ -199,17 +195,6 @@ security delete-generic-password -s com.nullplayer.app
 ```
 
 </details>
-
-### Opening the DMG build without the Terminal
-
-If you'd rather not run the `xattr` command in step 3 above, you can clear the block through System Settings instead:
-
-1. Drag `NullPlayer.app` to Applications and double-click it once. macOS will refuse to open it — that's expected.
-2. Go to **System Settings -> Privacy & Security**.
-3. Scroll down and click **Open Anyway** next to the NullPlayer message.
-4. Click **Open** in the confirmation dialog.
-
-After this NullPlayer opens normally. (Installing with Homebrew avoids this entirely — the cask clears the flag for you.)
 
 ### Optional command-line launcher
 
@@ -280,6 +265,102 @@ open Package.swift
 | [AudioStreaming](https://github.com/dimitris-c/AudioStreaming) | HTTP audio streaming for Plex |
 | [FlyingFox](https://github.com/swhitty/FlyingFox) | Embedded HTTP server for local file casting |
 | [libprojectM](https://github.com/projectM-visualizer/projectm) | ProjectM visualizations |
+
+## EQ Profiles and EQ Cast
+
+### How it works
+
+The Equalizer window applies one curve to everything you play. An **EQ profile** is a separate,
+named curve that belongs to specific music: you assign it to a track, album or artist, and it is
+applied whenever that music plays.
+
+- A profile is a 31-band curve (ISO ⅓-octave, 20 Hz–20 kHz) plus a 4-band parametric stage
+  (high-pass filter, LF, LMF, HMF, HF) and a preamp, with the left and right channels set
+  separately.
+- Profiles are made and edited in **Windows ▸ Equalizer Studio**.
+- When a track plays, its own profile is used; if it has none, its album's; if the album has
+  none, its artist's.
+- A profile runs before the Equalizer window. The two are independent: neither changes the other.
+- Profiles apply to local files, media-server tracks, radio stations and downloaded YouTube audio.
+  They do not apply to video.
+
+**Casting.** Sonos and Chromecast fetch and decode the file themselves, so audio processing done in
+NullPlayer never reaches them. The Sonos app's own EQ is limited to bass, treble and loudness.
+**EQ Cast** applies the profile before casting: it renders the track with its profile into a new
+file and casts that file instead of the original.
+
+### Quick start: EQ profiles
+
+Signal chain, playing locally and with EQ Cast:
+
+```mermaid
+flowchart LR
+    subgraph Local["Playing on this Mac"]
+        direction LR
+        S1[Track] --> P1["EQ profile<br/>31 bands → parametric → preamp<br/>(L and R separately)"]
+        P1 --> T[Reference Tuning] --> E[Equalizer window] --> W["SRS<br/>WOW / TruBass"] --> O[Output device]
+    end
+    subgraph Cast["EQ Cast to Sonos / Chromecast"]
+        direction LR
+        S2[Track] --> P2[EQ profile] --> F["Rendered track<br/>in the cache folder"] --> R[Speaker plays the render]
+    end
+```
+
+The Studio's analyser shows the signal after the profile for local files, and the final output for
+streams.
+
+1. Play a track and open **Windows ▸ Equalizer Studio**. Your edits are heard on the playing
+   track while the Studio is open.
+2. Shape the curve. **GRAPHIC** shows the 31 faders; **PARAMETRIC** shows the high-pass filter and
+   four bands with frequency, gain and Q dials. Both edit the same curve. With **LINK** lit, both
+   channels move together; turn it off to set left and right separately. **BYPASS** plays a channel
+   without the curve so you can compare.
+3. Press **HEADROOM**. It lowers the preamp so the curve's highest boost peaks at 0 dB and does not
+   clip.
+4. Press **SAVE AS** and name the profile. Saving does not assign it. Once the Studio closes, a
+   profile is heard only on music it is assigned to.
+5. Right-click a track, album or artist in the Library, or a row in the queue, and choose
+   **Assign EQ Profile ▸** *your profile*.
+6. Queue rows playing with a profile show **∿** before the title, and **File Info** shows the
+   profile and the level it came from, e.g. `EQ Profile: Warm (album)`.
+
+To change a profile later, play something it is assigned to and open the Studio: it opens on the
+playing track's profile. Edit it and press **SAVE**.
+
+**Assigning:**
+
+- **Inherit** removes the setting at that level, so the next level down applies. **Off** plays the
+  item with no profile even if its album or artist has one.
+- Assigning to a playlist or folder assigns to the tracks in it at that moment; tracks added later
+  get nothing.
+- An assignment matches the file path, tag or server ID it was made on. Moving or renaming a file,
+  or retagging its album or artist, stops it matching.
+- **Playback ▸ EQ Profiles** turns all profiles off without removing any assignments.
+
+### Quick start: EQ Cast
+
+1. Assign profiles to what you want to cast (above).
+2. Turn on **Output ▸ EQ Cast ▸ Enabled** and choose a folder for the rendered files. Don't
+   choose a folder your library watches, or the renders will be imported as duplicate tracks.
+3. Start a cast to Sonos or Chromecast from the Output menu as usual.
+4. The first track starts once it is rendered; a progress bar at the top of the main window shows
+   how far along it is. Server tracks are downloaded first. The next three tracks are rendered in
+   the background while you listen.
+
+**What to know:**
+
+- Only the profile is rendered. The Equalizer window and other effects (SRS, Reference Tuning,
+  playback speed) are not applied.
+- Supported: local files and Plex, Jellyfin, Emby and Navidrome/Subsonic tracks. Cast as the
+  original file: radio, tracks from a cue sheet, video, sources with more than two channels, and tracks with
+  no profile or set to **Off**.
+- A render is reused while the assigned profile and its curve are unchanged. Editing a profile re-renders the tracks
+  coming up next.
+- Renders are 16-bit. A curve with large boosts can clip; press **HEADROOM** in the Studio and
+  save.
+- The folder is not cleared automatically, and every render is a full copy of the track.
+  **Output ▸ EQ Cast** shows the cache size; **Delete Cache…** removes every render except the one
+  being cast.
 
 ## Media Library
 
