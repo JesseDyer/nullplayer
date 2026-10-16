@@ -139,6 +139,9 @@
   Classic and Original skins already did. Before, rows selected in the old queue stayed selected,
   so Assign EQ Profile (in a Winamp Modern skin, Misc ▸ Assign EQ Profile) could set tracks you
   never picked.
+- **Sorting a cue sheet's tracks keeps the playing track** — Reverse, Sort and Randomize on a queue
+  holding several tracks of one cue sheet marked the first of them as playing, though the track you
+  were hearing played on.
 
 ## 0.32.2
 
