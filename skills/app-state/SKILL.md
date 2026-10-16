@@ -50,7 +50,7 @@ When adding state:
 
 EQ profiles are not session state. Profiles and their assignments live in their own SQLite
 database, `~/Library/Application Support/NullPlayer/eq_profiles.db` (`EQProfileStore`; schema in
-`audio-system` § *EQ Profiles*), read whatever Save State on Quit says — an assignment is a standing default. Their
+`eq-profiles`), read whatever Save State on Quit says — an assignment is a standing default. Their
 preferences are UserDefaults: `eqProfilesEnabled` (default on), `equalizerStudioFaceplate`,
 `equalizerStudioLinked` (default on), `equalizerStudioMode` (`graphic` by default), and EQ Cast's
 `eqCastEnabled` (default off) and `eqCastFolder` (a path; the rendered files and their `eqcast.json`
