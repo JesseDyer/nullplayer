@@ -1755,14 +1755,14 @@ class WindowManager {
     /// so opening ours unconditionally would put a second, differently-styled playlist over nearly
     /// every skin. Ours is the fallback for the handful that declare none.
     ///
-    /// - Parameter switchingViews: true for an explicit toggle, which may open the skin's own
-    ///   playlist *view* the way its own button does; false on the restore path, which must not move
-    ///   the user to another view at launch.
+    /// A surface in a view of its own is opened beside the player, the way the skin's own button
+    /// does — for a toggle, the launch restore and a mode-switch rebuild alike, since each means
+    /// "make this open".
     @discardableResult
-    private func routeWMPSkinSurface(_ surface: WMPSkinSurface, switchingViews: Bool) -> Bool {
+    private func routeWMPSkinSurface(_ surface: WMPSkinSurface) -> Bool {
         guard uiMode.controllerFamily == .wmp,
               let controller = mainWindowController as? WMPMainWindowController else { return false }
-        guard controller.revealSkinSurface(surface, switchingViews: switchingViews) else {
+        guard controller.revealSkinSurface(surface) else {
             return false
         }
         notifyMainWindowVisibilityChanged()
@@ -1980,7 +1980,8 @@ class WindowManager {
     /// equalizer on the hosted-window route, which `rehomeWinampModernHostedWindows` already carries.
     ///
     /// Empty unless a `.wal` skin is already up — a mode switch into `.wal` and the launch load are
-    /// not skin switches, and the previous mode's windows are the mode-switch snapshot's business.
+    /// not skin switches. A mode switch passes its own snapshot to `restoreWinampModernSurfaceVisibility`
+    /// from `recreateModeDependentLayout` instead.
     func winampModernSurfaceVisibility() -> [WinampModernComponentKind: Bool] {
         guard uiMode.controllerFamily == .winampModern, let coordinator = winampModernSurfaces else { return [:] }
         var states: [WinampModernComponentKind: Bool] = [:]
@@ -1997,8 +1998,11 @@ class WindowManager {
     }
 
     /// Put the routed surfaces back the way `winampModernSurfaceVisibility` found them, now that
-    /// the incoming skin is up and has opened whatever *it* opens at load. Called only from the
-    /// `.wal` controller, after `rehomeWinampModernHostedWindows`.
+    /// the incoming skin is up and has opened whatever *it* opens at load. Called from the `.wal`
+    /// controller after `rehomeWinampModernHostedWindows`, and from a mode-switch rebuild.
+    ///
+    /// Takes any of the three kinds: an embedded surface or a hosted-window equalizer is never
+    /// closed here, so a caller need not filter them out the way the skin-switch capture does.
     func restoreWinampModernSurfaceVisibility(_ states: [WinampModernComponentKind: Bool]) {
         guard uiMode.controllerFamily == .winampModern, !states.isEmpty,
               let coordinator = winampModernSurfaces else { return }
@@ -2103,7 +2107,7 @@ class WindowManager {
     func hostVideoOutputInSkin() -> Bool {
         if uiMode.controllerFamily == .wmp {
             return (mainWindowController as? WMPMainWindowController)?
-                .revealSkinSurface(.video, switchingViews: true, activate: true) ?? false
+                .revealSkinSurface(.video, activate: true) ?? false
         }
         return hostVideoOutputInWinampModernSkin()
     }
@@ -2167,7 +2171,7 @@ class WindowManager {
 
     func showPlaylist(at restoredFrame: NSRect? = nil) {
         if routeWinampModernSurface(.playlist, toggle: false, restoredFrame: restoredFrame) { return }
-        if routeWMPSkinSurface(.playlist, switchingViews: false) { return }
+        if routeWMPSkinSurface(.playlist) { return }
         if deferWMPFallbackUntilSkinLoads({ [weak self] in self?.showPlaylist(at: restoredFrame) }) { return }
         let isNewWindow = playlistWindowController == nil
         if isNewWindow {
@@ -2220,7 +2224,7 @@ class WindowManager {
 
     func togglePlaylist() {
         if routeWinampModernSurface(.playlist, toggle: true) { return }
-        if routeWMPSkinSurface(.playlist, switchingViews: true) { return }
+        if routeWMPSkinSurface(.playlist) { return }
         classicTogglePlaylist()
     }
 
@@ -2242,7 +2246,7 @@ class WindowManager {
     
     func showEqualizer(at restoredFrame: NSRect? = nil) {
         if routeWinampModernSurface(.equalizer, toggle: false, restoredFrame: restoredFrame) { return }
-        if routeWMPSkinSurface(.equalizer, switchingViews: false) { return }
+        if routeWMPSkinSurface(.equalizer) { return }
         if deferWMPFallbackUntilSkinLoads({ [weak self] in self?.showEqualizer(at: restoredFrame) }) { return }
         // The skin owns no equalizer, so NullPlayer's goes inside the skin's own frame when one
         // qualifies (B55) and into the standalone window below when none does.
@@ -2301,7 +2305,7 @@ class WindowManager {
 
     func toggleEqualizer() {
         if routeWinampModernSurface(.equalizer, toggle: true) { return }
-        if routeWMPSkinSurface(.equalizer, switchingViews: true) { return }
+        if routeWMPSkinSurface(.equalizer) { return }
         if routeWinampModernHostedWindow(.equalizer, toggle: true) { return }
         classicToggleEqualizer()
     }
@@ -3825,7 +3829,7 @@ class WindowManager {
     }
     
     func toggleVideoPlayer() {
-        if routeWMPSkinSurface(.video, switchingViews: true) { return }
+        if routeWMPSkinSurface(.video) { return }
         guard let controller = videoPlayerWindowController else { return }
         // A hosted picture lives in the skin's own video window, so that is the window this shows and
         // hides — ordering out this controller's own would do nothing visible at all (B20).
@@ -7581,19 +7585,20 @@ class WindowManager {
         }
         removeDragMouseUpMonitor()
 
+        // Detach docked child-window relationships first: AppKit retains children through the
+        // parent, and ordering the main window out orders its children out with it — which put
+        // away a docked window the rebuild does not recreate (the standalone Equalizer Studio).
+        if let mainWindow = mainWindowController?.window {
+            for child in mainWindow.childWindows ?? [] {
+                mainWindow.removeChildWindow(child)
+            }
+        }
+
         // 1 + 2: order out, then let each controller/root view release its own resources
         // (cancel tasks/timers, stop render loops, unregister observers + audio consumers).
         for controller in modeDependentWindowControllers {
             controller.window?.orderOut(nil)
             controller.prepareForUITeardown()
-        }
-
-        // Detach docked child-window relationships before closing so AppKit does not retain
-        // soon-to-be-dead windows through the parent.
-        if let mainWindow = mainWindowController?.window {
-            for child in mainWindow.childWindows ?? [] {
-                mainWindow.removeChildWindow(child)
-            }
         }
 
         // 3: close() then nil the mode-dependent controllers. Preserve the video player.
@@ -7684,30 +7689,28 @@ class WindowManager {
         var family: PlayerUIControllerFamily?
     }
 
+    /// Visibility comes from the canonical getters — the ones the session save uses — because a
+    /// `.wal` or `.wmz` skin usually draws the playlist, equalizer and library itself, with no
+    /// NullPlayer window to ask. The frame comes from whichever native window exists, `.zero` when
+    /// the skin owns the surface (every `show*(at:)` ignores `.zero`).
     private func captureModeDependentLayout() -> ModeDependentLayoutSnapshot {
-        func snap(_ controller: ModeDependentWindow?, normalFrame: NSRect? = nil) -> UIWindowSnapshot? {
-            guard let window = controller?.window else { return nil }
-            return UIWindowSnapshot(
-                visible: window.isVisible,
-                frame: window.frame,
-                normalFrame: normalFrame
-            )
+        func snap(_ visible: Bool, _ window: NSWindow?, normalFrame: NSRect? = nil) -> UIWindowSnapshot? {
+            guard visible || window != nil else { return nil }
+            return UIWindowSnapshot(visible: visible, frame: window?.frame ?? .zero, normalFrame: normalFrame)
         }
-        func snapWindow(_ window: NSWindow?) -> UIWindowSnapshot? {
-            guard let window else { return nil }
-            return UIWindowSnapshot(visible: window.isVisible, frame: window.frame)
-        }
+        func snap(_ window: NSWindow?) -> UIWindowSnapshot? { snap(window?.isVisible == true, window) }
         return ModeDependentLayoutSnapshot(
-            main: snap(mainWindowController),
-            playlist: snap(playlistWindowController),
-            equalizer: snap(equalizerWindowController),
+            main: snap(mainWindowController?.window),
+            playlist: snap(isPlaylistVisible, playlistWindowController?.window),
+            equalizer: snap(isEqualizerVisible, equalizerWindow),
             // Library stores its position frame for restoration after the rebuild.
-            library: snap(plexBrowserWindowController, normalFrame: plexBrowserWindowController?.frameForPositionMemory),
-            projectM: snap(projectMWindowController)
-                ?? snapWindow(winampModernHostedController?.hostedWindow(ifMaterialized: .projectM)),
-            equalizerStudio: snapWindow(shownEqualizerStudioWindow),
+            library: snap(isPlexBrowserVisible, plexBrowserWindowController?.window,
+                          normalFrame: plexBrowserWindowController?.frameForPositionMemory),
+            projectM: snap(isProjectMVisible, projectMWindowController?.window
+                ?? winampModernHostedController?.hostedWindow(ifMaterialized: .projectM)),
+            equalizerStudio: snap(shownEqualizerStudioWindow),
             centerStack: CenterStackFeature.allCases.reduce(into: [:]) { snapshots, feature in
-                snapshots[feature] = snapWindow(centerStackWindow(feature))
+                snapshots[feature] = snap(isCenterStackWindowVisible(feature), centerStackWindow(feature))
             },
             projectMPresetIndex: restorableProjectMPresetIndex(),
             family: uiMode.controllerFamily
@@ -7801,6 +7804,13 @@ class WindowManager {
            snapshot.family == .winampModern || uiMode.controllerFamily == .winampModern {
             showEqualizerStudio(at: carried(studio.frame))
         }
+        // An incoming `.wal` skin has opened its own containers at load (`default_visible`, or its
+        // last state); close the ones the user had closed. A no-op outside `.wal`.
+        restoreWinampModernSurfaceVisibility([
+            .playlist: snapshot.playlist?.visible == true,
+            .library: snapshot.library?.visible == true,
+            .equalizer: snapshot.equalizer?.visible == true,
+        ])
 
         pushCurrentPresentationStateToRecreatedWindows()
 
