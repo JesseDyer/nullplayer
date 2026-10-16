@@ -90,10 +90,7 @@ final class ActivityCenter: NSObject {
 
         let height = panel.contentView?.fittingSize.height ?? 40
         let size = NSSize(width: width, height: height)
-        let anchor = WindowManager.shared.mainWindowController?.window ?? NSApp.keyWindow
-        let bounds = anchor?.screen?.visibleFrame
-            ?? NSScreen.main?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let bounds = HUDPanel.anchorFrame
         let origin = NSPoint(x: bounds.maxX - screenInset - size.width,
                              y: bounds.maxY - screenInset - size.height)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
@@ -102,24 +99,8 @@ final class ActivityCenter: NSObject {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: 40),
-                            styleMask: [.borderless, .nonactivatingPanel],
-                            backing: .buffered,
-                            defer: false)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .floating
+        let (panel, container) = HUDPanel.make(size: NSSize(width: width, height: 40), cornerRadius: 10)
         panel.becomesKeyOnlyIfNeeded = true
-        panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
-
-        let container = NSVisualEffectView()
-        container.material = .hudWindow
-        container.blendingMode = .behindWindow
-        container.state = .active
-        // Rounded via the mask, not `layer.cornerRadius` — see `SkinLoadingOverlay.roundedMask`.
-        container.maskImage = SkinLoadingOverlay.roundedMask(cornerRadius: 10)
 
         let icon = NSImageView(image: NSApp.applicationIconImage)
         icon.alphaValue = 0.5
@@ -169,7 +150,6 @@ final class ActivityCenter: NSObject {
             text.trailingAnchor.constraint(equalTo: outer.trailingAnchor, constant: -outer.edgeInsets.right),
         ])
 
-        panel.contentView = container
         return panel
     }
 }

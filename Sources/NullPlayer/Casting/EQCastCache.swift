@@ -351,6 +351,8 @@ enum EQCast {
     private(set) static var castingFile: URL?
     /// The last pre-render list; nil until the session's first, so the first cast says it takes a moment.
     private static var upcoming: (tracks: [Track], device: CastDeviceType)?
+    /// The render whose progress the row shows. Progress hops to main in its own Task, so one can
+    /// land after `hide`; without this check it would re-create a row nothing removes.
     private static var activity: UUID?
     private static let renderActivityID = "eqcast-render"
 

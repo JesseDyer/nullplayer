@@ -1420,7 +1420,7 @@ Background-work progress (a rip, an EQ Cast render or cache delete) shows in `Ap
 one borderless, non-activating floating panel at the top-right of the visible frame of the screen
 holding the main window, 16pt inset — the same for every skin family, because `.wal`, `.wmz` and
 Audion players are arbitrary shapes a bar inside the player cannot fit. Native look
-(`NSVisualEffectView` `.hudWindow`, rounded by `SkinLoadingOverlay.roundedMask`, never
+(`NSVisualEffectView` `.hudWindow`, built by `App/HUDPanel.swift` (shared with the skin loader) and rounded by its mask, never
 `layer.cornerRadius`), a faded app icon on the left, a "NullPlayer" header, and one spinner row per job.
 
 - `ActivityCenter.shared.show(id:message:)` adds a row, or updates that id's label in place;
