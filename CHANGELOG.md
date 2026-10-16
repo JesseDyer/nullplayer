@@ -153,6 +153,11 @@
   Player and Audion skins, into a small panel at the top-right of the screen. A rip and an EQ Cast
   render running together each get their own row instead of overwriting one another, and the
   panel's chevron collapses it to one line.
+- **Clicking empty source-bar space in the Library no longer picks a library** — the `Lib:` name's
+  click target ran on past the name to the buttons at the right; it now ends where the name does.
+- **A seamless Original stack's shadow follows its windows** — a snap, or the player carrying its
+  docked windows, left the stack's shadow where its windows had been, and a window dragged alone
+  out of a stack pulled its neighbours' shadow along with it until the drop.
 
 ### Build and internals
 

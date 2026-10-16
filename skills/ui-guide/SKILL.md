@@ -801,9 +801,11 @@ geometry as an exact match.
   pixels, and `window.invalidateSkinShadowShape(_:)` when content moves the outline at the same
   size. The outline is fingerprinted, so a pull that finds it unchanged rebuilds nothing.
 - **Seamless docking (Original):** a seamless skin casts **one shadow per docked group**.
-  `WindowManager.updateSeamlessStackShadow` runs once per layout change, right after
-  `windowLayoutDidChange` is posted, so every view has already updated its corner mask. It hands
-  the docked groups to `SeamlessStackShadow` (`Windows/Shared/`), which gives each skin-shadowed
+  `SeamlessStackShadow` (`Windows/Shared/`) casts once per layout change, right after
+  `windowLayoutDidChange` is posted, so every view has already updated its corner mask, and a turn
+  after every window move (`setNeedsCast()`, coalesced), since a snap or a carried child posts no
+  layout change. It pulls the docked groups from `WindowManager.seamlessStackLayout` — a window
+  dragged alone is left out of them — and gives each skin-shadowed
   member a `SkinShadowRole` through `window.castSkinShadow(_:)`. The main window when it is in the
   group, else the lowest window number, casts the union of every member's outline through
   `SkinWindowShadow.outlineBounds` (a shape rect larger than its parent), and the rest are hidden
