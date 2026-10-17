@@ -120,6 +120,14 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
     /// rail. The script's own `view.width / 2` ends 10pt inside the corner, which is under it.
     var spannedAcrossNodeIDs: [Int: Int] = [:]
 
+    /// Tiles extended down to the top of their column's bottom corner on every build — the
+    /// vertical twin of `spannedAcrossNodeIDs`. **A tile in a top slot with no authored height is
+    /// a rail its script lays out.** `ALXMorph`'s `plLeftTile` and `plRightTile` hang from the
+    /// side ornaments and are sized only by `onPlResize()`, `height = view.height / 2 + 30`; left
+    /// one bitmap tall, the rail behind them showed as a lighter band down both sides of every
+    /// hosted window.
+    var spannedDownNodeIDs: [Int: Int] = [:]
+
     /// **What the donor view's own `onLoad` makes of the frame's appearance (W145).** Markup is
     /// only the skin's opening state: `xsn_sports` stacks all eight colours of its frame in
     /// `plView` (`pl1_1`…`pl8_8`, variants 2-8 authored `alphaBlend="0"`) and `htcpStartupPl()`
@@ -551,6 +559,7 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
         var extras: Set<Int> = []
         var refusedCorners: [Role: WMPNode] = [:]
         var spannedTiles: [(node: WMPNode, role: Role)] = []
+        var hangingTiles: [(node: WMPNode, role: Role)] = []
         var client: WMPNode?
 
         // Direct children only. A ring is laid out against the *window*, so its pieces are the
@@ -613,6 +622,10 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
                 // hold one displaces the real edge bitmap into the extras — which refused five
                 // clean rings and moved seven donors' client holes when it was first tried. It is
                 // admitted below, as a repair, which is the only thing it was ever needed for.
+                if !centred, role == .topLeft || role == .topRight,
+                   isScriptSpannedTile(child, along: "height") {
+                    hangingTiles.append((child, role))
+                }
                 if !centred, ring[role] == nil {
                     ring[role] = child
                     pieces.append(child)
@@ -636,7 +649,8 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
                 pieces.append(child)
                 extras.insert(child.stableID)
                 note(child, role, &stretchedDown, &stretchedAcross)
-                if !centred, role == .topLeft || role == .bottomLeft, isScriptSpannedTile(child) {
+                if !centred, role == .topLeft || role == .bottomLeft,
+                   isScriptSpannedTile(child, along: "width") {
                     spannedTiles.append((child, role))
                 }
             } else if horizontal == .stretch, vertical == .stretch, client == nil {
@@ -675,8 +689,20 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
         guard Role.corners.isSubset(of: Set(ring.keys)), let client else { return nil }
         var spannedAcross: [Int: Int] = [:]
         for (tile, role) in spannedTiles {
-            if let corner = ring[role == .topLeft ? .topRight : .bottomRight] {
+            // **A slot held by a script-sized tile is a rail, not a corner.** Slots are
+            // first-declared, so `ALXMorph`'s `plRightTile` holds top-right ahead of `f_top_right`;
+            // its left twin lies in that row, and spanning to it tiled a second copy of the left
+            // rail into the middle of every hosted window.
+            if let corner = ring[role == .topLeft ? .topRight : .bottomRight],
+               !isScriptSpannedTile(corner, along: "width") {
                 spannedAcross[tile.stableID] = corner.stableID
+            }
+        }
+        var spannedDown: [Int: Int] = [:]
+        for (tile, role) in hangingTiles {
+            if let corner = ring[role == .topLeft ? .bottomLeft : .bottomRight],
+               !isScriptSpannedTile(corner, along: "height") {
+                spannedDown[tile.stableID] = corner.stableID
             }
         }
         var railsDown: Set<Int> = [], railsAcross: Set<Int> = []
@@ -701,7 +727,8 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
             excludedNodeIDs: notOurs(view, client: client),
             railsDownNodeIDs: railsDown,
             railsAcrossNodeIDs: railsAcross,
-            spannedAcrossNodeIDs: spannedAcross
+            spannedAcrossNodeIDs: spannedAcross,
+            spannedDownNodeIDs: spannedDown
         )
     }
 
@@ -827,11 +854,11 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
         }
     }
 
-    /// A tiled bitmap with no authored width: one whose length along its edge only a script sets.
-    /// See `spannedAcrossNodeIDs`.
-    private static func isScriptSpannedTile(_ node: WMPNode) -> Bool {
+    /// A tiled bitmap with no authored `dimension`: one whose length along its edge only a script
+    /// sets. See `spannedAcrossNodeIDs` and `spannedDownNodeIDs`.
+    private static func isScriptSpannedTile(_ node: WMPNode, along dimension: String) -> Bool {
         literal(node, "backgroundTiled")?.caseInsensitiveCompare("true") == .orderedSame
-            && number(node, "width") == nil && node.statedAttribute(named: "width") == nil
+            && number(node, dimension) == nil && node.statedAttribute(named: dimension) == nil
     }
 
     /// Whether a view carries one of the surfaces a WMP panel exists to hold.
@@ -1967,11 +1994,13 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
         return overrides
     }
 
-    /// `overrides` with every `spannedAcrossNodeIDs` tile reaching its row's right corner, read
-    /// off one extra build of the donor. A donor without such a tile builds nothing extra.
+    /// `overrides` with every `spannedAcrossNodeIDs` tile reaching its row's right corner and every
+    /// `spannedDownNodeIDs` tile its column's bottom corner, read off one extra build of the donor.
+    /// A donor without such a tile builds nothing extra.
     private func spanning(_ overrides: WMPSceneOverrides, builder: WMPSceneBuilder,
                           size: WMPSize) async throws -> WMPSceneOverrides {
-        guard Self.spansScriptedTiles, !spannedAcrossNodeIDs.isEmpty else { return overrides }
+        guard Self.spansScriptedTiles,
+              !spannedAcrossNodeIDs.isEmpty || !spannedDownNodeIDs.isEmpty else { return overrides }
         var overrides = overrides
         let scene = try await builder.build(viewID: viewID, requestedSize: size, overrides: overrides)
         for (tile, corner) in spannedAcrossNodeIDs {
@@ -1985,6 +2014,17 @@ struct WMPHostedFrameTemplate: Equatable, Sendable {
             let reach = end.x - piece.x
             if reach > piece.width {
                 overrides.geometry[WMPScenePropertyAddress(stableID: tile, property: "width")] = reach
+            }
+        }
+        for (tile, corner) in spannedDownNodeIDs {
+            guard let piece = scene.geometries[tile]?.absoluteFrame,
+                  let end = scene.geometries[corner]?.absoluteFrame else { continue }
+            // Only a tile that lies in its corner's column is a rail; one in the top bar is not.
+            let shared = min(piece.x + piece.width, end.x + end.width) - max(piece.x, end.x)
+            guard shared >= piece.width / 2 else { continue }
+            let reach = end.y - piece.y
+            if reach > piece.height {
+                overrides.geometry[WMPScenePropertyAddress(stableID: tile, property: "height")] = reach
             }
         }
         return overrides

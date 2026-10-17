@@ -162,6 +162,9 @@
   family or skin the saved session was last written in, so quitting in Original-Metal could reopen
   in Original when the session had not been saved since the switch (a force quit or crash inside
   the autosave interval, or a run with Save State on Quit off).
+- **Alienware-family WMP skins frame NullPlayer's own windows cleanly** — under `ALXMorph` and
+  `AlienMorph`, windows such as Sonos Rooms no longer show a stray line and bar in the middle or
+  lighter bands down both sides, and `Alienware Invader`'s left border no longer breaks partway down.
 
 ### Build and internals
 
