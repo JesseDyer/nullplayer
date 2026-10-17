@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Geiss no longer goes black after Tripex** — switching the Visualizations window's engine away
+  from Tripex left OpenGL state behind that could make Geiss draw nothing; each new engine now
+  starts from a clean context.
+- **Geiss in a Windows Media Player skin and the Visualizations window no longer crashes** — the
+  two shared Geiss's single engine core from two threads at different sizes, corrupting memory
+  (crashes when switching skins or effects). Geiss now runs in one place at a time: whichever
+  started it first keeps it, the other shows black, and it moves over as soon as the first one
+  switches away, is hidden or closes.
+
 ## 0.33.0
 
 ### New features
@@ -157,14 +170,6 @@
 - **`build_dmg.sh` signs and notarizes** — it signs with a Developer ID and the hardened runtime
   when `DEVELOPER_ID` is set, and notarizes and staples the DMG when `NOTARY_PROFILE` names a
   `notarytool` keychain profile. Without them it still builds the ad-hoc signed DMG.
-- **Geiss no longer goes black after Tripex** — switching the Visualizations window's engine away
-  from Tripex left OpenGL state behind that could make Geiss draw nothing; each new engine now
-  starts from a clean context.
-- **Geiss in a Windows Media Player skin and the Visualizations window no longer crashes** — the
-  two shared Geiss's single engine core from two threads at different sizes, corrupting memory
-  (crashes when switching skins or effects). Geiss now runs in one place at a time: whichever
-  started it first keeps it, the other shows black, and it moves over as soon as the first one
-  switches away, is hidden or closes.
 
 ## 0.32.2
 
