@@ -47,32 +47,9 @@
   loads it until you import a skin of your own, replacing the plain NullPlayer-Black placeholder.
   It stays in the skin menu beside imported skins, so you can switch back to it.
   Skin by [spacecowgoesmoo](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer) (#540).
-- **Every window closes from its top-right corner** — with Hide Title Bars on, or docked without
-  its title bar, an Original skin window could only be closed from the Windows menu; clicking its
-  top-right corner now closes it (the main window quits). A `.wal` window with no close button of
-  its own closes the same way, and closing a docked window no longer leaves its outline on the
-  windows around it (#546).
-- **Classic and Original remember their own main-window visualizer** — the mode you pick in a
-  Classic skin and the one you pick in an Original skin are now kept apart. Before, they shared one
-  setting, so switching to Original changed Classic's mode, and entering Classic reset it to
-  Spectrum. Reset Skin to Default still applies the skin's own mode, or Spectrum when it has none.
-- **The Library behaves the same in every skin** — Classic's search field now says to press Enter,
-  star ratings colour their empty stars alike in every skin, the scan spinner keeps turning while a
-  row is loading, and picking a Subsonic folder or a Jellyfin or Emby library loads it once instead
-  of two or three times. A Jellyfin show or season that reports no count no longer reads "0
-  seasons", as in Emby.
-- **The Library's Folders tab shows track titles without the artist** — in Classic, Modern and
-  Windows Media Player skins each track read "Artist - Title", repeating the Artist column (#542).
-- **Local search results show track titles without the artist** — the Tracks section of a Library
-  search read "Artist - Title" beside the Artist column, in every skin.
-- **Folders and files in the Folders tab sort numbers by value** — as Finder does, so `2` comes
-  before `10` instead of `1, 10, 100, 11, 2` (#543).
 - **Library Browser refresh icon in WMP, Winamp Modern and Audion skins** — the source bar's "F5"
   label is now a refresh arrow, and the List / Cover Flow / Tiles buttons get a little more room.
   Classic skins are unchanged.
-- **A queue right-click acts on the row you clicked** — in Classic and Original skins, right-clicking
-  a row outside the selection now selects it first, as Windows Media Player skins already did.
-  Before, the menu acted on whatever was selected.
 - **Context menus use macOS naming** — "Exit" is now "Quit", and both state menu items read
   "Save State on Quit" ([#554](https://github.com/ad-repo/nullplayer/issues/554)).
 - **Windows menu reordered and grouped** — Main Window, Library Browser and Playlist Editor come
@@ -94,6 +71,11 @@
   the window again instead of opening the star rating or clicking into a pane.
 - **Sonos Rooms has its close button again in `.wmz` and `.wal` skins** — the corner close of a
   window with no title bar did nothing.
+- **Every window closes from its top-right corner** — with Hide Title Bars on, or docked without
+  its title bar, an Original skin window could only be closed from the Windows menu; clicking its
+  top-right corner now closes it (the main window quits). A `.wal` window with no close button of
+  its own closes the same way, and closing a docked window no longer leaves its outline on the
+  windows around it (#546).
 
 **Skins and modes**
 - **Winamp Modern skins frame NullPlayer's windows without a gap at the bottom** — on skins with a
@@ -117,6 +99,10 @@
   vis_classic / "Purple Neon". A reset and a switch into Classic still restore Classic's defaults.
 - **Closing a visualizer mid-frame no longer crashes** — a spectrum or main-window analyzer torn
   down while the GPU was still drawing a frame could crash the app.
+- **Classic and Original remember their own main-window visualizer** — the mode you pick in a
+  Classic skin and the one you pick in an Original skin are now kept apart. Before, they shared one
+  setting, so switching to Original changed Classic's mode, and entering Classic reset it to
+  Spectrum. Reset Skin to Default still applies the skin's own mode, or Spectrum when it has none.
 
 **Library**
 - **An album opened from Tiles or Flow no longer scrolls over the Library's tabs** — scrolling a
@@ -126,6 +112,17 @@
   and tracks no longer sit far to the right of their album or folder (#542).
 - **Folders inside a watch folder reached through a symlink show up in the Folders tab** — a
   watch folder under a symlinked path such as `/tmp` listed none of its subfolders.
+- **The Library behaves the same in every skin** — Classic's search field now says to press Enter,
+  star ratings colour their empty stars alike in every skin, the scan spinner keeps turning while a
+  row is loading, and picking a Subsonic folder or a Jellyfin or Emby library loads it once instead
+  of two or three times. A Jellyfin show or season that reports no count no longer reads "0
+  seasons", as in Emby.
+- **The Library's Folders tab shows track titles without the artist** — in Classic, Modern and
+  Windows Media Player skins each track read "Artist - Title", repeating the Artist column (#542).
+- **Local search results show track titles without the artist** — the Tracks section of a Library
+  search read "Artist - Title" beside the Artist column, in every skin.
+- **Folders and files in the Folders tab sort numbers by value** — as Finder does, so `2` comes
+  before `10` instead of `1, 10, 100, 11, 2` (#543).
 
 **Playback and queue**
 - **Reference Tuning and the Equalizer shape streamed audio as they do local files** — on a
@@ -148,6 +145,9 @@
   family or skin the saved session was last written in, so quitting in Original-Metal could reopen
   in Original when the session had not been saved since the switch (a force quit or crash inside
   the autosave interval, or a run with Save State on Quit off).
+- **A queue right-click acts on the row you clicked** — in Classic and Original skins, right-clicking
+  a row outside the selection now selects it first, as Windows Media Player skins already did.
+  Before, the menu acted on whatever was selected.
 
 ### Build and internals
 
