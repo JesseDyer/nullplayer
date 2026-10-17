@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.33.0
 
 ### New features
 
@@ -39,7 +39,7 @@
   first track has no art shows another track's, an artist's art comes from their own albums rather
   than any track whose title contains their name, and a selected album falls back to a web cover
   as tracks and artists do. Art added through Edit Tags shows without a relaunch.
-- **Support on Ko-fi** — the About window has a Ko-fi button (not in the App Store build).
+- **Support on Ko-fi** — the About window has a Ko-fi button.
 
 ### Changes
 
@@ -47,32 +47,9 @@
   loads it until you import a skin of your own, replacing the plain NullPlayer-Black placeholder.
   It stays in the skin menu beside imported skins, so you can switch back to it.
   Skin by [spacecowgoesmoo](https://github.com/spacecowgoesmoo/Old-iTunes-Miniplayer) (#540).
-- **Every window closes from its top-right corner** — with Hide Title Bars on, or docked without
-  its title bar, an Original skin window could only be closed from the Windows menu; clicking its
-  top-right corner now closes it (the main window quits). A `.wal` window with no close button of
-  its own closes the same way, and closing a docked window no longer leaves its outline on the
-  windows around it (#546).
-- **Classic and Original remember their own main-window visualizer** — the mode you pick in a
-  Classic skin and the one you pick in an Original skin are now kept apart. Before, they shared one
-  setting, so switching to Original changed Classic's mode, and entering Classic reset it to
-  Spectrum. Reset Skin to Default still applies the skin's own mode, or Spectrum when it has none.
-- **The Library behaves the same in every skin** — Classic's search field now says to press Enter,
-  star ratings colour their empty stars alike in every skin, the scan spinner keeps turning while a
-  row is loading, and picking a Subsonic folder or a Jellyfin or Emby library loads it once instead
-  of two or three times. A Jellyfin show or season that reports no count no longer reads "0
-  seasons", as in Emby.
-- **The Library's Folders tab shows track titles without the artist** — in Classic, Modern and
-  Windows Media Player skins each track read "Artist - Title", repeating the Artist column (#542).
-- **Local search results show track titles without the artist** — the Tracks section of a Library
-  search read "Artist - Title" beside the Artist column, in every skin.
-- **Folders and files in the Folders tab sort numbers by value** — as Finder does, so `2` comes
-  before `10` instead of `1, 10, 100, 11, 2` (#543).
 - **Library Browser refresh icon in WMP, Winamp Modern and Audion skins** — the source bar's "F5"
   label is now a refresh arrow, and the List / Cover Flow / Tiles buttons get a little more room.
   Classic skins are unchanged.
-- **A queue right-click acts on the row you clicked** — in Classic and Original skins, right-clicking
-  a row outside the selection now selects it first, as Windows Media Player skins already did.
-  Before, the menu acted on whatever was selected.
 - **Context menus use macOS naming** — "Exit" is now "Quit", and both state menu items read
   "Save State on Quit" ([#554](https://github.com/ad-repo/nullplayer/issues/554)).
 - **Windows menu reordered and grouped** — Main Window, Library Browser and Playlist Editor come
@@ -81,21 +58,10 @@
 ### Fixes
 
 **Windows and shadows**
-- **Docking no longer flashes a large outline in Original skins** — docking or undocking a window
-  briefly showed the group's old drop shadow stretched to its new size.
-- **A window's drop shadow no longer shows as a box when the window changes size** — in `.wal`
-  skins such as iTunes MiniPlayer, and on docking in Original skins, the old shadow could appear
-  stretched to the new size.
-- **No more ghost outline trailing a dragged window** — after the app was hidden and shown again,
-  dragging a skinned window (the Original main window, for one) left its drop shadow behind or
-  ahead of it as a window-sized outline until the window was docked or the skin changed. Every
-  skin family's shadow now stays under its window.
-- **Closing a `.wal` drawer no longer leaves its outline behind** — closing PionNer_AMP2's EQ
-  drawer, and similar drawers in other Winamp Modern skins, left the open drawer's shadow on screen
-  for a moment.
-- **No empty shadow box at launch in Windows Media Player skins** — a NullPlayer window restored
-  at launch, such as the Library under Combat_Flight_Simulator_3, cast its drop shadow for up to
-  two seconds before the window itself appeared. The shadow now appears with its window.
+- **Drop shadows stay with their windows** — in every skin family a window's shadow no longer
+  lags, stretches or lingers as an empty outline: when docking or undocking, resizing, dragging
+  after the app was hidden and shown, closing a `.wal` drawer such as PionNer_AMP2's EQ, restoring
+  a Windows Media Player window at launch, or moving a seamless Original stack.
 - **A quick drag of the player keeps its docked windows with it** — in a seamless Original skin,
   quickly dragging the player around left the windows docked to it drifting a little further
   behind on every move.
@@ -105,6 +71,11 @@
   the window again instead of opening the star rating or clicking into a pane.
 - **Sonos Rooms has its close button again in `.wmz` and `.wal` skins** — the corner close of a
   window with no title bar did nothing.
+- **Every window closes from its top-right corner** — with Hide Title Bars on, or docked without
+  its title bar, an Original skin window could only be closed from the Windows menu; clicking its
+  top-right corner now closes it (the main window quits). A `.wal` window with no close button of
+  its own closes the same way, and closing a docked window no longer leaves its outline on the
+  windows around it (#546).
 
 **Skins and modes**
 - **Winamp Modern skins frame NullPlayer's windows without a gap at the bottom** — on skins with a
@@ -128,6 +99,10 @@
   vis_classic / "Purple Neon". A reset and a switch into Classic still restore Classic's defaults.
 - **Closing a visualizer mid-frame no longer crashes** — a spectrum or main-window analyzer torn
   down while the GPU was still drawing a frame could crash the app.
+- **Classic and Original remember their own main-window visualizer** — the mode you pick in a
+  Classic skin and the one you pick in an Original skin are now kept apart. Before, they shared one
+  setting, so switching to Original changed Classic's mode, and entering Classic reset it to
+  Spectrum. Reset Skin to Default still applies the skin's own mode, or Spectrum when it has none.
 
 **Library**
 - **An album opened from Tiles or Flow no longer scrolls over the Library's tabs** — scrolling a
@@ -137,6 +112,17 @@
   and tracks no longer sit far to the right of their album or folder (#542).
 - **Folders inside a watch folder reached through a symlink show up in the Folders tab** — a
   watch folder under a symlinked path such as `/tmp` listed none of its subfolders.
+- **The Library behaves the same in every skin** — Classic's search field now says to press Enter,
+  star ratings colour their empty stars alike in every skin, the scan spinner keeps turning while a
+  row is loading, and picking a Subsonic folder or a Jellyfin or Emby library loads it once instead
+  of two or three times. A Jellyfin show or season that reports no count no longer reads "0
+  seasons", as in Emby.
+- **The Library's Folders tab shows track titles without the artist** — in Classic, Modern and
+  Windows Media Player skins each track read "Artist - Title", repeating the Artist column (#542).
+- **Local search results show track titles without the artist** — the Tracks section of a Library
+  search read "Artist - Title" beside the Artist column, in every skin.
+- **Folders and files in the Folders tab sort numbers by value** — as Finder does, so `2` comes
+  before `10` instead of `1, 10, 100, 11, 2` (#543).
 
 **Playback and queue**
 - **Reference Tuning and the Equalizer shape streamed audio as they do local files** — on a
@@ -155,13 +141,13 @@
   panel's chevron collapses it to one line.
 - **Clicking empty source-bar space in the Library no longer picks a library** — the `Lib:` name's
   click target ran on past the name to the buttons at the right; it now ends where the name does.
-- **A seamless Original stack's shadow follows its windows** — a snap, or the player carrying its
-  docked windows, left the stack's shadow where its windows had been, and a window dragged alone
-  out of a stack pulled its neighbours' shadow along with it until the drop.
 - **Relaunching keeps the skin family and skin you were in** — a launch could switch back to the
   family or skin the saved session was last written in, so quitting in Original-Metal could reopen
   in Original when the session had not been saved since the switch (a force quit or crash inside
   the autosave interval, or a run with Save State on Quit off).
+- **A queue right-click acts on the row you clicked** — in Classic and Original skins, right-clicking
+  a row outside the selection now selects it first, as Windows Media Player skins already did.
+  Before, the menu acted on whatever was selected.
 - **Alienware-family WMP skins frame NullPlayer's own windows cleanly** — under `ALXMorph` and
   `AlienMorph`, windows such as Sonos Rooms no longer show a stray line and bar in the middle or
   lighter bands down both sides, and `Alienware Invader`'s left border no longer breaks partway down.
