@@ -54,7 +54,7 @@ extension WinampModernScriptRuntime {
     /// whole layout, the write invalidates it again, and doing that on every write was most of a
     /// skin switch's script start-up.
     func writeGeometry(_ attributes: [(key: String, value: String)], on object: WasabiObject,
-                       borrowed: BorrowedWindowOrigin? = nil) {
+                       borrowed: WinampModernBorrowedOrigin.Request? = nil) {
         let reportedBeforeWrite = Self.isWindowObject(object) ? reportedOrigin(of: object) : nil
         for (key, value) in attributes { _ = object.setAttribute(key, value: value) }
         applyContainerGeometry(object, reportedOrigin: reportedBeforeWrite, borrowed: borrowed)
@@ -76,7 +76,7 @@ extension WinampModernScriptRuntime {
     /// `borrowed` overrides the position half: the caller has recognised the coordinates as
     /// another window's. `.desktop` carries them re-expressed in the desktop space this move is
     /// answered in; `.offScreen` drops the position half altogether, because they were read off a
-    /// window that is not on screen (B156). See `borrowedWindowOrigin`.
+    /// window that is not on screen (B156). See `WinampModernBorrowedOrigin`.
     ///
     /// **A pin goes out before the size** (B160). Wasabi applies the box whole and then notifies,
     /// and the size is the request that dispatches `onResize` inside the resized window — so a
@@ -85,7 +85,7 @@ extension WinampModernScriptRuntime {
     /// survives. A plain move still follows the size: it is clamped to the screen by the size the
     /// window ends up with. See `reference/scripting.md` → *The pin lands before the size*.
     func applyContainerGeometry(_ object: WasabiObject, reportedOrigin: CGPoint? = nil,
-                                        borrowed: BorrowedWindowOrigin? = nil) {
+                                        borrowed: WinampModernBorrowedOrigin.Request? = nil) {
         // A **layout** is its window as much as the container is — a `noparent` popup is placed and
         // sized by writing `x`/`y`/`w`/`h` on the layout, in screen coordinates the script builds with
         // `clientToScreenX/Y`. Big Bento's playlist search does exactly that before showing its
@@ -102,7 +102,11 @@ extension WinampModernScriptRuntime {
         guard let target else { return }
         func applySize() {
             guard let width = Double(object.attributes["w"] ?? ""),
-                  let height = Double(object.attributes["h"] ?? ""), width > 0, height > 0 else { return }
+                  let height = Double(object.attributes["h"] ?? "") else { return }
+            // No size at all is a window Winamp draws 0×0, so it is kept off screen rather than left
+            // at its old size; any real size brings it back (see `scriptCollapsedLayouts`).
+            noteScriptSize(of: object, collapsed: width <= 0 && height <= 0)
+            guard width > 0, height > 0 else { return }
             layoutResizeRequested?(target.stableID, CGSize(width: width, height: height))
         }
         switch borrowed {

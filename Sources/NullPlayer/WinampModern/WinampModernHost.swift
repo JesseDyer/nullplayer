@@ -719,18 +719,48 @@ final class WinampModernAudioEngineHost: WinampModernHost {
     /// Decoder line says in Winamp for a radio station.
     var decoderName: String {
         guard videoSession() == nil else { return "" }
-        guard let url = engine.currentTrack?.url else { return "" }
-        let named = Self.codecNames[url.pathExtension.lowercased()]
-        if let named { return named }
-        return url.isFileURL ? url.pathExtension.uppercased() : "HTTP Stream"
+        guard let track = engine.currentTrack else { return "" }
+        // The same extension `trackPath` shows a skin, so a server stream's Decoder line and its File
+        // Type readout name one format.
+        let format = (Self.playItemLocation(of: track.url, contentType: track.contentType) as NSString).pathExtension
+        if let named = Self.codecNames[format.lowercased()] { return named }
+        return track.url.isFileURL ? format.uppercased() : "HTTP Stream"
     }
 
     /// The film's own URL is available (`currentArtworkTrack.url`) if a real path readout is wanted
     /// later; it is deliberately empty here, with the rest of the non-title fields.
     var trackPath: String {
         guard videoSession() == nil else { return "" }
-        guard let url = engine.currentTrack?.url else { return "" }
-        return url.isFileURL ? url.path : url.absoluteString
+        guard let track = engine.currentTrack else { return "" }
+        return Self.playItemLocation(of: track.url, contentType: track.contentType)
+    }
+
+    /// A stream's location as a skin may see it: no query, fragment or user info — where Plex's
+    /// `X-Plex-Token` and Subsonic's `u`/`t`/`s` travel, and a skin draws `getExtension` of this
+    /// (ONYX V2's File Type showed `flac?X-Plex-Token=…`). A path with no extension of its own
+    /// (Subsonic's `/rest/stream`) takes the format the server reported, so that readout has one.
+    static func playItemLocation(of url: URL, contentType: String?) -> String {
+        guard !url.isFileURL else { return url.path }
+        var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) ?? URLComponents()
+        parts.query = nil
+        parts.fragment = nil
+        parts.user = nil
+        parts.password = nil
+        let location = parts.string ?? ""
+        guard url.pathExtension.isEmpty, let format = contentType.flatMap(formatExtension) else {
+            return location
+        }
+        return location + "." + format
+    }
+
+    /// `audio/x-flac` → `flac`, `audio/mpeg` → `mp3`, a bare container name (`flac`) as it is.
+    private static func formatExtension(_ contentType: String) -> String? {
+        let type = contentType.split(separator: ";").first.map(String.init) ?? contentType
+        var subtype = (type.split(separator: "/").last.map(String.init) ?? "")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        if subtype.hasPrefix("x-") { subtype.removeFirst(2) }
+        if subtype == "mpeg" { return "mp3" }
+        return subtype.isEmpty ? nil : subtype
     }
 
     private static let codecNames: [String: String] = [

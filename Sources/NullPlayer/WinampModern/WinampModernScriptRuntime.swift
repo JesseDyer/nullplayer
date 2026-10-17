@@ -1270,7 +1270,26 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
             target = nil
         }
         guard let target, let id = target.xmlID, !id.isEmpty else { return }
-        containerVisibilityRequested?(id, visible)
+        containerVisibilityRequested?(id, visible && !isCollapsed(showing: object, in: target))
+    }
+
+    /// Layouts a script sized to nothing — a window Winamp would draw 0×0, so showing one keeps it off
+    /// screen until a script gives it a size again. ONYX V2 gives its visualization window no size
+    /// in the mini player, and kept at its declared 67×72 it floated loose as a black square. Kept by
+    /// `applyContainerGeometry`, where every script size write is already decided.
+    private var scriptCollapsedLayouts: Set<WasabiObjectID> = []
+
+    func noteScriptSize(of layout: WasabiObject, collapsed: Bool) {
+        guard layout.typeName.caseInsensitiveCompare("layout") == .orderedSame else { return }
+        if collapsed { scriptCollapsedLayouts.insert(layout.stableID) }
+        else { scriptCollapsedLayouts.remove(layout.stableID) }
+    }
+
+    /// Whether the layout a show of `object` brings up — the layout itself, or the container's
+    /// current one — has been sized to nothing.
+    private func isCollapsed(showing object: WasabiObject, in container: WasabiObject) -> Bool {
+        let layout = object === container ? activeLayoutByContainer[container.stableID] : object.stableID
+        return layout.map(scriptCollapsedLayouts.contains) ?? false
     }
 
     /// Whether this object *is* a window — a `<container>` or one of its `<layout>`s. Both carry a
@@ -1287,98 +1306,55 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         return enclosingWindowID(of: object).flatMap { containerOriginQuery?($0) }
     }
 
-    /// The last position a script read off a **window object**, with the desktop origin that same
-    /// object actually sits at. `reported` is what `getLeft()`/`getTop()` answered — the canvas
-    /// origin for a layout, already the desktop origin for a container — so the pair is what
-    /// recognises those coordinates being handed straight back to `resize()` on *another* window.
-    /// See `borrowedWindowOrigin`.
-    private var lastWindowOriginRead: (objectID: WasabiObjectID, reported: CGPoint, desktop: CGPoint,
-                                       onScreen: Bool)?
+    /// The last window position a script read, and the rule that recognises it being written onto
+    /// another window. See `WinampModernBorrowedOrigin`.
+    private var borrowedOrigin = WinampModernBorrowedOrigin()
 
     /// `getLeft()`/`getTop()`: the reported origin, remembered when it was read off a window object
-    /// so `borrowedWindowOrigin` can recognise it being handed straight back to another window.
+    /// so a write on another window can be recognised as relative to it.
     func scriptReadsOrigin(of object: WasabiObject) -> CGPoint {
         let reported = reportedOrigin(of: object)
         if Self.isWindowObject(object), let desktop = windowOrigin(of: object) {
-            // No answer (the headless harness) counts as on screen, as it did before B156.
             let onScreen = enclosingWindowID(of: object).flatMap { containerVisibilityQuery?($0) } != false
-            lastWindowOriginRead = (object.stableID, reported, desktop, onScreen)
+            borrowedOrigin.record(.init(window: object.stableID, reported: reported, desktop: desktop,
+                                        onScreen: onScreen))
         }
         return reported
     }
 
-    /// What a `resize()` on a window object asks for when its coordinates are another window's.
-    enum BorrowedWindowOrigin: Equatable {
-        /// That window's desktop origin: the write is a pinned move there.
-        case desktop(CGPoint)
-        /// The window read was not on screen, so it had no position to lend. The write keeps its
-        /// window where it is (B156).
-        case offScreen
+    /// What a script's write of `x` and/or `y` on a window object really asks for when those
+    /// coordinates are another window's, or nil when they are a plain position.
+    func borrowedWindowOrigin(x: Double?, y: Double?,
+                              writtenOn object: WasabiObject) -> WinampModernBorrowedOrigin.Request? {
+        guard Self.isWindowObject(object),
+              let match = borrowedOrigin.match(x: x, y: y, writtenOn: object.stableID,
+                                               current: windowOrigin(of: object))
+        else { return nil }
+        noteWindowGluedOver(follower: object, leader: match.leader)
+        return match.request
     }
 
-    /// **One window placed at another window's position** — the desktop origin a `resize()` is
-    /// really asking for, or `nil` when it is not that idiom.
+    /// The pairing this idiom *is*: the window being written follows the window that was read.
+    /// Nothing else in the host knows it — the relationship lives entirely in the skin's script — and
+    /// the window layer needs it to keep a frame from being buried by the client it is drawn on
+    /// (B110). Recorded by container, because that is what owns a window.
     ///
-    /// A layout answers `getLeft()`/`getTop()` in its own canvas space (0), while the `x`/`y` a
-    /// `resize()` writes are pushed to the desktop. B61 fixed the *self* round trip
-    /// (`me.resize(me.getLeft(), …)`) by recognising it and not moving. The other half of the same
-    /// asymmetry is the *cross-window* round trip: Itemskin's window chrome is a second, dynamic
-    /// container per component window, and every frame script keeps it on top of its content window
-    /// with `chrome.resize(content.getLeft(), content.getTop(), content.getWidth(),
-    /// content.getHeight())`. Both sides are layouts, so both read 0, and the move was suppressed as
-    /// a no-op — the chrome stayed wherever the tiler had parked it while the content window sat
-    /// somewhere else on screen (B69).
-    ///
-    /// So the coordinates are re-expressed in the space the *reader* was in: only when they are the
-    /// exact pair another window object just reported, and only when that window is not this one.
-    /// A value the script did not read stays a plain move, as it does for B61.
-    func borrowedWindowOrigin(matching requested: CGPoint,
-                                      writtenOn object: WasabiObject) -> BorrowedWindowOrigin? {
-        guard Self.isWindowObject(object), let read = lastWindowOriginRead,
-              read.objectID != object.stableID
-        else { return nil }
-        // A **one-pixel** tolerance, not an exact match, and only because the idiom demands it:
-        // Wasabi's standard frame nudges its minimum-size clamp by ±1 to force a re-layout —
-        // `frame.resize(content.getLeft()+1, content.getTop()+1, 258, 258)` then the same with −1
-        // (`standardframe.m:501-517`). Read exactly, both writes miss by one, degrade to plain moves,
-        // and park the frame in the corner of the display (B110). The tolerance is safe because the
-        // coordinate was demonstrably *just read* off another window object; the offset is carried
-        // through to the desktop origin, so the 1px jiggle the script asked for is what happens.
-        let deltaX = Int(requested.x.rounded()) - Int(read.reported.x.rounded())
-        let deltaY = Int(requested.y.rounded()) - Int(read.reported.y.rounded())
-        guard abs(deltaX) <= 1, abs(deltaY) <= 1 else { return nil }
-        // Consumed: each of these writes is preceded by its own pair of reads, so a stale record
-        // must not be able to pin a later write that only happens to name the same coordinates.
-        lastWindowOriginRead = nil
-        // The pairing this idiom *is*: the window being written follows the window that was read.
-        // Nothing else in the host knows it — the relationship lives entirely in the skin's script —
-        // and the window layer needs it to keep a frame from being buried by the client it is drawn
-        // on (B110). Recorded by container, because that is what owns a window.
-        //
-        // **Directional, and the direction has to be decided here.** A standard frame writes *both*
-        // ways: `syncFrame()` puts the frame on the client's origin and `syncContent()` puts the
-        // client back on the frame's, so taken at face value this idiom records A-over-B and
-        // B-over-A. Recorded both ways the window layer fought itself and whichever pair it restacked
-        // last won — which is exactly how the client came back on top of its own chrome. The frame is
-        // the one of the two a script asked `newDynamicContainer` for; the client is a window the
-        // skin declares and the user opens. So only that direction is kept.
-        if let follower = Self.enclosingContainer(of: object) ?? (Self.isWindowObject(object) ? object : nil),
-           let leaderObject = loadedSkin.runtime.graph.object(withID: read.objectID),
-           let leader = Self.enclosingContainer(of: leaderObject)
-            ?? (Self.isWindowObject(leaderObject) ? leaderObject : nil),
-           follower.stableID != leader.stableID,
-           isDynamicallyClaimed(follower.stableID), !isDynamicallyClaimed(leader.stableID) {
-            windowsGluedOver[leader.stableID] = follower.stableID
-        }
-        // **A window that is not on screen has no position to lend** (B156). Itemskin's frame script
-        // answers its content window's `onSetVisible(1)` with `syncContent()` *before* it shows the
-        // frame, so the frame read is one the host has never placed: a new dynamic container sits at
-        // the screen's bottom-left, a closed one where its content used to be. Taken as a pin, that
-        // parked the content there over whatever slot the tiler had just given it, mostly below the
-        // screen. The script's 10 ms timer puts the frame on the content once it is shown, which is
-        // the direction the pair is meant to settle in.
-        guard read.onScreen else { return .offScreen }
-        return .desktop(CGPoint(x: read.desktop.x + CGFloat(deltaX), y: read.desktop.y + CGFloat(deltaY)))
+    /// **Directional, and the direction has to be decided here.** A standard frame writes *both*
+    /// ways: `syncFrame()` puts the frame on the client's origin and `syncContent()` puts the client
+    /// back on the frame's, so taken at face value this idiom records A-over-B and B-over-A. Recorded
+    /// both ways the window layer fought itself and whichever pair it restacked last won — which is
+    /// exactly how the client came back on top of its own chrome. The frame is the one of the two a
+    /// script asked `newDynamicContainer` for; the client is a window the skin declares and the user
+    /// opens. So only that direction is kept.
+    private func noteWindowGluedOver(follower object: WasabiObject, leader leaderID: WasabiObjectID) {
+        guard let follower = Self.enclosingContainer(of: object) ?? (Self.isWindowObject(object) ? object : nil),
+              let leaderObject = loadedSkin.runtime.graph.object(withID: leaderID),
+              let leader = Self.enclosingContainer(of: leaderObject)
+                ?? (Self.isWindowObject(leaderObject) ? leaderObject : nil),
+              follower.stableID != leader.stableID,
+              isDynamicallyClaimed(follower.stableID), !isDynamicallyClaimed(leader.stableID)
+        else { return }
+        windowsGluedOver[leader.stableID] = follower.stableID
     }
 
     /// Which container's window is kept parked on which other container's window — leader → follower,
@@ -1993,8 +1969,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         defer {
             eventsBeingDispatched.remove(key)
             // Once the whole event has unwound, any runtime group still waiting for an `init` that
-            // never came gets its scripts started anyway (see `pendingRuntimeGroups`).
+            // never came gets its scripts started anyway (see `pendingRuntimeGroups`), and no window
+            // position the event read can be borrowed by a later one.
             if isOutermost {
+                borrowedOrigin.forget()
                 drainPendingScripts()
                 settleGeometryIfNeeded()
             }
@@ -2674,6 +2652,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "getplaylistindex": .init(argumentCount: 0, returnKind: .integer),
         "integertostring": .init(argumentCount: 1, returnKind: .string),
         "integertotime": .init(argumentCount: 1, returnKind: .string),
+        "integertolongtime": .init(argumentCount: 1, returnKind: .string),
         "floattostring": .init(argumentCount: 2, returnKind: .string),
         "stringtointeger": .init(argumentCount: 1, returnKind: .integer),
         "stringtofloat": .init(argumentCount: 1, returnKind: .float),
