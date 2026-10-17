@@ -24,6 +24,9 @@
   player** — the volume bar's fill was never drawn, and the visualization opened as a separate
   window away from the player (and as a black square in the mini player). It now opens over the
   player's art box, follows the player when moved, and stays hidden in the mini player.
+- **Modern skins: text in fonts other than Arial is no longer oversized** — fonts with tall line
+  spacing such as Impact and Tahoma were drawn larger than Winamp draws them, so TOX Milla's timer
+  lost the tops of its digits. They now match each skin's own screenshot.
 
 ## 0.33.0
 
