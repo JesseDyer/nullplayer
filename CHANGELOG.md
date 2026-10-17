@@ -39,7 +39,7 @@
   first track has no art shows another track's, an artist's art comes from their own albums rather
   than any track whose title contains their name, and a selected album falls back to a web cover
   as tracks and artists do. Art added through Edit Tags shows without a relaunch.
-- **Support on Ko-fi** — the About window has a Ko-fi button (not in the App Store build).
+- **Support on Ko-fi** — the About window has a Ko-fi button.
 
 ### Changes
 
