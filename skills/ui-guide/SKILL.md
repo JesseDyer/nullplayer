@@ -1341,7 +1341,7 @@ that offset could not save (a cluster larger than the display).
 `postLayoutChangeNotification()`, and skips miniaturized windows and full-screen ProjectM. Call
 sites:
 
-- end of the `+0.1s` block in `AppStateManager.applySettingsStateAfterReload` (after `completion?()`,
+- end of the `+0.1s` block in `AppStateManager.applySettingsState` (after `completion?()`,
   so the `.wal` arrangement has already run)
 - `NSApplication.didChangeScreenParametersNotification`, **debounced** onto the next runloop pass —
   macOS posts it repeatedly while a display reconfigures and the frames are not settled until it stops
@@ -1382,7 +1382,7 @@ optional with `decodeIfPresent`, so old states decode unchanged and answer `fals
 the same as changed.
 
 `correctedRestoredFrames` sees the main frame and every sub-frame **together** (they were decoded up
-front at the `applySettingsStateAfterReload` seam for exactly this reason) so one offset can bring the
+front at the `applySettingsState` seam for exactly this reason) so one offset can bring the
 whole docked session back.
 
 The correction is gated `appliesPlacementRecovery` at the call site, so the function itself stays

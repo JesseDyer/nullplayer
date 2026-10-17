@@ -851,49 +851,14 @@ class AppStateManager {
     /// Apply settings state (skin, volume, EQ, windows) - no playlist
     private func applySettingsState(_ state: AppState, completion: (() -> Void)? = nil) {
         let wm = WindowManager.shared
-        // A diagnostic command-line mode selection is an explicit launch override. Session restoration
-        // may restore state within that mode, but must not replace the requested controller family.
-        let restoredMode = PlayerUIMode.argumentOverride ?? state.restoredUIMode
-
-        if restoredMode == .wmp, state.restoredUIMode == .wmp {
-            let importer = WMPSkinImporter()
-            if let name = state.wmpSkinName {
-                importer.defaults.set(name, forKey: WMPSkinImporter.selectedSkinNameKey)
-                if let viewID = state.wmpViewID {
-                    importer.defaults.set(viewID, forKey: WMPSkinImporter.selectedViewIDKey)
-                } else {
-                    importer.defaults.removeObject(forKey: WMPSkinImporter.selectedViewIDKey)
-                }
-            } else {
-                importer.resetSelection()
-            }
-        }
-
-        if restoredMode == .audion, state.restoredUIMode == .audion {
-            let importer = AudionFaceImporter()
-            if let name = state.audionFaceName { importer.select(name) } else { importer.resetSelection() }
-        }
-
-        // reloadUI(to:) can defer the actual mode swap until Compact Mode teardown completes.
-        // The rest of the restore reads wm.uiMode / wm.isRunningModernFamilyUI and rebuilds
-        // skin/window state, so it must run only once the target-mode controllers exist.
-        if wm.uiMode != restoredMode {
-            wm.reloadUI(to: restoredMode) { [weak self] in
-                self?.applySettingsStateAfterReload(state, completion: completion)
-            }
-        } else {
-            applySettingsStateAfterReload(state, completion: completion)
-        }
-    }
-
-    /// Apply the non-mode-switching portion of settings restore. Runs after any
-    /// `reloadUI(to:)` swap has completed so it observes the final controller set.
-    private func applySettingsStateAfterReload(_ state: AppState, completion: (() -> Void)? = nil) {
-        let wm = WindowManager.shared
+        // The session never switches the UI mode or a family's skin selection. Those preferences
+        // (or a `-uiMode` launch argument) already chose them, and each is written on every change;
+        // the session's copy can be older — a run under `-rememberStateEnabled NO`, or a crash
+        // inside the autosave interval, changes them without saving the session — and restoring it
+        // would undo the change. The session still records them for older builds.
+        let runningMode = wm.uiMode
         let engine = wm.audioEngine
 
-        let runningMode = wm.uiMode
-        
         NSLog("AppStateManager: Restoring settings state - volume: %.2f", state.volume)
         
         // Restore audio settings
@@ -931,23 +896,13 @@ class AppStateManager {
             }
         }
         
-        // Restore modern-family skin names independently.
-        if let modernSkin = state.modernSkinName {
-            UserDefaults.standard.set(modernSkin, forKey: ModernSkinFamily.modern.skinNameKey)
-        }
-        if let metalSkin = state.metalSkinName {
-            UserDefaults.standard.set(metalSkin, forKey: ModernSkinFamily.metal.skinNameKey)
-        }
         if let family = runningMode.modernSkinFamily {
             ModernSkinEngine.shared.loadPreferredSkin(for: family)
         }
         if runningMode == .wmp {
-            // Selection preferences are restored before the mode swap. Reload here as well for
-            // the no-swap case, where the existing WMP controller may still hold the old archive.
             (wm.mainWindowController as? WMPMainWindowController)?.reloadSelectedSkin()
         }
         if runningMode == .audion {
-            // As for `.wmp`: the no-swap case may still hold the previous face.
             (wm.mainWindowController as? AudionFaceMainWindowController)?.reloadSelectedFace()
         }
         

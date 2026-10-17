@@ -37,6 +37,13 @@ dictionary) is still written because older builds decode it as required; a state
 
 Restore state in two phases: settings first with `restoreSettingsState`, then the playlist with `restorePlaylistState`. Load streaming tracks as placeholder `Track` objects, then replace them asynchronously through `engine.replaceTrack(at:with:)`.
 
+Restore never overrides a preference that is written on every change: the UI mode (`uiMode`, or a
+`-uiMode` launch argument) and each family's skin selection (`modernSkinName`, `metalSkinName`,
+`wmpSkinName`/`wmpSkinViewID`, `audionFaceName`). Those are always at least as new as the session's
+copy, which goes stale after a force quit, a crash inside the autosave interval, or a run under
+`-rememberStateEnabled NO`. The session still writes them because older builds restore from them; a
+session saved in another mode is applied to the running mode.
+
 Restore UI scale and window frames only when the saved and running `PlayerUIMode` values match exactly. Modern and Metal do not match. On a mismatch, use 100% scale and default frames while still restoring non-geometry state.
 
 `AppPersistence.key(_:)` scopes only `rememberStateEnabled`, `savedAppState`, and legacy `*WindowFrame` keys for custom editions. Other content preferences remain shared.

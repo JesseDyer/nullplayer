@@ -158,6 +158,10 @@
 - **A seamless Original stack's shadow follows its windows** — a snap, or the player carrying its
   docked windows, left the stack's shadow where its windows had been, and a window dragged alone
   out of a stack pulled its neighbours' shadow along with it until the drop.
+- **Relaunching keeps the skin family and skin you were in** — a launch could switch back to the
+  family or skin the saved session was last written in, so quitting in Original-Metal could reopen
+  in Original when the session had not been saved since the switch (a force quit or crash inside
+  the autosave interval, or a run with Save State on Quit off).
 
 ### Build and internals
 
