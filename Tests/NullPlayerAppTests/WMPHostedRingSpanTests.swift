@@ -83,7 +83,7 @@ final class WMPHostedRingSpanTests: XCTestCase {
                        WMPTestArchiveEntry("bar.png", data: try sheet(4, 24))]
         let loaded = try await WMPSkinLoader().load(from: try WMPSkinTestSupport.makeArchive(entries))
         let template = try XCTUnwrap(WMPHostedFrameTemplate.derive(from: loaded, playerViewID: nil))
-        XCTAssertEqual(template.spannedAcrossNodeIDs.count, 1)
+        XCTAssertEqual(template.scriptSpans.filter { $0.axis == .across }.count, 1)
         let store = WMPImageStore(provider: loaded.archive)
         let drawn = try await template.artwork(
             builder: WMPSceneBuilder(loadedSkin: loaded, imageStore: store),
@@ -136,8 +136,8 @@ final class WMPHostedRingSpanTests: XCTestCase {
                        WMPTestArchiveEntry("hang.png", data: try sheet(24, 40, blue))]
         let loaded = try await WMPSkinLoader().load(from: try WMPSkinTestSupport.makeArchive(entries))
         let template = try XCTUnwrap(WMPHostedFrameTemplate.derive(from: loaded, playerViewID: nil))
-        XCTAssertTrue(template.spannedAcrossNodeIDs.isEmpty, "a rail was taken for a corner")
-        XCTAssertEqual(template.spannedDownNodeIDs.count, 2)
+        XCTAssertFalse(template.scriptSpans.contains { $0.axis == .across }, "a rail was taken for a corner")
+        XCTAssertEqual(template.scriptSpans.filter { $0.axis == .down }.count, 2)
         let store = WMPImageStore(provider: loaded.archive)
         let drawn = try await template.artwork(
             builder: WMPSceneBuilder(loadedSkin: loaded, imageStore: store),
