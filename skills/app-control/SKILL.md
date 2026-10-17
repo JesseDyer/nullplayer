@@ -138,8 +138,7 @@ Why each family is selected the way it is — only needed when changing `launch.
 | modern / metal | `defaults write modernSkinName\|metalSkinName` | a `ModernSkinLoader: Loaded skin` log line whose path ends in the `<name>` folder (the quoted name is `skin.json`'s `meta.name`, which differs for `Bubblegum Retro`, `EmeraldForge`, `Sakura Minimal`) / `Loaded built-in metal skin '<name>'` |
 
 `NULLPLAYER_SKIN` is the classic loader: a `.wmz` there loads nothing and comes up unskinned
-(440x170). Restoration, if left on, rewrites `wmpSkinName` from the saved state before the window
-opens. `launch.sh` exists so neither has to be remembered.
+(440x170). `launch.sh` exists so it does not have to be remembered.
 
 **Deleting `wmpSkinViewID` makes every `.wmz` launch a first launch.** The user's second launch
 onward starts the view walk at the persisted player and skips the views ahead of it, so a defect
