@@ -264,10 +264,14 @@ class VisualizationGLView: NSOpenGLView {
         // Stop rendering first and wait for any in-flight render to complete
         stopRendering()
         
-        // Acquire engine lock to ensure no render is in progress
+        // Acquire engine lock to ensure no render is in progress. The offscreen targets are deleted
+        // with *this* view's context current: on the main thread another view's context is usually
+        // current, and these names deleted there are that view's live textures and framebuffers.
         engineLock.lock()
+        openGLContext?.makeCurrentContext()
         cleanupOpenGL()
         cleanupEngineWithCurrentContext()
+        NSOpenGLContext.clearCurrentContext()
         engineLock.unlock()
 
         if let geissFFTSetup {
@@ -419,11 +423,15 @@ class VisualizationGLView: NSOpenGLView {
         }
     }
 
+    /// Geiss's core is one per process (`GeissCore_create`). While another host owns it this view
+    /// stays pending and draws black, and takes the core on the first frame after the owner lets
+    /// go — which is also how a rebuilt window gets it from the one it replaces.
+    private var geissCoreHeldElsewhere: Bool { currentEngineType == .geiss && GeissEngine.isCoreInUse }
+
     /// Actually initialize the engine - must be called on render thread with GL context current
     /// while holding `engineLock`.
     private func initializeEngineOnRenderThread() {
-        guard engineNeedsSetup else { return }
-        engineNeedsSetup = false
+        guard engineNeedsSetup, !geissCoreHeldElsewhere else { return }
 
         // Get initial viewport size
         let backingBounds = convertToBacking(bounds)
@@ -436,6 +444,9 @@ class VisualizationGLView: NSOpenGLView {
 
         // Create engine using factory
         engine = createEngine(type: currentEngineType, width: width, height: height)
+        // Another host can take the core between the check above and the create; stay pending.
+        guard engine != nil || !geissCoreHeldElsewhere else { return }
+        engineNeedsSetup = false
 
         // Override the saved startup default with a live selection carried across a window rebuild.
         if let idx = pendingRestorePresetIndex {
@@ -638,6 +649,15 @@ class VisualizationGLView: NSOpenGLView {
             contextRef.release()
             displayLinkContextRef = nil
         }
+
+        // A view that is not drawing gives Geiss's one core back (`geissCoreHeldElsewhere`), so a
+        // hidden window cannot keep it from a host on screen. The next render builds it again.
+        engineLock.lock()
+        if currentEngineType == .geiss, engine != nil {
+            cleanupEngineWithCurrentContext()
+            engineNeedsSetup = true
+        }
+        engineLock.unlock()
     }
 
     func resumeRenderingAfterWindowTransition() {

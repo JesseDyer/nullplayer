@@ -133,7 +133,7 @@ libprojectM can SIGSEGV/SIGBUS on a buggy preset (bad shader compile, the null-t
 
 **Choppy animation**: close other GPU-intensive apps; try a different preset.
 
-**Black window after switching engines** (presets still logging `Preset loaded`): GL state left on the shared context by the previous engine. Fixed by `resetSharedGLState()` in `VisualizationGLView`; see the shared-GL-state note in [geiss-port](../geiss-port/SKILL.md).
+**Black window after switching engines** (presets still logging `Preset loaded`): check the preset before the GL path. Preset 0, `$$$ Royal - Mashup (385)`, is nearly black on the `audio-long` sine sweep; step presets with the right arrow and measure. Tripex's leftover GL state does **not** blank ProjectM — an A/B with and without `resetSharedGLState()` drew the same (2026-10-17); it blanks Geiss (see [geiss-port](../geiss-port/SKILL.md)).
 
 **Crashes during preset switching**: fixed by disabling soft cuts (blended transitions); check Console.app for `projectM` errors.
 
