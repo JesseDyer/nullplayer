@@ -630,6 +630,12 @@ pressed id as the resting `image=` on one of a button's two alpha-gated copies.
 - **Contained by construction.** A skin that ships the artwork resolves a bitmap and never reaches
   here. Formamp declares 20 of the `wasabi.button.*` ids and corneramp_redux most of the rest, and
   both keep every piece they ship.
+- **A skin's own forgotten id falls back on the action** (2026-10-17). Motorhead's shade layout
+  names `player.shade.Minimize`/`Shade`/`Close`, ships the PNGs and declares no `<bitmap>`, so the
+  player was stuck in shade. A button that names an unresolved `image=`, states **no `w`/`h`**, and
+  carries `CLOSE`/`MINIMIZE`/`SWITCH` draws that glyph. The size gate is load-bearing: Big Bento's
+  `image="none"` close slam and Pure Inspired's min/close are sized hotspots over their own art, and
+  without it each grew a second glyph. Corpus reach: Motorhead, PaddPreview, jvc.tape's playlist.
 
 ##### A standard frame whose artwork stayed in Winamp (B121, 2026-09-04)
 

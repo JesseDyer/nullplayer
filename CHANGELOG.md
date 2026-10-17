@@ -12,6 +12,9 @@
   (crashes when switching skins or effects). Geiss now runs in one place at a time: whichever
   started it first keeps it, the other shows black, and it moves over as soon as the first one
   switches away, is hidden or closes.
+- **Modern skins whose window buttons have missing artwork no longer get stuck in shade mode** —
+  the Motorhead skin's compact bar had invisible minimize, shade and close buttons, so there was no
+  way back to the full player. They now draw as simple glyphs and work.
 
 ## 0.33.0
 

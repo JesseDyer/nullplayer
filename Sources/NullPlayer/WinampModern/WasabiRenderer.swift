@@ -2255,7 +2255,8 @@ final class WasabiSceneRenderer {
         // bitmap to size to, so it resolved to 0x0 and never appeared at all — `Winamp 3.0 Default`'s
         // titlebar is four such buttons and had no menu, minimize, windowshade or close (B95).
         if intrinsic == .zero, resources.bitmap(identifier: bitmapID) == nil,
-           let role = WasabiChromeButtons.role(of: object, bitmapID: bitmapID) {
+           let role = WasabiChromeButtons.role(of: object, bitmapID: bitmapID,
+                                               resolves: { resources.bitmap(identifier: $0) != nil }) {
             if object.attributes["w"] == nil { intrinsic.width = Double(role.defaultSize.width) }
             if object.attributes["h"] == nil { intrinsic.height = Double(role.defaultSize.height) }
         }
@@ -2598,7 +2599,8 @@ final class WasabiSceneRenderer {
                     of: object,
                     bitmapID: resolvedBitmapID(for: object,
                                                pressed: pressed == object.stableID,
-                                               hovered: hovered == object.stableID)) {
+                                               hovered: hovered == object.stableID),
+                    resolves: { resources.bitmap(identifier: $0) != nil }) {
             drawChromeButton(role, frame: node.frame, context: context,
                              pressed: pressed == object.stableID)
         } else if Self.isTextButton(object) {
@@ -4658,7 +4660,8 @@ final class WasabiSceneRenderer {
         // (see `drawChromeButton`), so it has a region and has to be clickable. Its `action=` already
         // makes it interactive; this is what stops the hit test rejecting it for owning no bitmap.
         if resources.bitmap(identifier: bitmapID) == nil,
-           WasabiChromeButtons.role(of: object, bitmapID: bitmapID) != nil { return true }
+           WasabiChromeButtons.role(of: object, bitmapID: bitmapID,
+                                    resolves: { resources.bitmap(identifier: $0) != nil }) != nil { return true }
         // A substituted Wasabi form widget paints a surface of its own — a check box's box, a
         // drop-down's frame, an edit's field — so it is opaque to hit testing without a bitmap. Its
         // primitive type already makes it interactive (`togglebutton`, `button`, `slider`).
