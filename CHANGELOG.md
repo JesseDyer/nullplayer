@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.33.0
 
 ### New features
 
@@ -81,21 +81,10 @@
 ### Fixes
 
 **Windows and shadows**
-- **Docking no longer flashes a large outline in Original skins** — docking or undocking a window
-  briefly showed the group's old drop shadow stretched to its new size.
-- **A window's drop shadow no longer shows as a box when the window changes size** — in `.wal`
-  skins such as iTunes MiniPlayer, and on docking in Original skins, the old shadow could appear
-  stretched to the new size.
-- **No more ghost outline trailing a dragged window** — after the app was hidden and shown again,
-  dragging a skinned window (the Original main window, for one) left its drop shadow behind or
-  ahead of it as a window-sized outline until the window was docked or the skin changed. Every
-  skin family's shadow now stays under its window.
-- **Closing a `.wal` drawer no longer leaves its outline behind** — closing PionNer_AMP2's EQ
-  drawer, and similar drawers in other Winamp Modern skins, left the open drawer's shadow on screen
-  for a moment.
-- **No empty shadow box at launch in Windows Media Player skins** — a NullPlayer window restored
-  at launch, such as the Library under Combat_Flight_Simulator_3, cast its drop shadow for up to
-  two seconds before the window itself appeared. The shadow now appears with its window.
+- **Drop shadows stay with their windows** — in every skin family a window's shadow no longer
+  lags, stretches or lingers as an empty outline: when docking or undocking, resizing, dragging
+  after the app was hidden and shown, closing a `.wal` drawer such as PionNer_AMP2's EQ, restoring
+  a Windows Media Player window at launch, or moving a seamless Original stack.
 - **A quick drag of the player keeps its docked windows with it** — in a seamless Original skin,
   quickly dragging the player around left the windows docked to it drifting a little further
   behind on every move.
@@ -155,9 +144,6 @@
   panel's chevron collapses it to one line.
 - **Clicking empty source-bar space in the Library no longer picks a library** — the `Lib:` name's
   click target ran on past the name to the buttons at the right; it now ends where the name does.
-- **A seamless Original stack's shadow follows its windows** — a snap, or the player carrying its
-  docked windows, left the stack's shadow where its windows had been, and a window dragged alone
-  out of a stack pulled its neighbours' shadow along with it until the drop.
 - **Relaunching keeps the skin family and skin you were in** — a launch could switch back to the
   family or skin the saved session was last written in, so quitting in Original-Metal could reopen
   in Original when the session had not been saved since the switch (a force quit or crash inside
