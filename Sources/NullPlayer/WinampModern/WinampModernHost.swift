@@ -720,9 +720,9 @@ final class WinampModernAudioEngineHost: WinampModernHost {
     var decoderName: String {
         guard videoSession() == nil else { return "" }
         guard let track = engine.currentTrack else { return "" }
-        // The same extension `trackPath` shows a skin, so a server stream's Decoder line and its File
+        // The same format `trackPath` shows a skin, so a server stream's Decoder line and its File
         // Type readout name one format.
-        let format = (Self.playItemLocation(of: track.url, contentType: track.contentType) as NSString).pathExtension
+        let format = Self.playItemFormat(of: track.url, contentType: track.contentType)
         if let named = Self.codecNames[format.lowercased()] { return named }
         return track.url.isFileURL ? format.uppercased() : "HTTP Stream"
     }
@@ -747,17 +747,25 @@ final class WinampModernAudioEngineHost: WinampModernHost {
         parts.user = nil
         parts.password = nil
         let location = parts.string ?? ""
-        guard url.pathExtension.isEmpty, let format = contentType.flatMap(formatExtension) else {
-            return location
-        }
-        return location + "." + format
+        let format = playItemFormat(of: url, contentType: contentType)
+        return url.pathExtension.isEmpty && !format.isEmpty ? location + "." + format : location
     }
 
-    /// `audio/x-flac` → `flac`, `audio/mpeg` → `mp3`, a bare container name (`flac`) as it is.
+    /// The format a play item is in: its own extension, or for a path with none, the one the server
+    /// reported. Empty when neither says.
+    static func playItemFormat(of url: URL, contentType: String?) -> String {
+        guard url.pathExtension.isEmpty else { return url.pathExtension }
+        return contentType.flatMap(formatExtension) ?? ""
+    }
+
+    /// `audio/x-flac` → `flac`, `audio/mpeg` → `mp3`, a bare container name (`flac`) as it is. Only an
+    /// `audio/` type names a format: a server's `application/octet-stream` is not an extension.
     private static func formatExtension(_ contentType: String) -> String? {
-        let type = contentType.split(separator: ";").first.map(String.init) ?? contentType
-        var subtype = (type.split(separator: "/").last.map(String.init) ?? "")
+        let type = (contentType.split(separator: ";").first.map(String.init) ?? contentType)
             .trimmingCharacters(in: .whitespaces).lowercased()
+        let halves = type.split(separator: "/").map(String.init)
+        guard halves.count == 1 || (halves.count == 2 && halves[0] == "audio") else { return nil }
+        var subtype = halves.last ?? ""
         if subtype.hasPrefix("x-") { subtype.removeFirst(2) }
         if subtype == "mpeg" { return "mp3" }
         return subtype.isEmpty ? nil : subtype

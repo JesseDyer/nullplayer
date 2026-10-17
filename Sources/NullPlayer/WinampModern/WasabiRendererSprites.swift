@@ -153,11 +153,20 @@ extension WasabiSceneRenderer {
         context.restoreGState()
     }
 
-    /// The single image a bitmap layer paints right now: an animated layer's current frame, or the
-    /// whole bitmap for a plain one. Shared with the Layer FX path, which warps exactly that image.
-    func layerImage(_ bitmap: WasabiBitmap, object: WasabiObject, type: String) -> CGImage? {
-        guard type == "animatedlayer" else { return bitmap.image }
-        return animatedFrameImage(bitmap, object: object, grid: animationGrid(bitmap, object: object))
+    /// The single image a bitmap layer paints right now, and where in `frame` it goes: an animated
+    /// layer's current frame, or the whole bitmap over the whole frame for a plain one. Shared with the
+    /// Layer FX path, which warps exactly that image into exactly that rect.
+    func layerImage(_ bitmap: WasabiBitmap, object: WasabiObject, type: String,
+                    in frame: CGRect) -> (image: CGImage, rect: CGRect)? {
+        guard type == "animatedlayer" else { return (bitmap.image, frame) }
+        return animatedFrame(bitmap, object: object, in: frame)
+    }
+
+    private func animatedFrame(_ bitmap: WasabiBitmap, object: WasabiObject,
+                               in frame: CGRect) -> (image: CGImage, rect: CGRect)? {
+        let grid = animationGrid(bitmap, object: object)
+        guard let image = animatedFrameImage(bitmap, object: object, grid: grid) else { return nil }
+        return (image, grid.drawRect(in: frame))
     }
 
     /// How an animated layer's sheet is cut into frames: one frame's size, how many there are, and how
@@ -335,9 +344,8 @@ extension WasabiSceneRenderer {
 
     func drawAnimated(_ bitmap: WasabiBitmap, object: WasabiObject,
                               frame: CGRect, context: CGContext) {
-        let grid = animationGrid(bitmap, object: object)
-        guard let image = animatedFrameImage(bitmap, object: object, grid: grid) else { return }
-        drawImage(image, in: grid.drawRect(in: frame), context: context)
+        guard let layer = animatedFrame(bitmap, object: object, in: frame) else { return }
+        drawImage(layer.image, in: layer.rect, context: context)
     }
 
     /// `<ProgressGrid>` — the *filled* part of a bar, drawn as `left` cap + stretched `middle` +

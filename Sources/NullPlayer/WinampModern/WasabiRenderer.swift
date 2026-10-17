@@ -2585,8 +2585,8 @@ final class WasabiSceneRenderer {
             // layer's current frame exactly as it does to a plain one (Defix's cassette reels are
             // rotated single images; its needles are too).
             if let mesh = layerFXProvider?(object),
-               let image = layerImage(bitmap, object: object, type: type),
-               drawWarped(image, in: node.frame, mesh: mesh, context: context) {
+               let layer = layerImage(bitmap, object: object, type: type, in: node.frame),
+               drawWarped(layer.image, in: layer.rect, mesh: mesh, context: context) {
                 // drawn
             } else if type == "animatedlayer" {
                 drawAnimated(bitmap, object: object, frame: node.frame, context: context)

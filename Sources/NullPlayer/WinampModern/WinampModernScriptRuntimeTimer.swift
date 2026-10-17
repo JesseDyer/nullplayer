@@ -144,8 +144,9 @@ extension WinampModernScriptRuntime {
     /// Records a script size write on a layout. No size at all is a window Winamp draws 0×0: ONYX V2
     /// gives its visualization window no size in the mini player, and kept at its declared 67×72 it
     /// floated loose as a black square. The record is read when the window is next shown
-    /// (`requestWindow`), so a collapse keeps the next `show()` off screen and a real size lets the
-    /// next one through; neither hides or shows a window by itself.
+    /// (`requestWindow`): a `show()` of a collapsed layout is answered as a **hide**, so a window
+    /// already open at its old size goes too, and a real size lets the next `show()` through. The size
+    /// write itself neither hides nor shows anything.
     func noteScriptSize(of layout: WasabiObject, collapsed: Bool) {
         guard layout.typeName.caseInsensitiveCompare("layout") == .orderedSame else { return }
         if collapsed { scriptCollapsedLayouts.insert(layout.stableID) }

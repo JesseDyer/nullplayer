@@ -67,7 +67,8 @@ enum WasabiChromeButtons {
     /// The role this object is a chrome button for, or `nil` if it is not one.
     ///
     /// `resolvedBitmapID` has already answered which of `image=` / `downImage=` / `activeImage=` is in
-    /// force, so the caller passes that; a button whose id resolved to a real resource never gets here.
+    /// force, so the caller passes that; a button whose id resolved to a real resource never gets here
+    /// (`WasabiSceneRenderer.chromeButtonRole` is the one caller, and checks it).
     static func role(of object: WasabiObject, bitmapID: String?, resolves: (String) -> Bool) -> Role? {
         let type = object.typeName.lowercased()
         guard type == "button" || type == "togglebutton" || type == "wasabi:button" else { return nil }

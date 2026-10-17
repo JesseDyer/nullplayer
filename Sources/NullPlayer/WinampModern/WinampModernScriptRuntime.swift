@@ -310,6 +310,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     var dynamicObjects: [UInt64: DynamicObjectState] = [:]
     var activeTargetAnimations: [WasabiObjectID: TargetAnimationState] = [:]
     var activeLayoutByContainer: [WasabiObjectID: WasabiObjectID] = [:]
+    /// Layouts a script sized to nothing; see `noteScriptSize`.
+    var scriptCollapsedLayouts: Set<WasabiObjectID> = []
 
     /// Layouts that have actually been *created*.
     ///
@@ -1262,11 +1264,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // `<container>`, the results window never opened and pressing Return looked like a dead key,
         // with the search itself demonstrably running (BB31).
         guard let target = Self.windowTarget(of: object), let id = target.xmlID, !id.isEmpty else { return }
+        // A show of a layout a script sized to nothing is answered as a hide: see `noteScriptSize`.
         containerVisibilityRequested?(id, visible && !isCollapsed(showing: object, in: target))
     }
-
-    /// Layouts a script sized to nothing; see `noteScriptSize`.
-    var scriptCollapsedLayouts: Set<WasabiObjectID> = []
 
     /// Whether this object *is* a window — a `<container>` or one of its `<layout>`s. Both carry a
     /// desktop position rather than a position inside a parent.

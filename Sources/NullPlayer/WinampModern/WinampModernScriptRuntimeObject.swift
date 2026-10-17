@@ -152,10 +152,12 @@ extension WinampModernScriptRuntime {
                 // same four attributes written one at a time did not, which is how Big Bento's search
                 // results came out at the container's declared 275×116 in the corner of the screen
                 // instead of under the search box it measured itself against (BB31).
-                let axis = key.lowercased()
-                let borrowed = (axis == "x" || axis == "y") ? Double(value).flatMap {
-                    borrowedWindowOrigin(x: axis == "x" ? $0 : nil, y: axis == "y" ? $0 : nil, writtenOn: object)
-                } : nil
+                let borrowed: WinampModernBorrowedOrigin.Request?
+                switch (key.lowercased(), Double(value)) {
+                case ("x", let x?): borrowed = borrowedWindowOrigin(x: x, y: nil, writtenOn: object)
+                case ("y", let y?): borrowed = borrowedWindowOrigin(x: nil, y: y, writtenOn: object)
+                default: borrowed = nil
+                }
                 writeGeometry([(key, value)], on: object, borrowed: borrowed)
             } else {
                 _ = object.setAttribute(key, value: value)
