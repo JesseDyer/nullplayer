@@ -148,6 +148,9 @@
 - **A queue right-click acts on the row you clicked** — in Classic and Original skins, right-clicking
   a row outside the selection now selects it first, as Windows Media Player skins already did.
   Before, the menu acted on whatever was selected.
+- **Alienware-family WMP skins frame NullPlayer's own windows cleanly** — under `ALXMorph` and
+  `AlienMorph`, windows such as Sonos Rooms no longer show a stray line and bar in the middle or
+  lighter bands down both sides, and `Alienware Invader`'s left border no longer breaks partway down.
 
 ### Build and internals
 
