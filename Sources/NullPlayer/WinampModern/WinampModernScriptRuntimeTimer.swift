@@ -91,20 +91,10 @@ extension WinampModernScriptRuntime {
         // `clientToScreenX/Y`. Big Bento's playlist search does exactly that before showing its
         // results (BB31); `resize()` on a layout already routed its size here, and `setXmlParam` of
         // the same four attributes now does too, position included.
-        let target: WasabiObject?
-        if object.typeName.caseInsensitiveCompare("container") == .orderedSame {
-            target = object
-        } else if object.typeName.caseInsensitiveCompare("layout") == .orderedSame {
-            target = Self.enclosingContainer(of: object)
-        } else {
-            target = nil
-        }
-        guard let target else { return }
+        guard let target = Self.windowTarget(of: object) else { return }
         func applySize() {
             guard let width = Double(object.attributes["w"] ?? ""),
                   let height = Double(object.attributes["h"] ?? "") else { return }
-            // No size at all is a window Winamp draws 0×0, so it is kept off screen rather than left
-            // at its old size; any real size brings it back (see `scriptCollapsedLayouts`).
             noteScriptSize(of: object, collapsed: width <= 0 && height <= 0)
             guard width > 0, height > 0 else { return }
             layoutResizeRequested?(target.stableID, CGSize(width: width, height: height))
@@ -139,6 +129,34 @@ extension WinampModernScriptRuntime {
             } ?? false
             if !unmoved { containerMoveRequested?(target.stableID, CGPoint(x: x, y: y), false) }
         }
+    }
+
+    /// The container whose window a show, hide or geometry write on `object` acts on: a container is
+    /// its own, a layout is its container's (BB31), and anything else is not a window.
+    static func windowTarget(of object: WasabiObject) -> WasabiObject? {
+        if object.typeName.caseInsensitiveCompare("container") == .orderedSame { return object }
+        if object.typeName.caseInsensitiveCompare("layout") == .orderedSame {
+            return enclosingContainer(of: object)
+        }
+        return nil
+    }
+
+    /// Records a script size write on a layout. No size at all is a window Winamp draws 0×0: ONYX V2
+    /// gives its visualization window no size in the mini player, and kept at its declared 67×72 it
+    /// floated loose as a black square. The record is read when the window is next shown
+    /// (`requestWindow`), so a collapse keeps the next `show()` off screen and a real size lets the
+    /// next one through; neither hides or shows a window by itself.
+    func noteScriptSize(of layout: WasabiObject, collapsed: Bool) {
+        guard layout.typeName.caseInsensitiveCompare("layout") == .orderedSame else { return }
+        if collapsed { scriptCollapsedLayouts.insert(layout.stableID) }
+        else { scriptCollapsedLayouts.remove(layout.stableID) }
+    }
+
+    /// Whether the layout a show of `object` brings up — the layout itself, or the container's
+    /// current one — has been sized to nothing.
+    func isCollapsed(showing object: WasabiObject, in container: WasabiObject) -> Bool {
+        let layout = object === container ? activeLayoutByContainer[container.stableID] : object.stableID
+        return layout.map(scriptCollapsedLayouts.contains) ?? false
     }
 
     func startTargetAnimation(object: WasabiObject) {

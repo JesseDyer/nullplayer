@@ -1261,36 +1261,12 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // it, and then calls `show()` on that container's `normal` *layout*. Routed only from a
         // `<container>`, the results window never opened and pressing Return looked like a dead key,
         // with the search itself demonstrably running (BB31).
-        let target: WasabiObject?
-        if object.typeName.caseInsensitiveCompare("container") == .orderedSame {
-            target = object
-        } else if object.typeName.caseInsensitiveCompare("layout") == .orderedSame {
-            target = Self.enclosingContainer(of: object)
-        } else {
-            target = nil
-        }
-        guard let target, let id = target.xmlID, !id.isEmpty else { return }
+        guard let target = Self.windowTarget(of: object), let id = target.xmlID, !id.isEmpty else { return }
         containerVisibilityRequested?(id, visible && !isCollapsed(showing: object, in: target))
     }
 
-    /// Layouts a script sized to nothing — a window Winamp would draw 0×0, so showing one keeps it off
-    /// screen until a script gives it a size again. ONYX V2 gives its visualization window no size
-    /// in the mini player, and kept at its declared 67×72 it floated loose as a black square. Kept by
-    /// `applyContainerGeometry`, where every script size write is already decided.
-    private var scriptCollapsedLayouts: Set<WasabiObjectID> = []
-
-    func noteScriptSize(of layout: WasabiObject, collapsed: Bool) {
-        guard layout.typeName.caseInsensitiveCompare("layout") == .orderedSame else { return }
-        if collapsed { scriptCollapsedLayouts.insert(layout.stableID) }
-        else { scriptCollapsedLayouts.remove(layout.stableID) }
-    }
-
-    /// Whether the layout a show of `object` brings up — the layout itself, or the container's
-    /// current one — has been sized to nothing.
-    private func isCollapsed(showing object: WasabiObject, in container: WasabiObject) -> Bool {
-        let layout = object === container ? activeLayoutByContainer[container.stableID] : object.stableID
-        return layout.map(scriptCollapsedLayouts.contains) ?? false
-    }
+    /// Layouts a script sized to nothing; see `noteScriptSize`.
+    var scriptCollapsedLayouts: Set<WasabiObjectID> = []
 
     /// Whether this object *is* a window — a `<container>` or one of its `<layout>`s. Both carry a
     /// desktop position rather than a position inside a parent.

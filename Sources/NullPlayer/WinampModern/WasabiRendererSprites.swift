@@ -157,7 +157,7 @@ extension WasabiSceneRenderer {
     /// whole bitmap for a plain one. Shared with the Layer FX path, which warps exactly that image.
     func layerImage(_ bitmap: WasabiBitmap, object: WasabiObject, type: String) -> CGImage? {
         guard type == "animatedlayer" else { return bitmap.image }
-        return animatedFrameImage(bitmap, object: object)
+        return animatedFrameImage(bitmap, object: object, grid: animationGrid(bitmap, object: object))
     }
 
     /// How an animated layer's sheet is cut into frames: one frame's size, how many there are, and how
@@ -252,10 +252,6 @@ extension WasabiSceneRenderer {
         case "volume": return CGFloat(host.volume)
         default: return nil
         }
-    }
-
-    private func animatedFrameImage(_ bitmap: WasabiBitmap, object: WasabiObject) -> CGImage? {
-        animatedFrameImage(bitmap, object: object, grid: animationGrid(bitmap, object: object))
     }
 
     private func animatedFrameImage(_ bitmap: WasabiBitmap, object: WasabiObject,
