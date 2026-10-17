@@ -294,7 +294,10 @@ Every `.wal` window is `.borderless`, which changes what AppKit will do for you:
 - **A window created with `NSRect(origin: .zero, …)` opens at the bottom-left corner of the screen**,
   which is where every auxiliary container window used to appear. They are placed on **first show**
   — stacked under the main window, clamped to the screen — and never repositioned again, so a window
-  the user has moved stays where they put it (`placedAuxiliaryWindows`). Phase 24
+  the user has moved stays where they put it (`placedAuxiliaryWindows`). Phase 24. A window a
+  script has **pinned** to another window's position counts as placed too, or the first show would
+  re-tile it off the spot the script chose (ONYX V2's visualization over its art box; see
+  `scripting.md` → *Writing back the position a window just read is not a move*).
 
 #### Where a skin's windows go — the tiling (B56)
 

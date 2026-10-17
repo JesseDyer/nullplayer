@@ -592,6 +592,16 @@ Its **region** is the union of its frames: a point is clickable if *any* frame p
 only the frame on screen is wrong for the commonest use of the type — a fill animation is transparent
 ahead of the playhead, which is precisely where a seek click lands. Phase 33.
 
+**A box larger than the whole image shows that image once, at its own size, from the top left**
+(`AnimationGrid.isWholeSheet`). ONYX V2's shade volume fill is an 89×12 image in an 89×24 box: cut at
+the box's height its only frame ran off the bitmap and nothing drew, and stretched it spills out of
+its 13px track. Only that case — it is exactly where the old cut drew nothing, so no layer that drew
+before moved. A sheet *larger* than its box is still cut by the box (Lobe's 59×2006 strips in 110×113
+boxes stay undrawn, unmeasured), and a frame smaller than its box by `framewidth`/`frameheight` is
+still stretched (Nullsoft 2000 SP4 Lite's `frameheight="1" h="5"`, which a first version of this rule
+shrank to 1px). Drawing and the region both go through `AnimationGrid.drawRect(in:)`. Pinned by
+`WinampModernRenderPixelTests`.
+
 ##### Artwork-less `<Wasabi:Button text="…">`
 
 A deliberate exception to the identifier-only rule for the seeded Wasabi standard-library shells. Three

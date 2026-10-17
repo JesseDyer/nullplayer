@@ -15,6 +15,15 @@
 - **Modern skins whose window buttons have missing artwork no longer get stuck in shade mode** —
   the Motorhead skin's compact bar had invisible minimize, shade and close buttons, so there was no
   way back to the full player. They now draw as simple glyphs and work.
+- **Modern skins: seeking, time readouts and the file-type readout work in skins like ONYX V2** —
+  large numbers in a skin's scripts (such as one hour in milliseconds) were cut short, which sent
+  every track down the skin's "longer than an hour" path and broke its seek control. The file-type
+  readout now shows the file's real extension, and for server streams it never shows the server
+  login that was part of the stream address.
+- **Modern skins: the ONYX V2 mini player shows its volume level, and its visualization sits in the
+  player** — the volume bar's fill was never drawn, and the visualization opened as a separate
+  window away from the player (and as a black square in the mini player). It now opens over the
+  player's art box, follows the player when moved, and stays hidden in the mini player.
 
 ## 0.33.0
 
