@@ -140,6 +140,14 @@ size (identical in sonique, sTek2k, musicman, k2 and carrot, 86 to 94 px wide), 
   prefix cannot give: it has no sound device.
 - **The shuttle at rest is the strip's first frame**: 258 mid captures closer than the middle frame.
 
+## The navigator's status line
+
+Sonique draws it on every screen along `/rgn/nav/display`'s bottom edge: a 13-row band in
+`StatusBarBgColor` with a 2 px dot grid in `StatusBarFgColor`, cut to the display, and the title
+(`Sonique 1.96` when idle) in `StatusBarTextColor`, centred 7 px left of the middle of the display's
+span on that row, baseline 3 px above the edge. Trigun, Danzig and sonique all centre so; over the
+corpus it took nav `colour` from 12.03 to 11.08 %.
+
 ## The navigator's drawer
 
 The *audio enhancement* drawer hangs under (or over) the console at `DRAWER_POS` and slides
@@ -156,4 +164,5 @@ in the drawer's own pixels, moved with it:
 The window keeps room for the drawer open, as small mode's does for its drawers. NullPlayer maps the
 sliders to its 10 or 21 EQ bands by share, amp to the preamp, bal to balance and pitch to playback
 speed (`SoniqueSkinAudioEngineHost.setDial`). **Unmeasured** (S14): the open drawer against the
-oracle, and the pitch knob's speed range, stood in by 0.5×–2× with a detent at 1.0×.
+oracle (screen 6 opens it by command, `harness.md` § *The oracle*), and the pitch knob's speed range,
+stood in by 0.5×–2× with a detent at 1.0×.

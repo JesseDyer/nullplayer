@@ -88,10 +88,37 @@ private struct Painter {
             context.fill(display.rects.map(\.cgRect))
         }
         picture()
+        statusLine()
         litStates(prefix: "NAV_", upDown: true)
         let ownKnob = skin.image("/jpeg/nav_volumeknob") != nil
         knob(control: .volume, strip: ownKnob ? "/jpeg/nav_volumeknob" : "/jpeg/volumeknob",
              key: ownKnob ? "MISC_NAV_VOLUME_KNOB" : "MISC_VOLUME_KNOB", value: host.volume)
+    }
+
+    /// The navigator's status line, Sonique's own, along the display's bottom edge: a band in
+    /// `StatusBarBgColor` dotted with `StatusBarFgColor`, and the title (`Sonique 1.96` idle; NullPlayer
+    /// writes its own name) in `StatusBarTextColor`, centred on the display's span 7 px left of its
+    /// middle (Trigun, Danzig and sonique all measure so).
+    private func statusLine() {
+        guard let display = skin.region("/rgn/nav/display") else { return }
+        let bottom = display.bounds.bottom, band = CGRect(x: display.bounds.left, y: bottom - 13,
+                                                         width: display.bounds.right - display.bounds.left, height: 13)
+        context.saveGState()
+        clip(to: display.rects)
+        context.clip(to: band)
+        context.setFillColor(colour("StatusBarBgColor"))
+        context.fill(band)
+        context.setFillColor(colour("StatusBarFgColor"))
+        // A 2 px dot grid over the band (stopping 3 rows short, as sonique looks at 6x, made 301
+        // captures worse).
+        context.fill(stride(from: Int(band.minY), to: bottom, by: 2).flatMap { y in
+            stride(from: Int(band.minX), to: Int(band.maxX), by: 2).map { CGRect(x: $0, y: y, width: 1, height: 1) }
+        })
+        let span = display.rects.filter { $0.top <= bottom - 5 && $0.bottom > bottom - 5 }
+        let left = span.map(\.left).min() ?? display.bounds.left, right = span.map(\.right).max() ?? display.bounds.right
+        text(host.title.isEmpty ? "NullPlayer" : host.title, centreX: (left + right) / 2 - 7, minX: left + 2,
+             baseline: bottom - 3, size: 9, colour: "StatusBarTextColor")
+        context.restoreGState()
     }
 
     /// The open drawer's EQ slider handles (`SLIDEROFF`, `SLIDERON` while held) and its three knobs,

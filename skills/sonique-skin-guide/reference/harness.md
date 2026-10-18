@@ -12,7 +12,7 @@ Nothing below is committed: not skins, not Sonique, not Lycos's docs, not captur
 | Corpus | `~/Library/Application Support/NullPlayer/SoniqueSkins/` (flat; a same-name variant keeps a `-<sha6>` suffix) |
 | Oracle install | `~/Library/Application Support/NullPlayer/SoniqueOracle/prefix/` (a Wine prefix; Sonique 1.96 portable in `C:\Sonique`, the corpus copied into `C:\Sonique\skins`) |
 | Lycos's format docs | `SoniqueOracle/docs/` (`misc.txt`, `how-to-make-skins-1.09.txt`, `pathdesc.txt`, `cmndline.htm`, `hotkeys.htm`, `tutorial/`) |
-| Oracle captures | `SoniqueOracle/captures/`: `sample-2026-10-11` (12 skins), `corpus-2026-10-17` (all 524, the sweep's) |
+| Oracle captures | `SoniqueOracle/captures/`: `sample-2026-10-11` (12 skins), `corpus-2026-10-17` (all 524, the sweep's), `screens-2026-10-18` (navigator screens, § *The oracle*) |
 | Wine | Gcenx `Wine Devel.app` 11.18 in `~/Applications/` |
 
 The corpus came from the archive.org item `sonique_media_player` (`Sonique.zip`). That archive also
@@ -96,8 +96,13 @@ A `0` means no Wine window was on screen: Sonique failed to start, or a dialog r
 - The first launch in a fresh prefix shows a *Register Sonique* dialog; dismiss it once by hand.
 - Never pipe the script: the wineserver it starts holds the pipe open, so `| tail` never returns
   though the captures are done. Redirect to a file.
-- `-showwindow 3 <n>` reaches the navigator's screens: 1 online tools, 2 playlist, 3 visual mode,
-  4 setup, 5 about, 6 audio controls, 7 search. The script captures `1`.
+- `-showwindow 3 <n>` reaches the navigator's screens: 2 playlist, 3 visual mode, 4 setup, 5 about,
+  6 audio controls (which also slides the drawer open), 7 search. **It switches screen only when
+  Sonique is in another mode**, so go through `-showwindow 1 1` first; in navigator mode it does
+  nothing, and 0 and 8 are ignored. The menu screen is not reachable by command once another screen
+  has shown, nor by a restart (Sonique reopens in its last mode): it needs the menu rocker clicked,
+  which a locked screen refuses. `SoniqueOracle/captures/screens-2026-10-18` holds screens 1–7 of
+  sonique, BlueEyes and k2 (only sonique's `screen1` is the menu: `sonique__menu.png`).
 
 ### Outline comparison
 
@@ -166,7 +171,9 @@ python3 -I scripts/sonique_oracle_compare.py "$C" /tmp/sonique-render | grep -v 
 A `MISSING` line is a capture with no render.
 
 Per skin and mode, in skin pixels (the capture halved; it is exact pixel doubling), the render placed
-on the capture by the two outlines' top-left corners and the best of a ±2 px search:
+on the capture where the outlines overlap most, then the ±2 px offset with the fewest `shape`
+pixels, colour breaking ties. (Ranking by the sum let a 1 px shift trade outline for colour: four
+default-skin navigators read 694 px off once a status line changed their colours.)
 
 | Count | Meaning |
 |---|---|
@@ -179,13 +186,13 @@ exits 1; one below it prints `BETTER`, and `--record` rewrites the file. Only co
 are in it, never artwork. Record after a change that improves the counts, never to silence a
 regression.
 
-Measured 2026-10-18 at the commit that closed S9 (nav colour 12.03 %; S8 left it at 12.16 %; S10's own figures, before black under the
-picture and the oracle's state: shape 1.49 / 4.69 / 4.39 %, colour 12.29 / 7.61 / 9.29 %):
+Measured 2026-10-18 after S7's status line, with outline-first alignment (S10's own figures:
+shape 1.49 / 4.69 / 4.39 %, colour 12.29 / 7.61 / 9.29 %):
 
 ```text
-SUMMARY nav: 524 compared, shape exact 512, shape 0.10%, colour 12.03% of 67176100 px
-SUMMARY mid: 524 compared, shape exact 519, shape 0.01%, colour 6.67% of 30591336 px
-SUMMARY small: 524 compared, shape exact 492, shape 0.32%, colour 9.33% of 2350770 px
+SUMMARY nav: 524 compared, shape exact 512, shape 0.09%, colour 11.08% of 67176100 px
+SUMMARY mid: 524 compared, shape exact 521, shape 0.00%, colour 6.67% of 30591336 px
+SUMMARY small: 524 compared, shape exact 516, shape 0.00%, colour 10.14% of 2350770 px
 ```
 
 What the counts are made of, from the worst cells:
@@ -194,7 +201,10 @@ What the counts are made of, from the worst cells:
   Bold, the idle status reads `Sonique 1.96`, and the vis tab and small-window layouts are not
   reproduced (`format.md` § *Mid mode's song window*).
 - **nav `colour`: the screen.** Sonique draws setup › skins over the display (§ *The oracle*); the
-  renderer draws nothing there yet. S7.
+  renderer draws only the status line there. S7.
+- **small `colour` rose 9.33 → 10.14 % when alignment went outline-first**: at the outline's own
+  alignment the bar's picture differs more than one pixel off, so the picture may sit 1 px from
+  where Sonique draws it against the frame. Unexplained.
 - **`colour` where a skin leans on the default skin**: NullPlayer's default artwork is not Sonique's
   (decision record § *Omitted entries*), so `lycossearch`, `hotbotsearch` and every omitted entry
   differ by design.

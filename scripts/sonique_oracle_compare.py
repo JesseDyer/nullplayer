@@ -80,7 +80,7 @@ def compare(capture_png, render_png):
     for dy in range(-2, 3):
         for dx in range(-2, 3):
             got = counts(oracle, place(render, oracle.shape[:2], x + dx, y + dy))
-            best = min(best or got, got, key=sum)
+            best = min(best or got, got)  # the outline decides the alignment; colour breaks ties
     return best + (int((oracle[..., 3] > 127).sum()),)
 
 

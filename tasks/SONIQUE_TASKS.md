@@ -18,8 +18,8 @@ byte-identical to the capture before it.
 
 | ID | Item | Reach | Notes |
 |---|---|---|---|
-| S14 | The navigator drawer open against the oracle, and the pitch knob's speed range and whether Sonique's pitch shifted with it; replace the 0.5×–2× stand-in in `SoniqueSkinAudioEngineHost.setDial`. Then drive the drawer, its knobs and sliders in the app | 511 | Needs an unlocked screen: no command opens the drawer, so the oracle is clicked (`winhelper click`), which a locked screen refuses. S9 stopped there |
-| S7 | Navigator menu screen and status line drawn in the skin's colours; the other screens host NullPlayer's views per the decision record | all | Capture every screen through the oracle first (`-showwindow 3 1..7`) |
+| S14 | The navigator drawer open against the oracle, and the pitch knob's speed range and whether Sonique's pitch shifted with it; replace the 0.5×–2× stand-in in `SoniqueSkinAudioEngineHost.setDial`. Then drive the drawer, its knobs and sliders in the app | 511 | The open drawer is reachable by command (screen 6 slides it open, found in S7); the pitch range needs the knob dragged in the oracle (`winhelper click`), which a locked screen refuses. S9 stopped there |
+| S7 | Navigator menu screen and status line drawn in the skin's colours; the other screens host NullPlayer's views per the decision record | all | The status line is done (`format.md` § *The navigator's status line*). Left: (1) the menu screen, which only clicking the oracle's rocker reaches (`harness.md` § *The oracle*), so it waits for an unlocked screen like S14; Sonique's own menu carries Lycos's logo and links, which NullPlayer does not copy, so its layout is matched, not its content. (2) **The user's call:** how NullPlayer's playlist, visual mode and library show inside the display — drawn by the renderer in skin colours, or NullPlayer's own views embedded in the window — and what the menu offers in place of Sonique's quick links |
 
 ## After Phase 2 — shared code
 
