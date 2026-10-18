@@ -16,7 +16,11 @@ struct SoniqueSkinHostState: Equatable {
     /// 1-based; 0 with nothing loaded.
     var trackNumber = 0
     var elapsedSeconds = 0
+    /// The hundredths past `elapsedSeconds`, which the visual mode screen's clock shows.
+    var elapsedHundredths = 0
     var title = ""
+    /// The playing file's name, for the visual mode screen's file panel.
+    var fileName = ""
     /// Loud enough to light small mode's blinkers.
     var blinkersLit = false
     /// The navigator drawer's dials, 0–1: its knobs (0.5 is centre) and its 20 EQ sliders.
@@ -62,9 +66,13 @@ enum SoniqueSkinControl: Hashable {
     }
 
     /// A press that does something; a region with no action (the display, the rings) is chassis.
+    /// The drawer's amp, balance and pitch knobs are disabled (decision record Amendment 4): they
+    /// set the preamp, balance and playback speed with nothing on screen saying so, and a skin can
+    /// draw them as anything (Pokemon's are numbered buttons), so a stray drag leaves a bad setting
+    /// the user never notices. They still draw the engine's values.
     var isActionable: Bool {
         switch self {
-        case .songRing, .listRing: return false
+        case .songRing, .listRing, .amp, .balance, .pitch: return false
         default: return true
         }
     }
@@ -77,6 +85,9 @@ enum SoniqueSmallDrawer: Equatable { case top, bottom }
 /// display and opens its own windows for the rest (decision record § *Decisions*).
 enum SoniqueSkinNavScreen: Equatable {
     case menu, visualMode
+    /// A screen with nothing on it but the back ball: what the render probe draws against the
+    /// oracle's *setup › skins* screen, which NullPlayer does not have.
+    case blank
 }
 
 /// One mode of one skin in one state, laid out in skin pixels with a top-left origin: what to draw
@@ -93,12 +104,19 @@ struct SoniqueSkinScene {
     var navDrawerOpen: Bool
     /// What the navigator's display shows.
     var navScreen: SoniqueSkinNavScreen
+    /// The effect the visual mode screen's panel names.
+    var visualModeTitle: String
+    /// How far a title too long for its line has scrolled, in skin pixels: the status line, mid
+    /// mode's song window and small mode's drawer all scroll the same title together.
+    var marqueeOffset: Int
+    /// The blank between a scrolling title's end and its start coming round again.
+    static let marqueeGap = 30
     /// The canvas in skin pixels: its origin is skin (0,0)'s offset into the window.
     let canvas: SoniqueSkinRegion.Rect
 
     init(skin: SoniqueSkin, mode: SoniqueSkin.Mode, host: SoniqueSkinHostState = .init(),
          pressed: SoniqueSkinControl? = nil, smallDrawer: SoniqueSmallDrawer? = nil, navDrawerOpen: Bool = false,
-         navScreen: SoniqueSkinNavScreen = .menu) {
+         navScreen: SoniqueSkinNavScreen = .menu, visualModeTitle: String = "", marqueeOffset: Int = 0) {
         self.mode = mode
         self.skin = skin.source(for: mode)
         self.host = host
@@ -106,6 +124,8 @@ struct SoniqueSkinScene {
         self.smallDrawer = smallDrawer
         self.navDrawerOpen = navDrawerOpen
         self.navScreen = navScreen
+        self.visualModeTitle = visualModeTitle
+        self.marqueeOffset = marqueeOffset
         canvas = Self.canvas(self.skin, mode)
     }
 
@@ -255,6 +275,51 @@ struct SoniqueSkinScene {
     var menuEntries: [(item: SoniqueSkinMenu.Item, hit: SoniqueSkinRegion.Rect)] {
         guard mode == .navigator, navScreen == .menu, let display = skin.region("/rgn/nav/display")?.bounds else { return [] }
         return SoniqueSkinMenu.entries.map { ($0.item, $0.hit.offset(display.left, display.top)) }
+    }
+
+    // MARK: - The navigator's visual mode screen
+
+    /// Sonique's visual mode screen, the same on every skin but for its colours (screen 3 of
+    /// sonique, k2 and BlueEyes, 2026-10-18), as three rounded panels in `SystemBkColor_2` — none
+    /// where that is pure black, the colour that is transparent everywhere in a skin (BlueEyes).
+    /// The vis panel's top is a title bar naming the effect, over the black the effects surface
+    /// fills; the song panel holds the track number and time over their labels and the playlist's
+    /// and the track's progress as 32 dots each; the file panel names the file. The vis and file
+    /// panels hang from the display's top-left, the song panel stands on its bottom (BlueEyes's
+    /// display is 11 px shorter than sonique's, and its song panel 11 px higher). Cut to the display
+    /// like every screen, so a skin's art outside it stays over the panels (BlueEyes).
+    enum VisualScreen {
+        typealias Rect = SoniqueSkinRegion.Rect
+        // From the display's top-left.
+        static let visFrame = Rect(left: 6, top: 0, right: 216, bottom: 126)
+        static let well = Rect(left: 11, top: 11, right: 211, bottom: 122)
+        static let effects = Rect(left: 15, top: 16, right: 207, bottom: 117)
+        /// Black whatever the panels: with none drawn it runs up under the title.
+        static let visBlack = Rect(left: 15, top: 0, right: 207, bottom: 117)
+        static let titleCentre = 101, titleBaseline = 9
+        static let fileFrame = Rect(left: 243, top: 39, right: 301, bottom: 131)
+        static let fileLeft = 246, fileBaseline = 50, fileLineHeight = 10
+        /// The labels' lettering: Verdana Bold 9 spaced half a pixel; the digits are Tahoma Bold 21
+        /// (each the closest of six faces, sizes and spacings to the oracle's own pixels).
+        static let labelSpacing: CGFloat = 0.5
+        static let digitFont = "Tahoma-Bold", digitSize: CGFloat = 21
+        static let panelRadius: CGFloat = 5
+        // From the display's bottom-left.
+        static let songFrame = Rect(left: 6, top: -92, right: 216, bottom: -13)
+        /// The track number at x 18 and the time at x 75; each label centred under its digits.
+        static let digitsBaseline = -70, trackX = 17, timeX = 74
+        static let labels = [("track", 37), ("hour", 87), ("min", 121), ("sec", 155), ("hun", 189)]
+        static let labelBaseline = -61
+        /// Each progress row: 32 dots 6 px across from x 14, its label under it at x 17.
+        static let dots = 32, dotLeft = 14, dotSize = 6
+        static let progressRows = [(top: -56, label: "playlist progress", baseline: -41),
+                                   (top: -37, label: "track progress", baseline: -23)]
+    }
+
+    /// The display while the navigator shows the visual mode screen, nil otherwise.
+    var visualScreenDisplay: SoniqueSkinRegion? {
+        guard mode == .navigator, navScreen == .visualMode else { return nil }
+        return skin.region("/rgn/nav/display")
     }
 
     // MARK: - The navigator's drawer

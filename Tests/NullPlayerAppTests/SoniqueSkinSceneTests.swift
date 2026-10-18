@@ -29,8 +29,11 @@ final class SoniqueSkinSceneTests: XCTestCase {
         XCTAssertEqual(hit(open, 4, 30 + 50 + 12), .eqSlider(0))
         XCTAssertEqual(hit(open, 2 + 3 * 5 + 1, 30 + 50 + 12), .eqSlider(3))
         XCTAssertEqual(hit(open, 105, 30 + 50 + 10), .amp)
-        // The tab is a press the window acts on (it toggles the drawer), not chassis.
+        // The tab is a press the window acts on (it toggles the drawer), not chassis; the amp,
+        // balance and pitch knobs are chassis (decision record Amendment 4).
         XCTAssertTrue(SoniqueSkinControl.drawerTab.isActionable)
+        XCTAssertFalse(SoniqueSkinControl.amp.isActionable)
+        XCTAssertFalse(SoniqueSkinControl.pitch.isActionable)
     }
 
     /// A navigator whose 301×228 display sits at 10,20.

@@ -24,7 +24,7 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
         // the back ball, nearest the oracle's setup › skins, except in `menu`, its menu screen.
         let playing = env["SONIQUE_RENDER_STATE"] == "playing"
         let drawerOpen = playing || env["SONIQUE_RENDER_STATE"] == "drawer"
-        let screen: SoniqueSkinNavScreen = env["SONIQUE_RENDER_STATE"] == "menu" ? .menu : .visualMode
+        let screen: SoniqueSkinNavScreen = env["SONIQUE_RENDER_STATE"] == "menu" ? .menu : .blank
         var host = SoniqueSkinHostState(shuffle: true, repeatAll: true, volume: 0)
         host.version = "1.96"
         if playing {

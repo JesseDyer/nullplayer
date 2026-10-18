@@ -17,6 +17,8 @@ enum CavaSettings {
         /// A Windows Media Player skin's `<EFFECTS>` slot. It has the same controls as Cava,
         /// but its choices belong to the WMP skin rather than any other embedded surface.
         case wmpEffects
+        /// The Sonique navigator's visual mode screen, the same surface as WMP's slot with its own keys.
+        case soniqueEffects
 
         var identifier: String {
             switch self {
@@ -26,6 +28,7 @@ enum CavaSettings {
             case .libraryWindow: return "libraryWindow"
             case .winampModernVisBox: return "winampModernVisBox"
             case .wmpEffects: return "wmpEffects"
+            case .soniqueEffects: return "soniqueEffects"
             }
         }
     }
@@ -73,6 +76,8 @@ enum CavaSettings {
             return "cava.winampModernVisBox.\(setting.rawValue)"
         case .wmpEffects:
             return "cava.wmpEffects.\(setting.rawValue)"
+        case .soniqueEffects:
+            return "cava.soniqueEffects.\(setting.rawValue)"
         }
     }
 
@@ -104,7 +109,7 @@ enum CavaSettings {
             return [12, 19, 24, 32]
         // A skin's `<vis>` is small — Big Bento's header boxes are ~100px wide — and Winamp's own
         // analyzer offers 19 or 75 bands there, so the useful range sits low.
-        case .winampModernVisBox, .wmpEffects:
+        case .winampModernVisBox, .wmpEffects, .soniqueEffects:
             return [12, 19, 24, 32, 48]
         }
     }
@@ -130,8 +135,11 @@ enum CavaSettings {
         guard scope != .mainWindow else { return .mono }
         // A box a hundred pixels wide has no room for a mirrored pair, so it opens mono — but
         // unlike the main window's strip it stays switchable.
-        let defaultMode: Mode = (scope == .libraryWindow || scope == .winampModernVisBox || scope == .wmpEffects)
-            ? .mono : .stereo
+        let defaultMode: Mode
+        switch scope {
+        case .libraryWindow, .winampModernVisBox, .wmpEffects, .soniqueEffects: defaultMode = .mono
+        case .cavaWindow, .mainWindow, .compactWindow: defaultMode = .stereo
+        }
         let preferenceKey = key(.mode, for: scope)
         guard defaults.object(forKey: preferenceKey) != nil else { return defaultMode }
         let raw = defaults.integer(forKey: preferenceKey)
@@ -157,7 +165,7 @@ enum CavaSettings {
             return defaultBrowserBarCount
         case .cavaWindow, .mainWindow:
             return defaultBarCount
-        case .winampModernVisBox, .wmpEffects:
+        case .winampModernVisBox, .wmpEffects, .soniqueEffects:
             return defaultWinampModernVisBarCount
         }
     }
@@ -396,6 +404,7 @@ enum CavaSettings {
         setHasCustomColors(false, for: .libraryWindow)
         setHasCustomColors(false, for: .winampModernVisBox)
         setHasCustomColors(false, for: .wmpEffects)
+        setHasCustomColors(false, for: .soniqueEffects)
         setTransparentBackground(defaultTransparency, customized: false)
     }
 

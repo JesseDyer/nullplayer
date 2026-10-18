@@ -30,8 +30,11 @@ enum SoniqueSkinMenu {
     }
 
     /// The right column's headings, where Sonique's read *quick links* and *my sonique*.
+    /// "my nullplayer" is three letters longer than Sonique's "my sonique": spaced as "windows" it
+    /// runs past the display's edge, so it is spaced a quarter pixel.
     static let headings = [Text(string: "windows", x: 214, baseline: 38, size: 11, colour: "SystemColor_2", spacing: 1),
-                           Text(string: "nullplayer", x: 214, baseline: 110, size: 11, colour: "SystemColor_2", spacing: 1)]
+                           Text(string: "my nullplayer", x: 214, baseline: 110, size: 11, colour: "SystemColor_2",
+                                spacing: 0.25)]
 
     static let entries: [Entry] = {
         func large(_ item: Item, _ title: String, _ subtitle: String, top: Int) -> Entry {
@@ -65,10 +68,13 @@ enum SoniqueSkinMenu {
 
     /// NullPlayer's wordmark where Sonique's *LYCOS sonique* sits (x 28–181, y 24–51 on k2): a small
     /// label where *LYCOS* is, a large word outlined in `LogoColor` over a ring in `LogoRingColor`.
+    /// The ring is Sonique's swoosh, measured on its menu capture: a crescent between two ellipses,
+    /// a hairline across the top that swells to 5 px underneath the word.
     enum Logo {
         static let label = Text(string: "null", x: 28, baseline: 31, size: 9, colour: "LogoColor", spacing: 1)
         static let word = Text(string: "player", x: 28, baseline: 51, size: 28, colour: "LogoColor")
-        static let ring = SoniqueSkinRegion.Rect(left: 45, top: 26, right: 175, bottom: 62)
+        static let ring = SoniqueSkinRegion.Rect(left: 45, top: 22, right: 157, bottom: 57)
+        static let ringHole = SoniqueSkinRegion.Rect(left: 46, top: 23, right: 156, bottom: 52)
     }
 
     /// NullPlayer's version where Sonique's own sits, bottom centre above the status line.

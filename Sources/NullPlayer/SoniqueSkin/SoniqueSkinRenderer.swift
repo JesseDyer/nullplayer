@@ -89,6 +89,7 @@ private struct Painter {
         }
         picture()
         if scene.navScreen == .menu { menuScreen() }
+        visualModePanel()
         statusLine()
         litStates(prefix: "NAV_", upDown: true)
         let ownKnob = skin.image("/jpeg/nav_volumeknob") != nil
@@ -96,9 +97,81 @@ private struct Painter {
              key: ownKnob ? "MISC_NAV_VOLUME_KNOB" : "MISC_VOLUME_KNOB", value: host.volume)
     }
 
+    /// The visual mode screen (`SoniqueSkinScene.VisualScreen`); the window lays the effects surface
+    /// over the vis panel's well.
+    private func visualModePanel() {
+        typealias Screen = SoniqueSkinScene.VisualScreen
+        guard let display = scene.visualScreenDisplay else { return }
+        let x = display.bounds.left, top = display.bounds.top, bottom = display.bounds.bottom
+        context.saveGState()
+        clip(to: display.rects)
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.fill(Screen.visBlack.offset(x, top).cgRect)
+        if skin.settings.colour("SystemBkColor_2") != 0 {
+            context.setFillColor(colour("SystemBkColor_2"))
+            for frame in [Screen.visFrame.offset(x, top), Screen.fileFrame.offset(x, top), Screen.songFrame.offset(x, bottom)] {
+                context.addPath(CGPath(roundedRect: frame.cgRect, cornerWidth: Screen.panelRadius, cornerHeight: Screen.panelRadius,
+                                       transform: nil))
+            }
+            context.fillPath()
+            context.setFillColor(CGColor(gray: 0, alpha: 1))
+            context.fill(Screen.well.offset(x, top).cgRect)
+        }
+        text(scene.visualModeTitle, centreX: x + Screen.titleCentre, minX: x + Screen.well.left, baseline: top + Screen.titleBaseline,
+             size: 8, colour: "SystemColor_1")
+
+        let s = host.elapsedSeconds
+        text(String(format: "%03d", host.trackNumber), x: x + Screen.trackX, baseline: bottom + Screen.digitsBaseline,
+             size: Screen.digitSize, colour: "SystemColor_1", font: Screen.digitFont)
+        text(String(format: "%02d:%02d:%02d.%02d", s / 3600, s / 60 % 60, s % 60, host.elapsedHundredths),
+             x: x + Screen.timeX, baseline: bottom + Screen.digitsBaseline, size: Screen.digitSize, colour: "SystemColor_1",
+             font: Screen.digitFont)
+        for (label, centre) in Screen.labels {
+            text(label, centreX: x + centre, minX: x, baseline: bottom + Screen.labelBaseline, size: 9, colour: "SystemColor_2",
+                 spacing: Screen.labelSpacing)
+        }
+        // The dots fill with progress as the mid rings do: the playlist's in `PlayListColor_1`, the
+        // track's in `ProgressColor_1`, over `ProgressBkColor`.
+        for (row, (progress, fill)) in zip(Screen.progressRows, [(host.listProgress, "PlayListColor_1"), (host.songProgress, "ProgressColor_1")]) {
+            let lit = Int((progress * Double(Screen.dots)).rounded(.down))
+            for dot in 0..<Screen.dots {
+                context.setFillColor(colour(dot < lit ? fill : "ProgressBkColor"))
+                context.fillEllipse(in: CGRect(x: x + Screen.dotLeft + dot * Screen.dotSize, y: bottom + row.top,
+                                               width: Screen.dotSize, height: Screen.dotSize))
+            }
+            text(row.label, x: x + Screen.dotLeft + 2, baseline: bottom + row.baseline, size: 9, colour: "SystemColor_2",
+                 spacing: Screen.labelSpacing)
+        }
+
+        text("file:", x: x + Screen.fileLeft, baseline: top + Screen.fileBaseline, size: 9, colour: "SystemColor_2",
+             spacing: Screen.labelSpacing)
+        let fileWidth = CGFloat(Screen.fileFrame.right - Screen.fileLeft - 3)
+        for (i, line) in wrapped(host.fileName, size: 8, width: fileWidth).enumerated() {
+            let baseline = Screen.fileBaseline + (i + 1) * Screen.fileLineHeight
+            guard baseline <= Screen.fileFrame.bottom - 3 else { break }
+            text(line, x: x + Screen.fileLeft, baseline: top + baseline, size: 8, colour: "SystemColor_1")
+        }
+        context.restoreGState()
+    }
+
+    /// `string` broken into lines no wider than `width`, at word breaks where it can and anywhere
+    /// where it cannot (a file name is often one long word).
+    private func wrapped(_ string: String, size: CGFloat, width: CGFloat) -> [String] {
+        let typesetter = CTTypesetterCreateWithAttributedString(lettering(string, size: size))
+        let text = string as NSString
+        var lines: [String] = [], start = 0
+        while start < text.length {
+            var count = CTTypesetterSuggestLineBreak(typesetter, start, Double(width))
+            if count <= 0 { count = max(1, CTTypesetterSuggestClusterBreak(typesetter, start, Double(width))) }
+            lines.append(text.substring(with: NSRange(location: start, length: count)).trimmingCharacters(in: .whitespaces))
+            start += count
+        }
+        return lines
+    }
+
     /// The navigator's status line, Sonique's own, along the display's bottom edge: a band in
     /// `StatusBarBgColor` dotted with `StatusBarFgColor`, and the title (`Sonique 1.96` idle; NullPlayer
-    /// writes its own name) in `StatusBarTextColor`, centred on the display's span 7 px left of its
+    /// writes its own name and version) in `StatusBarTextColor`, centred on the display's span 7 px left of its
     /// middle (Trigun, Danzig and sonique all measure so).
     private func statusLine() {
         guard let display = skin.region("/rgn/nav/display") else { return }
@@ -117,8 +190,8 @@ private struct Painter {
         })
         let span = display.rects.filter { $0.top <= bottom - 5 && $0.bottom > bottom - 5 }
         let left = span.map(\.left).min() ?? display.bounds.left, right = span.map(\.right).max() ?? display.bounds.right
-        text(host.title.isEmpty ? "NullPlayer" : host.title, centreX: (left + right) / 2 - 7, minX: left + 2,
-             baseline: bottom - 3, size: 9, colour: "StatusBarTextColor")
+        titleLine(idle: "NullPlayer \(host.version)", centreX: (left + right) / 2 - 7, left: left + 2, right: right - 2,
+                  baseline: bottom - 3, colour: "StatusBarTextColor")
         context.restoreGState()
     }
 
@@ -147,9 +220,10 @@ private struct Painter {
     /// NullPlayer's wordmark in the logo's place (`SoniqueSkinMenu.Logo`): the ring, then the word
     /// filled black and edged in `LogoColor` over it, as Sonique's letters cross its ring.
     private func logo(at dx: Int, _ dy: Int) {
-        context.setStrokeColor(colour("LogoRingColor"))
-        context.setLineWidth(2)
-        context.strokeEllipse(in: SoniqueSkinMenu.Logo.ring.offset(dx, dy).cgRect)
+        context.addEllipse(in: SoniqueSkinMenu.Logo.ring.offset(dx, dy).cgRect)
+        context.addEllipse(in: SoniqueSkinMenu.Logo.ringHole.offset(dx, dy).cgRect)
+        context.setFillColor(colour("LogoRingColor"))
+        context.fillPath(using: .evenOdd)
         let word = SoniqueSkinMenu.Logo.word
         text(word.string, x: dx + word.x, baseline: dy + word.baseline, size: word.size, rgb: 0,
              outline: colour(word.colour))
@@ -307,11 +381,11 @@ private struct Painter {
         }
         let seconds = host.elapsedSeconds
         let lines = [(String(format: "%03d", host.trackNumber), 15, CGFloat(14)),
-                     (String(format: "%02d:%02d.00", seconds / 60 % 100, seconds % 60), 25, 10),
-                     (host.title.isEmpty ? "NullPlayer" : host.title, 41, 9)]
+                     (String(format: "%02d:%02d.00", seconds / 60 % 100, seconds % 60), 25, 10)]
         for (string, baseline, size) in lines {
             text(string, centreX: x + 47, minX: x + 13, baseline: y + baseline, size: size, colour: "SystemColor_1")
         }
+        titleLine(idle: "NullPlayer", centreX: x + 47, left: x + 13, right: x + 81, baseline: y + 41, colour: "SystemColor_1")
         context.restoreGState()
     }
 
@@ -355,7 +429,8 @@ private struct Painter {
         if let marquee = scene.marqueeRect, !host.title.isEmpty {
             context.saveGState()
             clip(to: [marquee])
-            text(host.title, x: marquee.left, baseline: marquee.bottom - 2, size: 9, colour: "SystemColor_1")
+            self.marquee(host.title, left: marquee.left, right: marquee.right, baseline: marquee.bottom - 2, size: 9,
+                         colour: "SystemColor_1")
             context.restoreGState()
         }
     }
@@ -544,20 +619,52 @@ private struct Painter {
 
     private func colour(_ key: String) -> CGColor { SoniqueSkinRenderer.cgColor(skin.settings.colour(key)) }
 
-    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, colour key: String) {
-        text(string, x: x, baseline: baseline, size: size, rgb: skin.settings.colour(key))
+    /// The playing title scrolling in `left..<right` (`marquee`), or with none `idle` centred on
+    /// `centreX`, in the 9 px lettering every title line uses.
+    private func titleLine(idle: String, centreX: Int, left: Int, right: Int, baseline: Int, colour key: String) {
+        guard !host.title.isEmpty else {
+            return text(idle, centreX: centreX, minX: left, baseline: baseline, size: 9, colour: key)
+        }
+        marquee(host.title, left: left, right: right, baseline: baseline, size: 9, colour: key)
+    }
+
+    /// The playing title in `left..<right`, always scrolling: `scene.marqueeOffset` px left, coming
+    /// round again after a gap (or after the whole span, for a title shorter than it), cut to the
+    /// span. Always, not only when too long: a skin's own art can cover any part of the line (the
+    /// sonique skin's rocker hides the status line's right end), so "fits" cannot be measured.
+    private func marquee(_ string: String, left: Int, right: Int, baseline: Int, size: CGFloat, colour key: String) {
+        let width = Int(CTLineGetTypographicBounds(line(string, size: size, rgb: 0), nil, nil, nil).rounded(.up))
+        let period = max(width + SoniqueSkinScene.marqueeGap, right - left)
+        let x = left - scene.marqueeOffset % period
+        context.saveGState()
+        context.clip(to: CGRect(x: left, y: baseline - Int(size * 2), width: right - left, height: Int(size * 3)))
+        text(string, x: x, baseline: baseline, size: size, colour: key)
+        text(string, x: x + period, baseline: baseline, size: size, colour: key)
+        context.restoreGState()
+    }
+
+    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, colour key: String, spacing: CGFloat = 0,
+                      font: String = "Verdana-Bold") {
+        text(string, x: x, baseline: baseline, size: size, rgb: skin.settings.colour(key), spacing: spacing, font: font)
     }
 
     /// Centred on `centreX`, but starting no further left than `minX`: a long title keeps its start.
-    private func text(_ string: String, centreX: Int, minX: Int, baseline: Int, size: CGFloat, colour key: String) {
-        let width = CTLineGetTypographicBounds(line(string, size: size, rgb: 0), nil, nil, nil)
-        text(string, x: max(minX, centreX - Int((width / 2).rounded())), baseline: baseline, size: size, rgb: skin.settings.colour(key))
+    private func text(_ string: String, centreX: Int, minX: Int, baseline: Int, size: CGFloat, colour key: String,
+                      spacing: CGFloat = 0) {
+        let width = CTLineGetTypographicBounds(line(string, size: size, rgb: 0, spacing: spacing), nil, nil, nil)
+        text(string, x: max(minX, centreX - Int((width / 2).rounded())), baseline: baseline, size: size,
+             rgb: skin.settings.colour(key), spacing: spacing)
     }
 
-    private func line(_ string: String, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0, outline: CGColor? = nil) -> CTLine {
-        let font = CTFontCreateWithName("Verdana-Bold" as CFString, size, nil)
+    private func line(_ string: String, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0, outline: CGColor? = nil,
+                      font: String = "Verdana-Bold") -> CTLine {
+        CTLineCreateWithAttributedString(lettering(string, size: size, rgb: rgb, spacing: spacing, outline: outline, font: font))
+    }
+
+    private func lettering(_ string: String, size: CGFloat, rgb: UInt32 = 0, spacing: CGFloat = 0, outline: CGColor? = nil,
+                           font: String = "Verdana-Bold") -> NSAttributedString {
         var attributes: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(font as CFString, size, nil),
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): SoniqueSkinRenderer.cgColor(rgb),
             NSAttributedString.Key(kCTKernAttributeName as String): spacing,
         ]
@@ -566,17 +673,20 @@ private struct Painter {
             // Negative: fill and stroke, the stroke 6 % of the size.
             attributes[NSAttributedString.Key(kCTStrokeWidthAttributeName as String)] = -6
         }
-        return CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: attributes))
+        return NSAttributedString(string: string, attributes: attributes)
     }
 
-    /// Sonique's own lettering: Verdana Bold, unsmoothed as GDI drew it, on the skin pixel grid. An
-    /// `outline`d word is NullPlayer's wordmark, artwork rather than lettering, so it stays smooth.
+    /// Sonique's own lettering: Verdana Bold on the skin pixel grid, grey-smoothed as Sonique drew it
+    /// in the navigator and mid mode and unsmoothed in small mode's tiny bar (the oracle sweep,
+    /// 2026-10-18: smoothing made 2,826 navigator and 8,605 mid pixels right, and 34,405 small ones
+    /// wrong). An `outline`d word is NullPlayer's wordmark, artwork rather than lettering, and always
+    /// smooth.
     private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0,
-                      outline: CGColor? = nil) {
-        let line = line(string, size: size, rgb: rgb, spacing: spacing, outline: outline)
+                      outline: CGColor? = nil, font: String = "Verdana-Bold") {
+        let line = line(string, size: size, rgb: rgb, spacing: spacing, outline: outline, font: font)
         context.saveGState()
         if outline == nil {
-            context.setShouldAntialias(false)
+            context.setShouldAntialias(scene.mode != .small)
             context.setShouldSmoothFonts(false)
         }
         // Text draws upright in an unflipped space: undo the flip around the baseline.

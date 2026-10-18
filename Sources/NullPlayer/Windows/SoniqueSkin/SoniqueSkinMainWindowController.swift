@@ -218,8 +218,17 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         case .shuffle: engine.shuffleEnabled.toggle()
         case .repeatButton: engine.repeatEnabled.toggle()
         case .drawerTab: skinView.navDrawerOpen.toggle()
-        // The dials turn by dragging (`onDial`); the rocker, shuttle and rings do nothing yet.
-        case .volume, .amp, .balance, .pitch, .eqSlider, .up, .down, .shuttle, .songRing, .listRing: break
+        // The rocker (S17): on the visual mode screen it steps the effect, as ⌘↓/⌘↑ do; anywhere
+        // else it pages the Playlist Editor when that is open. Sonique paged its display with it.
+        case .up, .down:
+            let step = control == .down ? 1 : -1
+            if skinView.navScreen == .visualMode {
+                SkinEffectSelection.sonique.step(by: step)
+            } else if let playlist = WindowManager.shared.playlistWindowController, playlist.window?.isVisible == true {
+                playlist.page(by: step)
+            }
+        // The dials turn by dragging (`onDial`); the shuttle and rings do nothing yet.
+        case .volume, .amp, .balance, .pitch, .eqSlider, .shuttle, .songRing, .listRing: break
         }
         refreshHostState()
     }
@@ -239,6 +248,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     func updatePlaybackState() { refreshHostState() }
 
     func updateSpectrum(_ levels: [Float]) {
+        skinView.updateSpectrum(levels)
         guard mode == .small else { return }
         let lit = (levels.prefix(4).max() ?? 0) > 0.6
         guard lit != blinkersLit else { return }

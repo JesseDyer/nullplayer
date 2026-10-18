@@ -199,6 +199,15 @@ OnePlayer's `verde`.
   navigation balls magenta. The default skin's balls are cyan, `SystemColor_1`'s default, where
   `SystemColor_2`'s would be yellow. The default skin's other colours stay `misc.txt`'s.
 
+### Amendment 4 (S16, 2026-10-18)
+
+- **The drawer's amp, balance and pitch knobs are disabled** (the user's call). They set the
+  preamp, balance and playback speed with no readout anywhere in the family, and a skin may draw
+  them as anything — Pokemon's are 20 numbered buttons — so a stray drag leaves a bad setting the
+  user never notices. They are chassis (`SoniqueSkinControl.isActionable`): a press drags the
+  window. They still draw the engine's values, so a preamp, balance or speed set elsewhere shows.
+  The EQ sliders and the volume knob are unchanged.
+
 ## Control mapping
 
 | Skin control | NullPlayer action |
@@ -208,8 +217,8 @@ OnePlayer's `verde`.
 | shuffle | shuffle |
 | repeat | NullPlayer's repeat on/off. Sonique's third state, loop one, is unreachable: NullPlayer's GUI has no repeat-one |
 | volume knob | volume |
-| drawer amp / bal / pitch knobs | preamp / balance / playback speed (`AudioEngine.setPlaybackSpeed`, the Playback Speed menu's control), centre detent 1.0×. The pitch knob spans NullPlayer's own speed range (`PitchTuningController`, 0.25×–4×, the menu's) on a log scale, and keeps NullPlayer's pitch-preserving speed. Sonique's own knob reads "Pitch Tempo" over 50–200 %, which is not copied |
-| nav up / down rocker | moves the menu selection, as in Sonique |
+| drawer amp / bal / pitch knobs | **disabled** (Amendment 4); they draw the preamp / balance / playback speed. Formerly: preamp / balance / playback speed (`AudioEngine.setPlaybackSpeed`, the Playback Speed menu's control), centre detent 1.0×. The pitch knob spans NullPlayer's own speed range (`PitchTuningController`, 0.25×–4×, the menu's) on a log scale, and keeps NullPlayer's pitch-preserving speed. Sonique's own knob reads "Pitch Tempo" over 50–200 %, which is not copied |
+| nav up / down rocker | on the visual mode screen, the previous / next effect; elsewhere, a page up / down in the Playlist Editor when it is open; otherwise nothing (S17, the user's call). Sonique pages the display with it (`pathdesc.txt`: "page up arrow", "page down arrow"); the earlier "moves the menu selection" was not Sonique's |
 | menu: visual mode | the visual mode screen: the shared effects surface in the display |
 | menu: playlist editor | the Playlist Editor window (`WindowManager.togglePlaylist`) |
 | menu: find music | the Library Browser (`WindowManager.toggleMediaLibrary`) |

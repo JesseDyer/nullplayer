@@ -163,7 +163,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     private let host: any WMPHost
     /// **The effect selection is the one host property nothing else refreshes for.** Every other
     /// path into `refreshHostState` is a track, a clock tick, a transport action or a file open;
-    /// choosing a visualization from NullPlayer's own menu goes through `WMPEffectSelection` and
+    /// choosing a visualization from NullPlayer's own menu goes through `SkinEffectSelection` and
     /// touches none of them. With a track playing the 10 Hz position tick hides that — the event
     /// lands within 100 ms and looks immediate — and with the player stopped the skin's
     /// `currentEffectType_onchange` would never be raised at all (W129).
@@ -379,7 +379,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         }
         hostedFrames.hostedWindowsVisible = { WindowManager.shared.hasVisibleHostedWindows }
         effectSelectionObserver = NotificationCenter.default.addObserver(
-            forName: WMPEffectSelection.didChange, object: nil, queue: .main
+            forName: SkinEffectSelection.didChange, object: SkinEffectSelection.wmp, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.refreshHostState()
@@ -620,8 +620,8 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         isCapturingVisualizationSettings = true
         defer { isCapturingVisualizationSettings = false }
         visualizationSettings.capture(skin: skin,
-                                      effect: WMPEffectSelection.shared.current.id,
-                                      preset: WMPEffectSelection.shared.preset)
+                                      effect: SkinEffectSelection.wmp.current.id,
+                                      preset: SkinEffectSelection.wmp.preset)
     }
 
     /// Puts the incoming skin's effect, preset and WMP-scoped Cava / vis_classic preferences in
@@ -635,7 +635,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         isCapturingVisualizationSettings = true
         let selection = visualizationSettings.restore(skin: skin)
         isCapturingVisualizationSettings = false
-        WMPEffectSelection.shared.restore(effect: selection.effect, preset: selection.preset)
+        SkinEffectSelection.wmp.restore(effect: selection.effect, preset: selection.preset)
     }
 
     func reloadSelectedSkin() {
@@ -2468,7 +2468,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         if previous?.effects.type != snapshot.effects.type { events.append("currenteffecttype_onchange") }
         // `currentPreset_onchange` is the same element, the same idiom and the same write-back: all
         // 40 corpus uses are `mediacenter.effectPreset=currentPreset`. It is safe because
-        // `WMPEffectSelection.setPreset` early-returns on an unchanged value, so the handler
+        // `SkinEffectSelection.setPreset` early-returns on an unchanged value, so the handler
         // handing the host back the number it was just given cannot loop or restart the visualizer
         // — the same settling argument W51's write-backs rest on.
         if previous?.effects.preset != snapshot.effects.preset {

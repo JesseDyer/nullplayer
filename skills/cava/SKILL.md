@@ -330,7 +330,7 @@ they choose **Match Skin** or explicitly switch/reset skins. A same-skin app rel
     which keep "Winamp Green". This writes the same `.cavaWindow` in-memory default as Classic and
     Modern; each view re-pushes on setup, so a family switch re-derives it.
   - **`.wal` `<vis>` box** (`.winampModernVisBox`): the box's own `colorband` first → last.
-  - **WMP `<EFFECTS>`** (`.wmpEffects`, `WMPEffectsSurfaceView`): the hosted surface style, dim text →
+  - **WMP `<EFFECTS>`** (`.wmpEffects`, `SkinEffectsSurfaceView`): the hosted surface style, dim text →
     current text, pushed at init, when the Cava effect starts, and on `.hostedSurfaceStyleDidChange`
     (posted when the presented view changes the palette).
   The low end is dim text rather than the background for the same reason Classic inline starts at the

@@ -6,13 +6,21 @@ import AppKit
 /// through `WindowManager`, and a double-click there jumps a mode (help `02.htm` § *Jumping Between
 /// Modes*). A pixel outside the outline is not part of the window.
 final class SoniqueSkinMainView: NSView {
-    var skin: SoniqueSkin? { didSet { pressed = nil; smallDrawer = nil; redraw() } }
+    var skin: SoniqueSkin? { didSet { pressed = nil; smallDrawer = nil; dropEffects(); redraw() } }
     var mode: SoniqueSkin.Mode = .navigator { didSet { if mode != oldValue { pressed = nil; smallDrawer = nil; redraw() } } }
     /// The navigator's drawer, opened and closed by its tab.
     var navDrawerOpen = false { didSet { if navDrawerOpen != oldValue { redraw(); onOutlineChange?() } } }
     /// What the navigator's display shows.
     var navScreen = SoniqueSkinNavScreen.menu { didSet { if navScreen != oldValue { redraw() } } }
-    var host = SoniqueSkinHostState() { didSet { if host != oldValue { redraw() } } }
+    var host = SoniqueSkinHostState() {
+        didSet {
+            guard host != oldValue else { return }
+            effects?.setActive(host.playState == .playing)
+            if host.title != oldValue.title { marqueeOffset = 0 }
+            updateMarqueeTimer()
+            redraw()
+        }
+    }
     /// Window points per skin pixel.
     var uiScale: CGFloat = 1 { didSet { if uiScale != oldValue { redraw() } } }
     var onCommand: ((SoniqueSkinControl) -> Void)?
@@ -29,6 +37,13 @@ final class SoniqueSkinMainView: NSView {
     private var drag = SkinnedWindowDrag()
     private var knobDrag: (control: SoniqueSkinControl, start: NSPoint, value: Double)?
     private let windowShadow = SkinWindowShadow()
+    /// The visual mode screen's effects surface, present only while that screen shows: removing it
+    /// stops its engine.
+    private var effects: SkinEffectsSurfaceView?
+    private var effectObserver: NSObjectProtocol?
+    /// Long titles scroll while one is showing (`SoniqueSkinScene.marqueeOffset`).
+    private var marqueeOffset = 0
+    private var marqueeTimer: Timer?
 
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -39,6 +54,14 @@ final class SoniqueSkinMainView: NSView {
         wantsLayer = true
         setAccessibilityIdentifier("SoniqueSkinMainView")
         setAccessibilityRole(.group)
+        effectObserver = NotificationCenter.default.addObserver(
+            forName: SkinEffectSelection.didChange, object: SkinEffectSelection.sonique, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.redraw() } }
+    }
+
+    deinit {
+        effectObserver.map(NotificationCenter.default.removeObserver)
+        marqueeTimer?.invalidate()
     }
 
     required init?(coder: NSCoder) { nil }
@@ -49,6 +72,7 @@ final class SoniqueSkinMainView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
+        updateMarqueeTimer()
         guard let window else { return windowShadow.detach() }
         windowShadow.attach(to: window, name: "sonique") { [weak self] in self?.image.map { [$0] } ?? [] }
     }
@@ -56,12 +80,74 @@ final class SoniqueSkinMainView: NSView {
     private func redraw() {
         scene = skin.map {
             SoniqueSkinScene(skin: $0, mode: mode, host: host, pressed: pressed, smallDrawer: smallDrawer, navDrawerOpen: navDrawerOpen,
-                              navScreen: navScreen)
+                              navScreen: navScreen, visualModeTitle: SkinEffectSelection.sonique.current.title,
+                              marqueeOffset: marqueeOffset)
         }
         image = scene.flatMap(SoniqueSkinRenderer.render)
         needsDisplay = true
         windowShadow.invalidateShape("redraw")
+        layoutEffects()
     }
+
+    /// ponytail: re-renders the whole mode 20 times a second while a title shows; render only the
+    /// title lines over a cached picture if that shows up in a profile.
+    private func updateMarqueeTimer() {
+        let wanted = !host.title.isEmpty && window != nil
+        guard wanted != (marqueeTimer != nil) else { return }
+        marqueeTimer?.invalidate()
+        marqueeTimer = wanted ? Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scrollMarquee() }
+        } : nil
+    }
+
+    /// One marquee step: a new picture of the same scene, whose outline has not moved.
+    private func scrollMarquee() {
+        marqueeOffset += 1
+        scene?.marqueeOffset = marqueeOffset
+        image = scene.flatMap(SoniqueSkinRenderer.render)
+        needsDisplay = true
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        layoutEffects()
+    }
+
+    /// The effects surface over the visual mode panel's well, cut to the display as the panel is.
+    /// Placed again only when the window's size moves it; a new skin starts a new surface.
+    private func layoutEffects() {
+        guard let scene, let display = scene.visualScreenDisplay else { return dropEffects() }
+        let well = SoniqueSkinScene.VisualScreen.effects.offset(display.bounds.left, display.bounds.top)
+        let scale = bounds.width / CGFloat(max(1, scene.width))
+        let frame = CGRect(x: CGFloat(well.left - scene.canvas.left) * scale, y: CGFloat(well.top - scene.canvas.top) * scale,
+                           width: CGFloat(well.right - well.left) * scale, height: CGFloat(well.bottom - well.top) * scale)
+        if effects?.frame == frame { return }
+        let surface = effects ?? SkinEffectsSurfaceView(frame: frame, selection: .sonique)
+        if effects == nil {
+            addSubview(surface)
+            effects = surface
+            surface.setActive(host.playState == .playing)
+        }
+        surface.frame = frame
+        surface.applyClippingShape(Self.mask(display.rects, over: well), rect: surface.bounds)
+    }
+
+    private func dropEffects() {
+        effects?.removeFromSuperview()
+        effects = nil
+    }
+
+    /// `rects` as a mask over `area`, one pixel per skin pixel, its first row the top.
+    private static func mask(_ rects: [SoniqueSkinRegion.Rect], over area: SoniqueSkinRegion.Rect) -> CGImage? {
+        let width = area.right - area.left, height = area.bottom - area.top
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(rects.map { CGRect(x: $0.left - area.left, y: area.bottom - $0.bottom, width: $0.right - $0.left, height: $0.bottom - $0.top) })
+        return context.makeImage()
+    }
+
+    func updateSpectrum(_ levels: [Float]) { effects?.updateSpectrum(levels) }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let image, let context = NSGraphicsContext.current?.cgContext else { return }
@@ -197,10 +283,14 @@ final class SoniqueSkinMainView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        ContextMenuBuilder.buildMenu(includeOutputDevices: false, includeRepeatShuffle: false)
+        if let effects, effects.frame.contains(convert(event.locationInWindow, from: nil)) { return effects.buildMenu() }
+        return ContextMenuBuilder.buildMenu(includeOutputDevices: false, includeRepeatShuffle: false)
     }
 
+    /// Command-arrows step the visual mode screen's effect (down/up) and the preset inside it
+    /// (left/right); every other key is the main window's.
     override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), let effects, effects.handleKeyDown(event) { return }
         if !MainWindowKeys.perform(event) { super.keyDown(with: event) }
     }
 }

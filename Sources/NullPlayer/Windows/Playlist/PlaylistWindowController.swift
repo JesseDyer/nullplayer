@@ -88,6 +88,10 @@ class PlaylistWindowController: NSWindowController, PlaylistWindowProviding {
         playlistView.reloadData()
     }
 
+    func page(by pages: Int) {
+        playlistView.page(by: pages)
+    }
+
     func resetToDefaultFrame() {
         guard let window, let mainWindow = WindowManager.shared.mainWindowController?.window else { return }
         let mainFrame = mainWindow.frame

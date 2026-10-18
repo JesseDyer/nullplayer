@@ -89,7 +89,9 @@ case "$FAMILY" in
   audion)
     ARGS+=(-audionFacePath "$FILE") ;;
   sonique)
-    ARGS+=(-soniqueSkinName "$NAME") ;;   # a launch argument: the saved selection is untouched
+    # Written, not passed as a launch argument: an argument pins the selection for the whole
+    # session, so picking another skin from the menu silently reloads this one.
+    defaults write $D soniqueSkinName -string "$NAME" ;;
 esac
 
 if [ "$PLAY" = 1 ] && [ -z "${NULLPLAYER_PLAY:-}" ]; then   # a caller's own file (e.g. a .cue) wins

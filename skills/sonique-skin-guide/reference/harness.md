@@ -265,8 +265,9 @@ decodes to pure black, which Sonique would draw transparent.
 
 ## Launching the app on a skin
 
-`skills/app-control/scripts/launch.sh sonique:<name>` (DEBUG builds only). Launch arguments, which
-leave the saved selection untouched:
+`skills/app-control/scripts/launch.sh sonique:<name>` (DEBUG builds only) writes the saved selection
+(`soniqueSkinName`) before launching, so the session it hands over can change skins from the menu.
+Launch arguments, which leave the saved selection untouched:
 
 | Argument | Meaning |
 |---|---|
@@ -277,7 +278,8 @@ leave the saved selection untouched:
 **Both arguments pin their setting for the whole launch.** They shadow the saved keys
 (`soniqueSkinName`, `soniqueSkinMode`) in the argument domain. Choosing another skin or mode from
 the menu saves it, but every read still returns the argument, so the window shows the launched skin
-and mode again on the next reload. Relaunch to test a menu selection.
+and mode again on the next reload. Relaunch to test a menu selection; never hand a pinned session
+to someone who will change skins in it (it reads as "skins cannot be changed", 2026-10-18).
 
 ## What the harness cannot see
 

@@ -329,6 +329,7 @@ extension ContextMenuBuilder {
     static func buildSoniqueSkinsMenu() -> NSMenu {
         var options = [
             skinMenuItem("Load Skin...", #selector(MenuActions.loadSoniqueSkinFromFile)),
+            skinMenuItem("Get More Skins...", #selector(MenuActions.getMoreSoniqueSkins)),
             skinMenuItem("Open Skins Folder...", #selector(MenuActions.openSoniqueSkinsFolder)),
             removeSkinItem(for: .sonique),
         ].compactMap { $0 }

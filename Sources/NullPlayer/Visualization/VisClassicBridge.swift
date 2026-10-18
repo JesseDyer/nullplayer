@@ -19,6 +19,8 @@ final class VisClassicBridge {
         /// A WMP skin's `<EFFECTS>` slot. Its profile controls stay in the skin surface's menu
         /// instead of altering the standalone analyzer or a `.wal` skin.
         case wmpEffects
+        /// The Sonique navigator's visual mode screen, the same surface as WMP's slot with its own keys.
+        case soniqueEffects
 
         var lastProfileNameKey: String {
             switch self {
@@ -26,6 +28,7 @@ final class VisClassicBridge {
             case .mainWindow: return "visClassicLastProfileName.mainWindow"
             case .winampModernVisBox: return "visClassicLastProfileName.winampModernVisBox"
             case .wmpEffects: return "visClassicLastProfileName.wmpEffects"
+            case .soniqueEffects: return "visClassicLastProfileName.soniqueEffects"
             }
         }
 
@@ -37,6 +40,7 @@ final class VisClassicBridge {
             case .mainWindow: return "visClassicSkinDefaultAppliedFor.mainWindow"
             case .winampModernVisBox: return "visClassicSkinDefaultAppliedFor.winampModernVisBox"
             case .wmpEffects: return "visClassicSkinDefaultAppliedFor.wmpEffects"
+            case .soniqueEffects: return "visClassicSkinDefaultAppliedFor.soniqueEffects"
             }
         }
 
@@ -46,6 +50,7 @@ final class VisClassicBridge {
             case .mainWindow: return "visClassicFitToWidth.mainWindow"
             case .winampModernVisBox: return "visClassicFitToWidth.winampModernVisBox"
             case .wmpEffects: return "visClassicFitToWidth.wmpEffects"
+            case .soniqueEffects: return "visClassicFitToWidth.soniqueEffects"
             }
         }
 
@@ -55,6 +60,7 @@ final class VisClassicBridge {
             case .mainWindow: return "visClassicTransparentBg.mainWindow"
             case .winampModernVisBox: return "visClassicTransparentBg.winampModernVisBox"
             case .wmpEffects: return "visClassicTransparentBg.wmpEffects"
+            case .soniqueEffects: return "visClassicTransparentBg.soniqueEffects"
             }
         }
 
@@ -64,6 +70,7 @@ final class VisClassicBridge {
             case .mainWindow: return "visClassicOpacity.mainWindow"
             case .winampModernVisBox: return "visClassicOpacity.winampModernVisBox"
             case .wmpEffects: return "visClassicOpacity.wmpEffects"
+            case .soniqueEffects: return "visClassicOpacity.soniqueEffects"
             }
         }
     }
@@ -390,8 +397,9 @@ final class VisClassicBridge {
         }
         // A `.wal` skin's `<vis>` box is a recess its author drew, and the analyzer that normally
         // lives there paints only its bars — an opaque black rectangle would cover the artwork.
-        if scope == .winampModernVisBox || scope == .wmpEffects {
-            return true
+        switch scope {
+        case .winampModernVisBox, .wmpEffects, .soniqueEffects: return true
+        case .spectrumWindow, .mainWindow: break
         }
         // Metal finishes default to a transparent vis_classic background so the analyzer
         // bars sit on the brushed-metal chrome instead of an opaque black box. Only the

@@ -45,13 +45,23 @@ struct SkinnedSurfaceRoles: Equatable {
     let selectionTextWasChosenByUser: Bool
     let textWasChosenByUser: Bool
     let currentTextWasChosenByUser: Bool
+    /// The colours a selected and the playing playlist row may be drawn in, best first, when the
+    /// family marks them apart from its row colour (`SkinnedSurfaceStyle.marked`); nil keeps the
+    /// classic idiom (white, and `currentText`).
+    let playlistMarks: PlaylistMarks?
+
+    struct PlaylistMarks: Equatable {
+        let selected: [NSColor]
+        let playing: [NSColor]
+    }
 
     init(background: NSColor, text: NSColor, currentText: NSColor,
          selectionBackground: NSColor, selectionText: NSColor,
          treeText: NSColor, treeSelection: NSColor,
          selectionTextWasChosenByUser: Bool = false,
          textWasChosenByUser: Bool = false,
-         currentTextWasChosenByUser: Bool = false) {
+         currentTextWasChosenByUser: Bool = false,
+         playlistMarks: PlaylistMarks? = nil) {
         self.background = background
         self.text = text
         self.currentText = currentText
@@ -62,6 +72,7 @@ struct SkinnedSurfaceRoles: Equatable {
         self.selectionTextWasChosenByUser = selectionTextWasChosenByUser
         self.textWasChosenByUser = textWasChosenByUser
         self.currentTextWasChosenByUser = currentTextWasChosenByUser
+        self.playlistMarks = playlistMarks
     }
 }
 
@@ -78,6 +89,11 @@ struct SkinnedSurfaceStyle: Equatable {
     /// The text a *selected* row is drawn in — the skin's own choice wherever that can be read on
     /// `selectionBackground`, and only otherwise something else. See `legible(preferring:on:)`.
     let selectedText: NSColor
+    /// A selected playlist row's text: the family's pick (`SkinnedSurfaceRoles.playlistMarks`) or
+    /// white, the classic idiom, guarded against the background.
+    let playlistSelectedText: NSColor
+    /// The playing playlist row's text: the family's pick, or `currentText`.
+    let playlistPlayingText: NSColor
 
     // Roles derived by blending, so a partial palette still produces a coherent surface.
     /// Toolbars, tab strips, status bars — a step away from the content background.
@@ -139,9 +155,29 @@ struct SkinnedSurfaceStyle: Equatable {
                                                      roles.text, roles.background],
                                         on: roles.selectionBackground)
         }
+        if let marks = roles.playlistMarks {
+            playlistPlayingText = Self.marked(marks.playing, apartFrom: text, on: roles.background)
+            playlistSelectedText = Self.marked(marks.selected, apartFrom: text, on: roles.background)
+        } else {
+            playlistPlayingText = currentText
+            // `legibleText(.white, on: background)`, written out: `self` is not complete until this is set.
+            playlistSelectedText = Self.legible(preferring: [.white, text, currentText, roles.selectionText,
+                                                             roles.background],
+                                                on: roles.background)
+        }
     }
 
     // MARK: - Legibility
+
+    /// How far a marked row's colour must be from the row colour to count as a different one.
+    static let distinctFromRows: CGFloat = 1.5
+
+    /// `.wal`'s rule for a marked row (`legibleCurrentRowColor`): the first of `candidates` readable
+    /// on `background`, never one within `distinctFromRows` of the `rows` colour. Without the filter
+    /// `legible`'s walk can end on the row colour itself, and the marked row looks like every other.
+    static func marked(_ candidates: [NSColor], apartFrom rows: NSColor, on background: NSColor) -> NSColor {
+        legible(preferring: candidates.filter { contrastRatio($0, rows) >= distinctFromRows }, on: background)
+    }
 
     /// The contrast a foreground must clear to count as readable.
     ///

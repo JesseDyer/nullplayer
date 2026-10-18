@@ -277,7 +277,7 @@ is wrong and must be revised or dropped; it is never a licence to fix that famil
 - `<EFFECTS>` colour sources: Cava takes the hosted surface style (`WMPSurfacePalette.surfaceStyle`,
   dim text → current text) as its `.wmpEffects` skin default; vis_classic starts on the bundled
   profile nearest that style, once per skin (`vis-classic-guide` §7); the native Bars / Spikes /
-  Ambience keep their fixed per-preset colours, as real WMP drew them. `WMPEffectsSurfaceView`
+  Ambience keep their fixed per-preset colours, as real WMP drew them. `SkinEffectsSurfaceView`
   re-reads all of it on `.hostedSurfaceStyleDidChange` — it has no palette reference of its own.
 - `VIDEO`/`WMPVIDEO` draw nothing — the placeholder that painted them opaque black over the skin's
   own artwork is gone (W9). Their `backgroundColor` paints only over what is already drawn beneath

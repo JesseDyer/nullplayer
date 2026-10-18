@@ -1,8 +1,10 @@
 import AppKit
 
-/// What a skin's `<EFFECTS>` rect draws, and the one place that answer lives.
+/// What a skin's effects surface (`SkinEffectsSurfaceView`) draws, and the one place that answer
+/// lives — one instance per skin family that hosts the surface, so a choice in one family never
+/// moves another's.
 ///
-/// **The skin has already said where the choice lives.** 96 of the 179 corpus archives bind
+/// **A `.wmz` skin has already said where the choice lives.** 96 of the 179 corpus archives bind
 /// `currentEffectType="wmpprop:mediacenter.effectType"` and `currentPreset="wmpprop:mediacenter.
 /// effectPreset"` (172 and 144 uses), 82 call `visEffects.next()` and 74 `visEffects.previous()`,
 /// and 51 wire an `onClick` on the rect itself to cycle. So the selector is a host property the
@@ -17,12 +19,25 @@ import AppKit
 /// image rather than mounted as a live `NSOpenGLView`.
 ///
 /// This choice is independent of NullPlayer's standalone Visualizations window — a skin cycling
-/// `visEffects` must never reconfigure the user's separate visualization engine — and it is
+/// `visEffects` must never reconfigure the user's separate visualization engine. WMP's is
 /// **remembered per skin**, not per session: `WMPVisualizationSettingsStore` saves it, and the
 /// slot's Cava and vis_classic settings with it, against the installed skin that was showing.
 @MainActor
-final class WMPEffectSelection {
-    static let shared = WMPEffectSelection()
+final class SkinEffectSelection {
+    /// A `.wmz` skin's `<EFFECTS>` rects.
+    static let wmp = SkinEffectSelection(cavaScope: .wmpEffects, visClassicScope: .wmpEffects,
+                                         waveformConsumerID: "wmp.effects.visclassic", defaultsKey: nil)
+    /// The Sonique navigator's visual mode screen.
+    /// Remembered across launches by itself: Sonique had one visualizer choice, not one per skin.
+    static let sonique = SkinEffectSelection(cavaScope: .soniqueEffects, visClassicScope: .soniqueEffects,
+                                             waveformConsumerID: "sonique.effects.visclassic",
+                                             defaultsKey: "soniqueEffect")
+
+    /// The family's own Cava and vis_classic settings, which its surfaces draw with, so a choice
+    /// in one family's right-click menu never moves another's or the standalone windows'.
+    let cavaScope: CavaSettings.Scope
+    let visClassicScope: VisClassicBridge.PreferenceScope
+    let waveformConsumerID: String
 
     struct Effect {
         let id: String
@@ -52,9 +67,9 @@ final class WMPEffectSelection {
         case bars, spikes, ambience, cava, visClassic, projectM, geiss, tripex
     }
 
-    /// Posted when the selected effect or preset changes, so every hosted surface follows one
-    /// choice. A WMP session has one skin and one window; the surfaces in it are the observers.
-    static let didChange = Notification.Name("WMPEffectSelectionDidChange")
+    /// Posted, with the selection as its object, when the selected effect or preset changes, so
+    /// every surface on that selection follows one choice.
+    static let didChange = Notification.Name("SkinEffectSelectionDidChange")
 
     /// **Eight effects, all rendering the same way in the rect** (W140). The first five are drawn
     /// by the surface itself; ProjectM, Geiss and Tripex render offscreen and are presented as an
@@ -76,11 +91,23 @@ final class WMPEffectSelection {
     /// preset number that landed on. Never posts a change: it is a report, not a choice.
     var presetTitle: String = ""
 
-    private init() {
-        // WMP's compact Spikes is a better first effect for the tiny, framed rectangles these
-        // skins author than borrowing the application's full-window visualization preference.
+    /// Where this selection saves its effect and preset on every change; nil for one saved by its
+    /// family (WMP's per-skin `WMPVisualizationSettingsStore`).
+    private let defaultsKey: String?
+
+    private init(cavaScope: CavaSettings.Scope, visClassicScope: VisClassicBridge.PreferenceScope,
+                 waveformConsumerID: String, defaultsKey: String?) {
+        self.cavaScope = cavaScope
+        self.visClassicScope = visClassicScope
+        self.waveformConsumerID = waveformConsumerID
+        self.defaultsKey = defaultsKey
+        // The compact Spikes is a better first effect for the small, framed rectangles skins
+        // author than borrowing the application's full-window visualization preference.
         index = 0
         presetTitle = ""
+        guard let defaultsKey, let id = UserDefaults.standard.string(forKey: defaultsKey) else { return }
+        index = Self.catalogue.firstIndex { $0.id == id } ?? 0
+        preset = UserDefaults.standard.integer(forKey: defaultsKey + "Preset")
     }
 
     var current: Effect { Self.catalogue[min(max(0, index), Self.catalogue.count - 1)] }
@@ -132,10 +159,11 @@ final class WMPEffectSelection {
 
     func stepPreset(by delta: Int) { setPreset(max(0, preset + delta)) }
 
-    private func post() { NotificationCenter.default.post(name: Self.didChange, object: self) }
-
-    var snapshot: WMPEffectsSnapshot {
-        WMPEffectsSnapshot(type: current.id, title: current.title,
-                           preset: preset, presetTitle: presetTitle)
+    private func post() {
+        if let defaultsKey {
+            UserDefaults.standard.set(current.id, forKey: defaultsKey)
+            UserDefaults.standard.set(preset, forKey: defaultsKey + "Preset")
+        }
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 }
