@@ -196,12 +196,12 @@ exits 1; one below it prints `BETTER`, and `--record` rewrites the file. Only co
 are in it, never artwork. Record after a change that improves the counts, never to silence a
 regression.
 
-Measured 2026-10-18 after S14's opaque knobs, with outline-first alignment (S10's own figures:
+Measured 2026-10-18 after S16's lettering, with outline-first alignment (S10's own figures:
 shape 1.49 / 4.69 / 4.39 %, colour 12.29 / 7.61 / 9.29 %):
 
 ```text
-SUMMARY nav: 524 compared, shape exact 512, shape 0.09%, colour 11.04% of 67176100 px
-SUMMARY mid: 524 compared, shape exact 521, shape 0.00%, colour 6.59% of 30591336 px
+SUMMARY nav: 524 compared, shape exact 512, shape 0.09%, colour 11.06% of 67176100 px
+SUMMARY mid: 524 compared, shape exact 521, shape 0.00%, colour 6.56% of 30591336 px
 SUMMARY small: 524 compared, shape exact 516, shape 0.00%, colour 10.14% of 2350770 px
 ```
 
@@ -212,6 +212,10 @@ What the counts are made of, from the worst cells:
   reproduced (`format.md` § *Mid mode's song window*).
 - **nav `colour`: the screen.** Sonique draws setup › skins over the display (§ *The oracle*); the
   renderer draws only the status line there. S7.
+- **Lettering trades per skin.** Grey-smoothed nav and mid text (S16) is net better (mid 6.59 →
+  6.56 %) but worse on 218 mid and ~235 nav cells, by a few dozen pixels each; the idle status line
+  reads `NullPlayer <version>` where Sonique writes `Sonique 1.96`, ~0.03 % of nav by design. Both
+  re-recorded in S21.
 - **small `colour` rose 9.33 → 10.14 % when alignment went outline-first**: at the outline's own
   alignment the bar's picture differs more than one pixel off, so the picture may sit 1 px from
   where Sonique draws it against the frame. Unexplained.
