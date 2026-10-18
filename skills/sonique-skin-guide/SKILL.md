@@ -53,6 +53,12 @@ definition. `skin-subsystem-blueprint` § *The rule that outranks everything* is
 | AppKit: controller, windows, views | `Sources/NullPlayer/Windows/SoniqueSkin/` |
 | Shared files | only through a gated seam, recorded in this skill |
 
+- **The equaliser seam:** `SkinDrawnEqualizer` (`App/MainWindowProviding.swift`). Only
+  `SoniqueSkinMainWindowController` conforms, so the conformance is the family gate: `WindowManager`
+  sends every Equalizer show and toggle, and `isEqualizerVisible`, to the drawer
+  (`routeSkinDrawnEqualizer`). A mode switch closes NullPlayer's EQ window, so none survives into
+  the family.
+
 - Never teach another family's types about `.sgf`; never share a loader with another family.
 - Never use another family's artwork as a default. A skin that omits an entry falls back to that
   entry in NullPlayer's own default Sonique skin (S11), drawn on Sonique's default layout; Sonique's

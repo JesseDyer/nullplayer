@@ -73,6 +73,12 @@ enum SoniqueSkinControl: Hashable {
 /// Which way small mode's drawer slid out, or nil while it is closed.
 enum SoniqueSmallDrawer: Equatable { case top, bottom }
 
+/// Which screen the navigator's display shows. Sonique has seven; NullPlayer keeps two in the
+/// display and opens its own windows for the rest (decision record § *Decisions*).
+enum SoniqueSkinNavScreen: Equatable {
+    case menu, visualMode
+}
+
 /// One mode of one skin in one state, laid out in skin pixels with a top-left origin: what to draw
 /// (`SoniqueSkinRenderer`) and what each pixel hits. The canvas is the mode's window: its outline's
 /// bounds, plus small mode's drawer room above and below the bar.
@@ -234,7 +240,7 @@ struct SoniqueSkinScene {
         let inside = outline.contains { $0.contains(x, y) }
         guard inside else { return (false, nil) }
         if mode == .navigator, let tab = drawerPart("/rgn/nav/drawertop"), tab.contains(x, y) { return (true, .drawerTab) }
-        if let entry = menuEntries.first(where: { $0.1.contains(x, y) }) { return (true, .menu(entry.0)) }
+        if let entry = menuEntries.first(where: { $0.hit.contains(x, y) }) { return (true, .menu(entry.item)) }
         for (control, name) in regionControls {
             if skin.region(mode.regions + name)?.contains(x, y) == true { return (true, control) }
         }
@@ -246,7 +252,7 @@ struct SoniqueSkinScene {
 
     /// Where the menu screen's entries are hit, moved from the display's top-left to the skin's; none
     /// on any other screen or mode.
-    var menuEntries: [(SoniqueSkinMenu.Item, SoniqueSkinRegion.Rect)] {
+    var menuEntries: [(item: SoniqueSkinMenu.Item, hit: SoniqueSkinRegion.Rect)] {
         guard mode == .navigator, navScreen == .menu, let display = skin.region("/rgn/nav/display")?.bounds else { return [] }
         return SoniqueSkinMenu.entries.map { ($0.item, $0.hit.offset(display.left, display.top)) }
     }

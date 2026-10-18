@@ -138,7 +138,6 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         skinView.skin = skin
         fitWindow()
         refreshHostState()
-        WindowManager.shared.dismissEqualizerWindowForSkinDrawer()
     }
 
     func applyUIScale(_ scale: CGFloat) {
@@ -164,18 +163,16 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     // MARK: - The drawer is the equaliser
 
     /// Whether the equaliser is on screen: the navigator with its drawer open.
-    var isDrawerShowing: Bool { mode == .navigator && skinView.navDrawerOpen }
+    var isEqualizerShowing: Bool { mode == .navigator && skinView.navDrawerOpen }
 
     /// NullPlayer's Equalizer request, answered with the drawer, which is this family's equaliser
-    /// (decision record § *Auxiliary-window policy*); NullPlayer's EQ window never opens here.
-    /// `switchingModes` goes to the navigator first, as a menu toggle does; the restore path passes
-    /// false, so launch never changes the mode the user left.
-    func revealDrawer(toggle: Bool, switchingModes: Bool) {
-        if toggle, isDrawerShowing {
-            skinView.navDrawerOpen = false
-            return
+    /// (decision record § *Auxiliary-window policy*). A toggle goes to the navigator first; a show is
+    /// the restore path, which never changes the mode the user left.
+    func revealEqualizer(toggle: Bool) {
+        if toggle {
+            if isEqualizerShowing { skinView.navDrawerOpen = false; return }
+            mode = .navigator
         }
-        if switchingModes { mode = .navigator }
         if mode == .navigator { skinView.navDrawerOpen = true }
     }
 
@@ -183,8 +180,8 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
 
     /// Every press, in one place (decision record § *Control mapping*). The mode jumps and minimise
     /// are the window's; mid mode's nav button goes to the navigator, its vis window to visual mode
-    /// and its song window to the Playlist Editor, as the menu screen's items do. Play is Sonique's play/stop toggle; pause resumes a paused track
-    /// (help `02.htm`).
+    /// and its song window to the Playlist Editor, as the menu screen's items do. Play is Sonique's
+    /// play/stop toggle; pause resumes a paused track (help `02.htm`).
     @MainActor
     private func perform(_ control: SoniqueSkinControl) {
         let engine = WindowManager.shared.audioEngine
@@ -199,7 +196,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         case .menu(.library): WindowManager.shared.toggleMediaLibrary()
         case .menu(.setup):
             skinView.popUp(ContextMenuBuilder.buildMenu(includeOutputDevices: false, includeRepeatShuffle: false), under: .setup)
-        case .menu(.audio): revealDrawer(toggle: false, switchingModes: true)
+        case .menu(.audio): skinView.navDrawerOpen = true
         case .menu(.spectrum): WindowManager.shared.toggleSpectrum()
         case .menu(.peppyMeter): WindowManager.shared.togglePeppyMeter()
         case .menu(.art): WindowManager.shared.toggleArt()
@@ -220,7 +217,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         case .eject: MenuActions.shared.openFile()
         case .shuffle: engine.shuffleEnabled.toggle()
         case .repeatButton: engine.repeatEnabled.toggle()
-        case .drawerTab: revealDrawer(toggle: true, switchingModes: false)
+        case .drawerTab: skinView.navDrawerOpen.toggle()
         // The dials turn by dragging (`onDial`); the rocker, shuttle and rings do nothing yet.
         case .volume, .amp, .balance, .pitch, .eqSlider, .up, .down, .shuttle, .songRing, .listRing: break
         }

@@ -1,12 +1,6 @@
 import CoreGraphics
 import Foundation
 
-/// Which screen the navigator's display shows. Sonique has seven; NullPlayer keeps two in the
-/// display and opens its own windows for the rest (decision record § *Decisions*).
-enum SoniqueSkinNavScreen: Equatable {
-    case menu, visualMode
-}
-
 /// The navigator's menu screen: Sonique's layout and colours (`format.md` § *The navigator's menu
 /// screen*), measured from the oracle's k2 capture in skin pixels from the display's top-left, with
 /// NullPlayer's items in Sonique's places (decision record § *Control mapping*). Lycos's logo, icons

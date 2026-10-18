@@ -98,7 +98,7 @@ final class SoniqueSkinMainView: NSView {
 
     /// `menu` popped up under a menu screen entry, as Sonique's own items open in place.
     func popUp(_ menu: NSMenu, under item: SoniqueSkinMenu.Item) {
-        guard let scene, let rect = scene.menuEntries.first(where: { $0.0 == item })?.1 else { return }
+        guard let scene, let rect = scene.menuEntries.first(where: { $0.item == item })?.hit else { return }
         let scale = bounds.width / CGFloat(max(1, scene.width))
         let point = NSPoint(x: CGFloat(rect.left - scene.canvas.left) * scale, y: CGFloat(rect.bottom - scene.canvas.top) * scale)
         menu.popUp(positioning: nil, at: point, in: self)

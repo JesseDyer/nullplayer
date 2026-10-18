@@ -134,6 +134,7 @@ private struct Painter {
                  spacing: t.spacing)
         }
         logo(at: dx, dy)
+        draw(SoniqueSkinMenu.Logo.label)
         SoniqueSkinMenu.headings.forEach(draw)
         draw(SoniqueSkinMenu.version(host.version))
         for entry in SoniqueSkinMenu.entries {
@@ -146,29 +147,12 @@ private struct Painter {
     /// NullPlayer's wordmark in the logo's place (`SoniqueSkinMenu.Logo`): the ring, then the word
     /// filled black and edged in `LogoColor` over it, as Sonique's letters cross its ring.
     private func logo(at dx: Int, _ dy: Int) {
-        let ring = SoniqueSkinMenu.Logo.ring.offset(dx, dy).cgRect
         context.setStrokeColor(colour("LogoRingColor"))
         context.setLineWidth(2)
-        context.strokeEllipse(in: ring)
-        let word = SoniqueSkinMenu.Logo.word, font = CTFontCreateWithName("Verdana-Bold" as CFString, word.size, nil)
-        let attributes: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0, alpha: 1),
-            NSAttributedString.Key(kCTStrokeColorAttributeName as String): colour(word.colour),
-            // Negative: fill and stroke, the stroke 6 % of the size.
-            NSAttributedString.Key(kCTStrokeWidthAttributeName as String): -6,
-        ]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: word.string, attributes: attributes))
-        context.saveGState()
-        context.textMatrix = .identity
-        context.translateBy(x: CGFloat(dx + word.x), y: CGFloat(dy + word.baseline))
-        context.scaleBy(x: 1, y: -1)
-        context.textPosition = .zero
-        CTLineDraw(line, context)
-        context.restoreGState()
-        let label = SoniqueSkinMenu.Logo.label
-        text(label.string, x: dx + label.x, baseline: dy + label.baseline, size: label.size,
-             rgb: skin.settings.colour(label.colour), spacing: label.spacing)
+        context.strokeEllipse(in: SoniqueSkinMenu.Logo.ring.offset(dx, dy).cgRect)
+        let word = SoniqueSkinMenu.Logo.word
+        text(word.string, x: dx + word.x, baseline: dy + word.baseline, size: word.size, rgb: 0,
+             outline: colour(word.colour))
     }
 
     /// A left-column icon: a box in `SystemColor_3`, as Sonique's, with NullPlayer's own plain mark.
@@ -206,7 +190,8 @@ private struct Painter {
                 context.fill(CGRect(x: x, y: inner.minY, width: 1, height: inner.height))
                 context.fill(CGRect(x: x - 1, y: inner.minY + inner.height * knob - 1, width: 3, height: 2))
             }
-        default:
+        // The right column's links are words alone.
+        case .spectrum, .peppyMeter, .art, .waveform, .skins, .history, .about:
             break
         }
         context.restoreGState()
@@ -569,22 +554,31 @@ private struct Painter {
         text(string, x: max(minX, centreX - Int((width / 2).rounded())), baseline: baseline, size: size, rgb: skin.settings.colour(key))
     }
 
-    private func line(_ string: String, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0) -> CTLine {
+    private func line(_ string: String, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0, outline: CGColor? = nil) -> CTLine {
         let font = CTFontCreateWithName("Verdana-Bold" as CFString, size, nil)
-        let attributes: [NSAttributedString.Key: Any] = [
+        var attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): SoniqueSkinRenderer.cgColor(rgb),
             NSAttributedString.Key(kCTKernAttributeName as String): spacing,
         ]
+        if let outline {
+            attributes[NSAttributedString.Key(kCTStrokeColorAttributeName as String)] = outline
+            // Negative: fill and stroke, the stroke 6 % of the size.
+            attributes[NSAttributedString.Key(kCTStrokeWidthAttributeName as String)] = -6
+        }
         return CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: attributes))
     }
 
-    /// Sonique's own lettering: Verdana Bold, unsmoothed as GDI drew it, on the skin pixel grid.
-    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0) {
-        let line = line(string, size: size, rgb: rgb, spacing: spacing)
+    /// Sonique's own lettering: Verdana Bold, unsmoothed as GDI drew it, on the skin pixel grid. An
+    /// `outline`d word is NullPlayer's wordmark, artwork rather than lettering, so it stays smooth.
+    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0,
+                      outline: CGColor? = nil) {
+        let line = line(string, size: size, rgb: rgb, spacing: spacing, outline: outline)
         context.saveGState()
-        context.setShouldAntialias(false)
-        context.setShouldSmoothFonts(false)
+        if outline == nil {
+            context.setShouldAntialias(false)
+            context.setShouldSmoothFonts(false)
+        }
         // Text draws upright in an unflipped space: undo the flip around the baseline.
         context.textMatrix = .identity
         context.translateBy(x: CGFloat(x), y: CGFloat(baseline))
