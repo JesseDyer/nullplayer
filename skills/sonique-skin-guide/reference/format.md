@@ -148,6 +148,24 @@ Sonique draws it on every screen along `/rgn/nav/display`'s bottom edge: a 13-ro
 span on that row, baseline 3 px above the edge. Trigun, Danzig and sonique all centre so; over the
 corpus it took nav `colour` from 12.03 to 11.08 %.
 
+## The navigator's menu screen
+
+Sonique's own screen, the one it opens on (oracle captures of sonique, k2, BlueEyes, Trigun,
+metrobin, bluehorizon and Danzig, 2026-10-18; `harness.md` § *The oracle* says how to reach it). Its
+layout is the same on every skin, placed from the display's top-left; a skin changes only its
+colours:
+
+| Part | Colour |
+|---|---|
+| left column: three large items with a one-line subtitle and a boxed icon (visual mode, playlist editor, find music), then two small two-line items (setup options, audio controls) | titles, subtitles and icons `SystemColor_3` |
+| right column: two headings (quick links, my sonique) of four links each | headings `SystemColor_2`, links `SystemColor_3` |
+| the version (`1.96`) bottom centre, above the status line | `SystemColor_2` |
+| Lycos's *sonique* logo top left | `LogoColor`, `LogoRingColor` |
+
+The logo, the icons and the quick links are Lycos's and are not copied (decision record
+§ *Decisions*). Not drawn yet (S7): which items NullPlayer's menu lists, and what stands in for the
+quick links, are the user's call.
+
 ## The navigator's drawer
 
 The *audio enhancement* drawer hangs under (or over) the console at `DRAWER_POS` and slides

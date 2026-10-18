@@ -100,7 +100,12 @@ A `0` means no Wine window was on screen: Sonique failed to start, or a dialog r
   6 audio controls (which also slides the drawer open), 7 search. **It switches screen only when
   Sonique is in another mode**, so go through `-showwindow 1 1` first; in navigator mode it does
   nothing, and 0 and 8 are ignored. The menu screen is not reachable by command once another screen
-  has shown, nor by a restart (Sonique reopens in its last mode): it needs the menu rocker clicked.
+  has shown, nor by a restart (Sonique reopens in its last mode). **Click the back ball** to reach it:
+  on every other screen a sixth ball sits 12 px left of the menu's five (the first of
+  `SoniqueSkinScene.ballRects`, less 12), and it returns to the menu; the rocker does not leave a
+  screen. A skin pixel (x, y) is at the window's (3 + x, 29 + y) in navigator mode.
+  `screens-2026-10-18` adds the menu of k2, BlueEyes, Trigun, metrobin, bluehorizon and Danzig
+  (`<skin>__menu.png`).
 - **Clicking the oracle:** Wine takes a click only while it is frontmost, so raise it first
   (`winhelper raise <pid of Sonique.exe>`); a click posted with Wine behind does nothing, and a locked
   screen refuses every click. `winhelper click`/`drag` refuse any window but NullPlayer's, so a click
