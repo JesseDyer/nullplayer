@@ -27,6 +27,9 @@
 - **Modern skins: text in fonts other than Arial is no longer oversized** — fonts with tall line
   spacing such as Impact and Tahoma were drawn larger than Winamp draws them, so TOX Milla's timer
   lost the tops of its digits. They now match each skin's own screenshot.
+- **Modern skins: no more flickering line below the XENERGY player** — the skin's visualization
+  sits in the space its config drawer slides into, and it drew on the desktop even with the drawer
+  closed. That space is now outside the window, as in Winamp.
 
 ## 0.33.0
 
