@@ -36,12 +36,14 @@ definition. `skin-subsystem-blueprint` § *The rule that outranks everything* is
   in every other skin: its range, units and steps are NullPlayer's (the pitch knob spans NullPlayer's
   0.25×–4×, not Sonique's 50–200 %). Never drive the oracle to measure a behaviour; decision record
   § *Decisions*.
-- **The navigator's screens are not to be cloned pixel for pixel.** Playlist, visual mode, audio
-  controls and search are NullPlayer's own views painted from the skin's colours through
-  `SkinnedSurfaceStyle` (`skin-subsystem-blueprint` § *The auxiliary-window policy*). What must look
+- **The navigator's screens are not to be cloned pixel for pixel.** The menu keeps Sonique's layout
+  and colours with NullPlayer's items; visual mode hosts the shared effects surface (S16); playlist and
+  library are NullPlayer's windows beside the player; the drawer is the equaliser. **The other skin
+  families are the template:** a surface the skin draws itself never gets a NullPlayer window too
+  (NullPlayer's EQ window never opens here; WMP's `revealSkinSurface` is the model). What must look
   like Sonique is bounded: the menu screen, status line, progress rings, knob strips and the drawer.
-  This is the decision that keeps the family near Classic's size; it is locked in
-  `docs/sonique/phase-0-decision-record.md`, and changing it means amending that record.
+  Locked in `docs/sonique/phase-0-decision-record.md` § *Decisions*; changing it means amending that
+  record.
 
 ## Isolation boundary
 

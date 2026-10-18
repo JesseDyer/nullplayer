@@ -17,11 +17,16 @@ the ranked work is `tasks/SONIQUE_TASKS.md`.
   of a mode's default state is evidence, as with Audion's FaceKit, but animation and every non-default
   state are unmeasured until a probe exists for them.
 - **The target is Sonique 1.96**, the last release, which reads skin spec versions 100 and 105.
-- **The navigator's screens are NullPlayer's, in the skin's colours.** Sonique draws them and a skin
-  only recolours them, so cloning them buys fidelity to Lycos's UI, not to the skin. What must match
-  the oracle: the menu screen's layout, the status line, the progress rings, the knob strips, the
-  drawer. What hosts NullPlayer's own views: playlist, visual mode, audio controls (NullPlayer's EQ),
-  search (the library). Setup and about open NullPlayer's own preferences and about panel.
+- **The navigator's screens, as the user decided them 2026-10-18 (amends the first draft).** The
+  menu screen keeps Sonique's layout and colours (`format.md` § *The navigator's menu screen*) with
+  NullPlayer's items in it (§ *Control mapping*). Only two screens stay inside the display: the menu
+  and visual mode, which hosts the effects surface WMP's `<EFFECTS>` uses (Spikes, Bars, Ambience,
+  Cava, vis_classic), extracted to a shared component. Playlist and library open NullPlayer's own
+  windows beside the player. Audio controls is the drawer. **The other skin families are the
+  template:** whatever the skin draws itself, NullPlayer never opens a window of its own for — the
+  drawer is Sonique's equaliser, so NullPlayer's EQ window never opens in this family (the same
+  routing WMP's `revealSkinSurface` does). What must match the oracle stays the menu screen's layout,
+  the status line, the progress rings, the knob strips and the drawer.
 - **No new behaviour for a skin.** Every control maps to an existing NullPlayer action
   (§ *Control mapping*); a Sonique feature NullPlayer lacks stays inert rather than being built here.
 - **The oracle settles looks, never behaviour.** A control works the way NullPlayer's works in every
@@ -203,16 +208,23 @@ OnePlayer's `verde`.
 | volume knob | volume |
 | drawer amp / bal / pitch knobs | preamp / balance / playback speed (`AudioEngine.setPlaybackSpeed`, the Playback Speed menu's control), centre detent 1.0×. The pitch knob spans NullPlayer's own speed range (`PitchTuningController`, 0.25×–4×, the menu's) on a log scale, and keeps NullPlayer's pitch-preserving speed. Sonique's own knob reads "Pitch Tempo" over 50–200 %, which is not copied |
 | nav up / down rocker | moves the menu selection, as in Sonique |
-| mid `top` / `bottom` (song / list) | navigator playlist screen / visual mode |
+| menu: visual mode | the visual mode screen: the shared effects surface in the display |
+| menu: playlist editor | the Playlist Editor window (`WindowManager.togglePlaylist`) |
+| menu: find music | the Library Browser (`WindowManager.toggleMediaLibrary`) |
+| menu: setup options | NullPlayer's right-click options menu, popped up at the item (NullPlayer has no Preferences window) |
+| menu: audio controls | opens the navigator's drawer |
+| menu: quick links (4 lines) | Spectrum Analyzer, PeppyMeter, Art, Waveform windows (`toggleSpectrum`, `togglePeppyMeter`, `toggleArt`, `toggleWaveform`) |
+| menu: my sonique (skins, plugins, help, about) | the Sonique skin picker menu; Play History (`showLibraryHistory`); the About panel |
+| mid `top` / `bottom` (song / list) | navigator visual mode screen / the Playlist Editor window |
 | window balls (minimise, close, help, mode up/down) | minimise / quit / NullPlayer help / switch mode |
 | `logohref` | nothing: a skin never opens a URL |
 
 ## Auxiliary-window policy
 
-- **Sonique has no windows of its own besides its one window in three modes.** Its playlist,
-  equaliser and visual mode are screens inside the navigator, so "ask what the skin provides first"
-  answers: the Playlist and Equalizer menu items switch to navigator mode on that screen, as
-  Sonique's own `P` key does for the playlist.
+- **Sonique has no windows of its own besides its one window in three modes.** Its equaliser is the
+  drawer and its visual mode a screen, so "ask what the skin provides first" answers: the Equalizer
+  menu item opens the drawer (switching to navigator mode), and NullPlayer's EQ window never opens.
+  The playlist is NullPlayer's Playlist Editor window (§ *Decisions*).
 - **NullPlayer windows Sonique has no screen for** (library browser, spectrum, waveform, analysis,
   PeppyMeter, Cava, Flow) use the shared controllers painted through `WindowManager.hostedSurfaceStyle`
   from a `SkinnedSurfaceStyle` built directly from the skin's `[sonique colors]` (no sampling needed),
@@ -233,5 +245,5 @@ go/no-go against the oracle for the 12-skin sample before S7 starts.
 1. **Pitch knob:** playback speed (§ *Control mapping*).
 2. **Repeat:** NullPlayer's on/off only; Sonique's loop-one state is unreachable.
 3. **Omitted entries:** NullPlayer's own default skin (§ *Omitted entries and the default skin*).
-4. **Navigator screens:** NullPlayer's views in the skin's colours (§ *Decisions*).
+4. **Navigator screens:** the menu and visual mode in the display, playlist and library as windows, the drawer as the equaliser (§ *Decisions*, amended 2026-10-18).
 5. **Exposure:** DEBUG-only until the spike passes and a later phase makes it public.

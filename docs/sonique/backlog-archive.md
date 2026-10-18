@@ -6,10 +6,10 @@ was closed on.
 
 ## Issuing a number
 
-**The next free number is S16.** S1–S10 were issued 2026-10-11, seeded from the family's planning
+**The next free number is S17.** S1–S10 were issued 2026-10-11, seeded from the family's planning
 session, S11 the same day when the default skin was decided, and S12 when S3 split. S13 was issued
 2026-10-17 from the Phase 1 code review. S1–S3 closed
-2026-10-11; S4 and S12 the same day; S5, S6 and S11 2026-10-17, closing Phase 1. S10, S8 and S9 2026-10-18; S14 issued 2026-10-18 from S9. S13 closed 2026-10-18. S14 closed and S15 issued from it 2026-10-18; S15 closed the same day. Check this file before reusing any number — the live backlog is a list of *open* work
+2026-10-11; S4 and S12 the same day; S5, S6 and S11 2026-10-17, closing Phase 1. S10, S8 and S9 2026-10-18; S14 issued 2026-10-18 from S9. S13 closed 2026-10-18. S14 closed and S15 issued from it 2026-10-18; S15 closed the same day; S16 issued from S7's decisions. Check this file before reusing any number — the live backlog is a list of *open* work
 and says nothing about which numbers are spent.
 
 ## Closed
