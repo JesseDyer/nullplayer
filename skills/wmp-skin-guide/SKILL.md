@@ -104,9 +104,10 @@ the file this table gives for it.
 
 - WMP maps to its own `PlayerUIControllerFamily.wmp`; it is neither Classic nor a
   `ModernSkinFamily`. Keep capability and menu exposure DEBUG-only until the public-exposure phase.
-- `WMPSkinImporter` owns `Application Support/NullPlayer/WMPSkins`, complete pre-commit validation,
-  same-directory atomic replacement, installed enumeration, and the `wmpSkinName` / view selection
-  keys. A failed replacement must leave both the installed archive and selection usable.
+- `WMPSkinImporter` owns `Application Support/NullPlayer/WMPSkins` (through the shared
+  `SkinInstallFolder`, which stages, validates the copy and commits by same-directory replacement),
+  complete pre-commit validation of the source, installed enumeration, and the `wmpSkinName` / view
+  selection keys. A failed replacement must leave both the installed archive and selection usable.
 - `WMPMainWindowController` must first present `WMPUnskinnedMainView`, then swap in only a completed
   static WMP scene. Missing/corrupt selections stay in WMP with an actionable diagnostic. Main-window
   fallback must never instantiate or consult Classic, Original, or Winamp Modern skin machinery.

@@ -22,23 +22,19 @@ enum AudionFaceImportError: LocalizedError {
     }
 }
 
-/// Owns the installed-faces directory and the selection preference. An import validates every face
-/// through `AudionFaceLoader` off the main thread before anything is written, copies it beside the
-/// destination as `.incoming-<UUID>`, and commits with one same-directory move.
+/// The installed-faces folder and the selection preference. Every face of an import is validated
+/// through `AudionFaceLoader` off the main thread as it is committed (`SkinInstallFolder`).
 struct AudionFaceImporter {
     static let selectedFaceNameKey = "audionFaceName"
 
-    let directoryURL: URL
+    let folder: SkinInstallFolder
     let defaults: UserDefaults
-    let fileManager: FileManager
+    var directoryURL: URL { folder.url }
+    private var fileManager: FileManager { folder.fileManager }
 
     init(directoryURL: URL? = nil, defaults: UserDefaults = .standard, fileManager: FileManager = .default) {
         self.defaults = defaults
-        self.fileManager = fileManager
-        self.directoryURL = directoryURL ?? (fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true))
-            .appendingPathComponent("NullPlayer", isDirectory: true)
-            .appendingPathComponent("AudionFaces", isDirectory: true)
+        folder = SkinInstallFolder("AudionFaces", at: directoryURL, fileManager: fileManager)
     }
 
     var selectedFaceName: String? { defaults.string(forKey: Self.selectedFaceNameKey) }
@@ -70,10 +66,6 @@ struct AudionFaceImporter {
         return face.url
     }
 
-    func ensureDirectoryExists() throws {
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-    }
-
     func select(_ name: String) { defaults.set(name, forKey: Self.selectedFaceNameKey) }
 
     func resetSelection() { defaults.removeObject(forKey: Self.selectedFaceNameKey) }
@@ -90,7 +82,6 @@ struct AudionFaceImporter {
                 ? try AudionFaceZipImport.unpack(source, into: staging)
                 : [source]
             guard !folders.isEmpty else { throw AudionFaceImportError.noFaceFound(source.lastPathComponent) }
-            try ensureDirectoryExists()
             var installed: [AudionInstalledFace] = []
             for folder in folders {
                 // A zip's top-level face unpacks into `staging` itself; it is named after the zip.
@@ -104,27 +95,16 @@ struct AudionFaceImporter {
         return installed
     }
 
-    private func install(_ folder: URL, as name: String) async throws -> AudionInstalledFace {
+    private func install(_ face: URL, as name: String) async throws -> AudionInstalledFace {
         let destination = directoryURL.appendingPathComponent(name, isDirectory: true)
-        let incoming = directoryURL.appendingPathComponent(".incoming-\(UUID().uuidString)", isDirectory: true)
-        defer { try? fileManager.removeItem(at: incoming) }
-        try fileManager.copyItem(at: folder, to: incoming)
-        // Validate the copied bytes, not the source: the copy is what gets committed.
-        _ = try await AudionFaceLoader.load(folder: incoming)
-        if fileManager.fileExists(atPath: destination.path) {
-            _ = try fileManager.replaceItemAt(destination, withItemAt: incoming, backupItemName: nil, options: [])
-        } else {
-            try fileManager.moveItem(at: incoming, to: destination)
-        }
+        try await folder.commit(face, to: destination) { _ = try await AudionFaceLoader.load(folder: $0) }
         return AudionInstalledFace(name: name, url: destination)
     }
 
     /// Deletes an installed face off the main thread; removing the selected one clears the selection.
     func removeFace(named name: String) async throws {
-        try await Task.detached(priority: .userInitiated) { [self] in
-            guard let face = face(named: name) else { throw AudionFaceImportError.notInstalled(name) }
-            try fileManager.removeItem(at: face.url)
-        }.value
+        guard let face = face(named: name) else { throw AudionFaceImportError.notInstalled(name) }
+        try await folder.remove(face.url)
         if selectedFaceName == name { resetSelection() }
     }
 }

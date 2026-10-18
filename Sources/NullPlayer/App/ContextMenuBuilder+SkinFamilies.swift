@@ -754,7 +754,7 @@ extension MenuActions {
     @objc func openAudionFacesFolder() {
         let importer = AudionFaceImporter()
         do {
-            try importer.ensureDirectoryExists()
+            try importer.folder.ensureExists()
             NSWorkspace.shared.open(importer.directoryURL)
         } catch {
             NSAlert(error: error).runModal()

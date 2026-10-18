@@ -4173,7 +4173,7 @@ class MenuActions: NSObject {
         guard AppCapabilities.supports(.wmpSkinMode) else { return }
         let importer = WMPSkinImporter()
         do {
-            try importer.ensureDirectoryExists()
+            try importer.folder.ensureExists()
             NSWorkspace.shared.open(importer.directoryURL)
         } catch {
             NSAlert(error: error).runModal()

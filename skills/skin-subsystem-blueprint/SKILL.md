@@ -82,6 +82,12 @@ family needed (`git diff main...HEAD -- Sources/NullPlayer/App` on the WMP branc
 Adding the `PlayerUIControllerFamily` case **first** turns the rest into a compiler worklist. That is
 the intended workflow: let the build tell you the seams instead of grepping for them.
 
+One shared type a family's importer uses rather than re-implements: **`SkinInstallFolder`**
+(`App/Skinning/`) owns `Application Support/NullPlayer/<folder>`, the `.incoming-<UUID>` copy that
+is validated as the bytes committed, the one same-directory move or replace, and the off-main
+delete. The family keeps its file test, loader call, naming and selection keys. WMP, `.wal`, Audion
+and Sonique all go through it (Sonique S13, 2026-10-18).
+
 One seam the compiler will not list: **the window drop shadow.** A family's windows never set
 `hasShadow`; they set `window.hasSkinShadow = true`, or attach `SkinWindowShadow` to the outline the
 engine already has, as `.wal`, `.wmz` and Audion do. Either way they join the one **Window Shadows**
