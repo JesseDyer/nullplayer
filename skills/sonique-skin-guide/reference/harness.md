@@ -100,8 +100,13 @@ A `0` means no Wine window was on screen: Sonique failed to start, or a dialog r
   6 audio controls (which also slides the drawer open), 7 search. **It switches screen only when
   Sonique is in another mode**, so go through `-showwindow 1 1` first; in navigator mode it does
   nothing, and 0 and 8 are ignored. The menu screen is not reachable by command once another screen
-  has shown, nor by a restart (Sonique reopens in its last mode): it needs the menu rocker clicked,
-  which a locked screen refuses. `SoniqueOracle/captures/screens-2026-10-18` holds screens 1–7 of
+  has shown, nor by a restart (Sonique reopens in its last mode): it needs the menu rocker clicked.
+- **Clicking the oracle:** Wine takes a click only while it is frontmost, so raise it first
+  (`winhelper raise <pid of Sonique.exe>`); a click posted with Wine behind does nothing, and a locked
+  screen refuses every click. `winhelper click`/`drag` refuse any window but NullPlayer's, so a click
+  on the oracle is a posted `CGEvent`. Sonique saves its settings (EQ on, knob positions) to the
+  registry when it quits: back up `prefix/user.reg` before clicking and put it back afterwards, or
+  later captures show the changed state. Never drive it to measure how a control behaves (`SKILL.md`). `SoniqueOracle/captures/screens-2026-10-18` holds screens 1–7 of
   sonique, BlueEyes and k2 (only sonique's `screen1` is the menu: `sonique__menu.png`).
 
 ### Outline comparison
@@ -186,12 +191,12 @@ exits 1; one below it prints `BETTER`, and `--record` rewrites the file. Only co
 are in it, never artwork. Record after a change that improves the counts, never to silence a
 regression.
 
-Measured 2026-10-18 after S7's status line, with outline-first alignment (S10's own figures:
+Measured 2026-10-18 after S14's opaque knobs, with outline-first alignment (S10's own figures:
 shape 1.49 / 4.69 / 4.39 %, colour 12.29 / 7.61 / 9.29 %):
 
 ```text
-SUMMARY nav: 524 compared, shape exact 512, shape 0.09%, colour 11.08% of 67176100 px
-SUMMARY mid: 524 compared, shape exact 521, shape 0.00%, colour 6.67% of 30591336 px
+SUMMARY nav: 524 compared, shape exact 512, shape 0.09%, colour 11.04% of 67176100 px
+SUMMARY mid: 524 compared, shape exact 521, shape 0.00%, colour 6.59% of 30591336 px
 SUMMARY small: 524 compared, shape exact 516, shape 0.00%, colour 10.14% of 2350770 px
 ```
 
@@ -232,7 +237,7 @@ grep RENDERED /tmp/sonique-render.txt
 | Flag | Meaning |
 |---|---|
 | `SONIQUE_RENDER_OUT` | the output directory; the probe skips without it |
-| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, both drawers open (the navigator's with amp, bal, pitch and the EQ sliders turned), lines and rings half full, full volume |
+| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, both drawers open (the navigator's with amp, bal, pitch and the EQ sliders turned), lines and rings half full, full volume. `drawer`: the oracle's state with the navigator's drawer open, to compare against the oracle's screen 6 (`-showwindow 3 6`; rename its capture `<skin>__nav_0.png` for the compare script) |
 
 ## The default skin
 

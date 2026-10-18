@@ -60,7 +60,7 @@ enum SoniqueSkinControl: Hashable {
     /// A press that does something; a region with no action (the display, the rings) is chassis.
     var isActionable: Bool {
         switch self {
-        case .songRing, .listRing, .drawerTab: return false
+        case .songRing, .listRing: return false
         default: return true
         }
     }

@@ -29,6 +29,8 @@ final class SoniqueSkinSceneTests: XCTestCase {
         XCTAssertEqual(hit(open, 4, 30 + 50 + 12), .eqSlider(0))
         XCTAssertEqual(hit(open, 2 + 3 * 5 + 1, 30 + 50 + 12), .eqSlider(3))
         XCTAssertEqual(hit(open, 105, 30 + 50 + 10), .amp)
+        // The tab is a press the window acts on (it toggles the drawer), not chassis.
+        XCTAssertTrue(SoniqueSkinControl.drawerTab.isActionable)
     }
 
     func testTheClosedDrawerHasNoDialsAndTheWindowKeepsRoomToOpen() throws {

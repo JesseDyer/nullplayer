@@ -32,6 +32,10 @@ definition. `skin-subsystem-blueprint` § *The rule that outranks everything* is
 - **The oracle is a running Sonique, not source.** Sonique is closed source and no reimplementation
   exists. A capture from the oracle is what Sonique drew; a diff against it is evidence, as with
   Audion's FaceKit oracle, but it covers the default state of each mode only.
+- **The oracle settles how it looks, never how it works.** Every control behaves as NullPlayer's does
+  in every other skin: its range, units and steps are NullPlayer's (the pitch knob spans NullPlayer's
+  0.25×–4×, not Sonique's 50–200 %). Never drive the oracle to measure a behaviour; decision record
+  § *Decisions*.
 - **The navigator's screens are not to be cloned pixel for pixel.** Playlist, visual mode, audio
   controls and search are NullPlayer's own views painted from the skin's colours through
   `SkinnedSurfaceStyle` (`skin-subsystem-blueprint` § *The auxiliary-window policy*). What must look

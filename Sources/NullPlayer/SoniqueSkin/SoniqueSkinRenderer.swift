@@ -121,17 +121,24 @@ private struct Painter {
         context.restoreGState()
     }
 
-    /// The open drawer's EQ slider handles (`SLIDEROFF`, `SLIDERON` while held) and its three knobs,
-    /// `/jpeg/smallknob`'s grey frames tinted with each knob's colour (skinpack § *animations*).
+    /// The open drawer's EQ slider handles (`SLIDEROFF`, `SLIDERON` while held), centred on their
+    /// tracks and see-through by their darkness (`handle(_:)`), and its three knobs, `/jpeg/smallknob`'s
+    /// grey frames tinted with each knob's colour (skinpack § *animations*).
     private func drawerDials(_ misc: CGImage, clip drawer: [SoniqueSkinRegion.Rect]) {
         let w = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_width")
         let h = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
-        for (index, value) in host.eq.prefix(SoniqueSkinScene.eqSliders).enumerated() {
-            let track = scene.eqSliderTrack(index)
-            let key = scene.pressed == .eqSlider(index) ? "SLIDERON" : "SLIDEROFF"
+        let handles = ["SLIDEROFF", "SLIDERON"].map { key -> CGImage? in
             let x = skin.settings.int("misc locations", key + "_x"), y = skin.settings.int("misc locations", key + "_y")
+            return misc.cropping(to: CGRect(x: x, y: y, width: w, height: h)).flatMap(Self.handle)
+        }
+        for (index, value) in host.eq.prefix(SoniqueSkinScene.eqSliders).enumerated() {
+            guard let handle = handles[scene.pressed == .eqSlider(index) ? 1 : 0] else { continue }
+            let track = scene.eqSliderTrack(index)
             let top = track.top + Int((1 - min(1, max(0, value))) * Double(track.bottom - track.top - h))
-            draw(misc, source: .init(left: x, top: y, right: x + w, bottom: y + h), x: track.left, y: top, clip: drawer)
+            context.saveGState()
+            clip(to: drawer)
+            draw(handle, x: track.left + (track.right - track.left - w) / 2, y: top)
+            context.restoreGState()
         }
         for (control, value, colour) in [(SoniqueSkinControl.amp, host.amp, "AmpKnobColor"),
                                          (.balance, host.balance, "BalKnobColor"), (.pitch, host.pitch, "PitchKnobColor")] {
@@ -139,12 +146,31 @@ private struct Painter {
         }
     }
 
+    /// A slider handle as Sonique blends it: each pixel's opacity is its luminance over 128, so the
+    /// near-black frame vanishes, mid-greys are half there and the light face is solid (sonique's
+    /// grey handle within 1 level, BlueEyes' blue ball within 5, over screen 6's open drawer).
+    private static func handle(_ sprite: CGImage) -> CGImage? {
+        let w = sprite.width, h = sprite.height
+        guard let context = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = context.data else { return nil }
+        context.draw(sprite, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let p = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        for i in stride(from: 0, to: w * h * 4, by: 4) where p[i + 3] == 255 {
+            let luma = (299 * Int(p[i]) + 587 * Int(p[i + 1]) + 114 * Int(p[i + 2])) / 1000
+            let alpha = min(255, luma * 2)
+            for c in 0..<4 { p[i + c] = UInt8(Int(p[i + c]) * alpha / 255) }
+        }
+        return context.makeImage()
+    }
+
     func mid() {
         picture()
         litStates(prefix: "", upDown: false)
         knob(control: .volume, strip: "/jpeg/volumeknob", key: "MISC_VOLUME_KNOB", value: host.volume)
         // The shuttle at rest is its first frame (258 mid captures closer than the middle one).
-        knob(control: .shuttle, strip: "/jpeg/shuttle", key: "MISC_SHUTTLE_KNOB", value: 0)
+        knob(control: .shuttle, strip: "/jpeg/shuttle", key: "MISC_SHUTTLE_KNOB", value: 0, opaque: false)
         ring(.songRing, progress: host.songProgress, colour: "ProgressColor_1")
         ring(.listRing, progress: host.listProgress, colour: "PlayListColor_1")
         songDisplay()
@@ -308,12 +334,20 @@ private struct Painter {
     /// at the control's top-left and cut to its shape: a frame can be wider than the knob (BlueEyes:
     /// 29 px frames on a 15 px knob), and the oracle shows only the part inside it.
     /// `tint` multiplies the frame by a `[sonique colors]` key: the drawer's knobs are grey strips.
-    private func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double, tint: String? = nil) {
+    /// A knob's frame is opaque, its pure black drawn black over the picture (257 captures closer); the
+    /// shuttle's is not (26 mid captures worse opaque), so it passes `opaque: false`.
+    private func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double,
+                      tint: String? = nil, opaque: Bool = true) {
         guard let strip = skin.image(name), let region = scene.region(for: control) else { return }
         let width = max(1, skin.settings.int("misc values", key + "_width"))
         let frames = max(1, min(skin.settings.int("misc values", key + "_images"), strip.width / width))
         let frame = Int((min(1, max(0, value)) * Double(frames - 1)).rounded())
         let b = region.bounds
+        if opaque {
+            let face = CGRect(x: b.left, y: b.top, width: width, height: strip.height)
+            context.setFillColor(CGColor(gray: 0, alpha: 1))
+            context.fill(region.rects.map { $0.cgRect.intersection(face) })
+        }
         draw(strip, source: .init(left: frame * width, top: 0, right: frame * width + width, bottom: strip.height),
              x: b.left, y: b.top, clip: region.rects)
         guard let tint else { return }

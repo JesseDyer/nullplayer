@@ -24,6 +24,9 @@ the ranked work is `tasks/SONIQUE_TASKS.md`.
   search (the library). Setup and about open NullPlayer's own preferences and about panel.
 - **No new behaviour for a skin.** Every control maps to an existing NullPlayer action
   (§ *Control mapping*); a Sonique feature NullPlayer lacks stays inert rather than being built here.
+- **The oracle settles looks, never behaviour.** A control works the way NullPlayer's works in every
+  other skin: its range, units and steps are NullPlayer's, not measured from Sonique (the user's ruling,
+  2026-10-18, on the pitch knob).
 - **Skins install as single `.sgf` files**, by Open/drag like the other families. No `.zip` import:
   Sonique distributed bare `.sgf` files, and none of the corpus came zipped.
 - **The loading limits below are locked**, and never relaxed to make one skin load. A limit found to
@@ -198,7 +201,7 @@ OnePlayer's `verde`.
 | shuffle | shuffle |
 | repeat | NullPlayer's repeat on/off. Sonique's third state, loop one, is unreachable: NullPlayer's GUI has no repeat-one |
 | volume knob | volume |
-| drawer amp / bal / pitch knobs | preamp / balance / playback speed (`AudioEngine.setPlaybackSpeed`, the Playback Speed menu's control), centre detent 1.0×. NullPlayer's speed preserves pitch; whether Sonique's knob also shifted pitch, and the speed range its travel spans, are read from the oracle in S9 |
+| drawer amp / bal / pitch knobs | preamp / balance / playback speed (`AudioEngine.setPlaybackSpeed`, the Playback Speed menu's control), centre detent 1.0×. The pitch knob spans NullPlayer's own speed range (`PitchTuningController`, 0.25×–4×, the menu's) on a log scale, and keeps NullPlayer's pitch-preserving speed. Sonique's own knob reads "Pitch Tempo" over 50–200 %, which is not copied |
 | nav up / down rocker | moves the menu selection, as in Sonique |
 | mid `top` / `bottom` (song / list) | navigator playlist screen / visual mode |
 | window balls (minimise, close, help, mode up/down) | minimise / quit / NullPlayer help / switch mode |

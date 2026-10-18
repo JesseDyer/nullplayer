@@ -157,12 +157,24 @@ in the drawer's own pixels, moved with it:
 
 | Part | From |
 |---|---|
-| 20 EQ sliders | tracks `MISC_DRAWER_SLIDER_SIZE` at `…_ARRAY_POS`, `…_PITCH` apart; the handle is `/jpeg/misc` at `SLIDEROFF` (`SLIDERON` while held), `MISC_DRAWER_SLIDER_HANDLE_SIZE` |
+| 20 EQ sliders | tracks `MISC_DRAWER_SLIDER_SIZE` at `…_ARRAY_POS`, `…_PITCH` apart; the handle is `/jpeg/misc` at `SLIDEROFF` (`SLIDERON` while held), `MISC_DRAWER_SLIDER_HANDLE_SIZE`, centred across its track (BlueEyes: 11 px on 13) |
 | amp, bal, pitch knobs | `/rgn/nav/dknobamp`, `dknobbal`, `dknobpitch`; frames of `/jpeg/smallknob` (`MISC_SMALL_KNOB`), grey, multiplied by `AmpKnobColor`, `BalKnobColor`, `PitchKnobColor` |
 | the tab that opens and closes it | `/rgn/nav/drawertop` |
 
 The window keeps room for the drawer open, as small mode's does for its drawers. NullPlayer maps the
 sliders to its 10 or 21 EQ bands by share, amp to the preamp, bal to balance and pitch to playback
-speed (`SoniqueSkinAudioEngineHost.setDial`). **Unmeasured** (S14): the open drawer against the
-oracle (screen 6 opens it by command, `harness.md` § *The oracle*), and the pitch knob's speed range,
-stood in by 0.5×–2× with a detent at 1.0×.
+speed over NullPlayer's own range (`SoniqueSkinAudioEngineHost.setDial`; decision record § *Control
+mapping*).
+
+Measured against the oracle's screen 6 (S14, sonique, BlueEyes, k2): the open drawer's outline is
+exact, and Sonique draws two things the art alone does not say.
+
+- **A slider handle is see-through by its darkness**: each pixel's opacity is its luminance over 128,
+  so the handle's near-black frame vanishes, its mid-grey rim is half there and its face is solid
+  (sonique's handle within 1 level, BlueEyes' blue ball within 5; opaque, or keyed below 64, are 9–48
+  levels off).
+- **A knob is opaque**: its pure black is drawn black, not the drawer under it. That holds for the
+  volume knobs too (257 corpus captures closer), but not the mid shuttle (26 worse), whose black stays
+  transparent.
+- **Unapplied:** sonique's pitch knob turns over frames 5–30 of its 36 (frame 17 at the middle), not
+  the whole strip as the renderer draws it; measured on one knob of one skin only (S15).
