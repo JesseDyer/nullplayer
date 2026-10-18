@@ -64,6 +64,8 @@ final class WinampModernOnyxV2Tests: XCTestCase {
                        "https://emby.example.com/Audio/a/stream.flac")
         XCTAssertEqual(try location("https://music.example.com/rest/stream?id=7", "application/octet-stream"),
                        "https://music.example.com/rest/stream", "an opaque type names no format")
+        XCTAssertEqual(try location("https://music.example.com/rest/stream?id=7", "octet-stream"),
+                       "https://music.example.com/rest/stream", "nor does a bare opaque token")
         XCTAssertEqual(try location("https://user:pw@radio.example.com/live", nil), "https://radio.example.com/live")
         XCTAssertEqual(try location("file:///Music/a%20b.m4a", nil), "/Music/a b.m4a")
     }

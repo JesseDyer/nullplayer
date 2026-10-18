@@ -311,6 +311,11 @@ final class WinampModernB95Tests: XCTestCase {
         <button id="Close" action="CLOSE" x="0" y="0" w="30" h="20" image="none"/>
         """)
         XCTAssertTrue(hotspot.inkColours().isEmpty, "a sized hotspot draws nothing")
+
+        let fitted = try makeScene(markup: """
+        <button id="Close" action="CLOSE" x="0" y="0" fitparent="1" image="none"/>
+        """)
+        XCTAssertTrue(fitted.inkColours().isEmpty, "a parent-sized hotspot draws nothing")
     }
 
     /// An unresolved id under the prefix that is not a control we know is left alone. This draws a

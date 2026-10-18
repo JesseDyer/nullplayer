@@ -768,7 +768,8 @@ final class WinampModernAudioEngineHost: WinampModernHost {
         var subtype = halves.last ?? ""
         if subtype.hasPrefix("x-") { subtype.removeFirst(2) }
         if subtype == "mpeg" { return "mp3" }
-        return subtype.isEmpty ? nil : subtype
+        // A format we can name, never an opaque token: a bare `octet-stream` is no extension either.
+        return codecNames[subtype] == nil ? nil : subtype
     }
 
     private static let codecNames: [String: String] = [

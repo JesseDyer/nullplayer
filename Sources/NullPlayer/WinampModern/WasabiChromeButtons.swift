@@ -82,9 +82,10 @@ enum WasabiChromeButtons {
         // ships `shade/Shade.png` but no `<bitmap id="player.shade.Shade">`, so its minimize,
         // windowshade and close sized to 0x0 and the player was stuck in shade for good. Only a
         // button that names an unresolved `image=` and states no size qualifies: one with `w`/`h`
-        // (Big Bento's `image="none"` slam, Pure Inspired's) is a deliberate hotspot over the skin's
-        // own background art, and drawing a glyph there doubles the art.
+        // (Big Bento's `image="none"` slam, Pure Inspired's) or `fitparent` is a deliberate hotspot
+        // over the skin's own background art, and drawing a glyph there doubles the art.
         guard object.attributes["w"] == nil, object.attributes["h"] == nil,
+              !WasabiGeometrySpec.flag(object.attributes["fitparent"]),
               let image = object.attributes["image"], !image.isEmpty, !resolves(image) else { return nil }
         switch object.attributes["action"]?.uppercased() {
         case "CLOSE": return .close
