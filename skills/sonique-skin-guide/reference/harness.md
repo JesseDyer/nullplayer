@@ -12,7 +12,7 @@ Nothing below is committed: not skins, not Sonique, not Lycos's docs, not captur
 | Corpus | `~/Library/Application Support/NullPlayer/SoniqueSkins/` (flat; a same-name variant keeps a `-<sha6>` suffix) |
 | Oracle install | `~/Library/Application Support/NullPlayer/SoniqueOracle/prefix/` (a Wine prefix; Sonique 1.96 portable in `C:\Sonique`, the corpus copied into `C:\Sonique\skins`) |
 | Lycos's format docs | `SoniqueOracle/docs/` (`misc.txt`, `how-to-make-skins-1.09.txt`, `pathdesc.txt`, `cmndline.htm`, `hotkeys.htm`, `tutorial/`) |
-| Oracle captures | `SoniqueOracle/captures/` |
+| Oracle captures | `SoniqueOracle/captures/`: `sample-2026-10-11` (12 skins), `corpus-2026-10-17` (all 524, the sweep's) |
 | Wine | Gcenx `Wine Devel.app` 11.18 in `~/Applications/` |
 
 The corpus came from the archive.org item `sonique_media_player` (`Sonique.zip`). That archive also
@@ -82,6 +82,15 @@ scripts/sonique_oracle_capture.sh --quit
 **Confirm it took:** one line per skin reading `<skin> nav=1 mid=1 small=1`, and three PNGs per skin.
 A `0` means no Wine window was on screen: Sonique failed to start, or a dialog replaced it.
 
+- **A skin already captured is skipped**, so rerunning the same command resumes an interrupted
+  corpus run. Delete a skin's PNGs to capture it again.
+- **The skin must be in the prefix's `C:\Sonique\skins`**; the script refuses one that is not.
+  Sonique draws its default skin for a path that does not exist, and that reads as a real capture:
+  the first corpus run caught four skins missing from the prefix this way.
+- **Every navigator capture shows the *setup › skins* screen** (the skin's thumbnail, title and
+  author), not screen 1: loading a skin opens that screen, and `-showwindow 3 1` leaves it. The
+  menu screen and the others are captured separately with `-showwindow 3 <n>`.
+
 - Captures are window-only (`screencapture -l <id>`). Never capture the full screen: it is the
   user's screen.
 - The first launch in a fresh prefix shows a *Register Sonique* dialog; dismiss it once by hand.
@@ -133,7 +142,65 @@ SUMMARY small: 10 outlines, region exact 4, wine exact 6, explained 10, default 
 
 Unpack `SoniquePortable.zip` from the archive, create a prefix with
 `WINEPREFIX=<SoniqueOracle>/prefix wineboot -i`, copy `SoniquePortable/App/Sonique/` to
-`drive_c/Sonique/`, and copy the corpus into `drive_c/Sonique/skins/`.
+`drive_c/Sonique/`, and copy the corpus into `drive_c/Sonique/skins/`. Copy a skin added to the
+corpus there too; the capture refuses one that is missing.
+
+## The oracle sweep
+
+The render probe's every mode of every skin against the oracle's capture of the corpus, against a
+committed ratchet. Run after any change to drawing or layout; it is how S7–S9 are measured.
+
+1. Capture the corpus through the oracle, once per change to the corpus or the oracle (about 80 min
+   unattended, resumable; run it in batches if a shell times out). Captures are never committed.
+2. Render the corpus in the oracle's state (§ *The render probe*, `SONIQUE_RENDER_STATE` unset).
+3. Compare. About 25 s on all cores.
+
+```bash
+C="$HOME/Library/Application Support/NullPlayer/SoniqueOracle/captures/corpus-2026-10-17"
+ls "$HOME/Library/Application Support/NullPlayer/SoniqueSkins" | tr '\n' '\0' | xargs -0 scripts/sonique_oracle_capture.sh "$C" > /tmp/sonique-capture.txt 2>&1
+scripts/sonique_oracle_capture.sh --quit
+python3 -I scripts/sonique_oracle_compare.py "$C" /tmp/sonique-render | grep -v '^ORACLE'
+```
+
+**Confirm it took:** `VERDICT 1572 compared` (three times the skin count) and three `SUMMARY` lines.
+A `MISSING` line is a capture with no render.
+
+Per skin and mode, in skin pixels (the capture halved; it is exact pixel doubling), the render placed
+on the capture by the two outlines' top-left corners and the best of a ±2 px search:
+
+| Count | Meaning |
+|---|---|
+| `shape` | inside one outline only, after Wine's distortion of the render's (`wine_shape`, § *Outline comparison*) and leaving out the oracle's unpainted white |
+| `colour` | inside both, a channel more than 48 levels apart: what Sonique paints that the renderer does not, or paints differently. Two JPEG decoders disagree by a few levels |
+| `area` | the oracle's outline |
+
+`docs/sonique/oracle-baseline.tsv` is the ratchet: a count above its row prints `REGRESSION` and
+exits 1; one below it prints `BETTER`, and `--record` rewrites the file. Only counts and skin names
+are in it, never artwork. Record after a change that improves the counts, never to silence a
+regression.
+
+Measured 2026-10-18 at the commit that closed S10:
+
+```text
+SUMMARY nav: 524 compared, shape exact 86, shape 1.49%, colour 12.29% of 67176100 px
+SUMMARY mid: 524 compared, shape exact 93, shape 4.69%, colour 7.61% of 30591336 px
+SUMMARY small: 524 compared, shape exact 146, shape 4.39%, colour 9.29% of 2350770 px
+```
+
+What the counts are made of, from the worst cells:
+
+- **`shape`, every mode: pure black inside the outline.** Sonique paints a picture's `0x000000`
+  pixels black inside the window; the renderer keys them out, so they are holes (Danzig nav
+  23,783 px, carrot mid, DE_maul small). Only the outline is transparent.
+- **mid: the display windows.** Sonique paints `/rgn/mid/top` and `bottom` opaque black, with the
+  track number and time in one and its own lettering in the rings (k2, carrot). S8.
+- **nav `colour`: the screen.** Sonique draws setup › skins over the display (§ *The oracle*); the
+  renderer draws nothing there yet. S7.
+- **`colour` where a skin leans on the default skin**: NullPlayer's default artwork is not Sonique's
+  (decision record § *Omitted entries*), so `lycossearch`, `hotbotsearch` and every omitted entry
+  differ by design.
+- The sweep found the drawer rule in `format.md` § *Window outline*: `MISC_DRAWER_POS` 0,0 is
+  unwritten (Barrels 19,051 → 36 px, winson99 7,753 → 651).
 
 ## The render probe
 

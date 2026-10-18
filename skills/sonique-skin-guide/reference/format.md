@@ -64,6 +64,8 @@ draws the last drawer in all four measured (8C8-HQ, Danzig, skreen, `_cut_in11`)
 - **`DRAWER_POS` wins whenever it is written**, whatever the spec version: BlueEyes (version 105)
   and corrosion write both and the oracle draws `DRAWER_POS`. `misc.txt` says 105 skins use
   `MISC_DRAWER_POS`; Sonique reads it only when `DRAWER_POS` is absent (Trigun, Danzig).
+- **`MISC_DRAWER_POS` of 0,0 is unwritten**: Barrels and winson99 write it and the oracle draws their
+  drawers at 29,229. One zero is honoured (QTOSX's 0,230, blou_aple's `DRAWER_POS` 499,0).
 - A skin with no `/rgn/nav/drawer` gets the default skin's drawer at 29,229, and one with no frame
   the default skin's frame. Sonique's default small frame is the one Pino, Splash and dm-candella
   carry.

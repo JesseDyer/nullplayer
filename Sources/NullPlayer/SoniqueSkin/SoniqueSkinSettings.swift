@@ -29,11 +29,14 @@ struct SoniqueSkinSettings {
     }
 
     /// Where the closed drawer's (0,0) sits on the navigator picture. `DRAWER_POS` wins whenever the
-    /// skin writes it, whatever its version; `MISC_DRAWER_POS` only otherwise (format.md § *Window outline*).
+    /// skin writes it, whatever its version; `MISC_DRAWER_POS` only otherwise, and 0,0 there reads as
+    /// unwritten (format.md § *Window outline*).
     var drawerPosition: (x: Int, y: Int) {
-        written("misc locations", "DRAWER_POS_x") != nil
-            ? (int("misc locations", "DRAWER_POS_x"), int("misc locations", "DRAWER_POS_y"))
-            : (int("misc values", "MISC_DRAWER_POS_x"), int("misc values", "MISC_DRAWER_POS_y"))
+        if written("misc locations", "DRAWER_POS_x") != nil {
+            return (int("misc locations", "DRAWER_POS_x"), int("misc locations", "DRAWER_POS_y"))
+        }
+        let misc = (int("misc values", "MISC_DRAWER_POS_x"), int("misc values", "MISC_DRAWER_POS_y"))
+        return misc == (0, 0) ? (29, 229) : misc  // `MISC_DRAWER_POS`'s default (`SoniqueSkinDefaults`)
     }
 
     /// The skin's own value; an empty one (`MISC_DRAWER_POS_x=`; 8 skins write one) counts as unwritten.

@@ -39,6 +39,10 @@ grab() {
 
 for skin in "$@"; do
   base=$(basename "${skin%.*}")
+  # Small mode is captured last, so a skin with it is complete; a rerun resumes an interrupted corpus.
+  [ -f "$out/${base}__small_0.png" ] && continue
+  # Sonique draws its default skin for a path that does not exist, which reads as a real capture.
+  [ -f "$WINEPREFIX/drive_c/Sonique/skins/$(basename "$skin")" ] || { echo "$base not in the oracle's skins folder" >&2; continue; }
   sq -loadskin "C:\\Sonique\\skins\\$(basename "$skin")"; nap 2.5
   sq -showwindow 3 1; nap 2.5; n=$(grab "${base}__nav")
   sq -showwindow 2 1; nap 2.5; m=$(grab "${base}__mid")

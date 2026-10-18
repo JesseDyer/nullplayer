@@ -20,8 +20,6 @@ import numpy as np
 from PIL import Image
 
 ORACLE = os.path.expanduser('~/Library/Application Support/NullPlayer/SoniqueOracle')
-CAPTURES = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ORACLE, 'captures/sample-2026-10-11')
-CORPUS = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/Library/Application Support/NullPlayer/SoniqueSkins')
 MODES = ('nav', 'mid', 'small')
 WINDOW_X = 3  # the skin's x = 0 sits 3 px into the captured window, which fixes Wine's byte phase
 
@@ -55,9 +53,9 @@ def ini(text):
 def drawer_pos(cfg):
     for section, key in (('misc locations', 'drawer_pos'), ('misc values', 'misc_drawer_pos')):
         x, y = (re.match(r'-?\d+', cfg.get((section, f'{key}_{axis}'), '')) for axis in 'xy')
-        if x and y:
+        if x and y and (key == 'drawer_pos' or (int(x.group()), int(y.group())) != (0, 0)):
             return int(x.group()), int(y.group())
-    return 29, 229
+    return 29, 229  # MISC_DRAWER_POS 0,0 reads as unwritten (Barrels, winson99)
 
 
 def paint(mask, payload, dx=0, dy=0):
@@ -116,27 +114,34 @@ def compare(model, capture):
     return best
 
 
-counts = {mode: [] for mode in MODES}
-for name in sorted(os.listdir(CAPTURES)):
-    skin_name, _, rest = name.partition('__')
-    mode = rest.split('_')[0]
-    if mode not in MODES or not rest.endswith('_0.png'):
-        continue
-    skin = entries(open(os.path.join(CORPUS, skin_name + '.sgf'), 'rb').read())
-    model, default_drawer = outline(skin, mode)
-    if model is None:
-        print(f'OUTLINE {skin_name} {mode} no-frame')
-        continue
-    capture = np.asarray(Image.open(os.path.join(CAPTURES, name)).convert('RGBA'))[::2, ::2]
-    region, _ = compare(model, capture)
-    wine, unexplained = compare(wine_shape(model), capture)
-    tag = ' default-drawer' if default_drawer else ''
-    counts[mode].append((region, wine, unexplained, default_drawer))
-    print(f'OUTLINE {skin_name} {mode} region={region} wine={wine} unexplained={unexplained}{tag}')
+def main():
+    captures = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ORACLE, 'captures/sample-2026-10-11')
+    corpus = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/Library/Application Support/NullPlayer/SoniqueSkins')
+    counts = {mode: [] for mode in MODES}
+    for name in sorted(os.listdir(captures)):
+        skin_name, _, rest = name.rpartition('__')  # a skin name can hold `__` itself (paper_)
+        mode = rest.split('_')[0]
+        if mode not in MODES or not rest.endswith('_0.png'):
+            continue
+        skin = entries(open(os.path.join(corpus, skin_name + '.sgf'), 'rb').read())
+        model, default_drawer = outline(skin, mode)
+        if model is None:
+            print(f'OUTLINE {skin_name} {mode} no-frame')
+            continue
+        capture = np.asarray(Image.open(os.path.join(captures, name)).convert('RGBA'))[::2, ::2]
+        region, _ = compare(model, capture)
+        wine, unexplained = compare(wine_shape(model), capture)
+        tag = ' default-drawer' if default_drawer else ''
+        counts[mode].append((region, wine, unexplained, default_drawer))
+        print(f'OUTLINE {skin_name} {mode} region={region} wine={wine} unexplained={unexplained}{tag}')
 
-for mode in MODES:
-    got = counts[mode]
-    if got:
-        print(f'SUMMARY {mode}: {len(got)} outlines, region exact {sum(r == 0 for r, *_ in got)}, '
-              f'wine exact {sum(w == 0 for _, w, *_ in got)}, explained {sum(u == 0 for _, _, u, _ in got)}, '
-              f'default drawer {sum(d for *_, d in got)}')
+    for mode in MODES:
+        got = counts[mode]
+        if got:
+            print(f'SUMMARY {mode}: {len(got)} outlines, region exact {sum(r == 0 for r, *_ in got)}, '
+                  f'wine exact {sum(w == 0 for _, w, *_ in got)}, explained {sum(u == 0 for _, _, u, _ in got)}, '
+                  f'default drawer {sum(d for *_, d in got)}')
+
+
+if __name__ == '__main__':
+    main()

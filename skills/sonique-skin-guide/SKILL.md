@@ -14,7 +14,8 @@ pattern every engine follows is `skin-subsystem-blueprint`.
 `SoniqueSkinScene` (layout and hit-testing) and `SoniqueSkinRenderer`; `Windows/SoniqueSkin/` the
 one window in three modes. `PlayerUIMode.sonique` routes it. The harness is a census, a render probe
 and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
-(`reference/harness.md`).
+(`reference/harness.md`), and the oracle sweep measures every skin's render against it
+(`docs/sonique/oracle-baseline.tsv`).
 
 ## The rule that outranks everything
 
@@ -61,6 +62,7 @@ definition. `skin-subsystem-blueprint` § *The rule that outranks everything* is
 | an `.sgf` entry, a region, a `skin.ini` key, what a skin can change | [reference/format.md](reference/format.md) |
 | a skin that will not load, an `SQ####` code, a limit | decision record § *Loading limits*; `SoniqueSkinPolicy` is its executable source |
 | the corpus, the census, the oracle, capturing what Sonique drew | [reference/harness.md](reference/harness.md) |
+| how far the renderer is from the oracle, per skin and mode; the committed ratchet | [reference/harness.md](reference/harness.md) § *The oracle sweep* |
 | what to work on next | `tasks/SONIQUE_TASKS.md` |
 
 ## Debugging a live defect

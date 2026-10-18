@@ -79,6 +79,13 @@ final class SoniqueSkinSettingsTests: XCTestCase {
         XCTAssertTrue(settings("").drawerPosition == (29, 229))
     }
 
+    /// Barrels and winson99 write `MISC_DRAWER_POS` 0,0 and the oracle draws their drawers at the
+    /// default; QTOSX's 0,230 and blou_aple's 499,0 are honoured.
+    func testDrawerPositionZeroZeroIsUnwritten() {
+        XCTAssertTrue(settings("[misc values]\nMISC_DRAWER_POS_x=0\nMISC_DRAWER_POS_y=0\n").drawerPosition == (29, 229))
+        XCTAssertTrue(settings("[misc values]\nMISC_DRAWER_POS_x=0\nMISC_DRAWER_POS_y=230\n").drawerPosition == (0, 230))
+    }
+
     func testAnOmittedEntryAndADefaultModeComeFromTheDefaultSkin() throws {
         var entries = SoniqueSkinFixture.complete
         entries[0] = ("/skin.ini", Data("[skin]\r\nTouchMidMode = 0\r\n".utf8))
