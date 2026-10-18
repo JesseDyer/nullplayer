@@ -4,7 +4,8 @@
 **Date:** 2026-10-11
 **Implementation branch:** `feat/sonique-skins`
 **Implementation base:** `8b8d4190` (`origin/main`)
-**Product exposure:** DEBUG-only (`AppFeature.soniqueSkinMode`) until a phase makes it public.
+**Product exposure:** public since Phase 2 closed (Amendment 5); an edition can still turn it off
+(`AppFeature.soniqueSkinMode`).
 
 Sonique skins are the sixth skin family, beside Classic, Original, Winamp Modern (`.wal`), Windows
 Media Player (`.wmz`) and Audion faces. The format is `skills/sonique-skin-guide/reference/format.md`;
@@ -208,6 +209,13 @@ OnePlayer's `verde`.
   window. They still draw the engine's values, so a preamp, balance or speed set elsewhere shows.
   The EQ sliders and the volume knob are unchanged.
 
+### Amendment 5 (Phase 2, 2026-10-18)
+
+- **The family is public.** Phase 2 closed with S16 and S17, and the user asked for the feature to
+  be made release-ready. `AppFeature.soniqueSkinMode` is no longer DEBUG-only; the DEBUG-only
+  mechanism (`AppFeature.isDebugOnly`) had no other user and is removed. The census, render probe
+  and oracle sweep stay DEBUG/test harness.
+
 ## Control mapping
 
 | Skin control | NullPlayer action |
@@ -257,4 +265,5 @@ go/no-go against the oracle for the 12-skin sample before S7 starts.
 2. **Repeat:** NullPlayer's on/off only; Sonique's loop-one state is unreachable.
 3. **Omitted entries:** NullPlayer's own default skin (§ *Omitted entries and the default skin*).
 4. **Navigator screens:** the menu and visual mode in the display, playlist and library as windows, the drawer as the equaliser (§ *Decisions*, amended 2026-10-18).
-5. **Exposure:** DEBUG-only until the spike passes and a later phase makes it public.
+5. **Exposure:** DEBUG-only until the spike passes and a later phase makes it public. Made public
+   when Phase 2 closed (Amendment 5).

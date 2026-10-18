@@ -28,6 +28,15 @@
   fader caps and response graph glow on a dark skin. Faders carry dB notches, the preamp has dB
   guides, HEADROOM, SAVE and RENAME are greyed when they would do nothing, and **View** switches
   the faceplate.
+- **Sonique skins** — support for Sonique 1.x `.sgf` skins in the new **Skins ▸ Sonique** menu.
+  **Get More Skins...** opens the Internet Archive's Sonique collection; **Load Skin...** installs
+  an `.sgf` and switches to it. All three of Sonique's modes are drawn from the skin — the
+  navigator, mid and small — and its balls switch between them, as does **Skins ▸ Sonique ▸
+  Mode**. The navigator's menu screen opens NullPlayer's playlist, library and windows; its visual
+  mode screen shows Spikes, Bars, Ambience, Cava or vis_classic, stepped with the up/down rocker;
+  the drawer is the equalizer (the Equalizer menu item opens it). Mid mode's rings show song and
+  playlist progress; small mode's drawer slides out on hover. A skin missing any part borrows it
+  from NullPlayer's own built-in Sonique skin, which is also what shows until you install one.
 - **Docking no longer flashes a large outline in Original skins** — docking or undocking a window
   briefly showed the group's old drop shadow stretched to its new size.
 - **An active tab in Original-Metal lights up as the green display** — in the Library and the

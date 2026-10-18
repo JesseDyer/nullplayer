@@ -15,8 +15,7 @@ Panic's GPL FaceKit defines the format and renders an oracle, so a diff against 
 defect, not an unclassified change.
 
 A sixth, `sonique` (Sonique 1.x `.sgf`, `sonique-skin-guide`, backlog `tasks/SONIQUE_TASKS.md`), is
-through its spike: the three modes drawn from the skin and driven (DEBUG-only), with real Sonique
-under Wine as its oracle.
+public: the three modes drawn from the skin and driven, with real Sonique under Wine as its oracle.
 
 **The reference implementation is `winamp-modern-skin-guide`**: the most successful engine here, and
 the model for the engine rules, the harness, the corpus census, the demand-driven backlog and the
@@ -73,7 +72,7 @@ family needed (`git diff main...HEAD -- Sources/NullPlayer/App` on the WMP branc
 | File | What a new family adds |
 |---|---|
 | `App/PlayerUIMode.swift` | the `PlayerUIMode` case, its `PlayerUIControllerFamily` case, and answers in `usesModernEQLayout` / `modernSkinFamily` |
-| `App/AppCapabilities.swift` | an `AppFeature` case, so an edition can turn the family off and DEBUG-only exposure is expressible |
+| `App/AppCapabilities.swift` | an `AppFeature` case, so an edition can turn the family off (a family under construction can make it DEBUG-only in `AppCapabilities.supports`, as Sonique's was until `docs/sonique/phase-0-decision-record.md` Amendment 5) |
 | `App/WindowManager.swift` | `makeMainWindowController(for:)`; the auxiliary-window policy; the init-time default-skin gate; `prepareUIRuntime(for:)`; the `reloadUI` availability guard; the fallback main-window size; compact-mode/window guards |
 | `App/AppDelegate.swift` | menu-bar items |
 | `App/ContextMenuBuilder.swift` | context-menu items; the family's Skins submenu goes in `ContextMenuBuilder+SkinFamilies.swift` (`buildSkinFamilyMenu` fixes the order: options, one divider, skins) and its `MenuActions.RemovableSkin` case |
