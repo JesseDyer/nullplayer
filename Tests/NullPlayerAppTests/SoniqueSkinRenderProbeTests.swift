@@ -16,14 +16,17 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
         try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
         // `SONIQUE_RENDER_STATE=playing` draws the lit play/stop, shuffle and repeat, small mode's
         // open drawer and half-filled lines at full volume; the default is the oracle's state:
-        // stopped, track 1 loaded, its knobs at their first frame (the prefix has no sound device).
+        // stopped with an empty playlist, shuffle and repeat on (its registry's `ShufflePlay` and
+        // `RepeatMode`; that is loop-one, which NullPlayer cannot show, and repeat-all's light is
+        // nearer it in 310 mid captures than none), its knobs at their first frame (the prefix has
+        // no sound device).
         let playing = env["SONIQUE_RENDER_STATE"] == "playing"
-        var host = SoniqueSkinHostState(volume: 0, trackNumber: 1, title: "05 - Bella Ciao.mp3")
+        var host = SoniqueSkinHostState(shuffle: true, repeatAll: true, volume: 0)
         if playing {
             host.volume = 1
             host.playState = .playing
-            host.shuffle = true
-            host.repeatAll = true
+            host.trackNumber = 1
+            host.title = "05 - Bella Ciao.mp3"
             host.songProgress = 0.5
             host.listProgress = 0.5
             host.elapsedSeconds = 3_923

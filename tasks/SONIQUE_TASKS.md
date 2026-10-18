@@ -19,7 +19,6 @@ byte-identical to the capture before it.
 | ID | Item | Reach | Notes |
 |---|---|---|---|
 | S7 | Navigator menu screen and status line drawn in the skin's colours; the other screens host NullPlayer's views per the decision record | all | Capture every screen through the oracle first (`-showwindow 3 1..7`) |
-| S8 | Mid mode: display placement, song and list progress rings (`mid_playlistmode` 270°/360°), shuttle | 520 | How the display's position is derived per skin is not yet known; the oracle sample shows it moving. First, the oracle sweep's largest `shape` count in every mode: Sonique paints a picture's pure black black inside the window, the renderer keys it out (`harness.md` § *The oracle sweep*) |
 | S9 | Knob animation strips (volume, amp/bal/pitch, shuttle) and the EQ drawer | 511 | The pitch knob drives playback speed; read from the oracle the speed range its travel spans and whether Sonique's pitch shifted with it |
 
 ## After Phase 2 — shared code

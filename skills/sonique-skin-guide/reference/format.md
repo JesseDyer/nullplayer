@@ -19,7 +19,10 @@ The skinpack's own words: *"You cannot change anything inside of the screens exc
 and resizing a screen *"probably won't work"*. Mid mode is the exception in practice: corpus skins
 reshape it freely (Trigun is a cross, MintE a swirl), see the sample captures.
 
-**`0x000000` is transparent** in every picture. Authors use a near-black for black.
+**`0x000000` is transparent** in every picture, but inside the window Sonique paints black under
+it: only the outline is see-through. The key still matters for what is drawn over a picture (lit
+states, knob frames) and for the closed drawer under the navigator's. Authors use a near-black. Measured by the oracle sweep:
+filling the outline black first took shape-exact captures from 86/93/146 to 512/519/492 of 524.
 
 ## Container
 
@@ -113,3 +116,26 @@ decision record's § *INI rules*.
   author following `misc.txt` adds a second holding `version=105`. Only the first is read.
 - A key written in the wrong section is not read. `NC_BB_DIST_FROM_RIGHT` is the common one (8 skins
   put it in `[misc locations]`, 3 in `[msm locations]`); whether Sonique looks there is unmeasured.
+
+## Mid mode's song window
+
+Sonique draws it itself, at fixed offsets from `/rgn/mid/bottom`'s top-left whatever the region's
+size (identical in sonique, sTek2k, musicman, k2 and carrot, 86 to 94 px wide), cut to the region:
+
+| Part | Where (from the region's top-left) | Colour |
+|---|---|---|
+| tab, open at the top, 3 px sides and bottom, rounded below | x 13–81, y 0–31 | edge `BorderColor`, inside `SystemBkColor_2`; pure black is not drawn (k2, BlueEyes, Stargate's inside) |
+| track number, `000` with nothing loaded | digits y 5–15, centred on x 47 | `SystemColor_1` |
+| elapsed time, `mm:ss.hh` | digits y 19–25 | `SystemColor_1` |
+| status line: the title, `Sonique 1.96` when idle (NullPlayer writes its own name) | y 35–42 | `SystemColor_1` |
+
+- About 37 skins have a song window too small for that, and Sonique lays them out tighter: Trigun
+  (74×26) shows the time alone, centred; CougarKW (59×30) drops the hundredths. Not reproduced: they
+  get the full layout cut to the region.
+- In some skins Sonique also draws a `◀ vis ▶` tab at the bottom of `/rgn/mid/top` (sTek2k). Not
+  reproduced.
+- **The progress rings** (`songposring`, `listposring`) are the picture while empty, as every
+  stopped capture shows; a flat `ProgressBkColor` there made 239 captures worse. How they fill
+  (start angle, colour, `mid_playlistmode`'s 270° against 360°) needs a playing oracle, which the
+  prefix cannot give: it has no sound device.
+- **The shuttle at rest is the strip's first frame**: 258 mid captures closer than the middle frame.

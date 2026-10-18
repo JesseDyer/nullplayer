@@ -4,7 +4,7 @@ import Foundation
 
 /// A `SoniqueSkinScene` to pixels, one skin pixel per pixel. Pure CoreGraphics, so the harness and
 /// the window draw through the same path. The loader has already keyed pure black out of every
-/// picture; the outline clips everything.
+/// picture; the outline clips everything, and is black under it all.
 enum SoniqueSkinRenderer {
     static func render(_ scene: SoniqueSkinScene) -> CGImage? {
         let w = scene.width, h = scene.height
@@ -19,6 +19,10 @@ enum SoniqueSkinRenderer {
         context.interpolationQuality = .none
         let painter = Painter(context: context, scene: scene)
         painter.clip(to: scene.outline)
+        // Inside the window Sonique paints black where a picture is pure black; only the outline
+        // is transparent.
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.fill(CGRect(x: scene.canvas.left, y: scene.canvas.top, width: w, height: h))
         switch scene.mode {
         case .navigator: painter.navigator()
         case .mid: painter.mid()
@@ -92,7 +96,71 @@ private struct Painter {
         picture()
         litStates(prefix: "", upDown: false)
         knob(control: .volume, strip: "/jpeg/volumeknob", key: "MISC_VOLUME_KNOB", value: host.volume)
-        knob(control: .shuttle, strip: "/jpeg/shuttle", key: "MISC_SHUTTLE_KNOB", value: 0.5)
+        // The shuttle at rest is its first frame (258 mid captures closer than the middle one).
+        knob(control: .shuttle, strip: "/jpeg/shuttle", key: "MISC_SHUTTLE_KNOB", value: 0)
+        ring(.songRing, progress: host.songProgress, colour: "ProgressColor_1")
+        ring(.listRing, progress: host.listProgress, colour: "PlayListColor_1")
+        songDisplay()
+    }
+
+    /// A progress ring: the part come so far in `colour`, clockwise from the top (`mid_playlistmode`
+    /// 0) or across 270° from the bottom left (1). An empty ring is the picture, as the oracle draws it
+    /// (a flat `ProgressBkColor` there made 239 mid captures worse).
+    /// ponytail: the start angle and the fill colour are guesses, since the oracle captures only the
+    /// stopped state, where both rings are empty; measure them from a playing oracle.
+    private func ring(_ control: SoniqueSkinControl, progress: Double, colour key: String) {
+        guard progress > 0, let region = scene.region(for: control) else { return }
+        context.saveGState()
+        clip(to: region.rects)
+        let b = region.bounds.cgRect
+        // Skin pixels run top-down, so angles grow clockwise; -90° is the top.
+        let (start, sweep) = skin.settings.int("misc values", "mid_playlistmode") == 0
+            ? (-Double.pi / 2, 2 * Double.pi) : (3 * Double.pi / 4, 1.5 * Double.pi)
+        let centre = CGPoint(x: b.midX, y: b.midY)
+        context.move(to: centre)
+        context.addArc(center: centre, radius: max(b.width, b.height), startAngle: start,
+                       endAngle: start + sweep * min(1, progress), clockwise: false)
+        context.closePath()
+        context.setFillColor(colour(key))
+        context.fillPath()
+        context.restoreGState()
+    }
+
+    /// Mid mode's song window, Sonique's own drawing at fixed offsets from `/rgn/mid/bottom`'s top-left
+    /// whatever its size (measured on sonique, sTek2k, musicman, k2, carrot): a tab in
+    /// `SystemBkColor_2` edged in `BorderColor` (pure black is not drawn), the track number, the time
+    /// and the status line in `SystemColor_1`.
+    /// ponytail: ~37 skins have a song window too small for this, and Sonique lays those out tighter
+    /// (Trigun shows the time alone, CougarKW drops the hundredths); here they get it cut to the region.
+    private func songDisplay() {
+        guard let region = scene.region(for: .songInfo) else { return }
+        let x = region.bounds.left, y = region.bounds.top
+        context.saveGState()
+        clip(to: region.rects)
+        // The tab hangs from the window's top edge: open at the top, 3 px sides and bottom.
+        let tab = { (inset: Int) in
+            CGPath(roundedRect: CGRect(x: x + 13 + inset, y: y - 8, width: 68 - 2 * inset, height: 39 - inset),
+                   cornerWidth: 5, cornerHeight: 5, transform: nil)
+        }
+        if skin.settings.colour("SystemBkColor_2") != 0 {
+            context.addPath(tab(3))
+            context.setFillColor(colour("SystemBkColor_2"))
+            context.fillPath()
+        }
+        if skin.settings.colour("BorderColor") != 0 {
+            context.addPath(tab(0))
+            context.addPath(tab(3))
+            context.setFillColor(colour("BorderColor"))
+            context.fillPath(using: .evenOdd)
+        }
+        let seconds = host.elapsedSeconds
+        let lines = [(String(format: "%03d", host.trackNumber), 15, CGFloat(14)),
+                     (String(format: "%02d:%02d.00", seconds / 60 % 100, seconds % 60), 25, 10),
+                     (host.title.isEmpty ? "NullPlayer" : host.title, 41, 9)]
+        for (string, baseline, size) in lines {
+            text(string, centreX: x + 47, minX: x + 13, baseline: y + baseline, size: size, colour: "SystemColor_1")
+        }
+        context.restoreGState()
     }
 
     func small() {
@@ -305,14 +373,24 @@ private struct Painter {
         text(string, x: x, baseline: baseline, size: size, rgb: skin.settings.colour(key))
     }
 
-    /// Sonique's own lettering: Verdana Bold, unsmoothed as GDI drew it, on the skin pixel grid.
-    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32) {
+    /// Centred on `centreX`, but starting no further left than `minX`: a long title keeps its start.
+    private func text(_ string: String, centreX: Int, minX: Int, baseline: Int, size: CGFloat, colour key: String) {
+        let width = CTLineGetTypographicBounds(line(string, size: size, rgb: 0), nil, nil, nil)
+        text(string, x: max(minX, centreX - Int((width / 2).rounded())), baseline: baseline, size: size, rgb: skin.settings.colour(key))
+    }
+
+    private func line(_ string: String, size: CGFloat, rgb: UInt32) -> CTLine {
         let font = CTFontCreateWithName("Verdana-Bold" as CFString, size, nil)
         let attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): SoniqueSkinRenderer.cgColor(rgb),
         ]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: attributes))
+        return CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: attributes))
+    }
+
+    /// Sonique's own lettering: Verdana Bold, unsmoothed as GDI drew it, on the skin pixel grid.
+    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32) {
+        let line = line(string, size: size, rgb: rgb)
         context.saveGState()
         context.setShouldAntialias(false)
         context.setShouldSmoothFonts(false)

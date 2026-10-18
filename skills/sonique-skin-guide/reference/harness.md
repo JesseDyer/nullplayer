@@ -179,21 +179,20 @@ exits 1; one below it prints `BETTER`, and `--record` rewrites the file. Only co
 are in it, never artwork. Record after a change that improves the counts, never to silence a
 regression.
 
-Measured 2026-10-18 at the commit that closed S10:
+Measured 2026-10-18 at the commit that closed S8 (S10's own figures, before black under the
+picture and the oracle's state: shape 1.49 / 4.69 / 4.39 %, colour 12.29 / 7.61 / 9.29 %):
 
 ```text
-SUMMARY nav: 524 compared, shape exact 86, shape 1.49%, colour 12.29% of 67176100 px
-SUMMARY mid: 524 compared, shape exact 93, shape 4.69%, colour 7.61% of 30591336 px
-SUMMARY small: 524 compared, shape exact 146, shape 4.39%, colour 9.29% of 2350770 px
+SUMMARY nav: 524 compared, shape exact 512, shape 0.10%, colour 12.16% of 67176100 px
+SUMMARY mid: 524 compared, shape exact 519, shape 0.01%, colour 6.67% of 30591336 px
+SUMMARY small: 524 compared, shape exact 492, shape 0.32%, colour 9.33% of 2350770 px
 ```
 
 What the counts are made of, from the worst cells:
 
-- **`shape`, every mode: pure black inside the outline.** Sonique paints a picture's `0x000000`
-  pixels black inside the window; the renderer keys them out, so they are holes (Danzig nav
-  23,783 px, carrot mid, DE_maul small). Only the outline is transparent.
-- **mid: the display windows.** Sonique paints `/rgn/mid/top` and `bottom` opaque black, with the
-  track number and time in one and its own lettering in the rings (k2, carrot). S8.
+- **mid `colour`: what Sonique letters itself.** Its song-window face is narrower than Verdana
+  Bold, the idle status reads `Sonique 1.96`, and the vis tab and small-window layouts are not
+  reproduced (`format.md` § *Mid mode's song window*).
 - **nav `colour`: the screen.** Sonique draws setup › skins over the display (§ *The oracle*); the
   renderer draws nothing there yet. S7.
 - **`colour` where a skin leans on the default skin**: NullPlayer's default artwork is not Sonique's
@@ -223,7 +222,7 @@ grep RENDERED /tmp/sonique-render.txt
 | Flag | Meaning |
 |---|---|
 | `SONIQUE_RENDER_OUT` | the output directory; the probe skips without it |
-| `SONIQUE_RENDER_STATE` | unset: the oracle's state (stopped, track 1, knobs at frame 0, as the prefix has no sound device). `playing`: lit play/stop, shuffle and repeat, small mode's drawer open, lines half full, full volume |
+| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, small mode's drawer open, lines and rings half full, full volume |
 
 ## The default skin
 
