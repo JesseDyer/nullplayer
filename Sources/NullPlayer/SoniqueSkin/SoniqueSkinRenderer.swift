@@ -142,7 +142,10 @@ private struct Painter {
         }
         for (control, value, colour) in [(SoniqueSkinControl.amp, host.amp, "AmpKnobColor"),
                                          (.balance, host.balance, "BalKnobColor"), (.pitch, host.pitch, "PitchKnobColor")] {
-            knob(control: control, strip: "/jpeg/smallknob", key: "MISC_SMALL_KNOB", value: value, tint: colour)
+            // A drawer knob's strip is a full turn, of which the knob sweeps 250° about its middle frame
+            // (oracle: frames 5–30 of sonique's 36, 3–16 of metrobin's 20, 2–8 of bluehorizon's 11).
+            knob(control: control, strip: "/jpeg/smallknob", key: "MISC_SMALL_KNOB", value: value, tint: colour,
+                 turn: 250.0 / 360)
         }
     }
 
@@ -335,13 +338,14 @@ private struct Painter {
     /// 29 px frames on a 15 px knob), and the oracle shows only the part inside it.
     /// `tint` multiplies the frame by a `[sonique colors]` key: the drawer's knobs are grey strips.
     /// A knob's frame is opaque, its pure black drawn black over the picture (257 captures closer); the
-    /// shuttle's is not (26 mid captures worse opaque), so it passes `opaque: false`.
+    /// shuttle's is not (26 mid captures worse opaque), so it passes `opaque: false`. `turn` is the
+    /// share of the strip, centred on its middle, that the value spans.
     private func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double,
-                      tint: String? = nil, opaque: Bool = true) {
+                      tint: String? = nil, opaque: Bool = true, turn: Double = 1) {
         guard let strip = skin.image(name), let region = scene.region(for: control) else { return }
         let width = max(1, skin.settings.int("misc values", key + "_width"))
         let frames = max(1, min(skin.settings.int("misc values", key + "_images"), strip.width / width))
-        let frame = Int((min(1, max(0, value)) * Double(frames - 1)).rounded())
+        let frame = Int(((0.5 + (min(1, max(0, value)) - 0.5) * turn) * Double(frames - 1)).rounded())
         let b = region.bounds
         if opaque {
             let face = CGRect(x: b.left, y: b.top, width: width, height: strip.height)

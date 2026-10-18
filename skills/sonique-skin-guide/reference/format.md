@@ -176,5 +176,10 @@ exact, and Sonique draws two things the art alone does not say.
 - **A knob is opaque**: its pure black is drawn black, not the drawer under it. That holds for the
   volume knobs too (257 corpus captures closer), but not the mid shuttle (26 worse), whose black stays
   transparent.
-- **Unapplied:** sonique's pitch knob turns over frames 5–30 of its 36 (frame 17 at the middle), not
-  the whole strip as the renderer draws it; measured on one knob of one skin only (S15).
+- **A drawer knob sweeps 250° of a full-turn strip**, centred on its middle frame: frame
+  `round((n − 1) × (0.5 + (value − 0.5) × 250/360))` of `n`. Measured at both ends (S15): frames 5–30
+  of sonique's 36 on all three knobs, 3–16 of metrobin's 20, 2–8 of bluehorizon's 11; sonique's and
+  bluehorizon's knobs then match the oracle pixel for pixel. Not the volume knob, which rests on
+  frame 0 (`harness.md` § *The render probe*). BlueEyes' knob region shows only a part of its dial
+  that no frame changes. A saturated tint reads off in a capture (metrobin's `00ff00` comes back
+  near `73ff48`): that is the capture's colour management, not the multiply.
