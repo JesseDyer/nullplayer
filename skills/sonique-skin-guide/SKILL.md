@@ -1,6 +1,6 @@
 ---
 name: sonique-skin-guide
-description: Sonique 1.x (.sgf) skin family — planned, no engine yet. The decoded .sgf container and skin.ini, the corpus and census, and the Wine-hosted Sonique 1.96 oracle that captures real Sonique drawing any skin. Use before starting Sonique skin work, when reading an .sgf, or when comparing against what Sonique itself drew.
+description: Sonique 1.x (.sgf) skin family — Phase 1 done (DEBUG-only): the three modes drawn and driven. The decoded .sgf container and skin.ini, the corpus and census, and the Wine-hosted Sonique 1.96 oracle that captures real Sonique drawing any skin. Use before starting Sonique skin work, when reading an .sgf, or when comparing against what Sonique itself drew.
 ---
 
 # Sonique skins
@@ -9,10 +9,11 @@ Read this skill before starting Sonique (`.sgf`) skin work. The locked decisions
 `docs/sonique/phase-0-decision-record.md`; the backlog is `tasks/SONIQUE_TASKS.md`. The family
 pattern every engine follows is `skin-subsystem-blueprint`.
 
-**Status:** under construction; decisions locked (2026-10-11). The bounded loader and model exist in
-`Sources/NullPlayer/SoniqueSkin/` (`SoniqueSkinLoader`, `SoniqueSkinPolicy`, `SoniqueSkinSettings`
-for `skin.ini` with its defaults) and load all 524 corpus skins; there is no renderer, `PlayerUIMode`
-case or app code yet. The harness is a census through that loader and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
+**Status:** Phase 1 (the spike) closed 2026-10-17; Phase 2 next. DEBUG-only
+(`AppFeature.soniqueSkinMode`). `Sources/NullPlayer/SoniqueSkin/` holds the bounded loader and model,
+`SoniqueSkinScene` (layout and hit-testing) and `SoniqueSkinRenderer`; `Windows/SoniqueSkin/` the
+one window in three modes. `PlayerUIMode.sonique` routes it. The harness is a census, a render probe
+and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
 (`reference/harness.md`).
 
 ## The rule that outranks everything

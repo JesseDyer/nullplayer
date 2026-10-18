@@ -132,8 +132,20 @@ enum SoniqueSkinLoader {
         return nil
     }
 
+    /// The JPEG with pure black made transparent, as Sonique draws every picture (`format.md`
+    /// § *What a skin can and cannot change*). Exact zero only: authors use a near-black for black.
     private static func decode(_ payload: Data) -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(payload as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        guard let source = CGImageSourceCreateWithData(payload as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let w = image.width, h = image.height
+        guard let context = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = context.data else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let pixels = data.bindMemory(to: UInt32.self, capacity: w * h)
+        // RGBA in memory, so opaque black is 0xFF000000 read little-endian; transparent is 0.
+        for i in 0..<(w * h) where pixels[i] == 0xFF00_0000 { pixels[i] = 0 }
+        return context.makeImage()
     }
 }

@@ -135,8 +135,62 @@ Unpack `SoniquePortable.zip` from the archive, create a prefix with
 `WINEPREFIX=<SoniqueOracle>/prefix wineboot -i`, copy `SoniquePortable/App/Sonique/` to
 `drive_c/Sonique/`, and copy the corpus into `drive_c/Sonique/skins/`.
 
+## The render probe
+
+Every mode of every skin through `SoniqueSkinRenderer`, the window's own draw path, one skin pixel
+per pixel. Run when drawing changes. About 22 s for the corpus.
+
+1. Render into a fresh directory; `SONIQUE_SKIN` takes what the census takes.
+2. Put a render beside the oracle's capture of the same skin and mode (the capture is 2x).
+
+```bash
+source scripts/lib/swiftpm.sh
+SONIQUE_SKIN="$HOME/Library/Application Support/NullPlayer/SoniqueSkins" SONIQUE_RENDER_OUT=/tmp/sonique-render \
+  swift test ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} --filter SoniqueSkinRenderProbeTests > /tmp/sonique-render.txt 2>&1
+grep RENDERED /tmp/sonique-render.txt
+```
+
+**Confirm it took:** `RENDERED <n> of <n>`, three times the skin count, and one
+`<skin>__<nav|mid|small>.png` per line.
+
+| Flag | Meaning |
+|---|---|
+| `SONIQUE_RENDER_OUT` | the output directory; the probe skips without it |
+| `SONIQUE_RENDER_STATE` | unset: the oracle's state (stopped, track 1, knobs at frame 0, as the prefix has no sound device). `playing`: lit play/stop, shuffle and repeat, small mode's drawer open, lines half full, full volume |
+
+## The default skin
+
+`Resources/Skins/NullPlayer-Sonique.sgf` is drawn by `scripts/sonique_default_skin.py`: NullPlayer's
+artwork on regions copied from the corpus's `sonique.sgf` (Lycos's own "Original"), whose nav frame
+and drawer and mid frame match the oracle's default outlines with 0 px differing, and whose small
+frame differs only by Wine's distortion. The oracle draws the default skin for `lycossearch.sgf`
+and `hotbotsearch.sgf`, which supply no mode picture at all. Rerun the script after changing it:
+
+```bash
+python3 -I scripts/sonique_default_skin.py
+```
+
+**Confirm it took:** `wrote …/NullPlayer-Sonique.sgf: 44 entries`. The script asserts no pixel
+decodes to pure black, which Sonique would draw transparent.
+
+## Launching the app on a skin
+
+`skills/app-control/scripts/launch.sh sonique:<name>` (DEBUG builds only). Launch arguments, which
+leave the saved selection untouched:
+
+| Argument | Meaning |
+|---|---|
+| `-soniqueSkinName <name>` | the installed `.sgf` to show, without `.sgf` |
+| `-soniqueSkinMode navigator\|mid\|small` | the mode to open in |
+| `SONIQUE_PLACE_TRACE=1` (environment) | logs `[place/tile] hosted <frame>` when a NullPlayer window is first placed beside the player |
+
+**Both arguments pin their setting for the whole launch.** They shadow the saved keys
+(`soniqueSkinName`, `soniqueSkinMode`) in the argument domain. Choosing another skin or mode from
+the menu saves it, but every read still returns the argument, so the window shows the launched skin
+and mode again on the next reload. Relaunch to test a menu selection.
+
 ## What the harness cannot see
 
-It has no renderer to compare yet. Until the engine exists, the oracle captures are the reference
-the engine is built against, not a gate. Animation (the mode morph, the drawer slide, the progress
-rings filling) is invisible to a still capture.
+The render probe draws the default state and one playing state; the oracle captures only the
+default state. Animation (the mode morph, the drawer slide, the progress rings filling), hover and
+the knobs turning are invisible to both.

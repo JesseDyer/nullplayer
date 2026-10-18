@@ -84,8 +84,9 @@ final class SoniqueSkinSettingsTests: XCTestCase {
         entries[0] = ("/skin.ini", Data("[skin]\r\nTouchMidMode = 0\r\n".utf8))
         let skin = try SoniqueSkinLoader.load(data: SoniqueSkinFixture.sgf(entries))
         XCTAssertNotNil(skin.region("/rgn/nav/play"))
-        XCTAssertNil(skin.region("/rgn/nav/drawer"), "the placeholder default skin has no entries until S11")
+        XCTAssertEqual(skin.region("/rgn/nav/drawer"), SoniqueSkin.defaultSkin.regions["/rgn/nav/drawer"])
+        XCTAssertNotNil(skin.region("/rgn/nav/drawer"), "the bundled default skin supplies the drawer")
         XCTAssertEqual(skin.source(for: .navigator).regions.count, skin.regions.count)
-        XCTAssertTrue(skin.source(for: .mid).regions.isEmpty)
+        XCTAssertEqual(skin.source(for: .mid).regions, SoniqueSkin.defaultSkin.regions)
     }
 }

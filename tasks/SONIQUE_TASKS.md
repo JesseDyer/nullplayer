@@ -14,17 +14,6 @@ Read `skills/sonique-skin-guide/SKILL.md` before picking anything up.
 Every row that touches `App/` ends with Classic, Original, `.wal`, `.wmz` and Audion sweeps
 byte-identical to the capture before it.
 
-## Phase 1 — the spike
-
-The few-day spike that decides whether the rest is worth it: if the three modes match the oracle for
-a dozen skins, the remainder is steady work.
-
-| ID | Item | Reach | Notes |
-|---|---|---|---|
-| S5 | `PlayerUIControllerFamily.sonique` behind a DEBUG `AppFeature`, letting the compiler list the seams; the three mode windows with real shapes, transport hit regions and lit states | all | UI row. Exit: nav, mid and small for the 12-skin sample side by side with `SoniqueOracle/captures/sample-2026-10-11` |
-| S6 | Small mode complete: bar picture, track and time text in skin colours, drawers | 513 | UI row |
-| S11 | NullPlayer's default Sonique skin: own artwork on Sonique's default layout (frames, regions, `[misc locations]`), `misc.txt` default colours, all three modes and every part. Also the family's unskinned fallback | 276 | Artwork row: the user signs off the look. Layout measured from the oracle with no skin loaded and the skinpack's `*_default.bmp` masks; neither is committed. S4 can land against a placeholder before it |
-
 ## Phase 2 — the rest of the UI
 
 | ID | Item | Reach | Notes |
@@ -33,3 +22,9 @@ a dozen skins, the remainder is steady work.
 | S8 | Mid mode: display placement, song and list progress rings (`mid_playlistmode` 270°/360°), shuttle | 520 | How the display's position is derived per skin is not yet known; the oracle sample shows it moving |
 | S9 | Knob animation strips (volume, amp/bal/pitch, shuttle) and the EQ drawer | 511 | The pitch knob drives playback speed; read from the oracle the speed range its travel spans and whether Sonique's pitch shifted with it |
 | S10 | Render sweep and committed baseline against the full oracle capture of the corpus (~70 min unattended) | 524 | Harness row, after S5 |
+
+## After Phase 2 — shared code
+
+| ID | Item | Reach | Notes |
+|---|---|---|---|
+| S13 | One shared skin importer for every family that installs into a folder of its own: the WMP, `.wal`, Audion and Sonique importers each repeat the directory, the selection key, the `.incoming-<UUID>` validate-then-commit and the off-main removal. Each family keeps only its file test and its loader call | 4 families | Its own scoped change, not folded into feature work: it touches every family's importer, so it ends with each family's import, select and remove driven in the app. Pull it ahead of Phase 2's end if a row changes how Sonique installs skins (a `.zip` of `.sgf` files, several at once), since that would fork the Sonique copy further |

@@ -128,4 +128,21 @@ protocol SkinSizedMainWindow: MainWindowProviding {
 
 extension WinampModernMainWindowController: SkinSizedMainWindow {}
 extension WMPMainWindowController: SkinSizedMainWindow {}
-extension AudionFaceMainWindowController: SkinSizedMainWindow {}
+
+/// A main window that is one skin canvas and nothing else (`PlayerUIControllerFamily.isSingleCanvas`):
+/// it loads the selected skin itself, and the skin decides its size, so a restored frame places only
+/// its top-left.
+protocol SingleCanvasMainWindow: NSWindowController, SkinSizedMainWindow {
+    /// Loads the saved selection, or the family's fallback when there is none.
+    func reloadSelectedSkin()
+}
+
+extension SingleCanvasMainWindow {
+    func restoreFrame(_ frame: NSRect) {
+        guard frame != .zero, let window else { return }
+        window.setFrameTopLeftPoint(NSPoint(x: frame.minX, y: frame.maxY))
+    }
+}
+
+extension AudionFaceMainWindowController: SingleCanvasMainWindow {}
+extension SoniqueSkinMainWindowController: SingleCanvasMainWindow {}

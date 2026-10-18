@@ -394,6 +394,7 @@ class WindowManager {
         case is WinampModernMainWindowController: return .winampModern
         case is WMPMainWindowController: return .wmp
         case is AudionFaceMainWindowController: return .audion
+        case is SoniqueSkinMainWindowController: return .sonique
         case is ModernMainWindowController: return .nullPlayerModern
         case is MainWindowController: return .classic
         default: return uiMode.controllerFamily
@@ -409,7 +410,7 @@ class WindowManager {
         case .nullPlayerModern: return .nullPlayerModern
         case .wmp: return .wmp
         // The shared controllers, as `.wmp`; their chrome comes from `hostedSurfaceStyle`.
-        case .audion: return .wmp
+        case .audion, .sonique: return .wmp
         }
     }
 
@@ -706,8 +707,8 @@ class WindowManager {
                                                snapTarget: snapTarget, modeDependent: modeDependent))
         }
 
-        // A face is an arbitrary authored canvas with no column for the stack to hang off.
-        add(mainWindowController?.window, centerStack: uiMode.controllerFamily != .audion, snapTarget: true)
+        // A single canvas is an arbitrary authored picture with no column for the stack to hang off.
+        add(mainWindowController?.window, centerStack: !uiMode.controllerFamily.isSingleCanvas, snapTarget: true)
         add(playlistWindowController?.window, centerStack: true, snapTarget: true)
         add(equalizerWindowController?.window, centerStack: true, snapTarget: true)
         for feature in CenterStackFeature.allCases {
@@ -989,6 +990,8 @@ class WindowManager {
             return (mainWindowController as? WMPMainWindowController)?.loadedSkinURL?.path
         case .audion:
             return (mainWindowController as? AudionFaceMainWindowController)?.loadedFaceURL?.path
+        case .sonique:
+            return (mainWindowController as? SoniqueSkinMainWindowController)?.loadedSkinURL?.path
         }
     }
 
@@ -1099,6 +1102,7 @@ class WindowManager {
         case .winampModern: return WinampModernMainWindowController()
         case .wmp: return WMPMainWindowController()
         case .audion: return AudionFaceMainWindowController()
+        case .sonique: return SoniqueSkinMainWindowController()
         }
     }
     
@@ -1195,6 +1199,13 @@ class WindowManager {
         return (mainWindowController as? AudionFaceMainWindowController)?.surfaceStyle ?? AudionFacePalette.neutral
     }
 
+    /// The colours NullPlayer's own windows wear beside a Sonique skin (`SoniqueSkinPalette`).
+    var soniqueSurfaceStyle: SkinnedSurfaceStyle? {
+        guard uiMode.controllerFamily == .sonique else { return nil }
+        return (mainWindowController as? SoniqueSkinMainWindowController)?.surfaceStyle
+            ?? SoniqueSkinPalette.surfaceStyle(for: .defaultSkin)
+    }
+
     /// How the surfaces NullPlayer draws itself should look right now, whichever foreign skin family
     /// is hosting them — or nil when they should use their own classic drawing.
     ///
@@ -1207,6 +1218,7 @@ class WindowManager {
         case .winampModern: return winampModernSurfaceStyle
         case .wmp: return wmpSurfaceStyle
         case .audion: return audionSurfaceStyle
+        case .sonique: return soniqueSurfaceStyle
         }
     }
 
@@ -1220,7 +1232,7 @@ class WindowManager {
     /// picture of it (`winamp-modern-skin-guide`, `reference/components.md`).
     func hostedSurfaceFrameArtwork(for size: CGSize) -> SkinnedSurfaceFrameArtwork? {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return nil
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return nil
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return nil }
             // Every caller is a view's draw or hit test, which is already the main thread; the
@@ -1242,7 +1254,7 @@ class WindowManager {
     /// A `switch` on the family for the same reason its siblings are one.
     func hostedSurfaceRenderedFrameArtwork(for size: CGSize) -> SkinnedSurfaceFrameArtwork? {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return nil
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return nil
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return nil }
             return MainActor.assumeIsolated { controller.hostedFrames.renderedArtwork(for: size) }
@@ -1261,7 +1273,7 @@ class WindowManager {
     /// would be a hold that never ends.
     func hostedSurfaceHasSettledFrameAnswer(for size: CGSize) -> Bool {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return true
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return true
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return true }
             return MainActor.assumeIsolated { controller.hostedFrames.hasSettledAnswer(for: size) }
@@ -1276,7 +1288,7 @@ class WindowManager {
     /// prewarm queue already has in flight.
     func demandHostedSurfaceFrame(for size: CGSize) {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return }
             MainActor.assumeIsolated { controller.hostedFrames.demand(size) }
@@ -1291,7 +1303,7 @@ class WindowManager {
     /// family lends no frame, so there is nothing to coalesce.
     func hostedSurfaceLiveResize(began: Bool, size: CGSize) {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return }
             MainActor.assumeIsolated {
@@ -1336,7 +1348,7 @@ class WindowManager {
     /// which is what the predicate this replaced already answered for them.
     var hostedSurfaceBordersAreSettled: Bool {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return true
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return true
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return true }
             return MainActor.assumeIsolated {
@@ -1371,7 +1383,7 @@ class WindowManager {
     /// the skin's own frame rather than painting a picture of one, so it adds nothing here.
     var hostedSurfaceBorderInsets: SkinnedSurfaceChrome.Metrics? {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return nil
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return nil
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController,
                   let insets = MainActor.assumeIsolated({ controller.hostedFrames.donorInsets })
@@ -1426,7 +1438,7 @@ class WindowManager {
     /// A `switch` on the family for the same reason its siblings are one.
     func prewarmHostedSurfaceFrames(_ sizes: [CGSize]) {
         switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion: return
+        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return }
             MainActor.assumeIsolated { controller.hostedFrames.prewarm(sizes) }
@@ -1450,6 +1462,7 @@ class WindowManager {
         case .nullPlayerModern: return "original"
         case .winampModern: return "wal"
         case .audion: return "audion"
+        case .sonique: return "sonique"
         case .wmp:
             guard let controller = mainWindowController as? WMPMainWindowController else { return nil }
             return MainActor.assumeIsolated { controller.hostedInteriorScope }
@@ -2608,6 +2621,7 @@ class WindowManager {
                 let traceKey = switch uiMode.controllerFamily {
                 case .wmp: "WMP_PLACE_TRACE"
                 case .audion: "AUDION_PLACE_TRACE"
+                case .sonique: "SONIQUE_PLACE_TRACE"
                 case .winampModern, .classic, .nullPlayerModern: "WINAMP_MODERN_PLACE_TRACE"
                 }
                 if ProcessInfo.processInfo.environment[traceKey] == "1" {
@@ -6500,8 +6514,8 @@ class WindowManager {
             snapWMPToDefaultPositions()
             return
         }
-        // A face's window is borderless too, and has no stack to build.
-        if uiMode.controllerFamily == .audion {
+        // A single canvas's window is borderless too, and has no stack to build.
+        if uiMode.controllerFamily.isSingleCanvas {
             if let playerWindow = mainWindowController?.window {
                 snapHostedFamilyToDefaultPositions(playerWindow: playerWindow, skinWindows: [])
             }
@@ -6526,6 +6540,7 @@ class WindowManager {
         case .nullPlayerModern: fallbackMainSize = ModernSkinElements.mainWindowSize
         case .wmp: fallbackMainSize = WMPMainWindowController.unskinnedSize
         case .audion: fallbackMainSize = AudionFaceMainWindowController.unskinnedSize
+        case .sonique: fallbackMainSize = SoniqueSkinMainWindowController.placeholderSize
         }
         let mainSize = mainWindowController?.window?.frame.size ?? fallbackMainSize
 

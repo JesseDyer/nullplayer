@@ -7,6 +7,7 @@
 #   <skin>  a path or bare installed name:   corona   aquamp   "2222-cPro__Bento"   /abs/x.wmz
 #           or a bundled family skin:        modern:NeonWave   metal:"Brushed Steel"
 #           or an installed Audion face:     audion:AppleClassic   audion:"Black Bar"
+#           or an installed Sonique skin:    sonique:BlueEyes      (DEBUG; -soniqueSkinMode mid|small after --)
 #
 # The family (and so -uiMode) comes from the extension: .wsz/.whsz classic, .wal winampModern,
 # .wmz wmp. Nothing needs restoring afterwards: restoration is disabled with a *launch argument*
@@ -39,6 +40,8 @@ case "$SKIN" in
   metal:*)  FAMILY=metal;  NAME="${SKIN#metal:}" ;;
   audion:*) FAMILY=audion; NAME="${SKIN#audion:}"; FILE="$SUPPORT/AudionFaces/$NAME"
             [ -f "$FILE/index.json" ] || { echo "LAUNCH FAIL: no installed Audion face '$NAME' (no $FILE/index.json)"; exit 1; } ;;
+  sonique:*) FAMILY=sonique; NAME="${SKIN#sonique:}"; FILE="$SUPPORT/SoniqueSkins/$NAME.sgf"
+            [ -f "$FILE" ] || { echo "LAUNCH FAIL: no installed Sonique skin '$NAME' (no $FILE)"; exit 1; } ;;
   /*)       FILE="$SKIN" ;;
   *)  # "corona" matches any family; "corona.wmz" pins one. Never guess between families.
       case "$SKIN" in *.wsz|*.whsz|*.wal|*.wmz|*.WSZ|*.WAL|*.WMZ) PAT="$SKIN" ;; *) PAT="$SKIN.*" ;; esac
@@ -85,6 +88,8 @@ case "$FAMILY" in
     defaults write $D "${FAMILY}SkinName" -string "$NAME" ;;
   audion)
     ARGS+=(-audionFacePath "$FILE") ;;
+  sonique)
+    ARGS+=(-soniqueSkinName "$NAME") ;;   # a launch argument: the saved selection is untouched
 esac
 
 if [ "$PLAY" = 1 ] && [ -z "${NULLPLAYER_PLAY:-}" ]; then   # a caller's own file (e.g. a .cue) wins
@@ -110,6 +115,7 @@ confirmed() {
     modern)       grep -F "ModernSkinLoader: Loaded skin '" "$LOG" | grep -qF "/$NAME" ;;
     metal)        grep -qF "Loaded built-in metal skin '$NAME'" "$LOG" ;;
     audion)       grep -qF "AudionFace: loaded '$NAME'" "$LOG" ;;
+    sonique)      grep -qF "SoniqueSkin: loaded '$NAME.sgf'" "$LOG" ;;
   esac
 }
 for _ in $(seq 60); do

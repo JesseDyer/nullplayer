@@ -16,7 +16,12 @@ enum AppFeature {
     case winampModernMode
     case wmpSkinMode
     case audionFaceMode
+    case soniqueSkinMode
     case compactWindowVisualsMenu
+
+    /// Built only into DEBUG builds, whatever the edition: a family under construction until a
+    /// phase makes it public (Sonique: its decision record).
+    var isDebugOnly: Bool { self == .soniqueSkinMode }
 }
 
 /// Edition-agnostic capability seam.
@@ -28,6 +33,9 @@ enum AppFeature {
 /// to know which edition that is.
 enum AppCapabilities {
     static func supports(_ feature: AppFeature) -> Bool {
+        #if !DEBUG
+        if feature.isDebugOnly { return false }
+        #endif
         #if EDITION_CUSTOM
         return EditionPolicy.supports(feature)
         #else

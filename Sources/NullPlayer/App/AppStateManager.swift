@@ -946,9 +946,9 @@ class AppStateManager {
             // the no-swap case, where the existing WMP controller may still hold the old archive.
             (wm.mainWindowController as? WMPMainWindowController)?.reloadSelectedSkin()
         }
-        if runningMode == .audion {
-            // As for `.wmp`: the no-swap case may still hold the previous face.
-            (wm.mainWindowController as? AudionFaceMainWindowController)?.reloadSelectedFace()
+        if runningMode.controllerFamily.isSingleCanvas {
+            // As for `.wmp`: the no-swap case may still hold the previous face or skin.
+            (wm.mainWindowController as? SingleCanvasMainWindow)?.reloadSelectedSkin()
         }
         
         // Restore audio output device
@@ -1385,8 +1385,8 @@ class AppStateManager {
             controller.restoreFrame(correctedMainFrame ?? NSRectFromString(frameString),
                                     skinName: state.wmpSkinName, viewID: state.wmpViewID)
         } else if let frameString = state.mainWindowFrame,
-                  let controller = wm.mainWindowController as? AudionFaceMainWindowController {
-            // The face decides the size; the saved frame places its top-left.
+                  let controller = wm.mainWindowController as? SingleCanvasMainWindow {
+            // The face or skin decides the size; the saved frame places its top-left.
             controller.restoreFrame(correctedMainFrame ?? NSRectFromString(frameString))
         } else if let frameString = state.mainWindowFrame,
            let controller = wm.mainWindowController,

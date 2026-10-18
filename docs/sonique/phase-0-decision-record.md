@@ -182,6 +182,13 @@ Measured through the oracle; `SoniqueSkinSettings` is the executable source.
 `SQ0011` now fires on 3 values in the corpus, all colours: BoneKnot's `&H00FFFFFF&` (twice) and
 OnePlayer's `verde`.
 
+### Amendment 3 (S5, 2026-10-17)
+
+- **`BlueBallsColor` defaults to `SystemColor_1`, not `misc.txt`'s `SystemColor_2`.** k2 writes no
+  `BlueBallsColor`, `SystemColor_1 = 0xa80060` and `SystemColor_2 = 0xffffff`; the oracle draws its
+  navigation balls magenta. The default skin's balls are cyan, `SystemColor_1`'s default, where
+  `SystemColor_2`'s would be yellow. The default skin's other colours stay `misc.txt`'s.
+
 ## Control mapping
 
 | Skin control | NullPlayer action |

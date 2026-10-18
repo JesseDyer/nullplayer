@@ -110,7 +110,7 @@ class PlaylistWindowController: NSWindowController, PlaylistWindowProviding {
     /// limits are set, so it keeps the step until something re-applies them on that load.
     private static var hasFreeWidth: Bool {
         switch WindowManager.shared.runningControllerFamily {
-        case .audion, .wmp: return true
+        case .audion, .wmp, .sonique: return true
         case .classic, .nullPlayerModern, .winampModern: return false
         }
     }

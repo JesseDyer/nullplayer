@@ -157,7 +157,7 @@ enum VisualizationPreferences {
         case .classic:
             WindowManager.shared.writeClassicVisualizationDefaultKeys(for: scope, defaults: defaults)
             return
-        case .winampModern, .wmp, .audion:
+        case .winampModern, .wmp, .audion, .sonique:
             WindowManager.shared.writeClassicVisualizationDefaultKeys(for: scope, defaults: defaults)
             if scope == .spectrumWindow || scope == .all {
                 VisClassicProfileMatcher.forgetAppliedSkin(for: [.spectrumWindow], defaults: defaults)

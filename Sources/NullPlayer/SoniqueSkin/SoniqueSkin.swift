@@ -7,7 +7,8 @@ import Foundation
 /// `source(for:)`.
 struct SoniqueSkin {
     /// Sonique's three window modes and the entries each one is drawn from.
-    enum Mode: CaseIterable {
+    /// The raw value is the persisted and menu name.
+    enum Mode: String, CaseIterable {
         case navigator, mid, small
 
         /// The mode's picture, buttons drawn unlit.
@@ -51,10 +52,26 @@ struct SoniqueSkin {
     let defaultModes: Set<Mode>
     let findings: [SoniqueSkinFinding]
 
-    /// NullPlayer's own default Sonique skin, which every omitted entry falls back to. A placeholder
-    /// with no entries and `misc.txt`'s settings until S11 draws it.
-    static let defaultSkin = SoniqueSkin(ini: SoniqueSkinINI(""), settings: SoniqueSkinSettings(SoniqueSkinINI("")),
-                                         images: [:], regions: [:], defaultModes: [], findings: [])
+    /// NullPlayer's own default Sonique skin, which every omitted entry falls back to: its own
+    /// artwork on Sonique's default layout, drawn by `scripts/sonique_default_skin.py` and bundled
+    /// as `NullPlayer-Sonique.sgf`. Loaded through the same loader as any skin; it writes no colours
+    /// or lit positions, so those are `misc.txt`'s.
+    // ponytail: decoded on first use, which may be the main thread; it is our own 130 KB file, not
+    // untrusted input. Warm it off the main thread if a launch ever shows the cost.
+    static let defaultSkin: SoniqueSkin = {
+        let empty = SoniqueSkin(ini: SoniqueSkinINI(""), settings: SoniqueSkinSettings(SoniqueSkinINI("")),
+                                images: [:], regions: [:], defaultModes: [], findings: [])
+        do {
+            guard let url = BundleHelper.url(forResource: "NullPlayer-Sonique", withExtension: "sgf", subdirectory: "Skins") else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            return try SoniqueSkinLoader.load(contentsOf: url)
+        } catch {
+            // A build defect, not a skin's: the bundled file is ours.
+            assertionFailure("NullPlayer-Sonique.sgf did not load: \(error)")
+            return empty
+        }
+    }()
 
     /// The entry, else the default skin's.
     func image(_ name: String) -> CGImage? { images[name] ?? Self.defaultSkin.images[name] }

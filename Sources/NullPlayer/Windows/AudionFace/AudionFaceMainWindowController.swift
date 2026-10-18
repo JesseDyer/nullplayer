@@ -1,13 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// A face's window: borderless and clear, so the face's alpha is the window's shape. AppKit refuses
-/// a borderless window key status by default, which would also cut off the mouse-moved stream.
-final class AudionFaceWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
 /// The Audion-mode main window. Loads the selected face off the main thread and shows it through
 /// `AudionFaceMainView`, or the app-authored `AudionFaceUnskinnedView` when there is none to show.
 /// The window's size is the face's, times the UI scale; a restored or reloaded frame keeps its
@@ -29,7 +22,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
     private(set) var surfaceStyle = AudionFacePalette.neutral
 
     init() {
-        let window = AudionFaceWindow(contentRect: NSRect(origin: .zero, size: Self.unskinnedSize),
+        let window = SkinnedBorderlessWindow(contentRect: NSRect(origin: .zero, size: Self.unskinnedSize),
                                       styleMask: [.borderless], backing: .buffered, defer: false)
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -54,15 +47,15 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
         ) { [weak self] _ in MainActor.assumeIsolated { self?.refreshHostState() } }
         unskinnedView.onLoadFace = { [weak self] in self?.importFaceFromPanel() }
         // No placeholder while the selected face loads: it would flash at its own size first.
-        // `reloadSelectedFace` presents it when there is no face to show.
-        reloadSelectedFace()
+        // `reloadSelectedSkin` presents it when there is no face to show.
+        reloadSelectedSkin()
     }
 
     required init?(coder: NSCoder) { nil }
 
     // MARK: - Choosing a face
 
-    func reloadSelectedFace() {
+    func reloadSelectedSkin() {
         loadTask?.cancel()
         let url: URL?
         do {
@@ -89,7 +82,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
 
     func selectFace(named name: String) {
         importer.select(name)
-        reloadSelectedFace()
+        reloadSelectedSkin()
     }
 
     /// An installed face by its folder, or anything else through the importer.
@@ -116,7 +109,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
             do {
                 _ = try await self?.importer.importFaces(from: url)
                 try Task.checkCancellation()
-                self?.reloadSelectedFace()
+                self?.reloadSelectedSkin()
             } catch is CancellationError {
                 return
             } catch {
@@ -129,12 +122,6 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
         loadTask?.cancel()
         importer.resetSelection()
         present(nil, message: nil)
-    }
-
-    /// Only the top-left is restored: the size is the face's.
-    func restoreFrame(_ frame: NSRect) {
-        guard frame != .zero, let window else { return }
-        window.setFrameTopLeftPoint(NSPoint(x: frame.minX, y: frame.maxY))
     }
 
     // MARK: - Presenting
