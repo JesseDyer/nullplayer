@@ -30,6 +30,9 @@
 - **Modern skins: no more flickering line below the XENERGY player** — the skin's visualization
   sits in the space its config drawer slides into, and it drew on the desktop even with the drawer
   closed. That space is now outside the window, as in Winamp.
+- **Library Browser Tiles mode keeps tiles small in a narrow window** — narrowing the window made
+  the tiles bigger, down to a single column of two large tiles. Tiles are now never wider than
+  120 pt: a narrower window fits more, smaller tiles.
 
 ## 0.33.0
 
