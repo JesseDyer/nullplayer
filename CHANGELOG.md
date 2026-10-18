@@ -12,6 +12,27 @@
   (crashes when switching skins or effects). Geiss now runs in one place at a time: whichever
   started it first keeps it, the other shows black, and it moves over as soon as the first one
   switches away, is hidden or closes.
+- **Modern skins whose window buttons have missing artwork no longer get stuck in shade mode** —
+  the Motorhead skin's compact bar had invisible minimize, shade and close buttons, so there was no
+  way back to the full player. They now draw as simple glyphs and work.
+- **Modern skins: seeking, time readouts and the file-type readout work in skins like ONYX V2** —
+  large numbers in a skin's scripts (such as one hour in milliseconds) were cut short, which sent
+  every track down the skin's "longer than an hour" path and broke its seek control. The file-type
+  readout now shows the file's real extension, and for server streams it never shows the server
+  login that was part of the stream address.
+- **Modern skins: the ONYX V2 mini player shows its volume level, and its visualization sits in the
+  player** — the volume bar's fill was never drawn, and the visualization opened as a separate
+  window away from the player (and as a black square in the mini player). It now opens over the
+  player's art box, follows the player when moved, and stays hidden in the mini player.
+- **Modern skins: text in fonts other than Arial is no longer oversized** — fonts with tall line
+  spacing such as Impact and Tahoma were drawn larger than Winamp draws them, so TOX Milla's timer
+  lost the tops of its digits. They now match each skin's own screenshot.
+- **Modern skins: no more flickering line below the XENERGY player** — the skin's visualization
+  sits in the space its config drawer slides into, and it drew on the desktop even with the drawer
+  closed. That space is now outside the window, as in Winamp.
+- **Library Browser Tiles mode keeps tiles small in a narrow window** — narrowing the window made
+  the tiles bigger, down to a single column of two large tiles. Tiles are now never wider than
+  120 pt: a narrower window fits more, smaller tiles.
 
 ## 0.33.0
 

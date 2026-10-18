@@ -1144,7 +1144,8 @@ length; Jellyfin and Emby genre and length, with the description fetched on open
 and asking for it there would pull every description during preload).
 
 **`ArtTileGridView`** (Tiles, `Windows/LibraryArt/ArtTileGridView.swift`):
-- Tiles at least 120 pt wide, grown to share a row's spare width, with title and subtitle under
+- Tiles at most 120 pt wide (columns round up against `maxTileSide`, so a narrower window never
+  gets wider tiles), sharing a row's width evenly, with title and subtitle under
   each. Square, or 2:3 posters when every item on the level is one (`LibraryArtItem.artAspect`, set
   from each browser's `ItemType.isPoster`: movies, shows and seasons; episodes carry a landscape
   still and stay square). A mixed level (search results) stays square. Layer-backed and virtualised: only on-screen rows have `TileLayer`s; the view scrolls itself

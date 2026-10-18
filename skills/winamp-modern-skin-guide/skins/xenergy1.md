@@ -34,6 +34,13 @@ background, and mirroring the 23px title band onto the 10px bottom left a 13px s
 texture under every hosted window. Fixed by keeping the skin's own top and bottom — see
 `reference/components.md` → *A frame that builds its own client still costs the window*.
 
+**Stray `<vis>` line below the player (2026-10-17, fixed, confirmed live).** `main/normal`
+declares `<vis id="visual">` at 252x1, y=215, outside the 146px the player and closed drawer
+occupy, so it drew a flickering line on the desktop. Fixed by bounding a wrapper group's region to
+what it holds — see `reference/rendering/hit-testing.md` → *A wrapper group reaches only as far as
+what it holds*. The headless dump cannot show it (a 1px spectrum rounds to nothing); measure the
+live window's lowest opaque row instead.
+
 **Census trap.** Run alone (`wal_skin_census.sh --corpus <dir with only this archive>`) its log comes
 back `damaged` every time: its last `FINDING` line is written without a newline before XCTest's own
 `Test Case … passed` line. The capture is complete; splitting that one line and re-running

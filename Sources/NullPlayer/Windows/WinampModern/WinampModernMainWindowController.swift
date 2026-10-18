@@ -2100,7 +2100,8 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
     private func moveContainerWindow(_ container: WasabiObjectID, to point: CGPoint,
                                      pinned: Bool = false) {
         let target: NSWindow?
-        if let auxiliary = auxiliaryContainers.first(where: { $0.view.containerID == container }) {
+        let auxiliary = auxiliaryContainers.first(where: { $0.view.containerID == container })
+        if let auxiliary {
             target = auxiliary.window
         } else if skinView?.containerID == container {
             target = window
@@ -2134,6 +2135,9 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             origin.x = min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - size.width))
             origin.y = min(max(origin.y, visible.minY), max(visible.minY, visible.maxY - size.height))
         }
+        // A pin places the window relative to another one, so `place` must not tile it afresh when it
+        // first opens: ONYX V2 pins its visualization over the player's art box and then shows it.
+        if pinned, let auxiliary { placedAuxiliaryWindows.insert(auxiliary.containerID) }
         guard origin != target.frame.origin else { return }
         if ProcessInfo.processInfo.environment["WINAMP_MODERN_PLACE_TRACE"] == "1" {
             // A script parking its own window overrides whatever `place` decided, and legitimately
