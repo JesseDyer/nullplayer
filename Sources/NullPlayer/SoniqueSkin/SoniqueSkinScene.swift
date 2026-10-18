@@ -213,15 +213,15 @@ struct SoniqueSkinScene {
         func square(_ x: Int, _ y: Int) -> SoniqueSkinRegion.Rect { .init(left: x, top: y, right: x + s, bottom: y + s) }
         switch mode {
         case .navigator:
-            guard let display = skin.region("/rgn/nav/display")?.bounds else { return [] }
+            guard let display = skin.display?.bounds else { return [] }
             let right = display.right - skin.settings.int("misc values", "NC_BB_DIST_FROM_RIGHT") - 4
             return balls.enumerated().map { i, ball in (ball, square(right - s - (balls.count - 1 - i) * 12, display.top + 1)) }
         case .mid:
             guard let top = skin.region("/rgn/mid/top")?.bounds else { return [] }
             let keys = ["MSM_SINGLEUP", "MSM_SINGLEDOWN", "MSM_HELP", "MSM_MINIMIZE", "MSM_CLOSE"]
             return zip(balls, keys).map { ball, key in
-                (ball, square(top.left + skin.settings.int("msm locations", key + "_x"),
-                              top.top + skin.settings.int("msm locations", key + "_y")))
+                let at = skin.settings.point("msm locations", key)
+                return (ball, square(top.left + at.x, top.top + at.y))
             }
         case .small:
             guard let smallDrawer, let drawer = skin.smallDrawerPlacement(smallDrawer) else { return [] }
@@ -273,7 +273,7 @@ struct SoniqueSkinScene {
     /// Where the menu screen's entries are hit, moved from the display's top-left to the skin's; none
     /// on any other screen or mode.
     var menuEntries: [(item: SoniqueSkinMenu.Item, hit: SoniqueSkinRegion.Rect)] {
-        guard mode == .navigator, navScreen == .menu, let display = skin.region("/rgn/nav/display")?.bounds else { return [] }
+        guard mode == .navigator, navScreen == .menu, let display = skin.display?.bounds else { return [] }
         return SoniqueSkinMenu.entries.map { ($0.item, $0.hit.offset(display.left, display.top)) }
     }
 
@@ -319,7 +319,7 @@ struct SoniqueSkinScene {
     /// The display while the navigator shows the visual mode screen, nil otherwise.
     var visualScreenDisplay: SoniqueSkinRegion? {
         guard mode == .navigator, navScreen == .visualMode else { return nil }
-        return skin.region("/rgn/nav/display")
+        return skin.display
     }
 
     // MARK: - The navigator's drawer
@@ -364,6 +364,9 @@ struct SoniqueSkinScene {
 
 /// The drawers' placement depends on the skin alone, so the canvas can be worked out from it.
 extension SoniqueSkin {
+    /// The navigator's display, where its screens and status line are drawn.
+    var display: SoniqueSkinRegion? { region("/rgn/nav/display") }
+
     /// The navigator's closed drawer, placed at `DRAWER_POS`.
     var drawerRegion: SoniqueSkinRegion? {
         guard let drawer = region("/rgn/nav/drawer") else { return nil }

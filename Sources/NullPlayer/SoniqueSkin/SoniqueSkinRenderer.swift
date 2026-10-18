@@ -75,15 +75,15 @@ private struct Painter {
         // The drawer first: the console is drawn over all of it but what hangs below the frame.
         if let drawer = scene.drawer, let misc = skin.image("/jpeg/misc") {
             let b = drawer.bounds, origin = scene.drawerOrigin
-            let x = skin.settings.int("misc locations", "DRAWER_x") + b.left - origin.x
-            let y = skin.settings.int("misc locations", "DRAWER_y") + b.top - origin.y
+            let at = skin.settings.point("misc locations", "DRAWER")
+            let x = at.x + b.left - origin.x, y = at.y + b.top - origin.y
             draw(misc, source: .init(left: x, top: y, right: x + b.right - b.left, bottom: y + b.bottom - b.top),
                  x: b.left, y: b.top, clip: drawer.rects)
             if scene.navDrawerOpen { drawerDials(misc, clip: drawer.rects) }
         }
         // The screen is Sonique's own surface, opaque: black in the picture there stays black (k2),
         // and nothing behind it, the drawer included, shows through (Trigun).
-        if let display = skin.region("/rgn/nav/display") {
+        if let display = skin.display {
             context.setFillColor(CGColor(gray: 0, alpha: 1))
             context.fill(display.rects.map(\.cgRect))
         }
@@ -107,8 +107,8 @@ private struct Painter {
         clip(to: display.rects)
         context.setFillColor(CGColor(gray: 0, alpha: 1))
         context.fill(Screen.visBlack.offset(x, top).cgRect)
-        if skin.settings.colour("SystemBkColor_2") != 0 {
-            context.setFillColor(colour("SystemBkColor_2"))
+        if skin.settings.colour(.systemBkColor2) != 0 {
+            context.setFillColor(colour(.systemBkColor2))
             for frame in [Screen.visFrame.offset(x, top), Screen.fileFrame.offset(x, top), Screen.songFrame.offset(x, bottom)] {
                 context.addPath(CGPath(roundedRect: frame.cgRect, cornerWidth: Screen.panelRadius, cornerHeight: Screen.panelRadius,
                                        transform: nil))
@@ -118,38 +118,38 @@ private struct Painter {
             context.fill(Screen.well.offset(x, top).cgRect)
         }
         text(scene.visualModeTitle, centreX: x + Screen.titleCentre, minX: x + Screen.well.left, baseline: top + Screen.titleBaseline,
-             size: 8, colour: "SystemColor_1")
+             size: 8, colour: .systemColor1)
 
         let s = host.elapsedSeconds
         text(String(format: "%03d", host.trackNumber), x: x + Screen.trackX, baseline: bottom + Screen.digitsBaseline,
-             size: Screen.digitSize, colour: "SystemColor_1", font: Screen.digitFont)
+             size: Screen.digitSize, colour: .systemColor1, font: Screen.digitFont)
         text(String(format: "%02d:%02d:%02d.%02d", s / 3600, s / 60 % 60, s % 60, host.elapsedHundredths),
-             x: x + Screen.timeX, baseline: bottom + Screen.digitsBaseline, size: Screen.digitSize, colour: "SystemColor_1",
+             x: x + Screen.timeX, baseline: bottom + Screen.digitsBaseline, size: Screen.digitSize, colour: .systemColor1,
              font: Screen.digitFont)
         for (label, centre) in Screen.labels {
-            text(label, centreX: x + centre, minX: x, baseline: bottom + Screen.labelBaseline, size: 9, colour: "SystemColor_2",
+            text(label, centreX: x + centre, minX: x, baseline: bottom + Screen.labelBaseline, size: 9, colour: .systemColor2,
                  spacing: Screen.labelSpacing)
         }
         // The dots fill with progress as the mid rings do: the playlist's in `PlayListColor_1`, the
         // track's in `ProgressColor_1`, over `ProgressBkColor`.
-        for (row, (progress, fill)) in zip(Screen.progressRows, [(host.listProgress, "PlayListColor_1"), (host.songProgress, "ProgressColor_1")]) {
+        for (row, (progress, fill)) in zip(Screen.progressRows, [(host.listProgress, SoniqueColour.playListColor1), (host.songProgress, .progressColor1)]) {
             let lit = Int((progress * Double(Screen.dots)).rounded(.down))
             for dot in 0..<Screen.dots {
-                context.setFillColor(colour(dot < lit ? fill : "ProgressBkColor"))
+                context.setFillColor(colour(dot < lit ? fill : .progressBkColor))
                 context.fillEllipse(in: CGRect(x: x + Screen.dotLeft + dot * Screen.dotSize, y: bottom + row.top,
                                                width: Screen.dotSize, height: Screen.dotSize))
             }
-            text(row.label, x: x + Screen.dotLeft + 2, baseline: bottom + row.baseline, size: 9, colour: "SystemColor_2",
+            text(row.label, x: x + Screen.dotLeft + 2, baseline: bottom + row.baseline, size: 9, colour: .systemColor2,
                  spacing: Screen.labelSpacing)
         }
 
-        text("file:", x: x + Screen.fileLeft, baseline: top + Screen.fileBaseline, size: 9, colour: "SystemColor_2",
+        text("file:", x: x + Screen.fileLeft, baseline: top + Screen.fileBaseline, size: 9, colour: .systemColor2,
              spacing: Screen.labelSpacing)
         let fileWidth = CGFloat(Screen.fileFrame.right - Screen.fileLeft - 3)
         for (i, line) in wrapped(host.fileName, size: 8, width: fileWidth).enumerated() {
             let baseline = Screen.fileBaseline + (i + 1) * Screen.fileLineHeight
             guard baseline <= Screen.fileFrame.bottom - 3 else { break }
-            text(line, x: x + Screen.fileLeft, baseline: top + baseline, size: 8, colour: "SystemColor_1")
+            text(line, x: x + Screen.fileLeft, baseline: top + baseline, size: 8, colour: .systemColor1)
         }
         context.restoreGState()
     }
@@ -174,15 +174,15 @@ private struct Painter {
     /// writes its own name and version) in `StatusBarTextColor`, centred on the display's span 7 px left of its
     /// middle (Trigun, Danzig and sonique all measure so).
     private func statusLine() {
-        guard let display = skin.region("/rgn/nav/display") else { return }
+        guard let display = skin.display else { return }
         let bottom = display.bounds.bottom, band = CGRect(x: display.bounds.left, y: bottom - 13,
                                                          width: display.bounds.right - display.bounds.left, height: 13)
         context.saveGState()
         clip(to: display.rects)
         context.clip(to: band)
-        context.setFillColor(colour("StatusBarBgColor"))
+        context.setFillColor(colour(.statusBarBgColor))
         context.fill(band)
-        context.setFillColor(colour("StatusBarFgColor"))
+        context.setFillColor(colour(.statusBarFgColor))
         // A 2 px dot grid over the band (stopping 3 rows short, as sonique looks at 6x, made 301
         // captures worse).
         context.fill(stride(from: Int(band.minY), to: bottom, by: 2).flatMap { y in
@@ -191,14 +191,14 @@ private struct Painter {
         let span = display.rects.filter { $0.top <= bottom - 5 && $0.bottom > bottom - 5 }
         let left = span.map(\.left).min() ?? display.bounds.left, right = span.map(\.right).max() ?? display.bounds.right
         titleLine(idle: "NullPlayer \(host.version)", centreX: (left + right) / 2 - 7, left: left + 2, right: right - 2,
-                  baseline: bottom - 3, colour: "StatusBarTextColor")
+                  baseline: bottom - 3, colour: .statusBarTextColor)
         context.restoreGState()
     }
 
     /// The menu screen in the display (`SoniqueSkinMenu`): each entry's lettering and boxed icon, the
     /// right column's headings and the version, in the skin's system colours.
     private func menuScreen() {
-        guard let display = skin.region("/rgn/nav/display") else { return }
+        guard let display = skin.display else { return }
         let dx = display.bounds.left, dy = display.bounds.top
         context.saveGState()
         clip(to: display.rects)
@@ -222,7 +222,7 @@ private struct Painter {
     private func logo(at dx: Int, _ dy: Int) {
         context.addEllipse(in: SoniqueSkinMenu.Logo.ring.offset(dx, dy).cgRect)
         context.addEllipse(in: SoniqueSkinMenu.Logo.ringHole.offset(dx, dy).cgRect)
-        context.setFillColor(colour("LogoRingColor"))
+        context.setFillColor(colour(.logoRingColor))
         context.fillPath(using: .evenOdd)
         let word = SoniqueSkinMenu.Logo.word
         text(word.string, x: dx + word.x, baseline: dy + word.baseline, size: word.size, rgb: 0,
@@ -232,7 +232,7 @@ private struct Painter {
     /// A left-column icon: a box in `SystemColor_3`, as Sonique's, with NullPlayer's own plain mark.
     private func menuIcon(_ item: SoniqueSkinMenu.Item, in r: CGRect) {
         context.saveGState()
-        let ink = colour("SystemColor_3")
+        let ink = colour(.systemColor3)
         context.setStrokeColor(ink)
         context.setFillColor(ink)
         context.setLineWidth(1)
@@ -278,8 +278,8 @@ private struct Painter {
         let w = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_width")
         let h = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
         let handles = ["SLIDEROFF", "SLIDERON"].map { key -> CGImage? in
-            let x = skin.settings.int("misc locations", key + "_x"), y = skin.settings.int("misc locations", key + "_y")
-            return misc.cropping(to: CGRect(x: x, y: y, width: w, height: h)).flatMap(Self.handle)
+            let at = skin.settings.point("misc locations", key)
+            return misc.cropping(to: CGRect(x: at.x, y: at.y, width: w, height: h)).flatMap(Self.handle)
         }
         for (index, value) in host.eq.prefix(SoniqueSkinScene.eqSliders).enumerated() {
             guard let handle = handles[scene.pressed == .eqSlider(index) ? 1 : 0] else { continue }
@@ -290,8 +290,8 @@ private struct Painter {
             draw(handle, x: track.left + (track.right - track.left - w) / 2, y: top)
             context.restoreGState()
         }
-        for (control, value, colour) in [(SoniqueSkinControl.amp, host.amp, "AmpKnobColor"),
-                                         (.balance, host.balance, "BalKnobColor"), (.pitch, host.pitch, "PitchKnobColor")] {
+        for (control, value, colour) in [(SoniqueSkinControl.amp, host.amp, SoniqueColour.ampKnobColor),
+                                         (.balance, host.balance, .balKnobColor), (.pitch, host.pitch, .pitchKnobColor)] {
             // A drawer knob's strip is a full turn, of which the knob sweeps 250° about its middle frame
             // (oracle: frames 5–30 of sonique's 36, 3–16 of metrobin's 20, 2–8 of bluehorizon's 11).
             knob(control: control, strip: "/jpeg/smallknob", key: "MISC_SMALL_KNOB", value: value, tint: colour,
@@ -324,8 +324,8 @@ private struct Painter {
         knob(control: .volume, strip: "/jpeg/volumeknob", key: "MISC_VOLUME_KNOB", value: host.volume)
         // The shuttle at rest is its first frame (258 mid captures closer than the middle one).
         knob(control: .shuttle, strip: "/jpeg/shuttle", key: "MISC_SHUTTLE_KNOB", value: 0, opaque: false)
-        ring(.songRing, progress: host.songProgress, colour: "ProgressColor_1")
-        ring(.listRing, progress: host.listProgress, colour: "PlayListColor_1")
+        ring(.songRing, progress: host.songProgress, colour: .progressColor1)
+        ring(.listRing, progress: host.listProgress, colour: .playListColor1)
         songDisplay()
     }
 
@@ -334,7 +334,7 @@ private struct Painter {
     /// (a flat `ProgressBkColor` there made 239 mid captures worse).
     /// ponytail: the start angle and the fill colour are guesses, since the oracle captures only the
     /// stopped state, where both rings are empty; measure them from a playing oracle.
-    private func ring(_ control: SoniqueSkinControl, progress: Double, colour key: String) {
+    private func ring(_ control: SoniqueSkinControl, progress: Double, colour key: SoniqueColour) {
         guard progress > 0, let region = scene.region(for: control) else { return }
         context.saveGState()
         clip(to: region.rects)
@@ -368,24 +368,24 @@ private struct Painter {
             CGPath(roundedRect: CGRect(x: x + 13 + inset, y: y - 8, width: 68 - 2 * inset, height: 39 - inset),
                    cornerWidth: 5, cornerHeight: 5, transform: nil)
         }
-        if skin.settings.colour("SystemBkColor_2") != 0 {
+        if skin.settings.colour(.systemBkColor2) != 0 {
             context.addPath(tab(3))
-            context.setFillColor(colour("SystemBkColor_2"))
+            context.setFillColor(colour(.systemBkColor2))
             context.fillPath()
         }
-        if skin.settings.colour("BorderColor") != 0 {
+        if skin.settings.colour(.borderColor) != 0 {
             context.addPath(tab(0))
             context.addPath(tab(3))
-            context.setFillColor(colour("BorderColor"))
+            context.setFillColor(colour(.borderColor))
             context.fillPath(using: .evenOdd)
         }
         let seconds = host.elapsedSeconds
         let lines = [(String(format: "%03d", host.trackNumber), 15, CGFloat(14)),
                      (String(format: "%02d:%02d.00", seconds / 60 % 100, seconds % 60), 25, 10)]
         for (string, baseline, size) in lines {
-            text(string, centreX: x + 47, minX: x + 13, baseline: y + baseline, size: size, colour: "SystemColor_1")
+            text(string, centreX: x + 47, minX: x + 13, baseline: y + baseline, size: size, colour: .systemColor1)
         }
-        titleLine(idle: "NullPlayer", centreX: x + 47, left: x + 13, right: x + 81, baseline: y + 41, colour: "SystemColor_1")
+        titleLine(idle: "NullPlayer", centreX: x + 47, left: x + 13, right: x + 81, baseline: y + 41, colour: .systemColor1)
         context.restoreGState()
     }
 
@@ -411,8 +411,8 @@ private struct Painter {
             lit(.init(left: 186, top: 0, right: 192, bottom: barHeight))
         }
         let time = String(format: "%02d:%02d:%02d", host.elapsedSeconds / 3600, host.elapsedSeconds / 60 % 60, host.elapsedSeconds % 60)
-        text(String(format: "%03d", host.trackNumber), x: 93, baseline: 16, size: 11, colour: "SystemColor_1")
-        text(time, x: 125, baseline: 16, size: 11, colour: "SystemColor_1")
+        text(String(format: "%03d", host.trackNumber), x: 93, baseline: 16, size: 11, colour: .systemColor1)
+        text(time, x: 125, baseline: 16, size: 11, colour: .systemColor1)
     }
 
     /// The open drawer: `/jpeg/extra`'s half for that side, then Sonique's icons and marquee on it.
@@ -430,7 +430,7 @@ private struct Painter {
             context.saveGState()
             clip(to: [marquee])
             self.marquee(host.title, left: marquee.left, right: marquee.right, baseline: marquee.bottom - 2, size: 9,
-                         colour: "SystemColor_1")
+                         colour: .systemColor1)
             context.restoreGState()
         }
     }
@@ -477,8 +477,7 @@ private struct Painter {
 
     private func draw(_ misc: CGImage, lit key: String, prefix: String, control: SoniqueSkinControl) {
         guard let region = scene.region(for: control) else { return }
-        let x = skin.settings.int("misc locations", prefix + key + "_x")
-        let y = skin.settings.int("misc locations", prefix + key + "_y")
+        let (x, y) = skin.settings.point("misc locations", prefix + key)
         let b = region.bounds
         draw(misc, source: .init(left: x, top: y, right: x + b.right - b.left, bottom: y + b.bottom - b.top),
              x: b.left, y: b.top, clip: region.rects)
@@ -492,7 +491,7 @@ private struct Painter {
     /// shuttle's is not (26 mid captures worse opaque), so it passes `opaque: false`. `turn` is the
     /// share of the strip, centred on its middle, that the value spans.
     private func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double,
-                      tint: String? = nil, opaque: Bool = true, turn: Double = 1) {
+                      tint: SoniqueColour? = nil, opaque: Bool = true, turn: Double = 1) {
         guard let strip = skin.image(name), let region = scene.region(for: control) else { return }
         let width = max(1, skin.settings.int("misc values", key + "_width"))
         let frames = max(1, min(skin.settings.int("misc values", key + "_images"), strip.width / width))
@@ -517,7 +516,7 @@ private struct Painter {
     // MARK: - What Sonique draws itself
 
     func balls() {
-        let fill = colour("BlueBallsColor")
+        let fill = colour(.blueBallsColor)
         for (ball, rect) in scene.ballRects {
             let r = rect.cgRect
             context.setFillColor(fill)
@@ -579,7 +578,7 @@ private struct Painter {
     private func icon(_ control: SoniqueSkinControl, in rect: SoniqueSkinRegion.Rect, lit: Bool) {
         let r = rect.cgRect
         context.saveGState()
-        context.setFillColor(colour(control == .eject ? "OpenFileColor" : "SystemColor_3"))
+        context.setFillColor(colour(control == .eject ? .openFileColor : .systemColor3))
         context.fillEllipse(in: r)
         context.setFillColor(CGColor(gray: lit ? 1 : 0, alpha: 1))
         let cx = r.midX, cy = r.midY
@@ -617,11 +616,11 @@ private struct Painter {
         context.restoreGState()
     }
 
-    private func colour(_ key: String) -> CGColor { SoniqueSkinRenderer.cgColor(skin.settings.colour(key)) }
+    private func colour(_ key: SoniqueColour) -> CGColor { SoniqueSkinRenderer.cgColor(skin.settings.colour(key)) }
 
     /// The playing title scrolling in `left..<right` (`marquee`), or with none `idle` centred on
     /// `centreX`, in the 9 px lettering every title line uses.
-    private func titleLine(idle: String, centreX: Int, left: Int, right: Int, baseline: Int, colour key: String) {
+    private func titleLine(idle: String, centreX: Int, left: Int, right: Int, baseline: Int, colour key: SoniqueColour) {
         guard !host.title.isEmpty else {
             return text(idle, centreX: centreX, minX: left, baseline: baseline, size: 9, colour: key)
         }
@@ -632,7 +631,7 @@ private struct Painter {
     /// round again after a gap (or after the whole span, for a title shorter than it), cut to the
     /// span. Always, not only when too long: a skin's own art can cover any part of the line (the
     /// sonique skin's rocker hides the status line's right end), so "fits" cannot be measured.
-    private func marquee(_ string: String, left: Int, right: Int, baseline: Int, size: CGFloat, colour key: String) {
+    private func marquee(_ string: String, left: Int, right: Int, baseline: Int, size: CGFloat, colour key: SoniqueColour) {
         let width = Int(CTLineGetTypographicBounds(line(string, size: size, rgb: 0), nil, nil, nil).rounded(.up))
         let period = max(width + SoniqueSkinScene.marqueeGap, right - left)
         let x = left - scene.marqueeOffset % period
@@ -643,13 +642,13 @@ private struct Painter {
         context.restoreGState()
     }
 
-    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, colour key: String, spacing: CGFloat = 0,
+    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, colour key: SoniqueColour, spacing: CGFloat = 0,
                       font: String = "Verdana-Bold") {
         text(string, x: x, baseline: baseline, size: size, rgb: skin.settings.colour(key), spacing: spacing, font: font)
     }
 
     /// Centred on `centreX`, but starting no further left than `minX`: a long title keeps its start.
-    private func text(_ string: String, centreX: Int, minX: Int, baseline: Int, size: CGFloat, colour key: String,
+    private func text(_ string: String, centreX: Int, minX: Int, baseline: Int, size: CGFloat, colour key: SoniqueColour,
                       spacing: CGFloat = 0) {
         let width = CTLineGetTypographicBounds(line(string, size: size, rgb: 0, spacing: spacing), nil, nil, nil)
         text(string, x: max(minX, centreX - Int((width / 2).rounded())), baseline: baseline, size: size,

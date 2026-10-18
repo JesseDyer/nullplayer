@@ -8,7 +8,7 @@ final class SoniqueSkinSettingsTests: XCTestCase {
 
     func testAnOmittedKeyIsTheDefault() {
         let s = settings("")
-        XCTAssertEqual(s.colour("SystemColor_2"), 0xFFFF00)
+        XCTAssertEqual(s.colour(.systemColor2), 0xFFFF00)
         XCTAssertEqual(s.int("misc values", "MISC_VOLUME_KNOB_width"), 18)
         XCTAssertEqual(s.int("skin", "version"), 100)
         XCTAssertEqual(s.findings, [])
@@ -19,7 +19,7 @@ final class SoniqueSkinSettingsTests: XCTestCase {
         let s = settings("[misc locations]\nPREV_y=7\nBIGUP_y=10\n[sonique colors]\nSystemColor_1=0x123456\n")
         XCTAssertEqual(s.int("misc locations", "NAV_PREV_y"), 7)
         XCTAssertEqual(s.int("misc locations", "BIGON_DOWN_y"), 45)
-        XCTAssertEqual(s.colour("LogoColor"), 0x123456)
+        XCTAssertEqual(s.colour(.logoColor), 0x123456)
     }
 
     /// corrosion's `NAV_CYANON_x=CYANON_x` draws from CYANON's position in the oracle, and Barrels
@@ -44,14 +44,14 @@ final class SoniqueSkinSettingsTests: XCTestCase {
 
     func testAColourDropsItsAlphaAndTakesSixDigits() {
         let s = settings("[sonique colors]\nSystemColor_1=0x00FFFFAA\nSystemColor_2=0xc0c0c0\n")
-        XCTAssertEqual(s.colour("SystemColor_1"), 0xFFFFAA)
-        XCTAssertEqual(s.colour("SystemColor_2"), 0xC0C0C0)
+        XCTAssertEqual(s.colour(.systemColor1), 0xFFFFAA)
+        XCTAssertEqual(s.colour(.systemColor2), 0xC0C0C0)
     }
 
     func testAnUnreadableValueIsSQ0011AndTheDefault() {
         let s = settings("[sonique colors]\nSystemColor_1=verde\nSystemColor_2=&H00FFFFFF&\n[misc locations]\nPREV_x=NEXT_x * 2\n")
-        XCTAssertEqual(s.colour("SystemColor_1"), 0x00FFFF)
-        XCTAssertEqual(s.colour("SystemColor_2"), 0xFFFF00)
+        XCTAssertEqual(s.colour(.systemColor1), 0x00FFFF)
+        XCTAssertEqual(s.colour(.systemColor2), 0xFFFF00)
         XCTAssertEqual(s.int("misc locations", "PREV_x"), 0)
         XCTAssertEqual(s.findings.map(\.code), [.iniValueMalformed, .iniValueMalformed, .iniValueMalformed])
     }

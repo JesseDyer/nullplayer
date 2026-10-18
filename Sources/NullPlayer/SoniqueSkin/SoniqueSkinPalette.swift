@@ -14,15 +14,15 @@ import AppKit
 enum SoniqueSkinPalette {
     static func surfaceStyle(for skin: SoniqueSkin) -> SkinnedSurfaceStyle {
         let source = skin.source(for: .navigator)
-        func colour(_ key: String) -> NSColor { NSColor(cgColor: SoniqueSkinRenderer.cgColor(source.settings.colour(key)))! }
-        let text = colour("PlayListColor_1"), current = colour("PlayListColor_2"), selection = colour("SystemBkColor_2")
+        func colour(_ key: SoniqueColour) -> NSColor { NSColor(cgColor: SoniqueSkinRenderer.cgColor(source.settings.colour(key)))! }
+        let text = colour(.playListColor1), current = colour(.playListColor2), selection = colour(.systemBkColor2)
         return SkinnedSurfaceStyle(roles: SkinnedSurfaceRoles(
-            background: colour("SystemBkColor_1"), text: text, currentText: current,
-            selectionBackground: selection, selectionText: colour("SystemColor_1"),
+            background: colour(.systemBkColor1), text: text, currentText: current,
+            selectionBackground: selection, selectionText: colour(.systemColor1),
             treeText: text, treeSelection: selection,
             // `.wal`'s candidates: the playing row's own colour then the selection's; the selected
             // row's, every colour the skin names past its rows.
-            playlistMarks: .init(selected: ["PlayListColor_2", "SystemColor_1", "SystemColor_2", "SystemColor_3"].map(colour),
-                                 playing: ["PlayListColor_2", "SystemColor_1"].map(colour))))
+            playlistMarks: .init(selected: [.playListColor2, .systemColor1, .systemColor2, .systemColor3].map(colour),
+                                 playing: [.playListColor2, .systemColor1].map(colour))))
     }
 }

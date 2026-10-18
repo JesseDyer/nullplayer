@@ -23,6 +23,21 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     /// Small mode's blinkers, so a spectrum frame redraws only when they change.
     private var blinkersLit = false
 
+    static let effectKey = "soniqueEffect"
+    /// The visual mode screen's effect and preset, remembered across launches: Sonique had one
+    /// visualizer choice, not one per skin. Restored once, then saved on every change.
+    @MainActor private static let effectPersistence: NSObjectProtocol = {
+        let selection = SkinEffectSelection.sonique, defaults = UserDefaults.standard
+        selection.restore(effect: defaults.string(forKey: effectKey), preset: defaults.integer(forKey: effectKey + "Preset"))
+        return NotificationCenter.default.addObserver(forName: SkinEffectSelection.didChange, object: selection,
+                                                      queue: .main) { _ in
+            MainActor.assumeIsolated {
+                defaults.set(selection.current.id, forKey: effectKey)
+                defaults.set(selection.preset, forKey: effectKey + "Preset")
+            }
+        }
+    }()
+
     var mode: SoniqueSkin.Mode {
         get { skinView.mode }
         set {
@@ -44,6 +59,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         window.title = "NullPlayer — Sonique"
         window.setAccessibilityIdentifier("SoniqueSkinMainWindow")
         window.center()
+        _ = MainActor.assumeIsolated { Self.effectPersistence }
         super.init(window: window)
         window.delegate = self
         window.contentView = skinView

@@ -26,12 +26,10 @@ import AppKit
 final class SkinEffectSelection {
     /// A `.wmz` skin's `<EFFECTS>` rects.
     static let wmp = SkinEffectSelection(cavaScope: .wmpEffects, visClassicScope: .wmpEffects,
-                                         waveformConsumerID: "wmp.effects.visclassic", defaultsKey: nil)
-    /// The Sonique navigator's visual mode screen.
-    /// Remembered across launches by itself: Sonique had one visualizer choice, not one per skin.
+                                         waveformConsumerID: "wmp.effects.visclassic")
+    /// The Sonique navigator's visual mode screen, remembered by `SoniqueSkinMainWindowController`.
     static let sonique = SkinEffectSelection(cavaScope: .soniqueEffects, visClassicScope: .soniqueEffects,
-                                             waveformConsumerID: "sonique.effects.visclassic",
-                                             defaultsKey: "soniqueEffect")
+                                             waveformConsumerID: "sonique.effects.visclassic")
 
     /// The family's own Cava and vis_classic settings, which its surfaces draw with, so a choice
     /// in one family's right-click menu never moves another's or the standalone windows'.
@@ -91,23 +89,15 @@ final class SkinEffectSelection {
     /// preset number that landed on. Never posts a change: it is a report, not a choice.
     var presetTitle: String = ""
 
-    /// Where this selection saves its effect and preset on every change; nil for one saved by its
-    /// family (WMP's per-skin `WMPVisualizationSettingsStore`).
-    private let defaultsKey: String?
-
     private init(cavaScope: CavaSettings.Scope, visClassicScope: VisClassicBridge.PreferenceScope,
-                 waveformConsumerID: String, defaultsKey: String?) {
+                 waveformConsumerID: String) {
         self.cavaScope = cavaScope
         self.visClassicScope = visClassicScope
         self.waveformConsumerID = waveformConsumerID
-        self.defaultsKey = defaultsKey
         // The compact Spikes is a better first effect for the small, framed rectangles skins
         // author than borrowing the application's full-window visualization preference.
         index = 0
         presetTitle = ""
-        guard let defaultsKey, let id = UserDefaults.standard.string(forKey: defaultsKey) else { return }
-        index = Self.catalogue.firstIndex { $0.id == id } ?? 0
-        preset = UserDefaults.standard.integer(forKey: defaultsKey + "Preset")
     }
 
     var current: Effect { Self.catalogue[min(max(0, index), Self.catalogue.count - 1)] }
@@ -129,7 +119,8 @@ final class SkinEffectSelection {
         return true
     }
 
-    /// Puts the rect back on what this skin was last left showing (`WMPVisualizationSettingsStore`).
+    /// Puts the rect back on what was last left showing (WMP: `WMPVisualizationSettingsStore`, per
+    /// skin; Sonique: one choice for the family).
     /// Unlike `select`, a missing or unknown id means *the default* rather than "change nothing":
     /// restoring a skin that has no record must not leave the previous skin's effect on screen.
     func restore(effect id: String?, preset value: Int) {
@@ -159,11 +150,5 @@ final class SkinEffectSelection {
 
     func stepPreset(by delta: Int) { setPreset(max(0, preset + delta)) }
 
-    private func post() {
-        if let defaultsKey {
-            UserDefaults.standard.set(current.id, forKey: defaultsKey)
-            UserDefaults.standard.set(preset, forKey: defaultsKey + "Preset")
-        }
-        NotificationCenter.default.post(name: Self.didChange, object: self)
-    }
+    private func post() { NotificationCenter.default.post(name: Self.didChange, object: self) }
 }

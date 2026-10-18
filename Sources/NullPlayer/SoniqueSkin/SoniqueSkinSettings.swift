@@ -23,19 +23,22 @@ struct SoniqueSkinSettings {
         values[section.lowercased()]![key.lowercased()]!
     }
 
+    /// `<key>_x` and `<key>_y`, the way every position in `skin.ini` is written.
+    func point(_ section: String, _ key: String) -> (x: Int, y: Int) {
+        (int(section, key + "_x"), int(section, key + "_y"))
+    }
+
     /// `0xRRGGBB` from `[sonique colors]`.
-    func colour(_ key: String) -> UInt32 {
-        UInt32(truncatingIfNeeded: int("sonique colors", key)) & 0xFF_FFFF
+    func colour(_ key: SoniqueColour) -> UInt32 {
+        UInt32(truncatingIfNeeded: int("sonique colors", key.rawValue)) & 0xFF_FFFF
     }
 
     /// Where the closed drawer's (0,0) sits on the navigator picture. `DRAWER_POS` wins whenever the
     /// skin writes it, whatever its version; `MISC_DRAWER_POS` only otherwise, and 0,0 there reads as
     /// unwritten (format.md § *Window outline*).
     var drawerPosition: (x: Int, y: Int) {
-        if written("misc locations", "DRAWER_POS_x") != nil {
-            return (int("misc locations", "DRAWER_POS_x"), int("misc locations", "DRAWER_POS_y"))
-        }
-        let misc = (int("misc values", "MISC_DRAWER_POS_x"), int("misc values", "MISC_DRAWER_POS_y"))
+        if written("misc locations", "DRAWER_POS_x") != nil { return point("misc locations", "DRAWER_POS") }
+        let misc = point("misc values", "MISC_DRAWER_POS")
         return misc == (0, 0) ? (29, 229) : misc  // `MISC_DRAWER_POS`'s default (`SoniqueSkinDefaults`)
     }
 
@@ -93,4 +96,17 @@ struct SoniqueSkinSettings {
         guard let value = Int(digits) else { return nil }
         return text.first == "-" ? -value : value
     }
+}
+
+/// The `[sonique colors]` keys NullPlayer draws with, so a misspelt one does not compile rather
+/// than trapping in `SoniqueSkinSettings.int`. Every case has a default (`SoniqueSkinDefaults`).
+enum SoniqueColour: String, CaseIterable {
+    case systemColor1 = "SystemColor_1", systemColor2 = "SystemColor_2", systemColor3 = "SystemColor_3"
+    case borderColor = "BorderColor", systemBkColor1 = "SystemBkColor_1", systemBkColor2 = "SystemBkColor_2"
+    case playListColor1 = "PlayListColor_1", playListColor2 = "PlayListColor_2"
+    case progressColor1 = "ProgressColor_1", progressBkColor = "ProgressBkColor"
+    case statusBarBgColor = "StatusBarBgColor", statusBarFgColor = "StatusBarFgColor", statusBarTextColor = "StatusBarTextColor"
+    case openFileColor = "OpenFileColor", ampKnobColor = "AmpKnobColor", balKnobColor = "BalKnobColor"
+    case pitchKnobColor = "PitchKnobColor", logoColor = "LogoColor", logoRingColor = "LogoRingColor"
+    case blueBallsColor = "BlueBallsColor"
 }

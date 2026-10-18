@@ -18,3 +18,15 @@ byte-identical to the capture before it.
 
 No open rows. The family shipped with Phase 2 (decision record Amendment 5); new work is filed here
 when a skin or a report reproduces it.
+
+## Maintenance
+
+Filed 2026-10-18 from the Phase 2 code review. S18–S20 are restructurings beyond Sonique: each
+is weighed with the user before it starts, and touches `App/` (the sweeps above apply).
+
+| ID | Item | Reach | Notes |
+|---|---|---|---|
+| S18 | Share the single-canvas family's selection and load lifecycle. `SkinInstallFolder` took the file commit; the selection preference (`selectedXName`, `select`, `resetSelection`, clearing it on remove) is still written out in `WMPSkinImporter`, `AudionFaceImporter` and `SoniqueSkinImporter`, and `reloadSelectedSkin` / `loadTask` / import / `resetToUnskinned` are near line-for-line in `AudionFaceMainWindowController` and `SoniqueSkinMainWindowController`. A `SkinSelection(key:)` beside `SkinInstallFolder`, then a shared load-task helper on `SingleCanvasMainWindow` | all | Touches Audion and `.wmz`: their sweeps byte-identical. `skin-subsystem-blueprint` for the seam |
+| S19 | Derive the per-scope preference keys from the scope. Each of `VisClassicBridge.PreferenceScope`'s five key properties is a `switch` of `"visClassicX.\(case)"`, and `CavaSettings.key(_:for:)` the same per scope; a `String` raw value makes each one line (~35 lines gone) and a new family adds none. Confirm every existing key is that uniform first: a renamed key loses users' saved settings | all | Visualization code, not Sonique's; touches every family's embedded visualizer |
+| S20 | Split `SoniqueSkinRenderer.swift` (704 lines) before it nears 1,000: the three modes, the navigator's screens (menu, visual mode, status line), Sonique's own glyphs (balls, drawer icons, menu icons) and its lettering (four `text` overloads, `marquee`, `wrapped`, `lettering`, collapsible into one taking a `SoniqueSkinMenu.Text`-like spec) | 524 | *Autonomous*: the render probe byte-identical before and after |
+| S21 | The oracle ratchet disagrees at `3a7ae237`: the sweep prints 658 `REGRESSION` and 380 `BETTER` rows (nav colour 11.04 → 11.06 %, mid 6.59 → 6.56 %), all colour, every shape count unchanged. `oracle-baseline.tsv` was last recorded at `9ee9e5fe` (S7), before S16/S17. Find what moved the colours, then fix or record per `harness.md` § *The oracle sweep* | 524 | Reproduce: `harness.md` § *The oracle sweep* steps 2–3 |

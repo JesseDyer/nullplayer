@@ -946,10 +946,8 @@ class AppStateManager {
             // the no-swap case, where the existing WMP controller may still hold the old archive.
             (wm.mainWindowController as? WMPMainWindowController)?.reloadSelectedSkin()
         }
-        if runningMode.controllerFamily.isSingleCanvas {
-            // As for `.wmp`: the no-swap case may still hold the previous face or skin.
-            (wm.mainWindowController as? SingleCanvasMainWindow)?.reloadSelectedSkin()
-        }
+        // As for `.wmp`: the no-swap case may still hold the previous face or skin.
+        (wm.mainWindowController as? SingleCanvasMainWindow)?.reloadSelectedSkin()
         
         // Restore audio output device
         if let deviceUID = state.selectedOutputDeviceUID {

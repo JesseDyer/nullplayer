@@ -70,4 +70,33 @@ final class SoniqueSkinSceneTests: XCTestCase {
         XCTAssertEqual(closed.canvas, open.canvas)
         XCTAssertEqual(closed.canvas.bottom, 30 + 50 + 60)
     }
+
+    /// Every key the renderer builds at run time (`NAV_` + a lit state, a knob's `_width`, a ball's
+    /// `MSM_` position) is read through `SoniqueSkinSettings.int`, which traps on an unknown one. The
+    /// oracle sweep draws only the stopped state, so this draws every press in every play state.
+    func testEveryPressInEveryStateRenders() {
+        let skin = SoniqueSkin.defaultSkin
+        let controls: [SoniqueSkinControl] = [.play, .pause, .prev, .next, .eject, .repeatButton, .shuffle, .volume,
+                                              .up, .down, .navButton, .vis, .songInfo, .shuttle, .drawerTab,
+                                              .amp, .balance, .pitch, .eqSlider(0)]
+            + SoniqueSkinControl.Ball.allCases.map { .ball($0) } + SoniqueSkinMenu.Item.allCases.map { .menu($0) }
+        for mode in SoniqueSkin.Mode.allCases {
+            for state in [SoniqueSkinHostState.PlayState.stopped, .playing, .paused] {
+                let host = SoniqueSkinHostState(playState: state, shuffle: true, repeatAll: true, title: "title",
+                                                blinkersLit: true)
+                for pressed in controls {
+                    for screen in [SoniqueSkinNavScreen.menu, .visualMode] {
+                        let scene = SoniqueSkinScene(skin: skin, mode: mode, host: host, pressed: pressed,
+                                                     smallDrawer: .top, navDrawerOpen: true, navScreen: screen)
+                        XCTAssertNotNil(SoniqueSkinRenderer.render(scene), "\(mode) \(state) \(pressed)")
+                    }
+                }
+            }
+        }
+    }
+
+    func testEveryColourKeyHasADefault() {
+        let settings = SoniqueSkin.defaultSkin.settings
+        for key in SoniqueColour.allCases { _ = settings.colour(key) }
+    }
 }
