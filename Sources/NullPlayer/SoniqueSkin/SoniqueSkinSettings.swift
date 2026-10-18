@@ -39,6 +39,9 @@ struct SoniqueSkinSettings {
         return misc == (0, 0) ? (29, 229) : misc  // `MISC_DRAWER_POS`'s default (`SoniqueSkinDefaults`)
     }
 
+    /// How far the navigator's drawer slides down to open.
+    var drawerSlide: Int { int("misc values", "MISC_DRAWER_DISTANCE_TOSLIDE") }
+
     /// The skin's own value; an empty one (`MISC_DRAWER_POS_x=`; 8 skins write one) counts as unwritten.
     private func written(_ section: String, _ key: String) -> String? {
         ini.value(section, key).flatMap { $0.isEmpty ? nil : $0 }

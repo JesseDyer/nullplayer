@@ -18,8 +18,8 @@ byte-identical to the capture before it.
 
 | ID | Item | Reach | Notes |
 |---|---|---|---|
+| S14 | The navigator drawer open against the oracle, and the pitch knob's speed range and whether Sonique's pitch shifted with it; replace the 0.5×–2× stand-in in `SoniqueSkinAudioEngineHost.setDial`. Then drive the drawer, its knobs and sliders in the app | 511 | Needs an unlocked screen: no command opens the drawer, so the oracle is clicked (`winhelper click`), which a locked screen refuses. S9 stopped there |
 | S7 | Navigator menu screen and status line drawn in the skin's colours; the other screens host NullPlayer's views per the decision record | all | Capture every screen through the oracle first (`-showwindow 3 1..7`) |
-| S9 | Knob animation strips (volume, amp/bal/pitch, shuttle) and the EQ drawer | 511 | The pitch knob drives playback speed; read from the oracle the speed range its travel spans and whether Sonique's pitch shifted with it |
 
 ## After Phase 2 — shared code
 

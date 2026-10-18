@@ -49,8 +49,8 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         window.contentView = skinView
         skinView.mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(SoniqueSkin.Mode.init(rawValue:)) ?? .navigator
         skinView.onCommand = { [weak self] control in MainActor.assumeIsolated { self?.perform(control) } }
-        skinView.onVolume = { [weak self] volume in
-            WindowManager.shared.audioEngine.volume = Float(volume)
+        skinView.onDial = { [weak self] control, value in
+            MainActor.assumeIsolated { SoniqueSkinAudioEngineHost.setDial(control, to: value, WindowManager.shared.audioEngine) }
             self?.refreshHostState()
         }
         skinView.onMode = { [weak self] mode in self?.mode = mode }
@@ -185,8 +185,9 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         case .eject: MenuActions.shared.openFile()
         case .shuffle: engine.shuffleEnabled.toggle()
         case .repeatButton: engine.repeatEnabled.toggle()
-        // The knob turns by dragging (`onVolume`); the menu rocker, shuttle and rings wait for S7.
-        case .volume, .up, .down, .shuttle, .drawerTab, .songRing, .listRing: break
+        case .drawerTab: skinView.navDrawerOpen.toggle()
+        // The dials turn by dragging (`onDial`); the menu rocker, shuttle and rings wait for S7.
+        case .volume, .amp, .balance, .pitch, .eqSlider, .up, .down, .shuttle, .songRing, .listRing: break
         }
         refreshHostState()
     }

@@ -139,3 +139,21 @@ size (identical in sonique, sTek2k, musicman, k2 and carrot, 86 to 94 px wide), 
   (start angle, colour, `mid_playlistmode`'s 270° against 360°) needs a playing oracle, which the
   prefix cannot give: it has no sound device.
 - **The shuttle at rest is the strip's first frame**: 258 mid captures closer than the middle frame.
+
+## The navigator's drawer
+
+The *audio enhancement* drawer hangs under (or over) the console at `DRAWER_POS` and slides
+`MISC_DRAWER_DISTANCE_TOSLIDE` px to open: 75 down by default, negative for up (Trigun's `-71`).
+Its art is `/jpeg/misc` from `DRAWER_x`/`DRAWER_y`, its own (0,0) at the drawer's; its parts are
+in the drawer's own pixels, moved with it:
+
+| Part | From |
+|---|---|
+| 20 EQ sliders | tracks `MISC_DRAWER_SLIDER_SIZE` at `…_ARRAY_POS`, `…_PITCH` apart; the handle is `/jpeg/misc` at `SLIDEROFF` (`SLIDERON` while held), `MISC_DRAWER_SLIDER_HANDLE_SIZE` |
+| amp, bal, pitch knobs | `/rgn/nav/dknobamp`, `dknobbal`, `dknobpitch`; frames of `/jpeg/smallknob` (`MISC_SMALL_KNOB`), grey, multiplied by `AmpKnobColor`, `BalKnobColor`, `PitchKnobColor` |
+| the tab that opens and closes it | `/rgn/nav/drawertop` |
+
+The window keeps room for the drawer open, as small mode's does for its drawers. NullPlayer maps the
+sliders to its 10 or 21 EQ bands by share, amp to the preamp, bal to balance and pitch to playback
+speed (`SoniqueSkinAudioEngineHost.setDial`). **Unmeasured** (S14): the open drawer against the
+oracle, and the pitch knob's speed range, stood in by 0.5×–2× with a detent at 1.0×.

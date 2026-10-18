@@ -2,19 +2,22 @@ import AppKit
 
 /// Shows one mode of a Sonique skin: blits `SoniqueSkinRenderer`'s output, the same draw path the
 /// harness measures. A press on a control runs it on release; the knobs turn with vertical or
-/// horizontal motion, as Sonique's do; a press anywhere else inside the outline drags the window
+/// horizontal motion, as Sonique's do, and an EQ slider follows the pointer; a press anywhere else inside the outline drags the window
 /// through `WindowManager`, and a double-click there jumps a mode (help `02.htm` § *Jumping Between
 /// Modes*). A pixel outside the outline is not part of the window.
 final class SoniqueSkinMainView: NSView {
     var skin: SoniqueSkin? { didSet { pressed = nil; smallDrawer = nil; redraw() } }
     var mode: SoniqueSkin.Mode = .navigator { didSet { if mode != oldValue { pressed = nil; smallDrawer = nil; redraw() } } }
+    /// The navigator's drawer, opened and closed by its tab.
+    var navDrawerOpen = false { didSet { if navDrawerOpen != oldValue { redraw(); onOutlineChange?() } } }
     var host = SoniqueSkinHostState() { didSet { if host != oldValue { redraw() } } }
     /// Window points per skin pixel.
     var uiScale: CGFloat = 1 { didSet { if uiScale != oldValue { redraw() } } }
     var onCommand: ((SoniqueSkinControl) -> Void)?
-    var onVolume: ((Double) -> Void)?
+    /// A knob or slider turned to a value, 0–1.
+    var onDial: ((SoniqueSkinControl, Double) -> Void)?
     var onMode: ((SoniqueSkin.Mode) -> Void)?
-    /// Small mode's drawer changes the outline, so the window's shadow is rebuilt.
+    /// A drawer changes the outline, so the window's shadow is rebuilt.
     var onOutlineChange: (() -> Void)?
 
     private var pressed: SoniqueSkinControl? { didSet { if pressed != oldValue { redraw() } } }
@@ -22,7 +25,7 @@ final class SoniqueSkinMainView: NSView {
     private var drawerClose: DispatchWorkItem?
     private var image: CGImage?
     private var drag = SkinnedWindowDrag()
-    private var knobDrag: (start: NSPoint, volume: Double)?
+    private var knobDrag: (control: SoniqueSkinControl, start: NSPoint, value: Double)?
     private let windowShadow = SkinWindowShadow()
 
     override var isFlipped: Bool { true }
@@ -49,7 +52,9 @@ final class SoniqueSkinMainView: NSView {
     }
 
     private func redraw() {
-        scene = skin.map { SoniqueSkinScene(skin: $0, mode: mode, host: host, pressed: pressed, smallDrawer: smallDrawer) }
+        scene = skin.map {
+            SoniqueSkinScene(skin: $0, mode: mode, host: host, pressed: pressed, smallDrawer: smallDrawer, navDrawerOpen: navDrawerOpen)
+        }
         image = scene.flatMap(SoniqueSkinRenderer.render)
         needsDisplay = true
         windowShadow.invalidateShape("redraw")
@@ -70,9 +75,22 @@ final class SoniqueSkinMainView: NSView {
     }
 
     private func hit(at point: NSPoint) -> (inside: Bool, control: SoniqueSkinControl?)? {
+        guard let scene, let canvas = canvasPoint(point) else { return nil }
+        return scene.hit(x: canvas.x, y: canvas.y)
+    }
+
+    private func canvasPoint(_ point: NSPoint) -> (x: Int, y: Int)? {
         guard let scene, bounds.width > 0, bounds.height > 0 else { return nil }
-        let x = Int(point.x * CGFloat(scene.width) / bounds.width), y = Int(point.y * CGFloat(scene.height) / bounds.height)
-        return scene.hit(x: x, y: y)
+        return (Int(point.x * CGFloat(scene.width) / bounds.width), Int(point.y * CGFloat(scene.height) / bounds.height))
+    }
+
+    /// An EQ slider's value with its handle centred on the pointer.
+    private func sliderValue(_ index: Int, at event: NSEvent) -> Double? {
+        guard let scene, let point = canvasPoint(convert(event.locationInWindow, from: nil)) else { return nil }
+        let track = scene.eqSliderTrack(index)
+        let handle = scene.skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
+        let y = Double(point.y + scene.canvas.top - track.top - handle / 2)
+        return 1 - y / Double(max(1, track.bottom - track.top - handle))
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -121,7 +139,11 @@ final class SoniqueSkinMainView: NSView {
         guard let hit = hit(event), hit.inside else { return }
         if let control = hit.control, control.isActionable {
             pressed = control
-            if control == .volume { knobDrag = (event.locationInWindow, host.volume) }
+            if case .eqSlider(let index) = control, let value = sliderValue(index, at: event) {
+                onDial?(control, value)
+            } else if let value = host.dial(control) {
+                knobDrag = (control, event.locationInWindow, value)
+            }
             return
         }
         if event.clickCount == 2 {
@@ -132,10 +154,14 @@ final class SoniqueSkinMainView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if case .eqSlider(let index) = pressed, let value = sliderValue(index, at: event) {
+            onDial?(.eqSlider(index), value)
+            return
+        }
         if let knobDrag {
             // Up or right turns clockwise (help `02.htm` § *Using Knobs*); 150 points spans the knob.
             let dx = event.locationInWindow.x - knobDrag.start.x, dy = event.locationInWindow.y - knobDrag.start.y
-            onVolume?(min(1, max(0, knobDrag.volume + Double(dx + dy) / 150)))
+            onDial?(knobDrag.control, min(1, max(0, knobDrag.value + Double(dx + dy) / 150)))
             return
         }
         drag.move(event)
@@ -143,11 +169,10 @@ final class SoniqueSkinMainView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         drag.end(event)
-        let wasKnob = knobDrag != nil
         knobDrag = nil
         guard let pressed else { return }
         self.pressed = nil
-        guard !wasKnob, hit(event)?.control == pressed else { return }
+        guard host.dial(pressed) == nil, hit(event)?.control == pressed else { return }
         onCommand?(pressed)
     }
 

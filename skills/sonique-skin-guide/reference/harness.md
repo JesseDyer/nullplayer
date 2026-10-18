@@ -179,11 +179,11 @@ exits 1; one below it prints `BETTER`, and `--record` rewrites the file. Only co
 are in it, never artwork. Record after a change that improves the counts, never to silence a
 regression.
 
-Measured 2026-10-18 at the commit that closed S8 (S10's own figures, before black under the
+Measured 2026-10-18 at the commit that closed S9 (nav colour 12.03 %; S8 left it at 12.16 %; S10's own figures, before black under the
 picture and the oracle's state: shape 1.49 / 4.69 / 4.39 %, colour 12.29 / 7.61 / 9.29 %):
 
 ```text
-SUMMARY nav: 524 compared, shape exact 512, shape 0.10%, colour 12.16% of 67176100 px
+SUMMARY nav: 524 compared, shape exact 512, shape 0.10%, colour 12.03% of 67176100 px
 SUMMARY mid: 524 compared, shape exact 519, shape 0.01%, colour 6.67% of 30591336 px
 SUMMARY small: 524 compared, shape exact 492, shape 0.32%, colour 9.33% of 2350770 px
 ```
@@ -222,7 +222,7 @@ grep RENDERED /tmp/sonique-render.txt
 | Flag | Meaning |
 |---|---|
 | `SONIQUE_RENDER_OUT` | the output directory; the probe skips without it |
-| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, small mode's drawer open, lines and rings half full, full volume |
+| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, both drawers open (the navigator's with amp, bal, pitch and the EQ sliders turned), lines and rings half full, full volume |
 
 ## The default skin
 

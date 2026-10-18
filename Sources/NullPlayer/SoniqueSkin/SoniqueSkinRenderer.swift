@@ -72,12 +72,14 @@ private struct Painter {
     // MARK: - Modes
 
     func navigator() {
-        // The closed drawer first: the console is drawn over all of it but the tab below the frame.
-        if let drawer = skin.drawerRegion, let misc = skin.image("/jpeg/misc") {
-            let b = drawer.bounds
-            let x = skin.settings.int("misc locations", "DRAWER_x"), y = skin.settings.int("misc locations", "DRAWER_y")
+        // The drawer first: the console is drawn over all of it but what hangs below the frame.
+        if let drawer = scene.drawer, let misc = skin.image("/jpeg/misc") {
+            let b = drawer.bounds, origin = scene.drawerOrigin
+            let x = skin.settings.int("misc locations", "DRAWER_x") + b.left - origin.x
+            let y = skin.settings.int("misc locations", "DRAWER_y") + b.top - origin.y
             draw(misc, source: .init(left: x, top: y, right: x + b.right - b.left, bottom: y + b.bottom - b.top),
                  x: b.left, y: b.top, clip: drawer.rects)
+            if scene.navDrawerOpen { drawerDials(misc, clip: drawer.rects) }
         }
         // The screen is Sonique's own surface, opaque: black in the picture there stays black (k2),
         // and nothing behind it, the drawer included, shows through (Trigun).
@@ -90,6 +92,24 @@ private struct Painter {
         let ownKnob = skin.image("/jpeg/nav_volumeknob") != nil
         knob(control: .volume, strip: ownKnob ? "/jpeg/nav_volumeknob" : "/jpeg/volumeknob",
              key: ownKnob ? "MISC_NAV_VOLUME_KNOB" : "MISC_VOLUME_KNOB", value: host.volume)
+    }
+
+    /// The open drawer's EQ slider handles (`SLIDEROFF`, `SLIDERON` while held) and its three knobs,
+    /// `/jpeg/smallknob`'s grey frames tinted with each knob's colour (skinpack § *animations*).
+    private func drawerDials(_ misc: CGImage, clip drawer: [SoniqueSkinRegion.Rect]) {
+        let w = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_width")
+        let h = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
+        for (index, value) in host.eq.prefix(SoniqueSkinScene.eqSliders).enumerated() {
+            let track = scene.eqSliderTrack(index)
+            let key = scene.pressed == .eqSlider(index) ? "SLIDERON" : "SLIDEROFF"
+            let x = skin.settings.int("misc locations", key + "_x"), y = skin.settings.int("misc locations", key + "_y")
+            let top = track.top + Int((1 - min(1, max(0, value))) * Double(track.bottom - track.top - h))
+            draw(misc, source: .init(left: x, top: y, right: x + w, bottom: y + h), x: track.left, y: top, clip: drawer)
+        }
+        for (control, value, colour) in [(SoniqueSkinControl.amp, host.amp, "AmpKnobColor"),
+                                         (.balance, host.balance, "BalKnobColor"), (.pitch, host.pitch, "PitchKnobColor")] {
+            knob(control: control, strip: "/jpeg/smallknob", key: "MISC_SMALL_KNOB", value: value, tint: colour)
+        }
     }
 
     func mid() {
@@ -260,7 +280,8 @@ private struct Painter {
     /// A knob's frame from its horizontal strip (`<key>_width` px a frame, `<key>_images` frames),
     /// at the control's top-left and cut to its shape: a frame can be wider than the knob (BlueEyes:
     /// 29 px frames on a 15 px knob), and the oracle shows only the part inside it.
-    private func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double) {
+    /// `tint` multiplies the frame by a `[sonique colors]` key: the drawer's knobs are grey strips.
+    private func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double, tint: String? = nil) {
         guard let strip = skin.image(name), let region = scene.region(for: control) else { return }
         let width = max(1, skin.settings.int("misc values", key + "_width"))
         let frames = max(1, min(skin.settings.int("misc values", key + "_images"), strip.width / width))
@@ -268,6 +289,13 @@ private struct Painter {
         let b = region.bounds
         draw(strip, source: .init(left: frame * width, top: 0, right: frame * width + width, bottom: strip.height),
              x: b.left, y: b.top, clip: region.rects)
+        guard let tint else { return }
+        context.saveGState()
+        clip(to: region.rects)
+        context.setBlendMode(.multiply)
+        context.setFillColor(colour(tint))
+        context.fill(CGRect(x: b.left, y: b.top, width: width, height: strip.height))
+        context.restoreGState()
     }
 
     // MARK: - What Sonique draws itself

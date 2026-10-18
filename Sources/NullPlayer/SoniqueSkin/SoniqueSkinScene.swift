@@ -19,6 +19,23 @@ struct SoniqueSkinHostState: Equatable {
     var title = ""
     /// Loud enough to light small mode's blinkers.
     var blinkersLit = false
+    /// The navigator drawer's dials, 0–1: its knobs (0.5 is centre) and its 20 EQ sliders.
+    var amp = 0.5
+    var balance = 0.5
+    var pitch = 0.5
+    var eq = Array(repeating: 0.5, count: SoniqueSkinScene.eqSliders)
+
+    /// A knob's or slider's value; nil for a control that is pressed, not turned.
+    func dial(_ control: SoniqueSkinControl) -> Double? {
+        switch control {
+        case .volume: return volume
+        case .amp: return amp
+        case .balance: return balance
+        case .pitch: return pitch
+        case .eqSlider(let index): return eq.indices.contains(index) ? eq[index] : nil
+        default: return nil
+        }
+    }
 }
 
 /// Everything a mode can be clicked on: a skin region, or one of the controls Sonique draws itself
@@ -30,6 +47,8 @@ enum SoniqueSkinControl: Hashable {
     /// Mid mode's "nav" button (`/rgn/mid/eq`), and its vis and song windows (`top`, `bottom`).
     case navButton, vis, songInfo
     case shuttle, drawerTab, songRing, listRing
+    /// The navigator drawer's knobs and EQ sliders, 0-based.
+    case amp, balance, pitch, eqSlider(Int)
     case ball(Ball)
 
     /// Sonique's navigation balls: the mode jumps, help, minimise and close
@@ -60,16 +79,19 @@ struct SoniqueSkinScene {
     var host: SoniqueSkinHostState
     var pressed: SoniqueSkinControl?
     var smallDrawer: SoniqueSmallDrawer?
+    /// The navigator's drawer, slid out.
+    var navDrawerOpen: Bool
     /// The canvas in skin pixels: its origin is skin (0,0)'s offset into the window.
     let canvas: SoniqueSkinRegion.Rect
 
     init(skin: SoniqueSkin, mode: SoniqueSkin.Mode, host: SoniqueSkinHostState = .init(),
-         pressed: SoniqueSkinControl? = nil, smallDrawer: SoniqueSmallDrawer? = nil) {
+         pressed: SoniqueSkinControl? = nil, smallDrawer: SoniqueSmallDrawer? = nil, navDrawerOpen: Bool = false) {
         self.mode = mode
         self.skin = skin.source(for: mode)
         self.host = host
         self.pressed = pressed
         self.smallDrawer = smallDrawer
+        self.navDrawerOpen = navDrawerOpen
         canvas = Self.canvas(self.skin, mode)
     }
 
@@ -81,7 +103,7 @@ struct SoniqueSkinScene {
     /// The window outline in skin pixels (`format.md` § *Window outline*).
     var outline: [SoniqueSkinRegion.Rect] {
         var rects = skin.region(mode.frame)?.rects ?? []
-        if mode == .navigator, let drawer = skin.drawerRegion { rects += drawer.rects }
+        if mode == .navigator, let drawer { rects += drawer.rects }
         if mode == .small, let smallDrawer, let drawer = skin.smallDrawerPlacement(smallDrawer) {
             rects += drawer.region.rects.map { $0.offset(drawer.dx, drawer.dy) }
         }
@@ -94,7 +116,10 @@ struct SoniqueSkinScene {
         var box = frame ?? picture ?? SoniqueSkinRegion.Rect(left: 0, top: 0, right: 1, bottom: 1)
         switch mode {
         case .navigator:
-            if let drawer = skin.drawerRegion { box = box.union(drawer.bounds) }
+            // The window keeps room for the drawer slid out, as small mode's does for its drawers.
+            if let drawer = skin.drawerRegion {
+                box = box.union(drawer.bounds).union(drawer.bounds.offset(0, skin.settings.drawerSlide))
+            }
         case .mid:
             break
         case .small:
@@ -128,8 +153,8 @@ struct SoniqueSkinScene {
     }
 
     func region(for control: SoniqueSkinControl) -> SoniqueSkinRegion? {
-        guard let name = regionControls.first(where: { $0.0 == control })?.1 else { return nil }
-        return skin.region(mode.regions + name)
+        if let name = regionControls.first(where: { $0.0 == control })?.1 { return skin.region(mode.regions + name) }
+        return drawerDials.first { $0.0 == control }?.1
     }
 
     /// The balls each mode shows, left to right (help `02.htm`): the navigator jumps down, small mode
@@ -198,14 +223,51 @@ struct SoniqueSkinScene {
         if let button = drawerButtons.first(where: { $0.1.contains(x, y) }) { return (true, button.0) }
         let inside = outline.contains { $0.contains(x, y) }
         guard inside else { return (false, nil) }
-        if mode == .navigator, let tab = skin.region("/rgn/nav/drawertop") {
-            let at = skin.settings.drawerPosition
-            if tab.offset(at.x, at.y).contains(x, y) { return (true, .drawerTab) }
-        }
+        if mode == .navigator, let tab = drawerPart("/rgn/nav/drawertop"), tab.contains(x, y) { return (true, .drawerTab) }
         for (control, name) in regionControls {
             if skin.region(mode.regions + name)?.contains(x, y) == true { return (true, control) }
         }
+        if let dial = drawerDials.first(where: { $0.1.contains(x, y) }) { return (true, dial.0) }
         return (true, nil)
+    }
+
+    // MARK: - The navigator's drawer
+
+    static let eqSliders = 20
+
+    /// The drawer's shape where it sits: closed at `DRAWER_POS`, or slid `MISC_DRAWER_DISTANCE_TOSLIDE` down.
+    var drawer: SoniqueSkinRegion? { drawerPart("/rgn/nav/drawer") }
+
+    /// Where the drawer's own (0,0) sits on the navigator: `DRAWER_POS`, slid down while open.
+    var drawerOrigin: (x: Int, y: Int) {
+        let at = skin.settings.drawerPosition
+        return (at.x, at.y + (navDrawerOpen ? skin.settings.drawerSlide : 0))
+    }
+
+    /// One of the drawer's regions (drawn in the drawer's own pixels) moved to where the drawer sits.
+    func drawerPart(_ name: String) -> SoniqueSkinRegion? {
+        guard mode == .navigator, let part = skin.region(name) else { return nil }
+        return part.offset(drawerOrigin.x, drawerOrigin.y)
+    }
+
+    /// Each EQ slider's track: `MISC_DRAWER_SLIDER_SIZE` at `…_ARRAY_POS`, `…_PITCH` apart.
+    func eqSliderTrack(_ index: Int) -> SoniqueSkinRegion.Rect {
+        let v = { skin.settings.int("misc values", "MISC_DRAWER_SLIDER_" + $0) }
+        let left = drawerOrigin.x + v("ARRAY_POS_x") + index * v("PITCH"), top = drawerOrigin.y + v("ARRAY_POS_y")
+        return .init(left: left, top: top, right: left + v("SIZE_x"), bottom: top + v("SIZE_y"))
+    }
+
+    /// The knobs and sliders of the open drawer, in hit order; none while it is closed.
+    var drawerDials: [(SoniqueSkinControl, SoniqueSkinRegion)] {
+        guard navDrawerOpen else { return [] }
+        var dials: [(SoniqueSkinControl, SoniqueSkinRegion)] = []
+        for (control, name) in [(SoniqueSkinControl.amp, "dknobamp"), (.balance, "dknobbal"), (.pitch, "dknobpitch")] {
+            if let knob = drawerPart("/rgn/nav/" + name) { dials.append((control, knob)) }
+        }
+        for index in 0..<Self.eqSliders {
+            dials.append((.eqSlider(index), SoniqueSkinRegion(rect: eqSliderTrack(index))))
+        }
+        return dials
     }
 }
 
@@ -241,6 +303,11 @@ extension SoniqueSkinRegion.Rect {
 }
 
 extension SoniqueSkinRegion {
+    init(rect: Rect) {
+        bounds = rect
+        rects = [rect]
+    }
+
     func contains(_ x: Int, _ y: Int) -> Bool { bounds.contains(x, y) && rects.contains { $0.contains(x, y) } }
     func offset(_ dx: Int, _ dy: Int) -> SoniqueSkinRegion {
         var moved = self

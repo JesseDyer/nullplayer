@@ -14,8 +14,8 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
         }
         let skins = SoniqueSkinCensusTests.skins(at: path)
         try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
-        // `SONIQUE_RENDER_STATE=playing` draws the lit play/stop, shuffle and repeat, small mode's
-        // open drawer and half-filled lines at full volume; the default is the oracle's state:
+        // `SONIQUE_RENDER_STATE=playing` draws the lit play/stop, both drawers open with the
+        // navigator's dials turned, and half-filled lines and rings at full volume; the default is the oracle's state:
         // stopped with an empty playlist, shuffle and repeat on (its registry's `ShufflePlay` and
         // `RepeatMode`; that is loop-one, which NullPlayer cannot show, and repeat-all's light is
         // nearer it in 310 mid captures than none), its knobs at their first frame (the prefix has
@@ -31,6 +31,10 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
             host.listProgress = 0.5
             host.elapsedSeconds = 3_923
             host.blinkersLit = true
+            host.amp = 0.75
+            host.balance = 0.25
+            host.pitch = 1
+            host.eq = (0..<SoniqueSkinScene.eqSliders).map { Double($0) / Double(SoniqueSkinScene.eqSliders - 1) }
         }
         var rendered = 0
         for file in skins {
@@ -40,7 +44,8 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
                 continue
             }
             for (mode, tag) in [(SoniqueSkin.Mode.navigator, "nav"), (.mid, "mid"), (.small, "small")] {
-                let scene = SoniqueSkinScene(skin: skin, mode: mode, host: host, smallDrawer: playing ? .top : nil)
+                let scene = SoniqueSkinScene(skin: skin, mode: mode, host: host, smallDrawer: playing ? .top : nil,
+                                             navDrawerOpen: playing)
                 guard let image = SoniqueSkinRenderer.render(scene) else {
                     HarnessOutput.emit("RENDER \(name) \(tag) EMPTY")
                     continue
