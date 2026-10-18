@@ -138,6 +138,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         skinView.skin = skin
         fitWindow()
         refreshHostState()
+        WindowManager.shared.dismissEqualizerWindowForSkinDrawer()
     }
 
     func applyUIScale(_ scale: CGFloat) {
@@ -160,18 +161,52 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         window.invalidateSkinShadowShape("fit")
     }
 
+    // MARK: - The drawer is the equaliser
+
+    /// Whether the equaliser is on screen: the navigator with its drawer open.
+    var isDrawerShowing: Bool { mode == .navigator && skinView.navDrawerOpen }
+
+    /// NullPlayer's Equalizer request, answered with the drawer, which is this family's equaliser
+    /// (decision record § *Auxiliary-window policy*); NullPlayer's EQ window never opens here.
+    /// `switchingModes` goes to the navigator first, as a menu toggle does; the restore path passes
+    /// false, so launch never changes the mode the user left.
+    func revealDrawer(toggle: Bool, switchingModes: Bool) {
+        if toggle, isDrawerShowing {
+            skinView.navDrawerOpen = false
+            return
+        }
+        if switchingModes { mode = .navigator }
+        if mode == .navigator { skinView.navDrawerOpen = true }
+    }
+
     // MARK: - Controls
 
     /// Every press, in one place (decision record § *Control mapping*). The mode jumps and minimise
-    /// are the window's; mid mode's nav button, vis and song windows go to the navigator, whose
-    /// screens host them (S7). Play is Sonique's play/stop toggle; pause resumes a paused track
+    /// are the window's; mid mode's nav button goes to the navigator, its vis window to visual mode
+    /// and its song window to the Playlist Editor, as the menu screen's items do. Play is Sonique's play/stop toggle; pause resumes a paused track
     /// (help `02.htm`).
     @MainActor
     private func perform(_ control: SoniqueSkinControl) {
         let engine = WindowManager.shared.audioEngine
         switch control {
         case .ball(.modeUp): mode = mode == .small ? .mid : .navigator
-        case .ball(.modeUpTwice), .navButton, .vis, .songInfo: mode = .navigator
+        case .ball(.modeUpTwice), .navButton: mode = .navigator
+        case .ball(.back): skinView.navScreen = .menu
+        case .vis, .menu(.visualMode):
+            mode = .navigator
+            skinView.navScreen = .visualMode
+        case .songInfo, .menu(.playlist): WindowManager.shared.togglePlaylist()
+        case .menu(.library): WindowManager.shared.toggleMediaLibrary()
+        case .menu(.setup):
+            skinView.popUp(ContextMenuBuilder.buildMenu(includeOutputDevices: false, includeRepeatShuffle: false), under: .setup)
+        case .menu(.audio): revealDrawer(toggle: false, switchingModes: true)
+        case .menu(.spectrum): WindowManager.shared.toggleSpectrum()
+        case .menu(.peppyMeter): WindowManager.shared.togglePeppyMeter()
+        case .menu(.art): WindowManager.shared.toggleArt()
+        case .menu(.waveform): WindowManager.shared.toggleWaveform()
+        case .menu(.skins): skinView.popUp(ContextMenuBuilder.buildSoniqueSkinsMenu(), under: .skins)
+        case .menu(.history): WindowManager.shared.showLibraryHistory()
+        case .menu(.about): (NSApp.delegate as? AppDelegate)?.showAbout()
         case .ball(.modeDown): mode = mode == .navigator ? .mid : .small
         case .ball(.modeDownTwice): mode = .small
         case .ball(.minimize): window?.miniaturize(nil)
@@ -185,8 +220,8 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         case .eject: MenuActions.shared.openFile()
         case .shuffle: engine.shuffleEnabled.toggle()
         case .repeatButton: engine.repeatEnabled.toggle()
-        case .drawerTab: skinView.navDrawerOpen.toggle()
-        // The dials turn by dragging (`onDial`); the menu rocker, shuttle and rings wait for S7.
+        case .drawerTab: revealDrawer(toggle: true, switchingModes: false)
+        // The dials turn by dragging (`onDial`); the rocker, shuttle and rings do nothing yet.
         case .volume, .amp, .balance, .pitch, .eqSlider, .up, .down, .shuttle, .songRing, .listRing: break
         }
         refreshHostState()

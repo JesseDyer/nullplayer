@@ -18,5 +18,5 @@ byte-identical to the capture before it.
 
 | ID | Item | Reach | Notes |
 |---|---|---|---|
-| S7 | The navigator's menu screen and what NullPlayer asks of the skin's own surfaces: draw the menu in Sonique's layout and the skin's colours with NullPlayer's items, hit-test and run them, the version line; route the Equalizer toggle to the drawer so NullPlayer's EQ window never opens in this family | all | Decided 2026-10-18: decision record § *Decisions* and § *Control mapping*. Layout and colours: `format.md` § *The navigator's menu screen*; captures in `screens-2026-10-18`. The status line is done. Visual mode is S16 |
+| S17 | The navigator's up/down rocker: Sonique moves a selection through the menu screen; NullPlayer's menu has none, so the rocker does nothing. Decide what it does in NullPlayer's terms (the control mapping's "moves the menu selection") and measure Sonique's highlight on the oracle | 511 | Found closing S7 |
 | S16 | The visual mode screen: extract WMP's `<EFFECTS>` surface (`WMPEffectsSurfaceView`: Spikes, Bars, Ambience, Cava, vis_classic) into a shared component and host it in the navigator's display; WMP keeps a thin wrapper | all | Touches `.wmz`: its sweeps byte-identical before and after. `skin-subsystem-blueprint` for the shared seam |

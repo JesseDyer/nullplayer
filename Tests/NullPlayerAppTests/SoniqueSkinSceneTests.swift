@@ -33,6 +33,33 @@ final class SoniqueSkinSceneTests: XCTestCase {
         XCTAssertTrue(SoniqueSkinControl.drawerTab.isActionable)
     }
 
+    /// A navigator whose 301×228 display sits at 10,20.
+    private func console(_ screen: SoniqueSkinNavScreen) throws -> SoniqueSkinScene {
+        var entries = SoniqueSkinFixture.complete
+        entries[1] = ("/jpeg/navigator", SoniqueSkinFixture.jpeg(width: 320, height: 260))
+        entries[2] = ("/rgn/nav/frame", SoniqueSkinFixture.region([(0, 0, 320, 260)]))
+        entries.append(("/rgn/nav/display", SoniqueSkinFixture.region([(10, 20, 311, 248)])))
+        let skin = try SoniqueSkinLoader.load(data: SoniqueSkinFixture.sgf(entries))
+        return SoniqueSkinScene(skin: skin, mode: .navigator, navScreen: screen)
+    }
+
+    func testTheMenuScreenHitsItsItemsFromTheDisplayCorner() throws {
+        let menu = try console(.menu)
+        XCTAssertEqual(hit(menu, 10 + 50, 20 + 80), .menu(.visualMode))
+        XCTAssertEqual(hit(menu, 10 + 30, 20 + 178), .menu(.setup))
+        XCTAssertEqual(hit(menu, 10 + 230, 20 + 47), .menu(.spectrum))
+        XCTAssertEqual(hit(menu, 10 + 230, 20 + 142), .menu(.about))
+        XCTAssertFalse(menu.balls.contains(.back))
+    }
+
+    func testAnotherScreenHasNoMenuItemsAndABackBall() throws {
+        let screen = try console(.visualMode)
+        XCTAssertNil(hit(screen, 10 + 50, 20 + 80))
+        XCTAssertEqual(screen.balls.first, .back)
+        let back = try XCTUnwrap(screen.ballRects.first?.1), next = try XCTUnwrap(screen.ballRects.dropFirst().first?.1)
+        XCTAssertEqual(next.left - back.left, 12)
+    }
+
     func testTheClosedDrawerHasNoDialsAndTheWindowKeepsRoomToOpen() throws {
         let closed = try navigator(open: false), open = try navigator(open: true)
         XCTAssertNil(hit(closed, 4, 30 + 12))

@@ -218,6 +218,10 @@ What the counts are made of, from the worst cells:
 - **`colour` where a skin leans on the default skin**: NullPlayer's default artwork is not Sonique's
   (decision record § *Omitted entries*), so `lycossearch`, `hotbotsearch` and every omitted entry
   differ by design.
+- **The back ball is a coin toss against these captures.** After `-loadskin`, the oracle's
+  setup › skins screen shows the back ball on some skins and not others (gig has none, The-Skin has
+  it), for no reason found yet. Drawing it (S7) made 342 nav cells better and 166 worse by at most a
+  ball's area, net 1,753 px better; the baseline was re-recorded with that split.
 - The sweep found the drawer rule in `format.md` § *Window outline*: `MISC_DRAWER_POS` 0,0 is
   unwritten (Barrels 19,051 → 36 px, winson99 7,753 → 651).
 
@@ -242,7 +246,7 @@ grep RENDERED /tmp/sonique-render.txt
 | Flag | Meaning |
 |---|---|
 | `SONIQUE_RENDER_OUT` | the output directory; the probe skips without it |
-| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, both drawers open (the navigator's with amp, bal, pitch and the EQ sliders turned), lines and rings half full, full volume. `drawer`: the oracle's state with the navigator's drawer open, to compare against the oracle's screen 6 (`-showwindow 3 6`; rename its capture `<skin>__nav_0.png` for the compare script) |
+| `SONIQUE_RENDER_STATE` | unset: the oracle's state, from its registry: stopped with an empty playlist (track `000`), shuffle on, repeat on (Sonique's `RepeatMode=1` is loop-one, which NullPlayer cannot show; repeat-all's light is nearer it), knobs at frame 0 (the prefix has no sound device). `playing`: that plus track 1 playing with a title, both drawers open (the navigator's with amp, bal, pitch and the EQ sliders turned), lines and rings half full, full volume. `drawer`: the oracle's state with the navigator's drawer open, to compare against the oracle's screen 6 (`-showwindow 3 6`; rename its capture `<skin>__nav_0.png` for the compare script). `menu`: the navigator on its menu screen, against `screens-2026-10-18/<skin>__menu.png`. Every other state draws the navigator on an empty screen with the back ball, the nearest NullPlayer has to the oracle's setup › skins; the probe's version is `1.96`, as the oracle's |
 
 ## The default skin
 

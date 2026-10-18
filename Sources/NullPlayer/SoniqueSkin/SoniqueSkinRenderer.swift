@@ -88,6 +88,7 @@ private struct Painter {
             context.fill(display.rects.map(\.cgRect))
         }
         picture()
+        if scene.navScreen == .menu { menuScreen() }
         statusLine()
         litStates(prefix: "NAV_", upDown: true)
         let ownKnob = skin.image("/jpeg/nav_volumeknob") != nil
@@ -118,6 +119,96 @@ private struct Painter {
         let left = span.map(\.left).min() ?? display.bounds.left, right = span.map(\.right).max() ?? display.bounds.right
         text(host.title.isEmpty ? "NullPlayer" : host.title, centreX: (left + right) / 2 - 7, minX: left + 2,
              baseline: bottom - 3, size: 9, colour: "StatusBarTextColor")
+        context.restoreGState()
+    }
+
+    /// The menu screen in the display (`SoniqueSkinMenu`): each entry's lettering and boxed icon, the
+    /// right column's headings and the version, in the skin's system colours.
+    private func menuScreen() {
+        guard let display = skin.region("/rgn/nav/display") else { return }
+        let dx = display.bounds.left, dy = display.bounds.top
+        context.saveGState()
+        clip(to: display.rects)
+        func draw(_ t: SoniqueSkinMenu.Text) {
+            text(t.string, x: dx + t.x, baseline: dy + t.baseline, size: t.size, rgb: skin.settings.colour(t.colour),
+                 spacing: t.spacing)
+        }
+        logo(at: dx, dy)
+        SoniqueSkinMenu.headings.forEach(draw)
+        draw(SoniqueSkinMenu.version(host.version))
+        for entry in SoniqueSkinMenu.entries {
+            entry.lines.forEach(draw)
+            if let icon = entry.icon { menuIcon(entry.item, in: icon.offset(dx, dy).cgRect) }
+        }
+        context.restoreGState()
+    }
+
+    /// NullPlayer's wordmark in the logo's place (`SoniqueSkinMenu.Logo`): the ring, then the word
+    /// filled black and edged in `LogoColor` over it, as Sonique's letters cross its ring.
+    private func logo(at dx: Int, _ dy: Int) {
+        let ring = SoniqueSkinMenu.Logo.ring.offset(dx, dy).cgRect
+        context.setStrokeColor(colour("LogoRingColor"))
+        context.setLineWidth(2)
+        context.strokeEllipse(in: ring)
+        let word = SoniqueSkinMenu.Logo.word, font = CTFontCreateWithName("Verdana-Bold" as CFString, word.size, nil)
+        let attributes: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0, alpha: 1),
+            NSAttributedString.Key(kCTStrokeColorAttributeName as String): colour(word.colour),
+            // Negative: fill and stroke, the stroke 6 % of the size.
+            NSAttributedString.Key(kCTStrokeWidthAttributeName as String): -6,
+        ]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: word.string, attributes: attributes))
+        context.saveGState()
+        context.textMatrix = .identity
+        context.translateBy(x: CGFloat(dx + word.x), y: CGFloat(dy + word.baseline))
+        context.scaleBy(x: 1, y: -1)
+        context.textPosition = .zero
+        CTLineDraw(line, context)
+        context.restoreGState()
+        let label = SoniqueSkinMenu.Logo.label
+        text(label.string, x: dx + label.x, baseline: dy + label.baseline, size: label.size,
+             rgb: skin.settings.colour(label.colour), spacing: label.spacing)
+    }
+
+    /// A left-column icon: a box in `SystemColor_3`, as Sonique's, with NullPlayer's own plain mark.
+    private func menuIcon(_ item: SoniqueSkinMenu.Item, in r: CGRect) {
+        context.saveGState()
+        let ink = colour("SystemColor_3")
+        context.setStrokeColor(ink)
+        context.setFillColor(ink)
+        context.setLineWidth(1)
+        context.stroke(r.insetBy(dx: 0.5, dy: 0.5))
+        let inner = r.insetBy(dx: 4, dy: 4)
+        switch item {
+        case .visualMode:
+            for (i, h) in [0.4, 0.9, 0.6, 1.0, 0.5].enumerated() {
+                let bar = inner.height * h
+                context.fill(CGRect(x: inner.minX + CGFloat(i) * 3, y: inner.maxY - bar, width: 2, height: bar))
+            }
+        case .playlist:
+            for y in stride(from: inner.minY, to: inner.maxY, by: 3) {
+                context.fill(CGRect(x: inner.minX, y: y, width: inner.width, height: 1))
+            }
+        case .library:
+            let lens = CGRect(x: inner.minX, y: inner.minY, width: inner.width * 0.65, height: inner.height * 0.65)
+            context.strokeEllipse(in: lens.insetBy(dx: 0.5, dy: 0.5))
+            context.setLineWidth(2)
+            context.move(to: CGPoint(x: lens.maxX - 1, y: lens.maxY - 1))
+            context.addLine(to: CGPoint(x: inner.maxX, y: inner.maxY))
+            context.strokePath()
+        case .setup:
+            context.strokeEllipse(in: inner.insetBy(dx: 1.5, dy: 1.5))
+            context.fillEllipse(in: inner.insetBy(dx: inner.width / 2 - 1.5, dy: inner.height / 2 - 1.5))
+        case .audio:
+            for (i, knob) in [0.3, 0.7, 0.45].enumerated() {
+                let x = inner.minX + 1 + CGFloat(i) * 4
+                context.fill(CGRect(x: x, y: inner.minY, width: 1, height: inner.height))
+                context.fill(CGRect(x: x - 1, y: inner.minY + inner.height * knob - 1, width: 3, height: 2))
+            }
+        default:
+            break
+        }
         context.restoreGState()
     }
 
@@ -393,6 +484,12 @@ private struct Painter {
             context.fillPath()
         }
         switch ball {
+        case .back:
+            context.fill(CGRect(x: cx - 1, y: r.midY - 0.75, width: 4, height: 1.5))
+            context.move(to: CGPoint(x: r.minX + 1.5, y: r.midY))
+            context.addLine(to: CGPoint(x: cx, y: r.midY - 2.5))
+            context.addLine(to: CGPoint(x: cx, y: r.midY + 2.5))
+            context.fillPath()
         case .modeDown, .modeUp:
             let down = ball == .modeDown
             context.fill(CGRect(x: cx - 0.75, y: top, width: 1.5, height: bottom - top - 1))
@@ -472,18 +569,19 @@ private struct Painter {
         text(string, x: max(minX, centreX - Int((width / 2).rounded())), baseline: baseline, size: size, rgb: skin.settings.colour(key))
     }
 
-    private func line(_ string: String, size: CGFloat, rgb: UInt32) -> CTLine {
+    private func line(_ string: String, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0) -> CTLine {
         let font = CTFontCreateWithName("Verdana-Bold" as CFString, size, nil)
         let attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): SoniqueSkinRenderer.cgColor(rgb),
+            NSAttributedString.Key(kCTKernAttributeName as String): spacing,
         ]
         return CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: attributes))
     }
 
     /// Sonique's own lettering: Verdana Bold, unsmoothed as GDI drew it, on the skin pixel grid.
-    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32) {
-        let line = line(string, size: size, rgb: rgb)
+    private func text(_ string: String, x: Int, baseline: Int, size: CGFloat, rgb: UInt32, spacing: CGFloat = 0) {
+        let line = line(string, size: size, rgb: rgb, spacing: spacing)
         context.saveGState()
         context.setShouldAntialias(false)
         context.setShouldSmoothFonts(false)

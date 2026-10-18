@@ -20,10 +20,13 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
         // `RepeatMode`; that is loop-one, which NullPlayer cannot show, and repeat-all's light is
         // nearer it in 310 mid captures than none), its knobs at their first frame (the prefix has
         // no sound device). `drawer` is that state with the navigator's drawer open, as the oracle's
-        // audio controls screen (`-showwindow 3 6`) shows it.
+        // audio controls screen (`-showwindow 3 6`) shows it. The navigator shows an empty screen with
+        // the back ball, nearest the oracle's setup › skins, except in `menu`, its menu screen.
         let playing = env["SONIQUE_RENDER_STATE"] == "playing"
         let drawerOpen = playing || env["SONIQUE_RENDER_STATE"] == "drawer"
+        let screen: SoniqueSkinNavScreen = env["SONIQUE_RENDER_STATE"] == "menu" ? .menu : .visualMode
         var host = SoniqueSkinHostState(shuffle: true, repeatAll: true, volume: 0)
+        host.version = "1.96"
         if playing {
             host.volume = 1
             host.playState = .playing
@@ -47,7 +50,7 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
             }
             for (mode, tag) in [(SoniqueSkin.Mode.navigator, "nav"), (.mid, "mid"), (.small, "small")] {
                 let scene = SoniqueSkinScene(skin: skin, mode: mode, host: host, smallDrawer: playing ? .top : nil,
-                                             navDrawerOpen: drawerOpen)
+                                             navDrawerOpen: drawerOpen, navScreen: screen)
                 guard let image = SoniqueSkinRenderer.render(scene) else {
                     HarnessOutput.emit("RENDER \(name) \(tag) EMPTY")
                     continue

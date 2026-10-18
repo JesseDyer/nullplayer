@@ -25,6 +25,7 @@ enum SoniqueSkinAudioEngineHost {
             [track.artist, track.title].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " - ")
         } ?? ""
         state.blinkersLit = blinkersLit
+        state.version = BundleHelper.appVersion
         state.amp = Double(engine.getPreamp() / 24 + 0.5)
         state.balance = Double(engine.balance / 2 + 0.5)
         state.pitch = log2(Double(engine.playbackSpeed)) / speedOctaves + 0.5

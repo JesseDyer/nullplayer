@@ -19,7 +19,9 @@ the ranked work is `tasks/SONIQUE_TASKS.md`.
 - **The target is Sonique 1.96**, the last release, which reads skin spec versions 100 and 105.
 - **The navigator's screens, as the user decided them 2026-10-18 (amends the first draft).** The
   menu screen keeps Sonique's layout and colours (`format.md` § *The navigator's menu screen*) with
-  NullPlayer's items in it (§ *Control mapping*). Only two screens stay inside the display: the menu
+  NullPlayer's items in it (§ *Control mapping*) and NullPlayer's wordmark where Lycos's logo sits,
+  in the skin's `LogoColor` and `LogoRingColor`; the logo itself is never extracted or shipped, as no
+  family ships the original player's own artwork. Only two screens stay inside the display: the menu
   and visual mode, which hosts the effects surface WMP's `<EFFECTS>` uses (Spikes, Bars, Ambience,
   Cava, vis_classic), extracted to a shared component. Playlist and library open NullPlayer's own
   windows beside the player. Audio controls is the drawer. **The other skin families are the

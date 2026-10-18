@@ -10,6 +10,8 @@ final class SoniqueSkinMainView: NSView {
     var mode: SoniqueSkin.Mode = .navigator { didSet { if mode != oldValue { pressed = nil; smallDrawer = nil; redraw() } } }
     /// The navigator's drawer, opened and closed by its tab.
     var navDrawerOpen = false { didSet { if navDrawerOpen != oldValue { redraw(); onOutlineChange?() } } }
+    /// What the navigator's display shows.
+    var navScreen = SoniqueSkinNavScreen.menu { didSet { if navScreen != oldValue { redraw() } } }
     var host = SoniqueSkinHostState() { didSet { if host != oldValue { redraw() } } }
     /// Window points per skin pixel.
     var uiScale: CGFloat = 1 { didSet { if uiScale != oldValue { redraw() } } }
@@ -53,7 +55,8 @@ final class SoniqueSkinMainView: NSView {
 
     private func redraw() {
         scene = skin.map {
-            SoniqueSkinScene(skin: $0, mode: mode, host: host, pressed: pressed, smallDrawer: smallDrawer, navDrawerOpen: navDrawerOpen)
+            SoniqueSkinScene(skin: $0, mode: mode, host: host, pressed: pressed, smallDrawer: smallDrawer, navDrawerOpen: navDrawerOpen,
+                              navScreen: navScreen)
         }
         image = scene.flatMap(SoniqueSkinRenderer.render)
         needsDisplay = true
@@ -91,6 +94,14 @@ final class SoniqueSkinMainView: NSView {
         let handle = scene.skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
         let y = Double(point.y + scene.canvas.top - track.top - handle / 2)
         return 1 - y / Double(max(1, track.bottom - track.top - handle))
+    }
+
+    /// `menu` popped up under a menu screen entry, as Sonique's own items open in place.
+    func popUp(_ menu: NSMenu, under item: SoniqueSkinMenu.Item) {
+        guard let scene, let rect = scene.menuEntries.first(where: { $0.0 == item })?.1 else { return }
+        let scale = bounds.width / CGFloat(max(1, scene.width))
+        let point = NSPoint(x: CGFloat(rect.left - scene.canvas.left) * scale, y: CGFloat(rect.bottom - scene.canvas.top) * scale)
+        menu.popUp(positioning: nil, at: point, in: self)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

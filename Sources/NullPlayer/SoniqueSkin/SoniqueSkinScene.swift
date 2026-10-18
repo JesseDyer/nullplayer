@@ -24,6 +24,8 @@ struct SoniqueSkinHostState: Equatable {
     var balance = 0.5
     var pitch = 0.5
     var eq = Array(repeating: 0.5, count: SoniqueSkinScene.eqSliders)
+    /// NullPlayer's version, which the menu screen shows where Sonique's own sat.
+    var version = ""
 
     /// A knob's or slider's value; nil for a control that is pressed, not turned.
     func dial(_ control: SoniqueSkinControl) -> Double? {
@@ -50,11 +52,13 @@ enum SoniqueSkinControl: Hashable {
     /// The navigator drawer's knobs and EQ sliders, 0-based.
     case amp, balance, pitch, eqSlider(Int)
     case ball(Ball)
+    /// An item of the navigator's menu screen.
+    case menu(SoniqueSkinMenu.Item)
 
     /// Sonique's navigation balls: the mode jumps, help, minimise and close
-    /// (help `02.htm` § *The Navigation Buttons*).
+    /// (help `02.htm` § *The Navigation Buttons*), and the navigator's back to the menu screen.
     enum Ball: CaseIterable {
-        case modeUp, modeUpTwice, modeDown, modeDownTwice, help, minimize, close
+        case back, modeUp, modeUpTwice, modeDown, modeDownTwice, help, minimize, close
     }
 
     /// A press that does something; a region with no action (the display, the rings) is chassis.
@@ -81,17 +85,21 @@ struct SoniqueSkinScene {
     var smallDrawer: SoniqueSmallDrawer?
     /// The navigator's drawer, slid out.
     var navDrawerOpen: Bool
+    /// What the navigator's display shows.
+    var navScreen: SoniqueSkinNavScreen
     /// The canvas in skin pixels: its origin is skin (0,0)'s offset into the window.
     let canvas: SoniqueSkinRegion.Rect
 
     init(skin: SoniqueSkin, mode: SoniqueSkin.Mode, host: SoniqueSkinHostState = .init(),
-         pressed: SoniqueSkinControl? = nil, smallDrawer: SoniqueSmallDrawer? = nil, navDrawerOpen: Bool = false) {
+         pressed: SoniqueSkinControl? = nil, smallDrawer: SoniqueSmallDrawer? = nil, navDrawerOpen: Bool = false,
+         navScreen: SoniqueSkinNavScreen = .menu) {
         self.mode = mode
         self.skin = skin.source(for: mode)
         self.host = host
         self.pressed = pressed
         self.smallDrawer = smallDrawer
         self.navDrawerOpen = navDrawerOpen
+        self.navScreen = navScreen
         canvas = Self.canvas(self.skin, mode)
     }
 
@@ -158,10 +166,12 @@ struct SoniqueSkinScene {
     }
 
     /// The balls each mode shows, left to right (help `02.htm`): the navigator jumps down, small mode
-    /// up, mid mode either way once.
+    /// up, mid mode either way once. Off the menu screen the navigator adds back, 12 px left of the
+    /// rest, as the oracle draws it.
     var balls: [SoniqueSkinControl.Ball] {
         switch mode {
-        case .navigator: return [.modeDown, .modeDownTwice, .help, .minimize, .close]
+        case .navigator:
+            return (navScreen == .menu ? [] : [.back]) + [.modeDown, .modeDownTwice, .help, .minimize, .close]
         case .mid: return [.modeUp, .modeDown, .help, .minimize, .close]
         case .small: return [.modeUp, .modeUpTwice, .help, .minimize, .close]
         }
@@ -224,11 +234,21 @@ struct SoniqueSkinScene {
         let inside = outline.contains { $0.contains(x, y) }
         guard inside else { return (false, nil) }
         if mode == .navigator, let tab = drawerPart("/rgn/nav/drawertop"), tab.contains(x, y) { return (true, .drawerTab) }
+        if let entry = menuEntries.first(where: { $0.1.contains(x, y) }) { return (true, .menu(entry.0)) }
         for (control, name) in regionControls {
             if skin.region(mode.regions + name)?.contains(x, y) == true { return (true, control) }
         }
         if let dial = drawerDials.first(where: { $0.1.contains(x, y) }) { return (true, dial.0) }
         return (true, nil)
+    }
+
+    // MARK: - The navigator's menu screen
+
+    /// Where the menu screen's entries are hit, moved from the display's top-left to the skin's; none
+    /// on any other screen or mode.
+    var menuEntries: [(SoniqueSkinMenu.Item, SoniqueSkinRegion.Rect)] {
+        guard mode == .navigator, navScreen == .menu, let display = skin.region("/rgn/nav/display")?.bounds else { return [] }
+        return SoniqueSkinMenu.entries.map { ($0.item, $0.hit.offset(display.left, display.top)) }
     }
 
     // MARK: - The navigator's drawer

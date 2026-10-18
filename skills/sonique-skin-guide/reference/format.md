@@ -163,8 +163,16 @@ colours:
 | Lycos's *sonique* logo top left | `LogoColor`, `LogoRingColor` |
 
 The logo, the icons and the quick links are Lycos's and are not copied (decision record
-§ *Decisions*). Not drawn yet (S7): which items NullPlayer's menu lists, and what stands in for the
-quick links, are the user's call.
+§ *Decisions*). NullPlayer draws the layout with its own items (`SoniqueSkinMenu`, measured on k2), and its own
+wordmark in the logo's place and colours: a small *null* where *LYCOS* is (x 28, baseline 31), a
+28 pt *player* filled black and edged in `LogoColor` on baseline 51, over a ring in `LogoRingColor`
+(x 45–175, y 26–62). Nothing is extracted from `Sonique.exe`. The rest:
+icon boxes 21 px at x 45, y 74/104/134 with titles (14 pt) at x 75 on icon top + 11 and subtitles
+(8 pt) on + 20; the small pair's 19 px icons at x 21 and 117, y 169, two 11 pt lines on 177 and 186;
+headings (11 pt, letter-spaced) at x 214 on 38 and 110; links (9 pt, letter-spaced) at x 218, 11 px
+apart from 51 and 124; the version at x 191 on 209. Off the menu screen a back ball sits 12 px left
+of the other five and returns to it (Sonique's playlist, visual mode, audio controls and search
+screens show it).
 
 ## The navigator's drawer
 

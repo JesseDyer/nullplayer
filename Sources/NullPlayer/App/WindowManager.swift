@@ -1820,6 +1820,29 @@ class WindowManager {
         postLayoutChangeNotification()
     }
 
+    /// A Sonique skin's equaliser is its navigator drawer, which every skin has (the default skin's
+    /// stands in), so in that family an Equalizer show or toggle opens the drawer and NullPlayer's
+    /// own EQ window never opens — `routeWMPSkinSurface`'s rule, without the fallback.
+    private func routeSoniqueDrawer(toggle: Bool) -> Bool {
+        guard uiMode.controllerFamily == .sonique,
+              let controller = mainWindowController as? SoniqueSkinMainWindowController else { return false }
+        controller.revealDrawer(toggle: toggle, switchingModes: toggle)
+        notifyMainWindowVisibilityChanged()
+        postLayoutChangeNotification()
+        return true
+    }
+
+    /// Put away NullPlayer's EQ window when a Sonique skin is presented: its drawer is the
+    /// equaliser, so one left open from another family would be a second copy (as
+    /// `dismissWMPFallbackSurfacesTheSkinProvides` does for `.wmz`). Closed, not destroyed.
+    func dismissEqualizerWindowForSkinDrawer() {
+        guard uiMode.controllerFamily == .sonique,
+              let window = equalizerWindowController?.window, window.isVisible else { return }
+        window.orderOut(nil)
+        notifyMainWindowVisibilityChanged()
+        postLayoutChangeNotification()
+    }
+
     /// Whether the active `.wmz` skin owns this surface. Answers false in every other mode, so the
     /// menu asks one question rather than branching on the family.
     func wmpSkinProvides(_ surface: WMPSkinSurface) -> Bool {
@@ -2244,6 +2267,7 @@ class WindowManager {
     }
     
     func showEqualizer(at restoredFrame: NSRect? = nil) {
+        if routeSoniqueDrawer(toggle: false) { return }
         if routeWinampModernSurface(.equalizer, toggle: false, restoredFrame: restoredFrame) { return }
         if routeWMPSkinSurface(.equalizer, switchingViews: false) { return }
         if deferWMPFallbackUntilSkinLoads({ [weak self] in self?.showEqualizer(at: restoredFrame) }) { return }
@@ -2282,6 +2306,9 @@ class WindowManager {
     }
 
     var isEqualizerVisible: Bool {
+        if uiMode.controllerFamily == .sonique {
+            return (mainWindowController as? SoniqueSkinMainWindowController)?.isDrawerShowing ?? false
+        }
         if let coordinator = winampModernSurfaces, coordinator.handles(.equalizer) {
             return coordinator.isSurfaceVisible(.equalizer)
         }
@@ -2303,6 +2330,7 @@ class WindowManager {
     }
 
     func toggleEqualizer() {
+        if routeSoniqueDrawer(toggle: true) { return }
         if routeWinampModernSurface(.equalizer, toggle: true) { return }
         if routeWMPSkinSurface(.equalizer, switchingViews: true) { return }
         if routeWinampModernHostedWindow(.equalizer, toggle: true) { return }
