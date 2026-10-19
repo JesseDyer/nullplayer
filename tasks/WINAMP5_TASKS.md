@@ -20,7 +20,7 @@ without a seam change; **L** = a host seam, protocol change, or new fixture harn
 
 | Id | Item | Reach | Effort | Tier |
 |---|---|---:|:---:|---|
-| B161 | **A press in the outer few points of a resizable `.wal` window is AppKit's, and it moves one edge even at a corner.** The skin's auxiliary windows are `[.borderless, .resizable]`, so AppKit's own edge band takes the press before `WinampModernMainView.mouseDown` and the skin's `resize="bottomright"` layer never sees it. Measured 2026-09-30 with `WINAMP_MODERN_RESIZE_TRACE=1` on Itemskin: a press 8pt in from the playlist frame's bottom-right corner, dragged +60,+30, logged `live=true handle=false` and changed the width only; 13pt in on the PeppyMeter frame, dragged +30,+60, changed the height only. 20pt in, the same drags logged `handle=clear.bottom.right` and moved both axes. Decide whether the band should defer to a skin handle under the pointer, or the windows should drop `.resizable` where the layout declares handles. Found during B160; not changed by it | every resizable auxiliary window | S | 2 |
+| B161 | **A press in the outer few points of a resizable `.wal` window is AppKit's, and it moves one edge even at a corner.** The skin's auxiliary windows are `[.borderless, .resizable]`, so AppKit's own edge band takes the press before `WinampModernMainView.mouseDown` and the skin's `resize="bottomright"` layer never sees it. Measured 2026-09-30 with `WINAMP_MODERN_RESIZE_TRACE=1` on Itemskin: a press 8pt in from the playlist frame's bottom-right corner, dragged +60,+30, logged `live=true handle=false` and changed the width only; 13pt in on the PeppyMeter frame, dragged +30,+60, changed the height only. 20pt in, the same drags logged `handle=clear.bottom.right` and moved both axes. Decide whether the band should defer to a skin handle under the pointer, or the windows should drop `.resizable` where the layout declares handles. Found during B160; not changed by it | `xml-attr '@resize$'` (a skin resize handle, an upper bound — the index does not say which window): gold 43/56, silver 46/54, bronze 743/827, quarantine 44/54 (manifest 9e68ffe0) | S | 2 |
 
 ### Code health
 
@@ -40,7 +40,6 @@ crawled candidates were admitted by B169 (silver 58, bronze 827, quarantine 54);
 
 | Id | Item | Reach | Effort | Tier |
 |---|---|---:|:---:|---|
-| B171 | **Reach from the index.** Replace *Reproducible reach commands* with one `features.tsv` query reported per tier ("silver n/N, bronze m/M") plus the manifest rev as the denominator's identity; move each open row's grep into its archive entry as it closes. Done when every open row's Reach comes from the query | every row's Reach | S | 2 |
 | B172 | **Docs close-out.** `reference/harness.md` (crawler, intake, index, `--touching`, `--shards`, the new corpus location), `triage-playbook.md` §3 (S0 and S2-MAKI → Built), `corpus-runner-plan.md` (§8 → history), and the `app-control`/`skin-screenshots`/`window-census` skills' corpus paths. Done when no doc names `WinampModernSkins/` as the corpus | the docs | S | 3 |
 
 ### Awaiting manual QA
@@ -67,20 +66,21 @@ a synthetic press does not open them, they are Route D.
 **Needs the user.** B41 needs a second display (`winhelper screens` shows one). B110 waits on the
 reporter's confirmation.
 
-## Reproducible reach commands
+## Reach
 
-All commands use the directories extracted with `7zz` from
-`~/Library/Application Support/NullPlayer/WinampModernSkins/` (excluding `ClassicProEngine`). Set
-`corpus=/path/to/the/extracted/root`.
+A measured row's Reach is one query over the static feature index, pasted as printed:
 
-**The corpus is 80 `.wal` archives as of 2026-09-27**, so an `[M##]` measured against an earlier
-count is not comparable to a new one. **Four are byte-identical re-adds** of installed skins —
-`pure_inspired_for_winamp_by_marisa85_d35ix2r` = `Pure Inspired`,
-`k_jr_winamp_skin_by_marisa85_d329ymw` = `K-jr`, and the two `dewytears_v2_5_by_dewytear_d2yn025_*`
-= `DewyTears_{Pink,Black}GlassV2.5` — so exclude them from any per-skin count.
+```bash
+scripts/wal_reach.sh <kind> <feature-regex>   # -> gold a/A, silver n/N, bronze m/M, quarantine q/Q (manifest <rev>)
+```
 
-A command lives here only while an open item cites it; closing the item moves the command into its
-archive entry.
+The manifest rev is the denominator's identity: figures under different revs are not comparable. A
+skin is its content, so the four silver re-adds of gold skins count once, as gold. The index is
+`WinampModernCorpus/index/features.tsv`; rebuild it over every tier after an intake
+(`harness.md` → *The static feature index*), and the script fails on an index the manifest has
+outgrown. Code-health and corpus-scale rows have no corpus demand and say so instead. A row whose
+Reach needs more than the query (a grep over an extract, a runtime count) keeps that command in its
+cell, and the command moves into its archive entry when the row closes.
 
 ## Backlog hygiene check
 

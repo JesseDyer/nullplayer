@@ -3,6 +3,21 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B171 — reach from the index — closed 2026-10-19
+
+| B171 | **Reach from the index.** Replace *Reproducible reach commands* with one `features.tsv` query reported per tier ("silver n/N, bronze m/M") plus the manifest rev as the denominator's identity; move each open row's grep into its archive entry as it closes. Done when every open row's Reach comes from the query | every row's Reach | S | 2 |
+
+**Closed 2026-10-19.** `scripts/wal_reach.sh <kind> <feature-regex>` (`harness.md` → *The static
+feature index*) replaces the section, which held no command any open row cited, only the 80-archive
+corpus note. Over an index of all four tiers (995 skins, rev `cda73bd2`) it printed `Wasabi:Frame`
+as gold 4/56, silver 1/54, bronze 4/827, B170's 9 exactly, and `getEndFrame` as 3/2/20, matching a
+per-file `awk` count joined to the manifest. The first draft keyed tier by sha256 and lost four gold
+skins: the manifest lists Pure Inspired, K-jr and both DewyTears V2.5 again as silver re-adds, so a
+duplicate now counts once at its better tier. An index older than the manifest fails rather than
+printing a short denominator (the B168 gold+silver index: "covers 29 of 54 silver"). Of the open
+rows, only B161 has corpus demand; its Reach is now `xml-attr '@resize$'` from the query. The others
+are code health or corpus tooling, with no corpus demand.
+
 ## B170 — impact-selected and sharded sweeps — closed 2026-10-19
 
 | B170 | **Impact-selected and sharded sweeps.** `wal_render_sweep.sh capture --touching <feature,…>` selects every skin in any tier whose index rows match; `--shards K` runs K test processes over a sha256-ordered split after one build. Measure the speed-up and the K at which memory or the ClassicPro mount stops it scaling; record that K in `harness.md`. Done when a `--touching Wasabi:Frame` capture selects exactly the index's matching skins, and a sharded capture equals an unsharded one | every engine change | M | 2 |

@@ -318,6 +318,12 @@ so a corpus run can't lose lines, not *what* is measured.
   run `xcrun xctest` on the built bundle, not `swift test` — SwiftPM's `.build` lock serialised K
   `swift test`s to the K=1 time. The pre-merge gate is now ~25 s, so the Silver budget is no longer
   bound by sweep time at this corpus size. No skins admitted, so none handed over. Next: B171.
+- **B171 closed 2026-10-19.** `scripts/wal_reach.sh <kind> <regex>` prints reach per tier with the
+  manifest rev, from an all-tier index at `WinampModernCorpus/index/features.tsv` (995 skins, 375,489
+  rows). It reproduced B170's `Wasabi:Frame` 9 (4/1/4) and a per-file `getEndFrame` count (3/2/20).
+  **Decision changed:** the manifest lists four byte-identical archives twice, in gold and as silver
+  re-adds, so tier is joined by content and a duplicate counts once at its better tier — silver's
+  denominator is 54 distinct skins, not 58 rows. No skins admitted, so none handed over. Next: B172.
 
 ### Decisions (fixed — re-open only with a measurement)
 

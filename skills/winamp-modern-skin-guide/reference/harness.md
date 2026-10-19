@@ -392,8 +392,13 @@ the 906 crawl candidates (2026-10-19), mostly the build.
   skin that does not load keeps its XML and family rows; the script fails if any archive lacks a
   `load` row, so none is skipped silently.
 
-Reach is `awk -F'\t' '$3=="maki-call" && $4 ~ /\.getendframe$/' features.tsv | cut -f1 | sort -u | wc -l`.
-At close it matched an independent extract-and-`rg` over gold+silver for `getEndFrame` (3),
+Reach is `scripts/wal_reach.sh <kind> <feature-regex> [--index <features.tsv>]` (B171): it joins the
+index to `corpus-manifest.tsv` by sha256 and prints `gold a/A, silver n/N, bronze m/M, quarantine q/Q
+(manifest <rev>)`. A byte-identical archive listed in two tiers counts once, in the better one; a tier
+the index covers in part, or a skin the manifest lacks, fails as a stale index. The default index is
+`WinampModernCorpus/index/features.tsv`, built over every tier with
+`wal_feature_index.sh "$WAL_CORPUS_ROOT/index" --corpus "$WAL_CORPUS_ALL"` (~2 min); rebuild it after
+an intake. At B168's close the plain `awk … | cut -f1 | sort -u | wc -l` count matched an independent extract-and-`rg` over gold+silver for `getEndFrame` (3),
 `setClipboardText` (2), `activeimage` (75) and `text@wrap` (8, which needs `rg -U` — Wasabi tags span
 lines). Two runs are byte-identical.
 
