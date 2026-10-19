@@ -19,7 +19,8 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
     private var shown: (skin: AudionFace, url: URL)? { didSet { faceView.face = shown?.skin } }
     var loadedSkinURL: URL? { shown?.url }
     /// NullPlayer's own windows, coloured from the face on screen (`AudionFacePalette`).
-    private(set) var surfaceStyle = AudionFacePalette.neutral
+    private(set) var surfaceStyle = unskinnedSurfaceStyle
+    static let unskinnedSurfaceStyle = AudionFacePalette.neutral
 
     init() {
         let window = SkinnedBorderlessWindow(contentRect: NSRect(origin: .zero, size: Self.unskinnedSize),
@@ -92,7 +93,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
                   shown.skin.base.width, shown.skin.base.height, shown.skin.findings.count)
         }
         self.shown = shown
-        let style = shown.map { AudionFacePalette.surfaceStyle(for: $0.skin) } ?? AudionFacePalette.neutral
+        let style = shown.map { AudionFacePalette.surfaceStyle(for: $0.skin) } ?? Self.unskinnedSurfaceStyle
         if style != surfaceStyle {
             surfaceStyle = style
             NotificationCenter.default.post(name: .hostedSurfaceStyleDidChange, object: nil)

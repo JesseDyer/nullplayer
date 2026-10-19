@@ -215,6 +215,23 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     /// newer load replaced, and that newer load has already set this again.
     private(set) var isResolvingHostedFrames = false
 
+    /// Whether a hosted window's frame can be read back as interior + border (W238).
+    ///
+    /// **A skin still on its way is a third state and it is not settled (W250).** The provider is
+    /// configured only once the player has rendered, so before that it has no template and
+    /// `lendsFrame` is false — the same reading a skin that lends nothing gives, and the one that let
+    /// a restored hosted window come up at launch wearing palette chrome. Nothing measured against a
+    /// border that is about to arrive is worth keeping, which is what this predicate has always meant.
+    ///
+    /// **Unless the skin on screen still lends a frame.** A `.wmz` switch is staged: the old skin
+    /// keeps answering, with its own border, until every window flips in one turn, so a window
+    /// resized meanwhile is read against the border it is wearing — and must be, or a drag during
+    /// the switch is put straight back by the next pass.
+    @MainActor var hostedBordersAreSettled: Bool {
+        guard !isResolvingHostedFrames || hostedFrames.lendsFrame else { return false }
+        return !hostedFrames.lendsFrame || hostedFrames.donorInsets != nil
+    }
+
     /// The colours NullPlayer's *own* windows are drawn in while this skin is presented — see
     /// `WMPSurfacePalette`. Nil whenever the app-authored unskinned player is up, which is what makes
     /// `WindowManager.hostedSurfaceStyle` nil there and sends those windows back to their own drawing.

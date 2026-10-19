@@ -139,6 +139,10 @@ protocol SingleCanvasMainWindow: NSWindowController, SkinSizedMainWindow {
     var skinSelection: SkinSelection { get }
     /// The skin on screen, nil while the family's fallback stands in.
     var loadedSkinURL: URL? { get }
+    /// The colours NullPlayer's own windows wear beside the skin on screen.
+    var surfaceStyle: SkinnedSurfaceStyle { get }
+    /// `surfaceStyle` with no skin on screen, and with no window yet.
+    static var unskinnedSurfaceStyle: SkinnedSurfaceStyle { get }
     /// The selected skin's location, nil when nothing is selected; throws when the selection is gone.
     func selectedSkinURL() throws -> URL?
     static func loadSkin(at url: URL) async throws -> Skin
@@ -196,3 +200,15 @@ protocol SkinDrawnEqualizer: MainWindowProviding {
 }
 
 extension SoniqueSkinMainWindowController: SkinDrawnEqualizer {}
+
+/// A main window whose skin lends NullPlayer's own windows a frame (`WMPHostedFrameProvider`), asked
+/// with `as?` (Sonique S22). Only `.wmz` lends one. Unlike the family switches this is opt-in, and
+/// needs no exhaustive answer: a family that lends nothing has every frame question settled, and its
+/// windows draw their own palette chrome, which is right for any family that never hears of this.
+protocol HostedFrameLender: MainWindowProviding {
+    @MainActor var hostedFrames: WMPHostedFrameProvider { get }
+    /// `WindowManager.hostedSurfaceBordersAreSettled` for the skin this window is lending from.
+    @MainActor var hostedBordersAreSettled: Bool { get }
+}
+
+extension WMPMainWindowController: HostedFrameLender {}

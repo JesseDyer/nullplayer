@@ -51,6 +51,11 @@ family may quietly inherit Classic's or Original's behaviour.
 
 - **Never add a new boolean** of the form `isRunningXUI` used at more than one call site. Add the
   case to `PlayerUIControllerFamily` and switch on it.
+- **A capability whose absence is right for every other family is asked with `as?`, not a switch.**
+  `SkinDrawnEqualizer` (Sonique's drawer is its equaliser) and `HostedFrameLender` (a `.wmz` lends
+  NullPlayer's windows frame artwork; Sonique S22 deleted eight switches for it): a family that never
+  hears of it lends nothing and is always settled, which is correct. Anything every family must
+  answer for itself — the surface style, the interior scope — stays an exhaustive switch.
 - `isModernUIEnabled` is **safe**: it is derived (`controllerFamily == .nullPlayerModern`).
 - `isRunningModernUI` is **not**: it is a negative allow-list of controller types
   (`is ModernMainWindowController` → true; `is MainWindowController`, `is WMPMainWindowController`

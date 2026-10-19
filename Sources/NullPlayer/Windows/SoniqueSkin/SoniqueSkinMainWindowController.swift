@@ -19,7 +19,8 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     /// The `.sgf` on screen, nil while the default skin stands in.
     private(set) var loadedSkinURL: URL?
     /// NullPlayer's own windows, coloured from the skin on screen (`SoniqueSkinPalette`).
-    private(set) var surfaceStyle = SoniqueSkinPalette.surfaceStyle(for: .defaultSkin)
+    private(set) var surfaceStyle = unskinnedSurfaceStyle
+    static let unskinnedSurfaceStyle = SoniqueSkinPalette.surfaceStyle(for: .defaultSkin)
     /// Small mode's blinkers, so a spectrum frame redraws only when they change.
     private var blinkersLit = false
 

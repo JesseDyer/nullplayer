@@ -1191,17 +1191,9 @@ class WindowManager {
         return palette.surfaceStyle
     }
 
-    /// The colours NullPlayer's own windows wear beside a face (`AudionFacePalette`).
-    var audionSurfaceStyle: SkinnedSurfaceStyle? {
-        guard uiMode.controllerFamily == .audion else { return nil }
-        return (mainWindowController as? AudionFaceMainWindowController)?.surfaceStyle ?? AudionFacePalette.neutral
-    }
-
-    /// The colours NullPlayer's own windows wear beside a Sonique skin (`SoniqueSkinPalette`).
-    var soniqueSurfaceStyle: SkinnedSurfaceStyle? {
-        guard uiMode.controllerFamily == .sonique else { return nil }
-        return (mainWindowController as? SoniqueSkinMainWindowController)?.surfaceStyle
-            ?? SoniqueSkinPalette.surfaceStyle(for: .defaultSkin)
+    /// A single-canvas family's colours: its window's, or its unskinned ones before there is one.
+    private func singleCanvasSurfaceStyle<Window: SingleCanvasMainWindow>(_: Window.Type) -> SkinnedSurfaceStyle {
+        (mainWindowController as? Window)?.surfaceStyle ?? Window.unskinnedSurfaceStyle
     }
 
     /// How the surfaces NullPlayer draws itself should look right now, whichever foreign skin family
@@ -1215,29 +1207,27 @@ class WindowManager {
         case .classic, .nullPlayerModern: return nil
         case .winampModern: return winampModernSurfaceStyle
         case .wmp: return wmpSurfaceStyle
-        case .audion: return audionSurfaceStyle
-        case .sonique: return soniqueSurfaceStyle
+        case .audion: return singleCanvasSurfaceStyle(AudionFaceMainWindowController.self)
+        case .sonique: return singleCanvasSurfaceStyle(SoniqueSkinMainWindowController.self)
         }
     }
 
     /// The frame the hosting skin lends one of NullPlayer's own windows at `size`, or nil when it
     /// lends none and the window should draw the palette-derived chrome instead.
     ///
-    /// A `switch` on the family for the same reason `hostedSurfaceStyle` is one: a family that has
-    /// not answered the borrowed-frame question must not silently inherit another one's answer.
-    /// `.wal` deliberately answers nil — a `.wal` skin's own windows reach our surfaces through the
-    /// hosted-window materializer, which mounts them *in* the skin's frame rather than painting a
-    /// picture of it (`winamp-modern-skin-guide`, `reference/components.md`).
+    /// Only a `HostedFrameLender` (`.wmz`) answers. `.wal` deliberately lends none — a `.wal` skin's
+    /// own windows reach our surfaces through the hosted-window materializer, which mounts them *in*
+    /// the skin's frame rather than painting a picture of it (`winamp-modern-skin-guide`,
+    /// `reference/components.md`).
     func hostedSurfaceFrameArtwork(for size: CGSize) -> SkinnedSurfaceFrameArtwork? {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return nil
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return nil }
-            // Every caller is a view's draw or hit test, which is already the main thread; the
-            // provider is `@MainActor` because it mutates its render cache from a completed build.
-            return MainActor.assumeIsolated { controller.hostedFrames.artwork(for: size) }
-        }
+        guard let lender = frameLender else { return nil }
+        // Every caller is a view's draw or hit test, which is already the main thread; the
+        // provider is `@MainActor` because it mutates its render cache from a completed build.
+        return MainActor.assumeIsolated { lender.hostedFrames.artwork(for: size) }
     }
+
+    /// The main window, when its skin lends NullPlayer's windows a frame.
+    private var frameLender: HostedFrameLender? { mainWindowController as? HostedFrameLender }
 
     /// **The frame the hosting skin has *already rendered* for `size`, which is not what a drawing
     /// view is answered (W238).**
@@ -1248,15 +1238,9 @@ class WindowManager {
     /// window should be must not schedule work by asking, and must not be handed a stretched ring
     /// whose insets are that ring's scaled rather than this window's. This is the measuring seam:
     /// the frame or nothing.
-    ///
-    /// A `switch` on the family for the same reason its siblings are one.
     func hostedSurfaceRenderedFrameArtwork(for size: CGSize) -> SkinnedSurfaceFrameArtwork? {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return nil
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return nil }
-            return MainActor.assumeIsolated { controller.hostedFrames.renderedArtwork(for: size) }
-        }
+        guard let lender = frameLender else { return nil }
+        return MainActor.assumeIsolated { lender.hostedFrames.renderedArtwork(for: size) }
     }
 
     /// **Whether the hosting skin has a final answer for a window of `size` (W250).**
@@ -1267,15 +1251,10 @@ class WindowManager {
     /// under the user's eyes when the render lands, which is what `HostedWindowBorderLayout` holds
     /// the open for.
     ///
-    /// Every family but `.wmp` lends nothing, so every one of them is always settled — a hold there
-    /// would be a hold that never ends.
+    /// A family that lends nothing is always settled — a hold there would be a hold that never ends.
     func hostedSurfaceHasSettledFrameAnswer(for size: CGSize) -> Bool {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return true
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return true }
-            return MainActor.assumeIsolated { controller.hostedFrames.hasSettledAnswer(for: size) }
-        }
+        guard let lender = frameLender else { return true }
+        return MainActor.assumeIsolated { lender.hostedFrames.hasSettledAnswer(for: size) }
     }
 
     /// **Render the hosting skin's frame for `size` now, because a window is opening at it (W250).**
@@ -1285,31 +1264,23 @@ class WindowManager {
     /// window is being opened at. Idempotent, and it joins rather than duplicates a build the
     /// prewarm queue already has in flight.
     func demandHostedSurfaceFrame(for size: CGSize) {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return }
-            MainActor.assumeIsolated { controller.hostedFrames.demand(size) }
-        }
+        guard let lender = frameLender else { return }
+        MainActor.assumeIsolated { lender.hostedFrames.demand(size) }
     }
 
     /// **A hosted window started or stopped being dragged to a new size (the 2026-09-23 drag fix).**
     ///
     /// While a drag is on, the `.wmz` provider builds one frame at a time rather than one per pixel,
     /// keeps the drag's sizes out of the way of the windows at rest, and draws the nearest render
-    /// re-laid out; the end of the drag builds the size the window came to rest at. Every other
-    /// family lends no frame, so there is nothing to coalesce.
+    /// re-laid out; the end of the drag builds the size the window came to rest at. A family that
+    /// lends no frame has nothing to coalesce.
     func hostedSurfaceLiveResize(began: Bool, size: CGSize) {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return }
-            MainActor.assumeIsolated {
-                if began {
-                    controller.hostedFrames.beginLiveResize()
-                } else {
-                    controller.hostedFrames.endLiveResize(at: size)
-                }
+        guard let lender = frameLender else { return }
+        MainActor.assumeIsolated {
+            if began {
+                lender.hostedFrames.beginLiveResize()
+            } else {
+                lender.hostedFrames.endLiveResize(at: size)
             }
         }
     }
@@ -1342,30 +1313,11 @@ class WindowManager {
     /// gets next launch, which is what left Cava wanting a 299x70 interior and the waveform 355x111
     /// where both should have been 297x111.
     ///
-    /// Every family but `.wmp` lends no borders at all, so every one of them is always settled —
-    /// which is what the predicate this replaced already answered for them.
+    /// A family that lends no borders at all is always settled — which is what the predicate this
+    /// replaced already answered for it.
     var hostedSurfaceBordersAreSettled: Bool {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return true
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return true }
-            return MainActor.assumeIsolated {
-                // **A skin still on its way is a third state and it is not settled (W250).** The
-                // provider is configured only once the player has rendered, so before that it has
-                // no template and `lendsFrame` is false — the same reading a skin that lends
-                // nothing gives, and the one that let a restored hosted window come up at launch
-                // wearing palette chrome. Nothing measured against a border that is about to
-                // arrive is worth keeping, which is what this predicate has always meant.
-                //
-                // **Unless the skin on screen still lends a frame.** A `.wmz` switch is staged: the
-                // old skin keeps answering, with its own border, until every window flips in one
-                // turn, so a window resized meanwhile is read against the border it is wearing — and
-                // must be, or a drag during the switch is put straight back by the next pass.
-                guard !controller.isResolvingHostedFrames || controller.hostedFrames.lendsFrame
-                else { return false }
-                return !controller.hostedFrames.lendsFrame || controller.hostedFrames.donorInsets != nil
-            }
-        }
+        guard let lender = frameLender else { return true }
+        return MainActor.assumeIsolated { lender.hostedBordersAreSettled }
     }
 
     /// **The border the hosting skin adds around one of NullPlayer's own windows, asked without
@@ -1377,17 +1329,13 @@ class WindowManager {
     /// its four borders on its own (`WMPHostedFrameTemplate.borderInsets`), and that is what
     /// `HostedWindowBorderLayout` grows by.
     ///
-    /// A `switch` on the family for the same reason the two above are: `.wal` mounts our surfaces in
-    /// the skin's own frame rather than painting a picture of one, so it adds nothing here.
+    /// `.wal` mounts our surfaces in the skin's own frame rather than painting a picture of one, so
+    /// it lends nothing and adds nothing here.
     var hostedSurfaceBorderInsets: SkinnedSurfaceChrome.Metrics? {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return nil
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController,
-                  let insets = MainActor.assumeIsolated({ controller.hostedFrames.donorInsets })
-            else { return nil }
-            return SkinnedSurfaceChrome.Metrics(insets: insets)
-        }
+        guard let lender = frameLender,
+              let insets = MainActor.assumeIsolated({ lender.hostedFrames.donorInsets })
+        else { return nil }
+        return SkinnedSurfaceChrome.Metrics(insets: insets)
     }
 
     /// The windows `HostedWindowBorderLayout` grows around their interiors, each with the chrome it
@@ -1432,15 +1380,9 @@ class WindowManager {
     /// computes them from the interiors it persists — and this hands them to the family that can
     /// render them. Speculative work with nothing waiting on it: a size that fails here is not
     /// recorded as refused, and a window that opens mid-queue is served by the drawing path as usual.
-    ///
-    /// A `switch` on the family for the same reason its siblings are one.
     func prewarmHostedSurfaceFrames(_ sizes: [CGSize]) {
-        switch uiMode.controllerFamily {
-        case .classic, .nullPlayerModern, .winampModern, .audion, .sonique: return
-        case .wmp:
-            guard let controller = mainWindowController as? WMPMainWindowController else { return }
-            MainActor.assumeIsolated { controller.hostedFrames.prewarm(sizes) }
-        }
+        guard let lender = frameLender else { return }
+        MainActor.assumeIsolated { lender.hostedFrames.prewarm(sizes) }
     }
 
     func presizeHostedWindow(_ window: NSWindow?) {
