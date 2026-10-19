@@ -9,16 +9,17 @@ final class SoniqueSkinMainView: NSView {
     var skin: SoniqueSkin? {
         didSet {
             dropEffects()
-            state.pressed = nil
-            state.smallDrawer = nil
-            redraw()
+            // One redraw: through `state` when letting go changes it, else here.
+            var released = state
+            released.letGo()
+            if released == state { redraw() } else { state = released }
         }
     }
     /// Everything on screen but the skin. A mode change lets go of the press and closes small mode's
     /// drawer; a new title scrolls from its start.
     var state = SoniqueSkinScene.State() {
         didSet {
-            if state.mode != oldValue.mode { state.pressed = nil; state.smallDrawer = nil }
+            if state.mode != oldValue.mode { state.letGo() }
             if state.host.title != oldValue.host.title { state.marqueeOffset = 0 }
             guard state != oldValue else { return }
             show(state, after: oldValue)
@@ -87,9 +88,7 @@ final class SoniqueSkinMainView: NSView {
             effects?.setActive(new.host.playState == .playing)
             updateMarqueeTimer()
         }
-        var scrolled = old
-        scrolled.marqueeOffset = new.marqueeOffset
-        guard scrolled != new else { return render() }
+        guard !new.isScrolled(from: old) else { return render() }
         redraw()
         if new.navDrawerOpen != old.navDrawerOpen || new.smallDrawer != old.smallDrawer { onOutlineChange?() }
     }

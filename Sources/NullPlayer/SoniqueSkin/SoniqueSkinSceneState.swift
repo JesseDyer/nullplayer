@@ -105,5 +105,18 @@ extension SoniqueSkinScene {
         /// How far a title too long for its line has scrolled, in skin pixels: the status line, mid
         /// mode's song window and small mode's drawer all scroll the same title together.
         var marqueeOffset = 0
+
+        /// Lets go of the press and closes small mode's drawer, as a new mode or skin does.
+        mutating func letGo() {
+            pressed = nil
+            smallDrawer = nil
+        }
+
+        /// Whether this is `old` with only the marquee moved on.
+        func isScrolled(from old: Self) -> Bool {
+            var scrolled = old
+            scrolled.marqueeOffset = marqueeOffset
+            return scrolled == self
+        }
     }
 }

@@ -96,7 +96,7 @@ extension SoniqueSkinPainter {
         clip(to: region.rects)
         let b = region.bounds.cgRect
         // Skin pixels run top-down, so angles grow clockwise; -90° is the top.
-        let (start, sweep) = skin.settings.midPlaylistMode == 0
+        let (start, sweep) = skin.settings.midRingsFillFromTop
             ? (-Double.pi / 2, 2 * Double.pi) : (3 * Double.pi / 4, 1.5 * Double.pi)
         let centre = CGPoint(x: b.midX, y: b.midY)
         context.move(to: centre)

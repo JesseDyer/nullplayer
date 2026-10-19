@@ -200,15 +200,3 @@ protocol SkinDrawnEqualizer: MainWindowProviding {
 }
 
 extension SoniqueSkinMainWindowController: SkinDrawnEqualizer {}
-
-/// A main window whose skin lends NullPlayer's own windows a frame (`WMPHostedFrameProvider`), asked
-/// with `as?` (Sonique S22). Only `.wmz` lends one. Unlike the family switches this is opt-in, and
-/// needs no exhaustive answer: a family that lends nothing has every frame question settled, and its
-/// windows draw their own palette chrome, which is right for any family that never hears of this.
-protocol HostedFrameLender: MainWindowProviding {
-    @MainActor var hostedFrames: WMPHostedFrameProvider { get }
-    /// `WindowManager.hostedSurfaceBordersAreSettled` for the skin this window is lending from.
-    @MainActor var hostedBordersAreSettled: Bool { get }
-}
-
-extension WMPMainWindowController: HostedFrameLender {}

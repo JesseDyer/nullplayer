@@ -1215,7 +1215,7 @@ class WindowManager {
     /// The frame the hosting skin lends one of NullPlayer's own windows at `size`, or nil when it
     /// lends none and the window should draw the palette-derived chrome instead.
     ///
-    /// Only a `HostedFrameLender` (`.wmz`) answers. `.wal` deliberately lends none — a `.wal` skin's
+    /// Only `.wmz` answers (`frameLender`). `.wal` deliberately lends none — a `.wal` skin's
     /// own windows reach our surfaces through the hosted-window materializer, which mounts them *in*
     /// the skin's frame rather than painting a picture of it (`winamp-modern-skin-guide`,
     /// `reference/components.md`).
@@ -1226,8 +1226,12 @@ class WindowManager {
         return MainActor.assumeIsolated { lender.hostedFrames.artwork(for: size) }
     }
 
-    /// The main window, when its skin lends NullPlayer's windows a frame.
-    private var frameLender: HostedFrameLender? { mainWindowController as? HostedFrameLender }
+    /// The main window, when its skin lends NullPlayer's windows a frame: only a `.wmz` one does, so
+    /// this is the WMP controller, asked with `as?` (Sonique S22). Every other family lends nothing,
+    /// has every frame question settled and draws its own palette chrome — right for any family that
+    /// never hears of this, so it needs no exhaustive switch. The main controller is torn down before
+    /// `uiMode` changes, so the cast and the family never disagree.
+    private var frameLender: WMPMainWindowController? { mainWindowController as? WMPMainWindowController }
 
     /// **The frame the hosting skin has *already rendered* for `size`, which is not what a drawing
     /// view is answered (W238).**

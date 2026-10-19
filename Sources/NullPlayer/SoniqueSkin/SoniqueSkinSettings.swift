@@ -76,8 +76,9 @@ struct SoniqueSkinSettings {
     /// How far the navigator's balls sit in from the display's right edge.
     var navBallInset: Int { int("misc values", "NC_BB_DIST_FROM_RIGHT") }
 
-    /// Mid mode's rings: 0 fills clockwise from the top, anything else across 270° from the bottom left.
-    var midPlaylistMode: Int { int("misc values", "mid_playlistmode") }
+    /// Whether mid mode's rings fill a whole turn clockwise from the top (`mid_playlistmode=0`), not
+    /// 270° from the bottom left.
+    var midRingsFillFromTop: Bool { int("misc values", "mid_playlistmode") == 0 }
 
     /// The skin's own value; an empty one (`MISC_DRAWER_POS_x=`; 8 skins write one) counts as unwritten.
     private func written(_ section: String, _ key: String) -> String? {
