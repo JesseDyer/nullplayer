@@ -371,6 +371,32 @@ is defined, with the measurements that ruled out the obvious alternatives, in
 `.claude/skills/wal-skin-report/SKILL.md` → *The census rating is not a grade*; the user-facing list
 it feeds is `docs/winamp-modern/skin-compatibility.md`.
 
+### The static feature index — what every skin declares, without running it
+
+`scripts/wal_feature_index.sh <outdir> [--corpus <dir[:dir…]>]` (B168) writes `features.tsv` — one row
+per (skin, feature): `skin, sha256, kind, feature, implemented`. It is the reach instrument: "how many
+skins use X" is a query over it, not a grep over a hand extract. ~30 s over gold+silver, ~90 s over
+the 906 crawl candidates (2026-10-19), mostly the build.
+
+- `maki-call` `<classguid>.<method>` an instruction invokes, `implemented` yes/no against the
+  runtime's own `signature(for:)`; `maki-event` a handler a binding names (`-`: the host dispatches
+  events). From `WinampModernStaticDemandTests`, driven by `WINAMP_MODERN_STATIC_DEMAND=<dir[:dir…]>`
+  and `WINAMP_MODERN_STATIC_DEMAND_OUT=<file>`. Parse-only: the runtime is built and never started.
+  It reads the bound programs (the engine's too, for a cPro skin) **plus every `.maki` the archive
+  ships** — a `<script>` inside a `<groupdef>` binds only when something instantiates the group, and
+  the bound-only first draft missed Hal's Eye's `manual.maki` that way. The GUID is
+  `MakiClassGUID.canonical`; there is no name table, so `d6f50f64…` is `System`.
+- `xml-tag`, `xml-attr` (`tag@attr`), `xml-action`, `xml-display`: every comment-stripped `.xml` in
+  the archive, lowercased. The **tree**, not the include closure — an orphan file counts.
+- `family` (cpro / standardframe / own-wasabi / plain, a path heuristic) and `load` (ok/failed). A
+  skin that does not load keeps its XML and family rows; the script fails if any archive lacks a
+  `load` row, so none is skipped silently.
+
+Reach is `awk -F'\t' '$3=="maki-call" && $4 ~ /\.getendframe$/' features.tsv | cut -f1 | sort -u | wc -l`.
+At close it matched an independent extract-and-`rg` over gold+silver for `getEndFrame` (3),
+`setClipboardText` (2), `activeimage` (75) and `text@wrap` (8, which needs `rg -U` — Wasabi tags span
+lines). Two runs are byte-identical.
+
 ### The corpus render sweep — what an engine-wide change reached
 
 A change to loading, initialization, script startup, hit testing or **drawing** reaches every skin,

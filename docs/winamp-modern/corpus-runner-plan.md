@@ -288,6 +288,14 @@ so a corpus run can't lose lines, not *what* is measured.
   not ~10–15 — the table is what we have worked on. `WinampModernSkins/` still holds all 89 until the
   user prunes it to their own installs; nothing reads it as the corpus any more. No skins admitted, so
   none handed over. Next: B168.
+- **B168 closed 2026-10-19.** `scripts/wal_feature_index.sh` writes `features.tsv` (`harness.md` →
+  *The static feature index*). It ran over gold+silver (89, all load) and the 906 candidates (54 do
+  not load and keep their XML rows) with no skipped skin, byte-identical twice, and four archive
+  reach figures reproduced against an extract-and-`rg`. **Decision changed:** the MAKI half reads
+  every `.maki` the archive ships as well as the bound programs, because a script in an
+  uninstantiated `<groupdef>` is never bound at load — exactly the demand S2 is for. For B169: value
+  should count `maki-*` and `xml-*` features but not `family`/`load`, and the bronze/quarantine split
+  can start from the 54 `load failed` rows. No skins admitted, so none handed over. Next: B169.
 
 ### Decisions (fixed — re-open only with a measurement)
 

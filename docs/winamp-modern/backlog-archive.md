@@ -3,6 +3,23 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B168 — static feature index — closed 2026-10-19
+
+| B168 | **Static feature index (S2's MAKI half plus an XML scan).** A parse-only `WINAMP_MODERN_STATIC_DEMAND=<dir>` harness entry emits each skin's class-qualified MAKI methods, each marked implemented or not against `signature(for:)`, reusing `MakiProgram` with no execution. A Python pass adds the comment-stripped XML tags, `tag@attr`, `action=` and `display=` values, and a family label. Output: `features.tsv` (skin, sha256, kind, feature, implemented). Done when it runs over gold+silver plus the 906 candidates with no skipped skin, and three current reach numbers in this file reproduce from it | every ranking | L | 2 |
+
+**Closed 2026-10-19.** `scripts/wal_feature_index.sh` + `WinampModernStaticDemandTests`; the kinds
+and their limits are in `harness.md` → *The static feature index*. Gold+silver: 89/89 indexed, all
+load, 42,689 rows. The 906 candidates: 906/906 indexed, 54 do not load (each keeps its XML rows),
+332,800 rows. Both byte-identical across two runs. **No numeric reach was left in the file** when
+this closed, so the check used four from the archive, re-measured over gold+silver by the old method
+(a `7zz` extract and `rg`) and by the index: `getEndFrame` callers 3/3, `setClipboardText` 2/2,
+`activeimage` 75/75, `text@wrap` 8/8. The first draft read bound programs only and got
+`getEndFrame` 2 — Hal's Eye's `manual.maki` sits in a `<groupdef>` nothing instantiates at load —
+so the index also parses every `.maki` the archive ships. Three Windows-built archives (PokemonDS,
+SingItKitty, Wiimote) spell entries with `\` in the zip directory and `/` in the local header, which
+Python's `zipfile` refuses; the XML pass retries with `/`. The XML half has `implemented` `-`: the
+supported-surface manifest S2 names is not built.
+
 ## B167 — the corpus moves out of the app's skin folder — closed 2026-10-19
 
 | B167 | **Move the corpus out of the app's skin folder.** Create `WinampModernCorpus/{gold,silver,bronze,quarantine}/`; the current 89 go to gold (the `skins.md` set) and silver (the rest), recorded in a committed `docs/winamp-modern/corpus-manifest.tsv`. Every corpus script defaults to gold+silver (a multi-dir walk), including `app-control`'s `window-census.sh`/`skin-pick-matrix.py` and `skin-screenshots`. Done when a sweep over the new location is byte-identical (invariants and PNGs) to one over `WinampModernSkins/` at the same rev, and the B166 count rule holds | every corpus run | M | 2 |
