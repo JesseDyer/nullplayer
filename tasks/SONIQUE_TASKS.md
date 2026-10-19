@@ -21,9 +21,4 @@ when a skin or a report reproduces it.
 
 ## Maintenance
 
-Filed 2026-10-18 from the Phase 2 code review. S18–S20 are restructurings beyond Sonique: each
-is weighed with the user before it starts, and touches `App/` (the sweeps above apply).
-
-| ID | Item | Reach | Notes |
-|---|---|---|---|
-| S18 | Share the single-canvas family's selection and load lifecycle. `SkinInstallFolder` took the file commit; the selection preference (`selectedXName`, `select`, `resetSelection`, clearing it on remove) is still written out in `WMPSkinImporter`, `AudionFaceImporter` and `SoniqueSkinImporter`, and `reloadSelectedSkin` / `loadTask` / import / `resetToUnskinned` are near line-for-line in `AudionFaceMainWindowController` and `SoniqueSkinMainWindowController`. A `SkinSelection(key:)` beside `SkinInstallFolder`, then a shared load-task helper on `SingleCanvasMainWindow` | all | Touches Audion and `.wmz`: their sweeps byte-identical. `skin-subsystem-blueprint` for the seam |
+No open rows. S18–S21, filed from the Phase 2 code review, closed 2026-10-18.

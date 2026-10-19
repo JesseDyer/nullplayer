@@ -722,7 +722,7 @@ class AppStateManager {
                 ? UserDefaults.standard.string(forKey: WMPSkinImporter.selectedSkinNameKey) : nil,
             wmpViewID: wm.uiMode == .wmp
                 ? UserDefaults.standard.string(forKey: WMPSkinImporter.selectedViewIDKey) : nil,
-            audionFaceName: wm.uiMode == .audion ? AudionFaceImporter().selectedFaceName : nil,
+            audionFaceName: wm.uiMode == .audion ? AudionFaceImporter().selection.name : nil,
             selectedOutputDeviceUID: UserDefaults.standard.string(forKey: "selectedOutputDeviceUID"),
             browserBrowseMode: browserBrowseMode,
             uiMode: wm.uiMode.rawValue,
@@ -858,7 +858,7 @@ class AppStateManager {
         if restoredMode == .wmp, state.restoredUIMode == .wmp {
             let importer = WMPSkinImporter()
             if let name = state.wmpSkinName {
-                importer.defaults.set(name, forKey: WMPSkinImporter.selectedSkinNameKey)
+                importer.selection.select(name)
                 if let viewID = state.wmpViewID {
                     importer.defaults.set(viewID, forKey: WMPSkinImporter.selectedViewIDKey)
                 } else {
@@ -871,7 +871,7 @@ class AppStateManager {
 
         if restoredMode == .audion, state.restoredUIMode == .audion {
             let importer = AudionFaceImporter()
-            if let name = state.audionFaceName { importer.select(name) } else { importer.resetSelection() }
+            if let name = state.audionFaceName { importer.selection.select(name) } else { importer.selection.reset() }
         }
 
         // reloadUI(to:) can defer the actual mode swap until Compact Mode teardown completes.
@@ -947,7 +947,7 @@ class AppStateManager {
             (wm.mainWindowController as? WMPMainWindowController)?.reloadSelectedSkin()
         }
         // As for `.wmp`: the no-swap case may still hold the previous face or skin.
-        (wm.mainWindowController as? SingleCanvasMainWindow)?.reloadSelectedSkin()
+        (wm.mainWindowController as? any SingleCanvasMainWindow)?.reloadSelectedSkin()
         
         // Restore audio output device
         if let deviceUID = state.selectedOutputDeviceUID {
@@ -1383,7 +1383,7 @@ class AppStateManager {
             controller.restoreFrame(correctedMainFrame ?? NSRectFromString(frameString),
                                     skinName: state.wmpSkinName, viewID: state.wmpViewID)
         } else if let frameString = state.mainWindowFrame,
-                  let controller = wm.mainWindowController as? SingleCanvasMainWindow {
+                  let controller = wm.mainWindowController as? any SingleCanvasMainWindow {
             // The face or skin decides the size; the saved frame places its top-left.
             controller.restoreFrame(correctedMainFrame ?? NSRectFromString(frameString))
         } else if let frameString = state.mainWindowFrame,

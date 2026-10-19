@@ -14,7 +14,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
 
     private let importer = SoniqueSkinImporter()
     private let skinView = SoniqueSkinMainView()
-    private var loadTask: Task<Void, Never>?
+    let skinLoad = SkinLoadTask()
     private var uiScale: CGFloat = 1
     /// The `.sgf` on screen, nil while the default skin stands in.
     private(set) var loadedSkinURL: URL?
@@ -76,37 +76,11 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
 
     required init?(coder: NSCoder) { nil }
 
-    // MARK: - Choosing a skin
+    // MARK: - Choosing a skin (`SingleCanvasMainWindow`)
 
-    func reloadSelectedSkin() {
-        loadTask?.cancel()
-        let url: URL?
-        do {
-            url = try importer.selectedSkinURL()
-        } catch {
-            NSLog("SoniqueSkin: %@", error.localizedDescription)
-            return present(nil)
-        }
-        guard let url else { return present(nil) }
-        loadTask = Task { @MainActor [weak self] in
-            do {
-                let skin = try await SoniqueSkinLoader.load(file: url)
-                try Task.checkCancellation()
-                self?.present((skin, url))
-                NSLog("SoniqueSkin: loaded '%@' (%d findings)", url.lastPathComponent, skin.findings.count)
-            } catch is CancellationError {
-                return
-            } catch {
-                NSLog("SoniqueSkin: '%@' failed: %@", url.lastPathComponent, "\(error)")
-                self?.present(nil)
-            }
-        }
-    }
-
-    func selectSkin(named name: String) {
-        importer.select(name)
-        reloadSelectedSkin()
-    }
+    var skinSelection: SkinSelection { importer.selection }
+    func selectedSkinURL() throws -> URL? { try importer.selectedSkinURL() }
+    static func loadSkin(at url: URL) async throws -> SoniqueSkin { try await SoniqueSkinLoader.load(file: url) }
 
     func importSkinFromPanel() {
         let panel = NSOpenPanel()
@@ -118,32 +92,24 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     }
 
     func importSkin(from url: URL) {
-        loadTask?.cancel()
-        loadTask = Task { @MainActor [weak self] in
-            do {
-                _ = try await self?.importer.importSkin(from: url)
-                try Task.checkCancellation()
-                self?.reloadSelectedSkin()
-            } catch is CancellationError {
-                return
-            } catch {
-                let alert = NSAlert()
-                alert.messageText = "“\(url.lastPathComponent)” could not be loaded."
-                alert.informativeText = "\(error)"
-                alert.runModal()
-            }
-        }
-    }
-
-    func resetToUnskinned() {
-        loadTask?.cancel()
-        importer.resetSelection()
-        present(nil)
+        skinLoad.run({ [importer] in try await importer.importSkin(from: url) },
+                     done: { [weak self] _ in self?.reloadSelectedSkin() },
+                     failed: { error in
+                         let alert = NSAlert()
+                         alert.messageText = "“\(url.lastPathComponent)” could not be loaded."
+                         alert.informativeText = "\(error)"
+                         alert.runModal()
+                     })
     }
 
     // MARK: - Presenting
 
-    private func present(_ shown: (skin: SoniqueSkin, url: URL)?) {
+    /// With nil the default skin stands in; a skin that failed is logged, never shown as an error.
+    func present(_ shown: (skin: SoniqueSkin, url: URL)?, error: Error?) {
+        if let shown {
+            NSLog("SoniqueSkin: loaded '%@' (%d findings)", shown.url.lastPathComponent, shown.skin.findings.count)
+        }
+        if let error { NSLog("SoniqueSkin: %@", "\(error)") }
         let skin = shown?.skin ?? .defaultSkin
         loadedSkinURL = shown?.url
         let style = SoniqueSkinPalette.surfaceStyle(for: skin)
@@ -276,8 +242,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     func windowVisibilityDidChange() {}
 
     func prepareForUITeardown() {
-        loadTask?.cancel()
-        loadTask = nil
+        skinLoad.cancel()
     }
 
     // MARK: - Window delegate

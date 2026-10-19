@@ -18,7 +18,7 @@ extension MenuActions {
         if let controller = soniqueController {
             controller.selectSkin(named: name)
         } else {
-            SoniqueSkinImporter().select(name)
+            SoniqueSkinImporter().selection.select(name)
             WindowManager.shared.reloadUI(to: .sonique)
         }
     }

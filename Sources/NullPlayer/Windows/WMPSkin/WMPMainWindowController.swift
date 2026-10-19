@@ -181,7 +181,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     private var trackLoadFailureObserver: NSObjectProtocol?
     private var isCapturingVisualizationSettings = false
     /// The skin a captured change belongs to. It is the skin that was showing when the change was
-    /// made, not `importer.selectedSkinName` at the moment the notification is delivered: the
+    /// made, not `importer.selection.name` at the moment the notification is delivered: the
     /// defaults notification arrives on the main queue asynchronously, so a change made just before
     /// a skin switch would otherwise be filed against the skin being switched *to*. Nil until the
     /// first restore, so nothing is captured before anything has been put in place.
@@ -226,7 +226,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     /// a skin's view sizes and its hosted windows' sizes belong to the same identity. Nil with no
     /// skin loaded (the unskinned fallback), which stores nothing.
     var hostedInteriorSkinKey: String? {
-        guard loadedSkin != nil, let name = importer.selectedSkinName, !name.isEmpty else { return nil }
+        guard loadedSkin != nil, let name = importer.selection.name, !name.isEmpty else { return nil }
         return WMPViewFrameStore.skinKey(name)
     }
 
@@ -349,7 +349,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     /// "nothing has been opened over the player" now reads "this *is* the player and it is the only
     /// window open", which is the same statement made in the new vocabulary.
     private func closeNVIDIAEmbeddedMode(_ presentation: WMPViewPresentation) -> Bool {
-        guard importer.selectedSkinName?.caseInsensitiveCompare("NVIDIA") == .orderedSame,
+        guard importer.selection.name?.caseInsensitiveCompare("NVIDIA") == .orderedSame,
               presentation.isPlayer, materializer.openPresentations.count == 1,
               let widgets = presentation.activeScene?.widgets,
               widgets.contains(where: { $0.kind == .playlist || $0.kind == .video })
@@ -630,7 +630,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     /// captured it may not have been delivered yet.
     private func restoreVisualizationSettings() {
         captureVisualizationSettings()
-        let skin = importer.selectedSkinName ?? ""
+        let skin = importer.selection.name ?? ""
         visualizationSettingsSkin = skin
         isCapturingVisualizationSettings = true
         let selection = visualizationSettings.restore(skin: skin)
@@ -946,7 +946,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
     private func restoreOpenAuxiliaryViews(skin: WMPLoadedSkin, store: WMPImageStore,
                                            runtime: WMPScriptRuntime) {
         let stored = WMPViewFrameStore(defaults: importer.defaults)
-            .openViews(skin: importer.selectedSkinName ?? "")
+            .openViews(skin: importer.selection.name ?? "")
         guard !stored.isEmpty, let player = materializer.playerPresentation else { return }
         for viewID in stored.prefix(Self.maximumOpenViews)
         where !materializer.isOpen(viewID)
@@ -1011,7 +1011,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
 
     func restoreFrame(_ frame: NSRect, skinName: String?, viewID: String?) {
         guard frame != .zero else { return }
-        let selectedName = importer.selectedSkinName
+        let selectedName = importer.selection.name
         let nameMatches = selectedName?.caseInsensitiveCompare(skinName ?? "") == .orderedSame
             || (selectedName == nil && skinName == nil)
         let selectedView = importer.selectedViewID
@@ -1758,7 +1758,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
             NSPoint(x: $0.window.frame.minX, y: $0.window.frame.maxY)
         }
         let frameStore = WMPViewFrameStore(defaults: importer.defaults)
-        let skinName = importer.selectedSkinName ?? ""
+        let skinName = importer.selection.name ?? ""
         // **A stored size belongs to a view the user can size, and to no other (W213).** The store
         // keeps whatever the window came to rest at, and `windowDidResize` files it on any resize —
         // including one this app made rather than the user. A fixed view then re-opens at it: the
@@ -2069,14 +2069,14 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
         guard loadedSkin != nil else { return }
         let open = materializer.openPresentations.filter { !$0.isPlayer }.map(\.viewID)
         WMPViewFrameStore(defaults: importer.defaults)
-            .setOpenViews(open, skin: importer.selectedSkinName ?? "")
+            .setOpenViews(open, skin: importer.selection.name ?? "")
     }
 
     /// Persist one window's size and origin, so the user's own arrangement survives a relaunch.
     func persistViewFrame(for window: NSWindow) {
         guard let presentation = materializer.presentation(for: window), loadedSkin != nil else { return }
         let store = WMPViewFrameStore(defaults: importer.defaults)
-        let skinName = importer.selectedSkinName ?? ""
+        let skinName = importer.selection.name ?? ""
         store.setOrigin(CGPoint(x: presentation.window.frame.minX,
                                 y: presentation.window.frame.maxY),
                         skin: skinName, view: presentation.viewID)
@@ -2136,7 +2136,7 @@ final class WMPMainWindowController: NSWindowController, MainWindowProviding, NS
             WMPViewFrameStore(defaults: importer.defaults).setSize(
                 WMPSize(width: presentation.skinSpaceSize.width,
                         height: presentation.skinSpaceSize.height),
-                skin: importer.selectedSkinName ?? "", view: presentation.viewID)
+                skin: importer.selection.name ?? "", view: presentation.viewID)
         }
         renderCurrentSize(presentation)
     }

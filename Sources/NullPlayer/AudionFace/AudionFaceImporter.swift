@@ -25,19 +25,15 @@ enum AudionFaceImportError: LocalizedError {
 /// The installed-faces folder and the selection preference. Every face of an import is validated
 /// through `AudionFaceLoader` off the main thread as it is committed (`SkinInstallFolder`).
 struct AudionFaceImporter {
-    static let selectedFaceNameKey = "audionFaceName"
-
     let folder: SkinInstallFolder
-    let defaults: UserDefaults
+    let selection: SkinSelection
     var directoryURL: URL { folder.url }
     private var fileManager: FileManager { folder.fileManager }
 
     init(directoryURL: URL? = nil, defaults: UserDefaults = .standard, fileManager: FileManager = .default) {
-        self.defaults = defaults
+        selection = SkinSelection(key: "audionFaceName", defaults: defaults)
         folder = SkinInstallFolder("AudionFaces", at: directoryURL, fileManager: fileManager)
     }
-
-    var selectedFaceName: String? { defaults.string(forKey: Self.selectedFaceNameKey) }
 
     /// Every top-level folder holding an `index.json`, by name. Names keep their authored spaces.
     func installedFaces() -> [AudionInstalledFace] {
@@ -61,14 +57,10 @@ struct AudionFaceImporter {
 
     /// The selected face's folder, nil when nothing is selected; throws when the selection is gone.
     func selectedFaceURL() throws -> URL? {
-        guard let name = selectedFaceName, !name.isEmpty else { return nil }
+        guard let name = selection.name, !name.isEmpty else { return nil }
         guard let face = face(named: name) else { throw AudionFaceImportError.selectionMissing(name) }
         return face.url
     }
-
-    func select(_ name: String) { defaults.set(name, forKey: Self.selectedFaceNameKey) }
-
-    func resetSelection() { defaults.removeObject(forKey: Self.selectedFaceNameKey) }
 
     /// Installs a face folder, or every face in a `.zip` (Panic's distribution format), replacing a
     /// face of the same name. Selects the first face installed and returns them all.
@@ -91,7 +83,7 @@ struct AudionFaceImporter {
             }
             return installed
         }.value
-        if let first = installed.first { select(first.name) }
+        if let first = installed.first { selection.select(first.name) }
         return installed
     }
 
@@ -105,6 +97,6 @@ struct AudionFaceImporter {
     func removeFace(named name: String) async throws {
         guard let face = face(named: name) else { throw AudionFaceImportError.notInstalled(name) }
         try await folder.remove(face.url)
-        if selectedFaceName == name { resetSelection() }
+        selection.forget(name)
     }
 }

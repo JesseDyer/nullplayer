@@ -24,19 +24,15 @@ enum SoniqueSkinImportError: LocalizedError {
 /// record § *Decisions*), validated through `SoniqueSkinLoader` off the main thread as it is
 /// committed (`SkinInstallFolder`).
 struct SoniqueSkinImporter {
-    static let selectedSkinNameKey = "soniqueSkinName"
-
     let folder: SkinInstallFolder
-    let defaults: UserDefaults
+    let selection: SkinSelection
     var directoryURL: URL { folder.url }
     private var fileManager: FileManager { folder.fileManager }
 
     init(directoryURL: URL? = nil, defaults: UserDefaults = .standard, fileManager: FileManager = .default) {
-        self.defaults = defaults
+        selection = SkinSelection(key: "soniqueSkinName", defaults: defaults)
         folder = SkinInstallFolder("SoniqueSkins", at: directoryURL, fileManager: fileManager)
     }
-
-    var selectedSkinName: String? { defaults.string(forKey: Self.selectedSkinNameKey) }
 
     func installedSkins() -> [SoniqueInstalledSkin] {
         let names = (try? fileManager.contentsOfDirectory(atPath: directoryURL.path)) ?? []
@@ -54,14 +50,10 @@ struct SoniqueSkinImporter {
 
     /// The selected skin's file, nil when nothing is selected; throws when the selection is gone.
     func selectedSkinURL() throws -> URL? {
-        guard let name = selectedSkinName, !name.isEmpty else { return nil }
+        guard let name = selection.name, !name.isEmpty else { return nil }
         guard let skin = skin(named: name) else { throw SoniqueSkinImportError.selectionMissing(name) }
         return skin.url
     }
-
-    func select(_ name: String) { defaults.set(name, forKey: Self.selectedSkinNameKey) }
-
-    func resetSelection() { defaults.removeObject(forKey: Self.selectedSkinNameKey) }
 
     /// Installs an `.sgf`, replacing one of the same name, and selects it.
     @discardableResult
@@ -72,7 +64,7 @@ struct SoniqueSkinImporter {
             try await folder.commit(source, to: destination) { _ = try SoniqueSkinLoader.load(contentsOf: $0) }
             return SoniqueInstalledSkin(name: name, url: destination)
         }.value
-        select(installed.name)
+        selection.select(installed.name)
         return installed
     }
 
@@ -80,6 +72,6 @@ struct SoniqueSkinImporter {
     func removeSkin(named name: String) async throws {
         guard let skin = skin(named: name) else { throw SoniqueSkinImportError.notInstalled(name) }
         try await folder.remove(skin.url)
-        if selectedSkinName == name { resetSelection() }
+        selection.forget(name)
     }
 }

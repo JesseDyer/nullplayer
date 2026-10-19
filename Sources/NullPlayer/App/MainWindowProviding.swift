@@ -131,16 +131,80 @@ extension WMPMainWindowController: SkinSizedMainWindow {}
 
 /// A main window that is one skin canvas and nothing else (`PlayerUIControllerFamily.isSingleCanvas`):
 /// it loads the selected skin itself, and the skin decides its size, so a restored frame places only
-/// its top-left.
+/// its top-left. The family supplies its selection, its loader and what to show; choosing, reloading
+/// and resetting the skin are shared.
 protocol SingleCanvasMainWindow: NSWindowController, SkinSizedMainWindow {
-    /// Loads the saved selection, or the family's fallback when there is none.
-    func reloadSelectedSkin()
+    associatedtype Skin
+    var skinLoad: SkinLoadTask { get }
+    var skinSelection: SkinSelection { get }
+    /// The selected skin's location, nil when nothing is selected; throws when the selection is gone.
+    func selectedSkinURL() throws -> URL?
+    static func loadSkin(at url: URL) async throws -> Skin
+    /// Shows `shown`, or with nil the family's fallback, saying why when `error` is set.
+    func present(_ shown: (skin: Skin, url: URL)?, error: Error?)
 }
 
 extension SingleCanvasMainWindow {
     func restoreFrame(_ frame: NSRect) {
         guard frame != .zero, let window else { return }
         window.setFrameTopLeftPoint(NSPoint(x: frame.minX, y: frame.maxY))
+    }
+
+    /// Loads the saved selection off the main thread, or shows the family's fallback when there is
+    /// none or it fails.
+    func reloadSelectedSkin() {
+        let url: URL?
+        do {
+            url = try selectedSkinURL()
+        } catch {
+            skinLoad.cancel()
+            return present(nil, error: error)
+        }
+        guard let url else {
+            skinLoad.cancel()
+            return present(nil, error: nil)
+        }
+        skinLoad.run({ try await Self.loadSkin(at: url) },
+                     done: { [weak self] skin in self?.present((skin, url), error: nil) },
+                     failed: { [weak self] error in self?.present(nil, error: error) })
+    }
+
+    func selectSkin(named name: String) {
+        skinSelection.select(name)
+        reloadSelectedSkin()
+    }
+
+    func resetToUnskinned() {
+        skinLoad.cancel()
+        skinSelection.reset()
+        present(nil, error: nil)
+    }
+}
+
+/// The one skin load a window runs at a time: starting one cancels the one before, and a cancelled
+/// load never finishes.
+final class SkinLoadTask {
+    private var task: Task<Void, Never>?
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+    }
+
+    func run<Value>(_ work: @escaping () async throws -> Value, done: @escaping @MainActor (Value) -> Void,
+                    failed: @escaping @MainActor (Error) -> Void) {
+        task?.cancel()
+        task = Task { @MainActor in
+            do {
+                let value = try await work()
+                try Task.checkCancellation()
+                done(value)
+            } catch is CancellationError {
+                return
+            } catch {
+                failed(error)
+            }
+        }
     }
 }
 

@@ -30,6 +30,7 @@ struct WMPSkinImporter {
     static let selectedViewIDKey = "wmpSkinViewID"
 
     let folder: SkinInstallFolder
+    let selection: SkinSelection
     let defaults: UserDefaults
     let loader: WMPSkinLoader
     var directoryURL: URL { folder.url }
@@ -42,12 +43,9 @@ struct WMPSkinImporter {
         loader: WMPSkinLoader = WMPSkinLoader()
     ) {
         self.defaults = defaults
+        selection = SkinSelection(key: Self.selectedSkinNameKey, defaults: defaults)
         self.loader = loader
         folder = SkinInstallFolder("WMPSkins", at: directoryURL, fileManager: fileManager)
-    }
-
-    var selectedSkinName: String? {
-        defaults.string(forKey: Self.selectedSkinNameKey)
     }
 
     var selectedViewID: String? {
@@ -68,7 +66,7 @@ struct WMPSkinImporter {
     }
 
     func selectedSkinURL() throws -> URL? {
-        guard let name = selectedSkinName, !name.isEmpty else { return nil }
+        guard let name = selection.name, !name.isEmpty else { return nil }
         guard let installed = installedSkins().first(where: {
             $0.name.caseInsensitiveCompare(name) == .orderedSame
         }) else { throw WMPSkinImportError.selectionMissing(name) }
@@ -106,12 +104,12 @@ struct WMPSkinImporter {
             try await folder.commit(sourceURL, to: destination, suffix: ".wmz") { _ = try await loader.load(from: $0) }
             return WMPInstalledSkin(name: name, url: destination)
         }.value
-        defaults.set(name, forKey: Self.selectedSkinNameKey)
+        selection.select(name)
         return installed
     }
 
     func select(_ skin: WMPInstalledSkin, viewID: String? = nil) {
-        defaults.set(skin.name, forKey: Self.selectedSkinNameKey)
+        selection.select(skin.name)
         if let viewID, !viewID.isEmpty {
             defaults.set(viewID, forKey: Self.selectedViewIDKey)
         } else {
@@ -120,7 +118,7 @@ struct WMPSkinImporter {
     }
 
     func resetSelection() {
-        defaults.removeObject(forKey: Self.selectedSkinNameKey)
+        selection.reset()
         defaults.removeObject(forKey: Self.selectedViewIDKey)
     }
 
@@ -131,7 +129,7 @@ struct WMPSkinImporter {
             $0.name.caseInsensitiveCompare(name) == .orderedSame
         }) else { throw WMPSkinImportError.selectionMissing(name) }
         try await folder.remove(skin.url)
-        if selectedSkinName?.caseInsensitiveCompare(skin.name) == .orderedSame {
+        if selection.name?.caseInsensitiveCompare(skin.name) == .orderedSame {
             resetSelection()
         }
     }

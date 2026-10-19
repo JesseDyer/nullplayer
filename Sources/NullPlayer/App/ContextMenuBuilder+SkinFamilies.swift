@@ -83,19 +83,19 @@ extension ContextMenuBuilder {
             let importer = WMPSkinImporter()
             return importer.installedSkins().map {
                 skinMenuItem($0.name, #selector(MenuActions.selectWMPSkin(_:)), representedObject: $0.name,
-                             isOn: isActive && importer.selectedSkinName?.caseInsensitiveCompare($0.name) == .orderedSame)
+                             isOn: isActive && importer.selection.name?.caseInsensitiveCompare($0.name) == .orderedSame)
             }
         case .audion:
             let importer = AudionFaceImporter()
             return importer.installedFaces().map {
                 skinMenuItem($0.name, #selector(MenuActions.selectAudionFace(_:)), representedObject: $0.name,
-                             isOn: isActive && importer.selectedFaceName == $0.name)
+                             isOn: isActive && importer.selection.name == $0.name)
             }
         case .sonique:
             let importer = SoniqueSkinImporter()
             return importer.installedSkins().map {
                 skinMenuItem($0.name, #selector(MenuActions.selectSoniqueSkin(_:)), representedObject: $0.name,
-                             isOn: isActive && importer.selectedSkinName == $0.name)
+                             isOn: isActive && importer.selection.name == $0.name)
             }
         }
     }
@@ -636,13 +636,13 @@ extension MenuActions {
             return WinampModernSkinImporter.shared.removableSelectedSkin().map(RemovableSkin.winampModern)
         case .wmp:
             guard AppCapabilities.supports(.wmpSkinMode) else { return nil }
-            return WMPSkinImporter().selectedSkinName.map { .wmp(name: $0) }
+            return WMPSkinImporter().selection.name.map { .wmp(name: $0) }
         case .audion:
             guard AppCapabilities.supports(.audionFaceMode) else { return nil }
-            return AudionFaceImporter().selectedFaceName.map { .audion(name: $0) }
+            return AudionFaceImporter().selection.name.map { .audion(name: $0) }
         case .sonique:
             guard AppCapabilities.supports(.soniqueSkinMode) else { return nil }
-            return SoniqueSkinImporter().selectedSkinName.map { .sonique(name: $0) }
+            return SoniqueSkinImporter().selection.name.map { .sonique(name: $0) }
         }
     }
 
@@ -731,9 +731,9 @@ extension MenuActions {
     @objc func selectAudionFace(_ sender: NSMenuItem) {
         guard AppCapabilities.supports(.audionFaceMode), let name = sender.representedObject as? String else { return }
         if let controller = audionController {
-            controller.selectFace(named: name)
+            controller.selectSkin(named: name)
         } else {
-            AudionFaceImporter().select(name)
+            AudionFaceImporter().selection.select(name)
             WindowManager.shared.reloadUI(to: .audion)
         }
     }

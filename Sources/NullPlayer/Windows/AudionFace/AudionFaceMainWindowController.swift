@@ -11,12 +11,12 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
     private let importer = AudionFaceImporter()
     private let faceView = AudionFaceMainView()
     private let unskinnedView = AudionFaceUnskinnedView()
-    private var loadTask: Task<Void, Never>?
+    let skinLoad = SkinLoadTask()
     /// Radio's connection state picks the face's connecting, streaming or lag animation.
     private var radioObserver: NSObjectProtocol?
     private var uiScale: CGFloat = 1
     /// The face on screen and its folder, nil while the unskinned player is up.
-    private var shown: (face: AudionFace, url: URL)? { didSet { faceView.face = shown?.face } }
+    private var shown: (skin: AudionFace, url: URL)? { didSet { faceView.face = shown?.skin } }
     var loadedFaceURL: URL? { shown?.url }
     /// NullPlayer's own windows, coloured from the face on screen (`AudionFacePalette`).
     private(set) var surfaceStyle = AudionFacePalette.neutral
@@ -53,43 +53,17 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
 
     required init?(coder: NSCoder) { nil }
 
-    // MARK: - Choosing a face
+    // MARK: - Choosing a face (`SingleCanvasMainWindow`)
 
-    func reloadSelectedSkin() {
-        loadTask?.cancel()
-        let url: URL?
-        do {
-            url = try importer.selectedFaceURL()
-        } catch {
-            present(nil, message: error.localizedDescription)
-            return
-        }
-        guard let url else { return present(nil, message: nil) }
-        loadTask = Task { @MainActor [weak self] in
-            do {
-                let face = try await AudionFaceLoader.load(folder: url)
-                try Task.checkCancellation()
-                self?.present((face, url), message: nil)
-                NSLog("AudionFace: loaded '%@' (%dx%d, %d findings)", url.lastPathComponent,
-                      face.base.width, face.base.height, face.findings.count)
-            } catch is CancellationError {
-                return
-            } catch {
-                self?.present(nil, message: error.localizedDescription)
-            }
-        }
-    }
-
-    func selectFace(named name: String) {
-        importer.select(name)
-        reloadSelectedSkin()
-    }
+    var skinSelection: SkinSelection { importer.selection }
+    func selectedSkinURL() throws -> URL? { try importer.selectedFaceURL() }
+    static func loadSkin(at url: URL) async throws -> AudionFace { try await AudionFaceLoader.load(folder: url) }
 
     /// An installed face by its folder, or anything else through the importer.
     func showFace(at url: URL) {
         let installed = url.standardizedFileURL.deletingLastPathComponent().path
             == importer.directoryURL.standardizedFileURL.path
-        installed ? selectFace(named: url.lastPathComponent) : importFace(from: url)
+        installed ? selectSkin(named: url.lastPathComponent) : importFace(from: url)
     }
 
     func importFaceFromPanel() {
@@ -103,38 +77,27 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
     }
 
     func importFace(from url: URL) {
-        loadTask?.cancel()
         unskinnedView.show(message: "Validating and installing \(url.lastPathComponent)…")
-        loadTask = Task { @MainActor [weak self] in
-            do {
-                _ = try await self?.importer.importFaces(from: url)
-                try Task.checkCancellation()
-                self?.reloadSelectedSkin()
-            } catch is CancellationError {
-                return
-            } catch {
-                self?.present(nil, message: error.localizedDescription)
-            }
-        }
-    }
-
-    func resetToUnskinned() {
-        loadTask?.cancel()
-        importer.resetSelection()
-        present(nil, message: nil)
+        skinLoad.run({ [importer] in try await importer.importFaces(from: url) },
+                     done: { [weak self] _ in self?.reloadSelectedSkin() },
+                     failed: { [weak self] error in self?.present(nil, error: error) })
     }
 
     // MARK: - Presenting
 
-    private func present(_ shown: (face: AudionFace, url: URL)?, message: String?) {
+    func present(_ shown: (skin: AudionFace, url: URL)?, error: Error?) {
         guard let window else { return }
+        if let shown {
+            NSLog("AudionFace: loaded '%@' (%dx%d, %d findings)", shown.url.lastPathComponent,
+                  shown.skin.base.width, shown.skin.base.height, shown.skin.findings.count)
+        }
         self.shown = shown
-        let style = shown.map { AudionFacePalette.surfaceStyle(for: $0.face) } ?? AudionFacePalette.neutral
+        let style = shown.map { AudionFacePalette.surfaceStyle(for: $0.skin) } ?? AudionFacePalette.neutral
         if style != surfaceStyle {
             surfaceStyle = style
             NotificationCenter.default.post(name: .hostedSurfaceStyleDidChange, object: nil)
         }
-        unskinnedView.show(message: message)
+        unskinnedView.show(message: error?.localizedDescription)
         let view: NSView = shown == nil ? unskinnedView : faceView
         if window.contentView !== view { window.contentView = view }
         // A face casts its own (`AudionFaceMainView.windowShadow`); the unskinned player is cast
@@ -152,7 +115,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
 
     /// The face's size times `scale`; the unskinned player keeps its own fixed size.
     func mainWindowSize(atScale scale: CGFloat) -> NSSize? {
-        guard let face = shown?.face else { return Self.unskinnedSize }
+        guard let face = shown?.skin else { return Self.unskinnedSize }
         return NSSize(width: CGFloat(face.base.width) * scale, height: CGFloat(face.base.height) * scale)
     }
 
@@ -187,8 +150,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
     func windowVisibilityDidChange() {}
 
     func prepareForUITeardown() {
-        loadTask?.cancel()
-        loadTask = nil
+        skinLoad.cancel()
         radioObserver.map(NotificationCenter.default.removeObserver)
         radioObserver = nil
     }
