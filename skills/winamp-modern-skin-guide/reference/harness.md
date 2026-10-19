@@ -449,6 +449,69 @@ looping phase depends on the absolute uptime. Diff `verdict` across a change, no
 `not-repainted` compares the *layout's* pixels, so a layer that moves beside a ticker reads as
 `moving` either way. Its first run's findings are in B202's archive entry.
 
+### The interaction sweep — does a hooked control do anything? (B205, S3)
+
+```sh
+scripts/wal_interaction_sweep.sh <outdir> --shards 30   # gold+silver, ~17 min; --corpus <dir[:dir…]>
+```
+
+`WinampModernInteractionSweepTests` (`WINAMP_MODERN_INTERACTION_SWEEP=<dir[:dir…]>`,
+`WINAMP_MODERN_INTERACTION_SWEEP_OUT=<file>`) is `RENDER_CLICK` generalised: every object in an open
+window's opening layout that a script binds a pointer event on, driven the way
+`WinampModernMainView` drives it — parent-relative x/y on the button events, none on `onLeftClick`,
+the pointer parked where the press is for `isMouseOverRect` and `getMousePosX`. The press goes to
+whatever the hit test returns there, so a control an `embed_xui` group wraps (`bento:tabbutton`,
+`Wasabi:Frame`) is driven through its inner object and reaches the group by the runtime's own
+forward (`embeddingOwners`). The view's half of a gesture is mirrored as the render dump's `CLICK`
+mirrors it: a click performs the radio / togglebutton / `cfgattrib` flip, and `action=`,
+`dblclickaction` and `rightclickaction` count as an effect unless the host answers them as inert.
+Without that, a transport button whose script only lights a label (Dreliction) read as dead.
+Gestures follow the bindings:
+
+| Gesture | When | Events |
+|---|---|---|
+| `click` | a left down, up or click is bound | down, up, `onLeftClick` |
+| `dblclick` | `onLeftButtonDblClk` is bound | down, dblclk, up |
+| `drag` | `onMouseMove` is bound, or a `layer`/`animatedlayer`/`slider` binds a press | down, four moves to the far end of the long axis with 0.1 s pumped between them, up. A knob that polls the pointer from a timer while held (mmd3's bass/treble) binds no `onMouseMove` and only answers this |
+| `right` | a right down, up or click is bound | down, up, `onRightClick`; the menu it builds is counted and answered 0 |
+
+**Every gesture is a fresh load**, and the skin's stored configuration (`winampModern.config.*` in
+this process's defaults) is put back after each one and after the run. Without that, a close button
+or a tab earlier in the walk makes every later control unreachable, and a click that writes a
+private value changes the next load. Rows are therefore independent of order. The cost is a load per
+gesture plus ~2.5 s of settling, mostly asleep: 30 shards on 10 cores ran at ~500% CPU. It is past
+a foreground tool call's 10-minute limit, so run it with `run_in_background`; rows are appended per
+skin, so the shard files show progress and a crash costs one skin.
+
+**The noise control.** A fresh load runs 1 s before anything is measured, then watches 1 s more with
+nothing driven. Any attribute that changes by itself in that window (a ticker, a clock) is excluded
+from `changed`; if it moved pixels, pixels are not counted for that gesture; and the handlers and
+failures a timer produced in it are excluded from `handlers` and `failed` — EPS's clock fails
+`formatDate` every second, and without this every one of its 103 gestures read as blocked. With a
+0.3 s window, 33 verdicts and one skin's control list flipped between runs. At 1 s two runs had the
+same 2,502 rows and differed on 23 verdicts, nearly all in the cPro2 Styler family, whose beat meter
+writes at ~1.5 Hz — slower than the window. Diff verdicts across a change with that in mind.
+
+`interaction.tsv`, one row per (skin, container, layout, object, gesture):
+
+| Column | Meaning |
+|---|---|
+| `point` | where it was driven: the centre, else the first point of a 7×7 grid over the visible frame where the hit test returns the object — so the artwork's alpha and region decide it, with no second model of either |
+| `hit` | `yes`; for an unreachable control, `clipped` (out of its window) or `covered:<type#id>` (what the hit test answers at its centre) |
+| `verdict` | `works` (an attribute anywhere changed, pixels moved, or it asked for an action, a window, a menu or a markup command); `silent` (handlers ran, nothing observable); `blocked` (a handler failed); `unbound` (no handler ran); `unreachable`; per skin, `none` (no hooked control in an open window) or `failed` (did not load) |
+| `handlers` | handlers run, including script-to-script chains |
+| `failed` | `method:<name>` for a call the runtime lacks — the demand index's unit — else the diagnostic code |
+| `changed` | attributes changed graph-wide, `+px` when this window's pixels moved |
+| `effect` | `action:<action>;<param>` (a script's), `markup:<action>` (the view's), `window:<id>=0/1`, `menu:<items>` |
+
+**What it does not do.** Only the opening layout of open windows is walked, at rest: a control in a
+closed drawer, another layout or a later state is S3.5's. A `covered:` row is often the *other half
+of a state pair* (mmd3's `cttoggle2` sits under `cttoggle` until the drawer opens), so read it as
+"not reachable in this state", not "never reachable"; `covered:layout` is the exception, a control
+the hit test never admits at all. And a plain `action=` button with no script is not a target at all — its whole behaviour is static,
+and the host-action census answers it. Menus are counted, not walked item by item: the plan's per-item menu sweep is not
+built.
+
 ### Growing the corpus — the crawler and the intake
 
 New skins enter in two steps (`corpus-runner-plan.md` §8). Neither touches gold.

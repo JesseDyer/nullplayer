@@ -1738,7 +1738,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
 
     /// The groups that declared `embed_xui` naming this object — the ancestors that speak for it.
     /// Nearly always none or one; the walk is up the parent chain, so it is bounded by tree depth.
-    private func embeddingOwners(of object: WasabiObject) -> [WasabiObject] {
+    func embeddingOwners(of object: WasabiObject) -> [WasabiObject] {
         guard let id = object.xmlID?.lowercased() else { return [] }
         var owners: [WasabiObject] = []
         var candidate = object.parent

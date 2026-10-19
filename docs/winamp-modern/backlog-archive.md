@@ -3,6 +3,39 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B205 — the S3 interaction sweep — closed 2026-10-19
+
+| B205 | **The S3 interaction sweep (plan §7 step 5, §3 S3).** Generalise `RENDER_CLICK` to every object a script hooks the mouse on: pick a point the hit test actually reaches, drive the gesture its bindings call for (click, double-click, drag, right-click), and record whether the hit test reached it, whether a handler ran or failed on a missing method, and whether anything changed. Emit the dead-control list per skin. Done when it runs over gold+silver, two runs agree on the target list and nearly every verdict, and its first findings are filed | every skin with a script-hooked control: 106 of 114 in gold+silver | M | 2 |
+
+**Closed 2026-10-19.** `scripts/wal_interaction_sweep.sh` and `WinampModernInteractionSweepTests`
+(`harness.md` → *The interaction sweep*). Gold+silver: 2,502 gestures over 114 skins, ~17 min at 30
+shards. **1,609 works, 343 silent, 117 blocked, 433 unreachable**; 8 skins have no hooked control in
+an open window. The two independent instruments agree: every blocked call the demand index ranked
+in its top 20 shows up here where it was expected (B182, B187, B195).
+
+**What the first drafts got wrong, measured.** Each changed the table, so each is now in the
+instrument:
+
+- *Shared configuration.* Restoring every `winampModern.config.*` key after each gesture let 10 shards
+  wipe each other's writes through one defaults domain, and the run took **66 min**; scoped to the
+  skin's own namespace it took 9. The 8 "missing" skins were skins with no targets, now a `none` row.
+- *Timer noise.* A 0.3 s no-gesture window missed slower timers: 33 verdicts and Alpha_Media_Player_X5's
+  target list flipped between runs. At 1 s the target list is identical across runs and 23 of 2,502
+  verdicts flip, nearly all the cPro2 Styler beat meter (~1.5 Hz). EPS's clock fails `formatDate`
+  every tick, which made all 103 of its gestures read as blocked until a timer's failures in the
+  quiet window were excluded too.
+- *`embed_xui`.* A wrapped control is hit as its inner object and forwarded to the group; counting
+  only the group made 34 controls (Bento tab buttons, `Wasabi:Frame`s) unreachable that are not.
+  `embeddingOwners(of:)` became internal so the sweep uses the runtime's rule.
+- *The view's half.* Without mirroring `action=` and the toggle/radio/`cfgattrib` flip, 140 gestures
+  read silent that work — Dreliction's transport buttons, whose script only lights a label.
+- *Knobs.* mmd3's bass/treble/volume knobs bind no `onMouseMove`; they poll the pointer from a timer
+  while held, so they answer only a press-drag with the run loop pumped between steps.
+
+**Filed:** B206 (`isMouseOver`, all 18 of Core-X5's main buttons), B207 (the hit test skips a
+script-hooked `text`/`AlbumArt`: the time readout toggle on three skins), B208 (triage the rest).
+Menus are counted per gesture, not walked item by item; that half of the plan's S3 is not built.
+
 ## B202 — the S3 motion sweep — closed 2026-10-19
 
 | B202 | **The S3 motion sweep (plan §7 step 4, §3 S3).** Draw every skin's windows on a clock ladder, t = 0, 0.25, 1, 4 s, pumping the run loop for each interval and pinning the render clock to match, and record per layout whether the pixels moved, which objects moved, and for each declared `animatedlayer` which of the plan's three causes keeps it still (never played, played but not repainted, played but drawn at one frame). Flag a declared animation whose pixels never change. Done when it runs over gold+silver, two runs agree on every verdict, and its first findings are filed | `xml-tag '^animatedlayer$'`: gold 26/56, silver 29/54, bronze 356/827, quarantine 34/54 (manifest 9e68ffe0) | M | 2 |

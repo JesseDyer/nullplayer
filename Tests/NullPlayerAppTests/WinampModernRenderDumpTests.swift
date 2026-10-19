@@ -1831,7 +1831,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
         return drawn ? data : nil
     }
 
-    private static func describe(_ items: [WinampModernPopupMenuItem]) -> String {
+    static func describe(_ items: [WinampModernPopupMenuItem]) -> String {
         items.map { item in
             if item.isSeparator { return "--" }
             let flags = (item.checked ? "*" : "") + (item.disabled ? "!" : "")
@@ -1841,7 +1841,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
     }
 
     /// The attributes a click is likely to move: geometry, visibility, and which art is showing.
-    private static func state(of object: WasabiObject) -> String {
+    static func state(of object: WasabiObject) -> String {
         // `alpha` is here because a whole class of skin behaviour is *only* alpha: ClassicPro's
         // hover glows are a layer already in place at `alpha="0"` that a script fades in, so a probe
         // blind to it reported "the click changed nothing" for a control that lights up (B129).
