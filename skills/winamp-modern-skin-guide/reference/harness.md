@@ -397,6 +397,40 @@ At close it matched an independent extract-and-`rg` over gold+silver for `getEnd
 `setClipboardText` (2), `activeimage` (75) and `text@wrap` (8, which needs `rg -U` — Wasabi tags span
 lines). Two runs are byte-identical.
 
+### Growing the corpus — the crawler and the intake
+
+New skins enter in two steps (`corpus-runner-plan.md` §8). Neither touches gold.
+
+```sh
+python3 -I scripts/wal_corpus_crawl.py <dir> [--source heritage|archive|wincustomize]  # download candidates
+python3 -I scripts/wal_corpus_crawl.py selftest
+scripts/wal_intake.sh <dir> <outdir>            # rate them: <outdir>/intake.tsv, nothing moves
+scripts/wal_intake.sh <dir> <outdir> --admit    # and move each into its tier + append the manifest
+```
+
+**The crawler** (`wal_corpus_crawl.py`) walks winampheritage.com, archive.org's `winampskinsmodern`
+and wincustomize.com, keeps a `.wal` as-is, and repacks every skin root (a folder holding `skin.xml`)
+inside a `.zip` as its own `.wal`; classic skins and RAR/7z payloads are skipped. It dedupes **by
+content** against every tier, quarantine included: ≥90% shared (path, crc32) entries is the same
+skin, because both file names and `<skininfo><name>` fail measured cases. A name match with other
+content is kept and flagged `name-matches:` in `<dir>/manifest.tsv` (`file, internal_name, url,
+flag`). Downloads are cached in `<dir>/.cache`, so a re-run fetches only what is new.
+
+**The intake** (`wal_intake.sh`) runs the census over the candidates, the feature index over them and
+over gold+silver, and writes `intake.tsv` — `rank, file, sha256, tier, load, rating, unimplemented,
+features, gain, added`, one row per candidate. *Health* is `rating` plus `unimplemented` (distinct
+MAKI calls `signature(for:)` lacks); *value* is `gain`, the `maki-*`/`xml-*` features it adds that the
+corpus and every earlier pick lack (`added` lists the first 40). Rank is greedy set cover, ties to
+the lowest sha256, so the file is a pure function of the two sha256 sets and the rev — two runs from
+a clean outdir are byte-identical. Silver is the first 25 of the order with gain ≥ 3 (the constants
+at the top of the script); does-not-load is quarantine; the rest is bronze. A skin the census never
+reached stops the run instead of being quarantined, because that is a crashed pass, not a verdict.
+
+It takes ~48 min over 906 candidates (2026-10-19), ~40 of it the census's hosted pass, so it is
+past a foreground tool call's 10-minute limit: run it with `run_in_background` and trust the run only
+on its `wal_intake: … -> intake.tsv` line. A backgrounded run survived to a complete capture under
+this harness on 2026-10-19 (39 skins, byte-identical to the foreground run).
+
 ### The corpus render sweep — what an engine-wide change reached
 
 A change to loading, initialization, script startup, hit testing or **drawing** reaches every skin,

@@ -296,6 +296,20 @@ so a corpus run can't lose lines, not *what* is measured.
   uninstantiated `<groupdef>` is never bound at load — exactly the demand S2 is for. For B169: value
   should count `maki-*` and `xml-*` features but not `family`/`load`, and the bronze/quarantine split
   can start from the 54 `load failed` rows. No skins admitted, so none handed over. Next: B169.
+- **B169 closed 2026-10-19.** `scripts/wal_intake.sh` rated all 906: **25 silver, 827 bronze, 54
+  quarantine** (the 54 `load failed` rows). Two runs byte-identical, 48 min each — the census's
+  hosted pass is ~40 of that, ~2.5 s a skin, so a full Bronze census is a batch job as planned.
+  Post-admission sweep (the new baseline): 114 skins, 93 s of test time, the 25 new ones 28 s of it
+  (~1.1 s a skin). **Gain curve** (new features per pick, first 60): `290 131 125 103 97 94 93 91 91
+  81 72 62 61 52 52 47 42 39 39 37 36 35 35 34 33 | 31 30 27 24 23 21 19 19 19 18 17 17 17 16 16 16
+  16 15 15 14 14 14 13 12 11 11 10 10 10 10 9 9 9 9 9`; 123 candidates clear gain ≥ 3, 55 clear 10,
+  594 add nothing. So **the budget of 25 bound, not the gain floor** — rank 25 still added 33.
+  **For the next intake, re-weight gain before raising the budget:** ~1,600 of the ~2,000 features
+  the picks added are `tag@attr`, so one new tag with its attributes scores ~15 (rank 25, `machina`,
+  is two new tags; rank 60 is one), and a typo (`container@miminum_h`) scores 1. Count a new tag once,
+  `tag@attr` only on tags the corpus already has, and the gain floor becomes a real filter. Handed
+  over (copied into `WinampModernSkins/`): the 25 silver files listed in the B169 archive entry.
+  Next: B170.
 
 ### Decisions (fixed — re-open only with a measurement)
 

@@ -35,12 +35,11 @@ without a seam change; **L** = a host seam, protocol change, or new fixture harn
 Spec: [`corpus-runner-plan.md` §8](../docs/winamp-modern/corpus-runner-plan.md#8-scaling-the-corpus-past-1000-skins-locked-2026-10-19).
 Take in order — each row needs the one above it. **End every session on these rows by updating the
 row and §8**, so the next session starts from the record rather than re-deriving it, **and by copying
-every skin it admitted into the app's `WinampModernSkins/` folder** for in-app evaluation (§8). 906 crawled candidates wait in
-`~/Library/Application Support/NullPlayer/WinampModernSkins-crawl/` (`manifest.tsv` has each source URL).
+every skin it admitted into the app's `WinampModernSkins/` folder** for in-app evaluation (§8). The 906
+crawled candidates were admitted by B169 (silver 58, bronze 827, quarantine 54); the corpus manifest has each source URL.
 
 | Id | Item | Reach | Effort | Tier |
 |---|---|---:|:---:|---|
-| B169 | **The intake run: rate and admit the crawled candidates.** `scripts/wal_intake.sh <candidates> <outdir>` runs the census over the candidates (health) and the index (value), then greedy set cover writes `intake.tsv` (every candidate's health, value, rank, the features it added) and moves skins into silver/bronze/quarantine, updating the manifest. Silver budget: ≤ 25 per intake, gain ≥ 3 (agreed 2026-10-19); record the gain curve and the sweep time the batch added in §8 so the next budget is set from them. Document `wal_corpus_crawl.py` in `harness.md` here. Done when two runs from a clean outdir produce byte-identical `intake.tsv`, and the post-admission sweep is captured as the new baseline in one commit with the manifest | the 906 candidates | M | 2 |
 | B170 | **Impact-selected and sharded sweeps.** `wal_render_sweep.sh capture --touching <feature,…>` selects every skin in any tier whose index rows match; `--shards K` runs K test processes over a sha256-ordered split after one build. Measure the speed-up and the K at which memory or the ClassicPro mount stops it scaling; record that K in `harness.md`. Done when a `--touching Wasabi:Frame` capture selects exactly the index's matching skins, and a sharded capture equals an unsharded one | every engine change | M | 2 |
 | B171 | **Reach from the index.** Replace *Reproducible reach commands* with one `features.tsv` query reported per tier ("silver n/N, bronze m/M") plus the manifest rev as the denominator's identity; move each open row's grep into its archive entry as it closes. Done when every open row's Reach comes from the query | every row's Reach | S | 2 |
 | B172 | **Docs close-out.** `reference/harness.md` (crawler, intake, index, `--touching`, `--shards`, the new corpus location), `triage-playbook.md` §3 (S0 and S2-MAKI → Built), `corpus-runner-plan.md` (§8 → history), and the `app-control`/`skin-screenshots`/`window-census` skills' corpus paths. Done when no doc names `WinampModernSkins/` as the corpus | the docs | S | 3 |

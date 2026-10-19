@@ -3,6 +3,23 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B169 — the intake run — closed 2026-10-19
+
+| B169 | **The intake run: rate and admit the crawled candidates.** `scripts/wal_intake.sh <candidates> <outdir>` runs the census over the candidates (health) and the index (value), then greedy set cover writes `intake.tsv` (every candidate's health, value, rank, the features it added) and moves skins into silver/bronze/quarantine, updating the manifest. Silver budget: ≤ 25 per intake, gain ≥ 3 (agreed 2026-10-19); record the gain curve and the sweep time the batch added in §8 so the next budget is set from them. Document `wal_corpus_crawl.py` in `harness.md` here. Done when two runs from a clean outdir produce byte-identical `intake.tsv`, and the post-admission sweep is captured as the new baseline in one commit with the manifest | the 906 candidates | M | 2 |
+
+**Closed 2026-10-19.** `scripts/wal_intake.sh` (`harness.md` → *Growing the corpus*). Over the 906
+crawl candidates: 25 silver, 827 bronze, 54 quarantine — the 54 are exactly the index's `load
+failed` rows, and no skin went unreached. Two runs from clean outdirs (48 min each, the census's
+hosted pass ~40 of it) wrote byte-identical `intake.tsv`; the second ran with `--admit`, moving all
+906 into their tiers and appending them to `corpus-manifest.tsv` at `69dbc2ee`. The post-admission
+sweep is the new baseline: 114 skins, 3,412 invariant lines, 969 images, 93 s of test time; the 25
+new skins alone take 28 s of it. Health of the batch: bronze 484 fully / 240 partly / 103
+player-skinned. The gain curve and what it says about the budget are in `corpus-runner-plan.md` §8.
+After both runs `added` switched from a space to a comma separator, because an `action=` value can
+contain spaces (`28 days later`); no rank or tier depends on it.
+
+Admitted to silver, in rank order: `--Vortex--.wal`, `Anunaki.wal`, `Symplicipod.wal`, `Mac_OS_X__-_Panther.wal`, `Dronev11.wal`, `Alpha_Media_Player_X5.wal`, `Simple.wal`, `WinampAzenis2.wal`, `JRS.wal`, `krazyPlayer.wal`, `Prakrit.wal`, `New_Night_v_2.wal`, `Nitrous_Audio_CTI_2_Glass.wal`, `shark5.wal`, `cPro2__minimal_1_1.wal`, `Zygote.wal`, `CopperdeckII.wal`, `NEO_CLASSIC.wal`, `BOOM.wal`, `wTunes.wal`, `Official_Tristania_Skin.wal`, `CPro_Winamp_for_Mac_Sync.wal`, `LogicallityV1_0.wal`, `1010_Fullscreen.wal`, `machina.wal`.
+
 ## B168 — static feature index — closed 2026-10-19
 
 | B168 | **Static feature index (S2's MAKI half plus an XML scan).** A parse-only `WINAMP_MODERN_STATIC_DEMAND=<dir>` harness entry emits each skin's class-qualified MAKI methods, each marked implemented or not against `signature(for:)`, reusing `MakiProgram` with no execution. A Python pass adds the comment-stripped XML tags, `tag@attr`, `action=` and `display=` values, and a family label. Output: `features.tsv` (skin, sha256, kind, feature, implemented). Done when it runs over gold+silver plus the 906 candidates with no skipped skin, and three current reach numbers in this file reproduce from it | every ranking | L | 2 |
