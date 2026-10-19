@@ -464,6 +464,29 @@ run **one skin alone** — point it at a directory holding just that archive. Th
 knowing: if a skin's lines come back when it runs by itself, the sweep capture was the problem and
 not the code.
 
+#### Impact-selected and sharded sweeps
+
+```sh
+scripts/wal_render_sweep.sh capture <outdir> --shards 10                     # gold+silver, ~25 s
+scripts/wal_render_sweep.sh capture <outdir> --touching Wasabi:Frame,text@wrap \
+    --index <features.tsv> --shards 10                                        # every tier, selected
+```
+
+**`--touching <feature,…> --index <features.tsv>`** (B170) sweeps only the skins whose index rows
+name one of the features — the `feature` column, case-insensitive, any kind, so `Wasabi:Frame` is the
+xml-tag and `text@wrap` the attribute; a MAKI feature is matched whole, `<classguid>.<method>`. Its corpus defaults to **every tier** (gold, silver, bronze,
+quarantine): it is how a change reaches Bronze at all. The index must cover the corpus — build one with
+`wal_feature_index.sh --corpus` over all four tiers (~2 min) — and a matching skin the corpus lacks
+stops the run as a stale index. Two captures for a before/after need the same `--touching` and index.
+
+**`--shards K`** builds once, then runs K `xcrun xctest` processes over the archives' sha256 order
+(shard *i* takes every K-th), all writing per-skin logs into one `png/`, so the capture is the same
+shape as an unsharded one and `compare` does not care. Not `swift test --skip-build`: SwiftPM holds a
+lock on `.build`, and K of those ran one after another. Measured 2026-10-19 over gold+silver (114
+skins, 10 cores, 32 GB): K = 1/2/4/6/8/10 → **81/42/30/27/24/22 s** wall, peak summed RSS 2.4–2.9 GB
+at every K, and every K's capture equal to K=1's bar the nondeterministic pair below. Neither memory
+nor the shared ClassicPro engine store limits it; **the core count does — pass `--shards` = cores.**
+
 **`compare` does the half that used to be done by hand and mostly therefore not at all.** It diffs
 the invariant lines *and* compares every dumped PNG, reporting per image: identical, `maxdelta=N`
 over a pixel count and bounding box, or present on one side only. Read the magnitude before calling
@@ -490,7 +513,8 @@ it. Confirm it the cheap way before spending a thought on it: capture twice off 
 
 **One invariant line is nondeterministic too.** `S7Reflex`'s `RENDER-DUMP MLibrary/normal` reports
 `min=452x164` on some runs and `min=354x164` on others, from one binary — measured 2026-10-08, two
-solo runs of the same baseline build giving one of each. Confirm it the same way.
+solo runs of the same baseline build giving one of each. Confirm it the same way. Since B169 the same
+line flips in `winampmodern566` and `XENERGY1` too (2026-10-19), which share that library layout.
 
 Those grep-selected lines are the invariants worth diffing: the container list, the surface catalog,
 the window menu, every layout's canvas size and node count, every hosted holder's frame, and the

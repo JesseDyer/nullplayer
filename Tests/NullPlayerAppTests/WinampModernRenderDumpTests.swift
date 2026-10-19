@@ -59,7 +59,9 @@ final class WinampModernRenderDumpTests: XCTestCase {
             // Each skin gets its own subdirectory in a sweep, so 36 skins' PNGs cannot collide on a
             // shared container name. A single archive keeps writing straight into the directory it
             // was given — every existing invocation and every documented path stays as it was.
-            let skinDump = wals.count > 1
+            // Keyed on `isSweep`, not the count: a one-skin shard of a sharded sweep (B170) shares
+            // the dump directory with the other shards.
+            let skinDump = isSweep
                 ? dumpDirectory.appendingPathComponent(wal.deletingPathExtension().lastPathComponent,
                                                        isDirectory: true)
                 : dumpDirectory

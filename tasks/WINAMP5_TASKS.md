@@ -40,7 +40,6 @@ crawled candidates were admitted by B169 (silver 58, bronze 827, quarantine 54);
 
 | Id | Item | Reach | Effort | Tier |
 |---|---|---:|:---:|---|
-| B170 | **Impact-selected and sharded sweeps.** `wal_render_sweep.sh capture --touching <feature,…>` selects every skin in any tier whose index rows match; `--shards K` runs K test processes over a sha256-ordered split after one build. Measure the speed-up and the K at which memory or the ClassicPro mount stops it scaling; record that K in `harness.md`. Done when a `--touching Wasabi:Frame` capture selects exactly the index's matching skins, and a sharded capture equals an unsharded one | every engine change | M | 2 |
 | B171 | **Reach from the index.** Replace *Reproducible reach commands* with one `features.tsv` query reported per tier ("silver n/N, bronze m/M") plus the manifest rev as the denominator's identity; move each open row's grep into its archive entry as it closes. Done when every open row's Reach comes from the query | every row's Reach | S | 2 |
 | B172 | **Docs close-out.** `reference/harness.md` (crawler, intake, index, `--touching`, `--shards`, the new corpus location), `triage-playbook.md` §3 (S0 and S2-MAKI → Built), `corpus-runner-plan.md` (§8 → history), and the `app-control`/`skin-screenshots`/`window-census` skills' corpus paths. Done when no doc names `WinampModernSkins/` as the corpus | the docs | S | 3 |
 

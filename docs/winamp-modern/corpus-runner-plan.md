@@ -310,6 +310,14 @@ so a corpus run can't lose lines, not *what* is measured.
   `tag@attr` only on tags the corpus already has, and the gain floor becomes a real filter. Handed
   over (copied into `WinampModernSkins/`): the 25 silver files listed in the B169 archive entry.
   Next: B170.
+- **B170 closed 2026-10-19.** `--touching <feature,…> --index <features.tsv>` sweeps every tier's
+  skins whose index rows name a feature (`Wasabi:Frame`: 9 of 995, exact); `--shards K` splits the
+  sha256 order over K `xctest` processes after one build. Gold+silver: 81 s at K=1, 30 s at K=4, 22 s
+  at K=10, memory flat at under 3 GB, every K equal to K=1 bar the known nondeterministic pair. The
+  core count is the ceiling, so **use `--shards` = cores** (10 here). **Decision changed:** shards
+  run `xcrun xctest` on the built bundle, not `swift test` — SwiftPM's `.build` lock serialised K
+  `swift test`s to the K=1 time. The pre-merge gate is now ~25 s, so the Silver budget is no longer
+  bound by sweep time at this corpus size. No skins admitted, so none handed over. Next: B171.
 
 ### Decisions (fixed — re-open only with a measurement)
 

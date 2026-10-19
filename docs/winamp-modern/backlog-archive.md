@@ -3,6 +3,22 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B170 — impact-selected and sharded sweeps — closed 2026-10-19
+
+| B170 | **Impact-selected and sharded sweeps.** `wal_render_sweep.sh capture --touching <feature,…>` selects every skin in any tier whose index rows match; `--shards K` runs K test processes over a sha256-ordered split after one build. Measure the speed-up and the K at which memory or the ClassicPro mount stops it scaling; record that K in `harness.md`. Done when a `--touching Wasabi:Frame` capture selects exactly the index's matching skins, and a sharded capture equals an unsharded one | every engine change | M | 2 |
+
+**Closed 2026-10-19.** `wal_render_sweep.sh capture` takes `--touching <feature,…> --index
+<features.tsv>` and `--shards K` (`harness.md` → *Impact-selected and sharded sweeps*). Against an
+index over all four tiers (995 skins, rev `9e68ffe0`), `--touching Wasabi:Frame` selected 9 skins,
+exactly the index's `xml-tag wasabi:frame` set, and a `--shards 3` capture of them equalled the
+unsharded one (319 lines, 86 images identical). Over gold+silver (114 skins), K = 1/2/4/6/8/10 took
+81/42/30/27/24/22 s wall, peak summed xctest RSS 2.4–2.9 GB at every K; each K's capture equalled
+K=1's bar the documented nondeterministic pair, which two further K=1 runs reproduced. Neither memory
+nor the shared ClassicPro engine store stopped the scaling — the 10 cores did. The first draft ran
+each shard as `swift test --skip-build`, and SwiftPM's `.build` lock queued them (K=1/2/4: 90/89/94
+s); the shards run the bundle with `xcrun xctest`. The harness keys a skin's dump subdirectory on
+`isSweep` rather than on the archive count, so a one-skin shard cannot write into the shared root.
+
 ## B169 — the intake run — closed 2026-10-19
 
 | B169 | **The intake run: rate and admit the crawled candidates.** `scripts/wal_intake.sh <candidates> <outdir>` runs the census over the candidates (health) and the index (value), then greedy set cover writes `intake.tsv` (every candidate's health, value, rank, the features it added) and moves skins into silver/bronze/quarantine, updating the manifest. Silver budget: ≤ 25 per intake, gain ≥ 3 (agreed 2026-10-19); record the gain curve and the sweep time the batch added in §8 so the next budget is set from them. Document `wal_corpus_crawl.py` in `harness.md` here. Done when two runs from a clean outdir produce byte-identical `intake.tsv`, and the post-admission sweep is captured as the new baseline in one commit with the manifest | the 906 candidates | M | 2 |

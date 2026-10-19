@@ -9,6 +9,8 @@
 # this a couple of minutes rather than the ~25 of a shell loop over the archives.
 #
 #   scripts/wal_render_sweep.sh capture <outdir>       one pass: raw log, invariant lines, PNGs
+#       --touching <feature,…> --index <features.tsv>  only the skins (every tier) the index says use them
+#       --shards K                                      K test processes after one build; pass the core count
 #   scripts/wal_render_sweep.sh compare <base> <curr>  invariants diff + per-image maxdelta report
 #
 # See skills/winamp-modern-skin-guide/reference/harness.md § "The corpus render sweep".
@@ -57,26 +59,39 @@ usage() {
     cat >&2 <<'USAGE'
 usage:
   wal_render_sweep.sh capture <outdir> [--allow-dirty] [--corpus <dir[:dir…]>]   (default gold:silver)
+                              [--touching <feature,…> --index <features.tsv>]  (default corpus: every tier)
+                              [--shards <K>]
   wal_render_sweep.sh compare <base-outdir> <curr-outdir>
 USAGE
     exit 2
 }
 
 capture() {
-    local out="" corpus="$WAL_CORPUS_DEFAULT" allow_dirty=0
+    local out="" corpus="" allow_dirty=0 touching="" index="" shards=1
     while [ $# -gt 0 ]; do
         case "$1" in
             --allow-dirty) allow_dirty=1; shift ;;
             --corpus) corpus="${2:-}"; shift 2 ;;
+            --touching) touching="${2:-}"; shift 2 ;;
+            --index) index="${2:-}"; shift 2 ;;
+            --shards) shards="${2:-}"; shift 2 ;;
             -*) echo "unknown option: $1" >&2; usage ;;
             *) [ -n "$out" ] && usage; out="$1"; shift ;;
         esac
     done
     [ -n "$out" ] || usage
+    [[ "$shards" =~ ^[1-9][0-9]*$ ]] || { echo "wal_render_sweep: --shards takes a positive count" >&2; usage; }
+    # An impact-selected sweep reaches every tier; the pre-merge gate is gold+silver (§8).
+    [ -n "$corpus" ] || corpus=$([ -n "$touching" ] && echo "$WAL_CORPUS_ALL" || echo "$WAL_CORPUS_DEFAULT")
 
+    local list
+    list=$(wal_corpus_archives "$corpus") || exit 1
+    if [ -n "$touching" ]; then
+        [ -f "$index" ] || { echo "wal_render_sweep: --touching needs --index <features.tsv> (wal_feature_index.sh)" >&2; exit 2; }
+        list=$(select_touching "$index" "$touching" "$list") || exit 1
+    fi
     local archives
-    archives=$(wal_corpus_archives "$corpus") || exit 1
-    archives=$(printf '%s' "$archives" | grep -c .)
+    archives=$(printf '%s' "$list" | grep -c .)
     if [ "$archives" -eq 0 ]; then
         echo "wal_render_sweep: no .wal archives in $corpus" >&2
         exit 1
@@ -92,14 +107,40 @@ capture() {
     fi
 
     mkdir -p "$out/png"
-    rm -f "$out"/png/*.log
-    echo "wal_render_sweep: capturing $archives skins -> $out"
-    # Redirect, do not pipe. See the note at the top.
-    WINAMP_MODERN_WAL="$corpus" \
-    WINAMP_MODERN_RENDER_DUMP="$out/png" \
-    WINAMP_MODERN_RENDER_BITMAPS=1 \
-        swift test ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} --filter WinampModernRenderDumpTests > "$out/raw.txt" 2> "$out/stderr.txt"
-    local status=$?
+    rm -f "$out"/png/*.log "$out"/raw-*.txt "$out"/stderr-*.txt
+    [ "$shards" -gt "$archives" ] && shards=$archives
+    echo "wal_render_sweep: capturing $archives skins in $shards shard(s) -> $out"
+    if ! swift build --build-tests ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} > "$out/build.txt" 2>&1; then
+        echo "wal_render_sweep: build failed; see $out/build.txt" >&2
+        tail -30 "$out/build.txt" >&2
+        exit 1
+    fi
+
+    # The shards run the built bundle with `xctest`, not `swift test --skip-build`: SwiftPM holds a
+    # lock on .build for the whole run, which queued K `swift test`s one behind another (measured
+    # 2026-10-19: K=1/2/4 took 90/89/94 s).
+    local bundle
+    bundle="$(swiftpm_bin_path debug 2>/dev/null)/NullPlayerPackageTests.xctest"
+    # B170: shard i takes every K-th archive of the sha256 order, so the split depends on content
+    # alone, never on file names or tier. Each path is followed by a `:` so a shard of one skin is
+    # still a list, which the harness treats as a sweep (per-skin subdirectory and log).
+    local ordered status=0 shard wal pids=()
+    ordered=$(printf '%s\n' "$list" | while IFS= read -r path; do
+                  printf '%s\t%s\n' "$(shasum -a 256 "$path" | cut -d' ' -f1)" "$path"
+              done | sort)
+    for ((shard = 0; shard < shards; shard++)); do
+        wal=$(printf '%s\n' "$ordered" | awk -F'\t' -v k="$shards" -v i="$shard" '(NR - 1) % k == i { printf "%s:", $2 }')
+        # Redirect, do not pipe. See the note at the top.
+        WINAMP_MODERN_WAL="$wal" \
+        WINAMP_MODERN_RENDER_DUMP="$out/png" \
+        WINAMP_MODERN_RENDER_BITMAPS=1 \
+            xcrun xctest -XCTest NullPlayerAppTests.WinampModernRenderDumpTests "$bundle" \
+            > "$out/raw-$shard.txt" 2> "$out/stderr-$shard.txt" &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do wait "$pid" || status=$?; done
+    cat "$out"/raw-*.txt > "$out/raw.txt"
+    cat "$out"/stderr-*.txt > "$out/stderr.txt"
 
     # One log per skin (B166), concatenated in a fixed order so two captures line up.
     cat "$out"/png/*.log 2>/dev/null | grep -E "$INVARIANT_PATTERN" > "$out/invariants.txt"
@@ -127,6 +168,27 @@ capture() {
         echo "wal_render_sweep: skins that failed to load:" >&2
         grep ' FAILED ' "$out/invariants.txt" >&2
     fi
+}
+
+# select_touching <features.tsv> <feature,…> <archive list>: the archives whose index rows name any of
+# the features — the `feature` column, case-insensitive, any kind (`Wasabi:Frame` is the xml-tag).
+# A matching skin the corpus does not hold means the index is stale, which fails rather than
+# quietly sweeping fewer skins than the change reaches.
+select_touching() {
+    python3 - "$@" <<'PYTOUCHING'
+import os, sys
+index, features, archives = sys.argv[1], sys.argv[2], sys.argv[3].splitlines()
+wanted = {f.strip().lower() for f in features.split(",") if f.strip()}
+with open(index, errors="replace") as handle:
+    next(handle)
+    skins = {row[0] for row in (line.rstrip("\n").split("\t") for line in handle) if row[3].lower() in wanted}
+by_name = {os.path.basename(path): path for path in archives}
+missing = sorted(skins - by_name.keys())
+if missing:
+    sys.exit("wal_render_sweep: the index names skins the corpus lacks (stale index?): " + ", ".join(missing))
+print("wal_render_sweep: %d skins touch %s" % (len(skins), ",".join(sorted(wanted))), file=sys.stderr)
+print("\n".join(by_name[skin] for skin in sorted(skins)))
+PYTOUCHING
 }
 
 compare() {

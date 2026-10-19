@@ -7,6 +7,7 @@
 # docs/winamp-modern/corpus-manifest.tsv; see docs/winamp-modern/corpus-runner-plan.md §8.
 WAL_CORPUS_ROOT="$HOME/Library/Application Support/NullPlayer/WinampModernCorpus"
 WAL_CORPUS_DEFAULT="$WAL_CORPUS_ROOT/gold:$WAL_CORPUS_ROOT/silver"
+WAL_CORPUS_ALL="$WAL_CORPUS_DEFAULT:$WAL_CORPUS_ROOT/bronze:$WAL_CORPUS_ROOT/quarantine"
 
 # wal_corpus_archives <dir[:dir…]>: every archive, one path per line; fails on a missing directory.
 # `*.[wW][aA][lL]`, `-type f`: a plain `*.wal` drops `Defix Hi-END 200.WAL`.
