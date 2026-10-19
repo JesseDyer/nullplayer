@@ -211,6 +211,7 @@ top to bottom. Rows are grouped by area; within a group, follow the most specifi
 | The GUI verification pass before handing work over | [manual-qa-checklist.md](manual-qa-checklist.md) |
 | One named skin's current state | [skins.md](skins.md) → `skins/<skin>.md` |
 | Choose the next cross-skin capability | [triage-playbook.md](triage-playbook.md), then the ranked Reach table in `tasks/WINAMP5_TASKS.md` |
+| Where the corpus work is headed | [`docs/winamp-modern/corpus-runner-plan.md`](../../docs/winamp-modern/corpus-runner-plan.md) — status line for what is built, §7 for the build order; the next step comes from there |
 | Current open work | `tasks/WINAMP5_TASKS.md` — the only live backlog; closed history is [the archive](../../docs/winamp-modern/backlog-archive.md) |
 
 The backward-compatibility map for section-title pointers in old handoffs lives in

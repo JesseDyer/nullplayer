@@ -7,6 +7,11 @@ that closes them. A row that is stale, a question rather than work, or self-desc
 doing moves to [`LOW_QUALITY_TASKS.md`](LOW_QUALITY_TASKS.md). This file holds tasks; how the engine
 works belongs in `skills/winamp-modern-skin-guide/`.
 
+**The corpus work follows one plan:
+[`docs/winamp-modern/corpus-runner-plan.md`](../docs/winamp-modern/corpus-runner-plan.md).** Its
+status line says what is built, and §7 is the build order. Take the next corpus step from §7, not
+from a list of loose ends. When a corpus row closes, update the plan's status line in the same change.
+
 ## Ranking
 
 Measured items are ordered by reach, with effort as an advisory tiebreaker. Reach is corpus demand,
@@ -29,6 +34,17 @@ without a seam change; **L** = a host seam, protocol change, or new fixture harn
 | B162 | **Move the script-glue code out of `WinampModernMainWindowController.swift`.** The file is ~2,900 lines, and the glued-window code sits in two places ~800 lines apart. One part is `moveCarryingGluedWindow`, `gluedPartner(of:)`, `gluedWindow(over:)` and `gluedWindowPairs`. The other is `restackGluedWindows`, `attachGluedWindowsForDrag`/`detachGluedWindowsAfterDrag`, their `dragObservers` and `dragAttachedGluedWindows`, and the `tracesGlue`/`carriesGluedWindowsInDrag` switches. An extension file cannot carry the stored state and cannot reach the controller's private `skinView`/`viewsByContainer`. So give the glue its own small type that owns the drag observers and linked pairs and gets the pairs from the controller, leaving one property on the controller. No behaviour change. Done when `swift test` passes and a drag of Pure Inspired's docked playlist under `WINAMP_MODERN_GLUE_TRACE=1` still prints `drag carries` and `restacked` lines. Deferred from PR #468 to keep that diff a behaviour fix | none on screen; the glue-pair skins (Ebonite, Itemskin, Pure Inspired, K-jr, MoonLight) exercise it | M | 3 |
 | B163 | **Make the hosted-window registry exhaustive.** `WinampModernHostedWindowRegistry.all` is an array searched by `entry(id:)`, which returns an Optional, and every definition's `makeSurface` is Optional too, although every `WinampModernHostedWindowID` has an entry and every entry builds a surface. Three production callers (`WindowManager`, `WinampModernComponentBridge.makeHostedWindowSurface`, `WinampModernHostedWindowMaterializer`) guard a nil that cannot happen, about fifteen test lines `XCTUnwrap` it, and `WinampModernHostedProviderTests` asserts the two promises the types do not make. Give `WinampModernHostedWindowID` a `definition` built by an exhaustive `switch`, make `makeSurface` non-optional, and keep `all` as `allCases.map(\.definition)` for the synthesizer. A new hosted id then fails to compile without an entry rather than falling back at run time. No behaviour change. Done when `swift test` passes with the nil guards and the registration assertions gone | none on screen; every hosted window routes through it | S | 3 |
 | B165 | **Let the hosted-frame descriptor carry a `WasabiSurfaceSynthesizer.Frame` instead of mirroring it.** `WinampModernHostedFrameDescriptor` has exactly `Frame`'s fields (`groupIdentifier`, `xuiTag`, `hasArtwork`, `exemplar`, `clientInsets`), and a `Frame` is rebuilt from it field by field in `WinampModernHostedWindowInstantiation.raised`, `WasabiSkinInitializer.instantiateHostedWindowAtRuntime` and three places in `WinampModernB140Tests`. A rebuild that dropped the client rect is what B140's second screenshot was, and every new frame field has to be threaded through all of them. Store the `Frame` in the descriptor (or replace the descriptor with it) so the rebuilds go away. While there, move `hasContentScript` and `hasArtwork` onto `inheritanceChain(of:definitions:)`, which `clientInsets(of:definitions:)` already uses, so no frame helper walks `inherit_group` by hand. No behaviour change. Done when `swift test` passes and no code builds a `Frame` from a descriptor's fields. Deferred from PR #559's review | none on screen; every hosted window wearing a skin frame routes through it | S | 3 |
+
+### Corpus runner
+
+Plan: [`corpus-runner-plan.md`](../docs/winamp-modern/corpus-runner-plan.md). S0, S1 and S2's MAKI half
+are built, and §7 step 3, the S4 demand index, is next. B173 goes first because S1 says a trap on real
+input jumps the queue.
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B173 | **Sort the 54 quarantined skins by cause.** Each one is a `load failed` row in the index, and nobody has looked at why. Split them into (a) a trap, hang or limit breach in our code: a security bug, filed as its own row ahead of everything (S1); (b) a malformed or non-`.wal` archive: stays quarantined; (c) a well-formed skin we reject: a loader gap, ranked like any capability. Record each skin's cause and evidence (the loader's error or the crash) in the archive entry. Done when all 54 have a cause and every (a) and (c) cause has a row | `load '^failed$'`: gold 0/56, silver 0/54, bronze 0/827, quarantine 54/54 (manifest 9e68ffe0) | M | 2 |
+| B174 | **The S4 demand index (plan §7 step 3, §3 S4).** Invert `features.tsv` into one table: capability → skins that declare it, per tier, with sample skins to test against, reproducible from the index plus the manifest rev. Start with the MAKI calls the runtime lacks (`maki-call`, `implemented=no`), because those have a verdict. XML rows wait on the supported-surface manifest (§7 step 6). Rank with the plan's `skins × severity × visibility ÷ cost` and file the top 20 as rows here, each with its Reach from `wal_reach.sh`. Done when the table regenerates byte-identically and the top 20 are filed | `maki-call implemented=no`: 157 distinct calls across 538 skins | M | 2 |
 
 ### Awaiting manual QA
 
