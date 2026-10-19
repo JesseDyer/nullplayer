@@ -6,8 +6,10 @@ import AppKit
 enum CavaSettings {
     private static let defaults = UserDefaults.standard
 
-    enum Scope: CaseIterable {
-        case cavaWindow
+    /// The raw value names the scope in its preference keys and its processing queue: renaming a
+    /// case loses users' saved settings.
+    enum Scope: String, CaseIterable {
+        case cavaWindow = "window"
         case mainWindow
         case compactWindow
         case libraryWindow
@@ -19,18 +21,6 @@ enum CavaSettings {
         case wmpEffects
         /// The Sonique navigator's visual mode screen, the same surface as WMP's slot with its own keys.
         case soniqueEffects
-
-        var identifier: String {
-            switch self {
-            case .cavaWindow: return "window"
-            case .mainWindow: return "mainWindow"
-            case .compactWindow: return "compactWindow"
-            case .libraryWindow: return "libraryWindow"
-            case .winampModernVisBox: return "winampModernVisBox"
-            case .wmpEffects: return "wmpEffects"
-            case .soniqueEffects: return "soniqueEffects"
-            }
-        }
     }
 
     enum Mode: Int {
@@ -53,31 +43,17 @@ enum CavaSettings {
     /// Preserve the standalone window's legacy keys while giving embedded Cava an independent
     /// namespace.
     private static func key(_ setting: SettingKey, for scope: Scope) -> String {
-        switch scope {
-        case .cavaWindow:
-            switch setting {
-            case .mode: return "cavaMode"
-            case .barCount: return "cavaBarCount"
-            case .lowGradientColor: return "cavaLowGradientColor"
-            case .highGradientColor: return "cavaHighGradientColor"
-            case .colorsCustomized: return "cavaColorsCustomized"
-            case .transparentBackground: return "cavaTransparentBackground"
-            case .transparencyCustomized: return "cavaTransparencyCustomized"
-            case .noiseReduction: return "cavaNoiseReduction"
-            case .bassTilt: return "cavaBassTilt"
-            }
-        case .mainWindow:
-            return "cava.mainWindow.\(setting.rawValue)"
-        case .compactWindow:
-            return "cava.compactWindow.\(setting.rawValue)"
-        case .libraryWindow:
-            return "cava.libraryWindow.\(setting.rawValue)"
-        case .winampModernVisBox:
-            return "cava.winampModernVisBox.\(setting.rawValue)"
-        case .wmpEffects:
-            return "cava.wmpEffects.\(setting.rawValue)"
-        case .soniqueEffects:
-            return "cava.soniqueEffects.\(setting.rawValue)"
+        guard scope == .cavaWindow else { return "cava.\(scope.rawValue).\(setting.rawValue)" }
+        switch setting {
+        case .mode: return "cavaMode"
+        case .barCount: return "cavaBarCount"
+        case .lowGradientColor: return "cavaLowGradientColor"
+        case .highGradientColor: return "cavaHighGradientColor"
+        case .colorsCustomized: return "cavaColorsCustomized"
+        case .transparentBackground: return "cavaTransparentBackground"
+        case .transparencyCustomized: return "cavaTransparencyCustomized"
+        case .noiseReduction: return "cavaNoiseReduction"
+        case .bassTilt: return "cavaBassTilt"
         }
     }
 

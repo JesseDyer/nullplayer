@@ -154,7 +154,8 @@ Access via `CavaSettings.mode`, `CavaSettings.barCount`, etc. Menu and double-cl
 The legacy static properties above remain wrappers for `.cavaWindow` and continue using the existing
 keys. Scope-aware accessors use `cava.mainWindow.*` for the embedded analyzer,
 `cava.libraryWindow.*` for the regular Library backdrop, and `cava.compactWindow.*` for the Compact
-backdrop. Main-window mode always resolves to Mono. Library mode defaults to Mono, while Compact
+backdrop; every scope but `.cavaWindow` keys as `cava.<raw value>.<setting>`, so a new scope adds
+no key code, and renaming a case orphans its saved settings. Main-window mode always resolves to Mono. Library mode defaults to Mono, while Compact
 mode defaults to Stereo; both preserve an explicit mode choice. Compact smoothing defaults to
 `0.80`, while the other scopes default to `0.65`. Library and Compact bar count defaults to `64`;
 standalone and main-window Cava remain at `32`. Each scope's tuning and color choices are independent.
