@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# Structural census of the installed Winamp Modern (`.wal`) corpus.
+# Structural census of the Winamp Modern (`.wal`) corpus (gold+silver by default, scripts/lib/wal_corpus.sh).
 #
 # One TSV row per **archive**: what the skin declared, where each surface ended up, how much artwork
 # resolved, which NullPlayer-owned windows wear its frame, and the git rev it was all measured at.
 # This is the headless 80% of a skin report. It is deliberately *not* a grade — see the rating note
 # below, and `.claude/skills/wal-skin-report/SKILL.md` for the letter, which stays human.
 #
-#   scripts/wal_skin_census.sh <outdir> [--corpus <dir>] [--allow-dirty] [--skip-hosted]
+#   scripts/wal_skin_census.sh <outdir> [--corpus <dir[:dir…]>] [--allow-dirty] [--skip-hosted]
 #
 # Output: <outdir>/census.tsv, plus the logs it was derived from (png/<skin>.log, hosted.txt) and the
 # render pass's stdout (render.txt), kept for reading only.
@@ -38,8 +38,7 @@ set -u -o pipefail
 # Pin the native build system where offered: the default on Swift 6.4 cannot build the test
 # target (no VLCKit), which would leave an empty capture. See scripts/lib/swiftpm.sh.
 source "$(dirname "$0")/lib/swiftpm.sh"
-
-readonly CORPUS_DEFAULT="$HOME/Library/Application Support/NullPlayer/WinampModernSkins"
+source "$(dirname "$0")/lib/wal_corpus.sh"
 # A skin emits ~30 invariant lines; this is the floor per archive that catches a short or empty
 # capture, which is what a build failure writes.
 readonly MINIMUM_INVARIANT_LINES_PER_SKIN=10
@@ -48,12 +47,12 @@ readonly INVARIANT_PATTERN='^(SKIN |RENDER-DUMP (containers|catalog|skin windows
 usage() {
     cat >&2 <<'USAGE'
 usage:
-  wal_skin_census.sh <outdir> [--corpus <dir>] [--allow-dirty] [--skip-hosted] [--parse-only]
+  wal_skin_census.sh <outdir> [--corpus <dir[:dir…]>] [--allow-dirty] [--skip-hosted] [--parse-only]
 USAGE
     exit 2
 }
 
-out="" corpus="$CORPUS_DEFAULT" allow_dirty=0 skip_hosted=0 parse_only=0
+out="" corpus="$WAL_CORPUS_DEFAULT" allow_dirty=0 skip_hosted=0 parse_only=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --allow-dirty) allow_dirty=1; shift ;;
@@ -66,14 +65,10 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$out" ] || usage
 
-if [ ! -d "$corpus" ]; then
-    echo "wal_skin_census: no corpus at $corpus" >&2
-    exit 1
-fi
-
 # The enumeration rule, applied. Counted here so the number in the header is the number that was
 # measured, not one this script believes.
-archives=$(find "$corpus" -maxdepth 1 -type f -name '*.[wW][aA][lL]' | wc -l | tr -d ' ')
+archives=$(wal_corpus_archives "$corpus") || exit 1
+archives=$(printf '%s' "$archives" | grep -c .)
 if [ "$archives" -eq 0 ]; then
     echo "wal_skin_census: no .wal archives in $corpus" >&2
     exit 1
@@ -140,10 +135,11 @@ corpus, out, rev, measured = sys.argv[1:5]
 
 # The enumeration rule again, in the language that actually reads the directory. `*.wal` would drop
 # `Defix Hi-END 200.WAL`; a bare listing would pick up the ClassicProEngine directory.
-files = sorted((name for name in os.listdir(corpus)
-                if name.lower().endswith(".wal")
-                and os.path.isfile(os.path.join(corpus, name))),
-               key=str.lower)
+# `corpus` is a `:` list of tier directories (B167); a file name is unique across them.
+paths = {name: os.path.join(root, name)
+         for root in corpus.split(":") for name in os.listdir(root)
+         if name.lower().endswith(".wal") and os.path.isfile(os.path.join(root, name))}
+files = sorted(paths, key=str.lower)
 
 def sha256(path):
     digest = hashlib.sha256()
@@ -163,7 +159,7 @@ def has_screenshot(path):
 
 digests, screenshots = {}, {}
 for name in files:
-    full = os.path.join(corpus, name)
+    full = paths[name]
     digests[name] = sha256(full)
     screenshots[name] = has_screenshot(full)
 

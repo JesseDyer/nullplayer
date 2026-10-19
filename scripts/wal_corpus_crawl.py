@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Find Winamp Modern (`.wal`) skins that are not in the installed corpus and download them.
+"""Find Winamp Modern (`.wal`) skins that are not in the corpus (any tier) and download them.
 
     python3 -I scripts/wal_corpus_crawl.py <outdir> [--corpus <dir>] [--source heritage|archive|wincustomize]
     python3 -I scripts/wal_corpus_crawl.py selftest
@@ -20,7 +20,8 @@ are logged and skipped (no stdlib reader).
 """
 import concurrent.futures, glob, hashlib, html, io, json, os, re, subprocess, sys, urllib.parse, zipfile, zlib
 
-CORPUS = os.path.expanduser("~/Library/Application Support/NullPlayer/WinampModernSkins")
+# Every tier, bronze and quarantine included: a skin already rated is not a candidate (B167).
+CORPUS = os.path.expanduser("~/Library/Application Support/NullPlayer/WinampModernCorpus")
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 HERITAGE = "https://winampheritage.com"
 MAX_MEMBER = 200 << 20  # a skin member past this is a bomb or not a skin
@@ -161,7 +162,8 @@ def crawl(out, corpus, sources):
     cache = os.path.join(out, ".cache")
     os.makedirs(cache, exist_ok=True)
     known, names = [], {}
-    for p in glob.glob(os.path.join(glob.escape(corpus), "*.[wW][aA][lL]")) + glob.glob(os.path.join(glob.escape(out), "*.wal")):
+    root = glob.escape(corpus)
+    for p in glob.glob(os.path.join(root, "*.[wW][aA][lL]")) + glob.glob(os.path.join(root, "*", "*.[wW][aA][lL]")) + glob.glob(os.path.join(glob.escape(out), "*.wal")):
         for _, files in skins_in(open(p, "rb").read()):
             known.append((fingerprint(files), os.path.basename(p)))
             names.setdefault(norm(skin_name(files)), []).append(os.path.basename(p))

@@ -22,15 +22,11 @@ final class WinampModernRenderDumpTests: XCTestCase {
         // engine-wide change needs — was a shell loop paying one test-binary startup per skin, and
         // the startups were nearly all of its ~25 minutes. Worse, a sweep is a build: an edit to
         // `Sources/` or `Tests/` mid-loop silently wrote *empty* captures that then diffed as
-        // "everything changed". One invocation cannot be invalidated halfway.
-        let walRoot = URL(fileURLWithPath: walPath)
-        var isDirectory: ObjCBool = false
-        FileManager.default.fileExists(atPath: walPath, isDirectory: &isDirectory)
-        let wals: [URL] = isDirectory.boolValue
-            ? ((try? FileManager.default.contentsOfDirectory(at: walRoot, includingPropertiesForKeys: nil)) ?? [])
-                .filter { $0.pathExtension.lowercased() == "wal" }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            : [walRoot]
+        // "everything changed". One invocation cannot be invalidated halfway. B167: a `:` list of
+        // tier directories is walked as one corpus.
+        let isSweep = WinampModernCorpusPaths.isSweep(walPath)
+        let wals = WinampModernCorpusPaths.archives(in: walPath)
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
         guard !wals.isEmpty else { throw XCTSkip("No .wal archives under \(walPath).") }
 
         // A probe-only run needs no PNGs. `WINAMP_MODERN_RENDER_THEMES` is asked of all sixteen
@@ -68,7 +64,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
                                                        isDirectory: true)
                 : dumpDirectory
             try FileManager.default.createDirectory(at: skinDump, withIntermediateDirectories: true)
-            let log = isDirectory.boolValue
+            let log = isSweep
                 ? dumpDirectory.appendingPathComponent(wal.deletingPathExtension().lastPathComponent + ".log")
                 : nil
             Self.writingStdout(to: log) {

@@ -3,7 +3,8 @@
 # Corpus render sweep for the Winamp Modern (`.wal`) engine.
 #
 # A change to loading, initialization, script startup, hit testing or drawing reaches every skin, so
-# the proof that it broke none of them is a before/after capture across the whole installed corpus.
+# the proof that it broke none of them is a before/after capture across the whole corpus (gold+silver,
+# scripts/lib/wal_corpus.sh).
 # `WINAMP_MODERN_WAL` takes a directory and loops it inside one invocation (B72), which is what makes
 # this a couple of minutes rather than the ~25 of a shell loop over the archives.
 #
@@ -41,8 +42,7 @@ set -u -o pipefail
 # Pin the native build system where offered: the default on Swift 6.4 cannot build the test
 # target (no VLCKit), which would leave an empty capture. See scripts/lib/swiftpm.sh.
 source "$(dirname "$0")/lib/swiftpm.sh"
-
-readonly CORPUS_DEFAULT="$HOME/Library/Application Support/NullPlayer/WinampModernSkins"
+source "$(dirname "$0")/lib/wal_corpus.sh"
 # A skin emits ~30 invariant lines. The check is against a short or empty capture — a build failure
 # writes an empty one, and an empty capture diffs as "everything changed" — so this is a floor per
 # archive rather than a total, and single-skin runs are checked as strictly as a corpus pass.
@@ -56,14 +56,14 @@ readonly INVARIANT_PATTERN='^(SKIN |RENDER-DUMP (containers|catalog|skin windows
 usage() {
     cat >&2 <<'USAGE'
 usage:
-  wal_render_sweep.sh capture <outdir> [--allow-dirty] [--corpus <dir>]
+  wal_render_sweep.sh capture <outdir> [--allow-dirty] [--corpus <dir[:dir…]>]   (default gold:silver)
   wal_render_sweep.sh compare <base-outdir> <curr-outdir>
 USAGE
     exit 2
 }
 
 capture() {
-    local out="" corpus="$CORPUS_DEFAULT" allow_dirty=0
+    local out="" corpus="$WAL_CORPUS_DEFAULT" allow_dirty=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --allow-dirty) allow_dirty=1; shift ;;
@@ -74,12 +74,9 @@ capture() {
     done
     [ -n "$out" ] || usage
 
-    if [ ! -d "$corpus" ]; then
-        echo "wal_render_sweep: no corpus at $corpus" >&2
-        exit 1
-    fi
     local archives
-    archives=$(find "$corpus" -maxdepth 1 -type f -name '*.[wW][aA][lL]' | wc -l | tr -d ' ')
+    archives=$(wal_corpus_archives "$corpus") || exit 1
+    archives=$(printf '%s' "$archives" | grep -c .)
     if [ "$archives" -eq 0 ]; then
         echo "wal_render_sweep: no .wal archives in $corpus" >&2
         exit 1

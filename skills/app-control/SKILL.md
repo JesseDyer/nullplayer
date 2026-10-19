@@ -110,7 +110,8 @@ way of doing it (`defaults write` recipes, `NULLPLAYER_SKIN` for a `.wmz`, a bar
 `./.build/debug/NullPlayer`, `kill_build_run.sh` without `--debug`) has launched the wrong skin in
 a past session, silently.
 
-- `<skin>` is a bare installed name (searched across `Skins/`, `WinampModernSkins/`, `WMPSkins/`),
+- `<skin>` is a bare installed name (searched across `Skins/`, `WinampModernSkins/`, `WMPSkins/`, then
+  the `.wal` corpus's `WinampModernCorpus/{gold,silver}/`),
   `name.ext` to pin a family, or an absolute path. A name found in two families **fails and lists
   both** rather than guessing. A `.wmz` path outside `WMPSkins/` is imported via `-wmpSkinPath`.
   `audion:<name>` names a folder under `AudionFaces/` holding `index.json`, passed as

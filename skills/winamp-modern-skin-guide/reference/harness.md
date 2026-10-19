@@ -327,6 +327,17 @@ scripts/wal_skin_census.sh <outdir> --parse-only    # re-derive census.tsv from 
 scripts/wal_skin_census.sh <outdir> --corpus <dir>  # one skin alone
 ```
 
+**The corpus is `~/Library/Application Support/NullPlayer/WinampModernCorpus/{gold,silver,bronze,quarantine}/`**
+(B167), tiered by the committed `docs/winamp-modern/corpus-manifest.tsv`, and never the app's own
+`WinampModernSkins/` — that is the importer's install folder, so whatever sits there is in the user's
+skin menu. Every corpus script defaults to gold+silver (`scripts/lib/wal_corpus.sh`). `--corpus` and
+the harness variables `WINAMP_MODERN_WAL`, `WINAMP_MODERN_DRAG_PROBE` and `WINAMP_MODERN_DRAG_HOSTED`
+all take one archive, one directory, or a `:`-separated list of directories walked as one corpus
+(`WinampModernCorpusPaths`); a file name is unique across tiers, so per-skin logs and PNG folders
+never collide. The ClassicPro engine stays at `WinampModernSkins/ClassicProEngine/`: it is app state,
+not a corpus member. `app-control`'s `window-census.sh --all wal` walks gold+silver, and `launch.sh`
+falls back to them for a bare name that is not installed.
+
 It inherits the sweep's freeze rule, its dirty-tree refusal and its redirect-don't-pipe rule, and
 `--parse-only` exists so a parsing or rating change can be checked against a known-good capture
 without paying five minutes for another one. Two things about it are load-bearing:
@@ -363,7 +374,7 @@ it feeds is `docs/winamp-modern/skin-compatibility.md`.
 ### The corpus render sweep — what an engine-wide change reached
 
 A change to loading, initialization, script startup, hit testing or **drawing** reaches every skin,
-so the way to see what it did to them is a before/after capture across the whole installed corpus.
+so the way to see what it did to them is a before/after capture across the whole corpus (gold+silver).
 **The baseline is the engine's previous guess, not Winamp**: a skin that moves may have been
 repaired as easily as broken, and each difference is classified against the skin's own artwork and
 script — `skin-subsystem-blueprint` § *A sweep diff is unclassified, not a regression* is the method.

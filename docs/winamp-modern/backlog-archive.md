@@ -3,6 +3,30 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B167 — the corpus moves out of the app's skin folder — closed 2026-10-19
+
+| B167 | **Move the corpus out of the app's skin folder.** Create `WinampModernCorpus/{gold,silver,bronze,quarantine}/`; the current 89 go to gold (the `skins.md` set) and silver (the rest), recorded in a committed `docs/winamp-modern/corpus-manifest.tsv`. Every corpus script defaults to gold+silver (a multi-dir walk), including `app-control`'s `window-census.sh`/`skin-pick-matrix.py` and `skin-screenshots`. Done when a sweep over the new location is byte-identical (invariants and PNGs) to one over `WinampModernSkins/` at the same rev, and the B166 count rule holds | every corpus run | M | 2 |
+
+**Closed 2026-10-19.** The 89 archives were **copied** (not moved) to
+`~/Library/Application Support/NullPlayer/WinampModernCorpus/{gold,silver}/` with empty `bronze/` and
+`quarantine/`; `docs/winamp-modern/corpus-manifest.tsv` records each one (38 carry a source URL from
+their `kMDItemWhereFroms`, the rest `-`). **Gold is every skin with a row in `skins.md`'s Per-skin
+status table — 56 archives**, not the plan's ~10–15: that table is the set we have worked on, and the
+tier only selects which actions run. Silver is the other 33, including the four byte-identical
+re-adds, which B169's content dedupe decides. `scripts/lib/wal_corpus.sh` holds the location and the
+gold+silver default; `--corpus` and `WINAMP_MODERN_WAL` / `WINAMP_MODERN_DRAG_PROBE` /
+`WINAMP_MODERN_DRAG_HOSTED` take a `:` list (`WinampModernCorpusPaths`). `window-census.sh --all wal`
+walks gold+silver, `launch.sh` falls back to them for an uninstalled bare name, `skin-pick-matrix.py`
+copies its load-test Bento from gold, and the crawler dedupes against every tier. Measured at
+fdde9eae plus this change: a capture over `WinampModernSkins/` and one over gold+silver had 89 logs
+each and 2,620 invariant lines each; 751 of 752 images identical and one invariant line different, and
+both are the documented nondeterministic pair (Anexa's wall-clock `main-shade`, S7Reflex's
+`MLibrary/normal` min) — `harness.md`. `--parse-only` census over both locations: identical TSVs.
+**`skin-screenshots` was not changed**: it photographs the app's live Skins menu, so once
+`WinampModernSkins/` holds only the user's installs it no longer scales with the corpus, and making it
+corpus-driven means a relaunch per skin instead of a menu pick. `skin-pick-matrix.py`'s menu picks
+still name two skins it expects installed.
+
 ## B166 — each skin's dump goes to its own log file — closed 2026-10-19
 
 | B166 | **Each skin's dump goes to its own log file.** `WinampModernRenderDumpTests` over a directory writes every skin's lines to `<dumpdir>/<skin>.log` instead of the shared stdout, so nothing can interleave. `wal_render_sweep.sh` and `wal_skin_census.sh` read the per-skin files, and `damaged.txt` plus the solo re-run go away. Done when two consecutive full `capture` passes report zero damaged skins (today about half of all passes damage one or more), and the invariants match the last stdout-era capture for every skin that capture didn't damage | every corpus run | M | 2 |

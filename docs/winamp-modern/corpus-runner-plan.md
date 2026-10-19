@@ -281,6 +281,13 @@ so a corpus run can't lose lines, not *what* is measured.
   89-archive passes had zero damaged logs and matched the stdout-era pass for every skin it had not
   damaged. The table row "Damaged logs" below no longer scales with the corpus: there are none to
   re-run. No skins admitted, so none handed over. Next: B167.
+- **B167 closed 2026-10-19.** The corpus is copied to `WinampModernCorpus/{gold,silver}/` (56 + 33)
+  and recorded in `corpus-manifest.tsv`; every corpus script defaults to gold+silver. A sweep over the
+  new location matched one over `WinampModernSkins/` at the same rev bar the two documented
+  nondeterministic items. **Decision changed:** Gold is the `skins.md` status-table set, 56 archives,
+  not ~10–15 — the table is what we have worked on. `WinampModernSkins/` still holds all 89 until the
+  user prunes it to their own installs; nothing reads it as the corpus any more. No skins admitted, so
+  none handed over. Next: B168.
 
 ### Decisions (fixed — re-open only with a measurement)
 
