@@ -4,7 +4,7 @@
 `scripts/wal_skin_census.sh`, and the §6 regression sweep shipped as `scripts/wal_render_sweep.sh`
 (`capture` / `compare`) — both documented in `skills/winamp-modern-skin-guide/reference/harness.md`,
 and neither section below should be read as pending. **S0 is partial** (no committed manifest and no
-Gold/Silver tiering; the census emits a sha256 per row instead). **S2, S3, S3.5 and S4 are not
+Gold/Silver tiering; the census emits a sha256 per row instead) — its completion is locked in §8. **S2, S3, S3.5 and S4 are not
 built**, and the rest of this file is their specification. The stand-in for S2's demand ranking is the
 hand-run grep set under *Reproducible reach commands* in `WINAMP5_TASKS.md`.
 
@@ -237,3 +237,78 @@ Each step is independently useful; stop wherever the value runs out.
 **Rule of thumb for the work itself:** batch by capability, never by skin, and use each batch's own
 re-measure as the definition of done. A skin is not a milestone any more — it is a test case.
 
+
+---
+
+## 8. Scaling the corpus past ~1,000 skins (locked 2026-10-19)
+
+**Why.** `scripts/wal_corpus_crawl.py` found 906 modern skins not in the 89-skin corpus
+(winampheritage, archive.org `winampskinsmodern`, wincustomize). Admitting them as-is breaks every
+corpus-wide action, so S0 is finished as below and the actions are re-scoped by tier. The work is the
+**B166–B172** rows in `tasks/WINAMP5_TASKS.md`, in that order; this section is their spec, and each
+row is closed against its own done-criterion.
+
+**Update this section at the end of every session that touches it** — this is a multi-session plan and
+the only record of where it stands. Mark the row's progress in `WINAMP5_TASKS.md` (or close it into the
+archive), and record here any decision a measurement changed, with the measurement. A session that ends
+without that update leaves the next one re-deriving it.
+
+**Then hand the session's skins over for in-app evaluation.** Every skin the session admitted to
+Silver or Gold is **copied** (never moved) into `~/Library/Application Support/NullPlayer/WinampModernSkins/`,
+the app's own skin folder, so the user can try them in the app; the session's closing note lists them
+by file. Copied, because the corpus copy is the measured input and must not change with the user's
+use of the app. A session that admitted no skins (B166–B168 do not) hands over none, and says so.
+
+### How deep each skin is evaluated
+
+Three depths, and only the first is part of this plan for every skin:
+
+1. **Automatic first round — every candidate, every tier.** The census (load, rating, surfaces, hosted
+   windows) plus the static feature index. Headless, deterministic, no human. This is what rates and
+   admits a skin (B169).
+2. **Targeted runs — any tier, by selection.** Impact-selected sweeps (`--touching`, B170) re-render the
+   skins a change could affect. Still automatic.
+3. **Full audit — Gold, and Silver on request only.** The live pass and the hand letter
+   (`/wal-skin-report`). Never for Bronze, and not part of this plan's work; admission to Silver makes a
+   skin eligible for an audit, not owed one.
+
+B166's per-skin log files are none of these — they change *where* the existing dump output is written
+so a corpus run can't lose lines, not *what* is measured.
+
+### Decisions (fixed — re-open only with a measurement)
+
+- **The corpus leaves the app's skin folder.** `WinampModernSkins/` is the importer's install folder
+  (`WinampModernSkinImporter.swift`), so everything in the corpus is in the user's skin menu. The corpus
+  becomes `~/Library/Application Support/NullPlayer/WinampModernCorpus/{gold,silver,bronze,quarantine}/`;
+  `WinampModernSkins/` goes back to being the user's own install.
+- **The manifest is the source of truth for tier**: committed `docs/winamp-modern/corpus-manifest.tsv` —
+  `file, sha256, tier, source_url, internal_name, admitted_rev`. Skins are never committed.
+- **Dedupe is by content, never by name.** ≥90% shared (path-under-skin-root, crc32) entries is the same
+  skin. Filenames and `<skininfo><name>` both fail measured cases (three different `T-800`s; `K-jr.wal`
+  vs `k_jr_winamp_skin_by_marisa85_d329ymw.wal`).
+- **Two scores, never blended.** *Health* = the census rating plus the unimplemented-method count — how
+  well we serve the skin. *Value* = static features it adds that the admitted corpus does not already
+  exercise — what it is worth as a test case.
+- **Admission is greedy set cover on value**, from the gold+silver feature union, ties to lowest sha256.
+  Deterministic: a pure function of (candidate sha256s, corpus sha256s, git rev).
+- **Tiers.** Gold = the `skins.md` set. Silver = admitted by value, budgeted per intake: **≤ 25 skins, gain ≥ 3
+  features** (agreed 2026-10-19). Re-open it only after the first intake, from its measured gain curve in
+  `intake.tsv` and the sweep time it added — the budget is the sweep's cost. Bronze =
+  the rest, census-only. Quarantine = does-not-load, crash or hang — a trap on real input is a security
+  bug first (S1).
+- **Tier decides which actions run.** Pre-merge render sweep = gold+silver. Impact-selected sweep
+  (`--touching <feature,…>`) = every tier, selected from the feature index. Full Bronze census = batch,
+  after an intake or before a release. App-driven tools (`skin-screenshots`, `window-census`,
+  `skin-pick-matrix`) = gold+silver only.
+
+### Why each corpus-wide action has to change
+
+Linear from the 79-skin timings in `reference/harness.md`:
+
+| Action | ~80 skins | ~1,000 skins |
+|---|---|---|
+| Render sweep, the pre-merge gate | ~5 min per capture | ~1 h per capture |
+| Census (render + hosted) | minutes | 1–2 h |
+| Damaged logs (interleaved writes, ~half of passes) | 1–3 solo re-runs | dozens per pass |
+| Reach greps over a hand `7zz` extract, hand-quoted denominator | seconds | not tier-aware |
+| App-driven tools, one launch per skin | minutes | many hours |
