@@ -3,6 +3,27 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B202 — the S3 motion sweep — closed 2026-10-19
+
+| B202 | **The S3 motion sweep (plan §7 step 4, §3 S3).** Draw every skin's windows on a clock ladder, t = 0, 0.25, 1, 4 s, pumping the run loop for each interval and pinning the render clock to match, and record per layout whether the pixels moved, which objects moved, and for each declared `animatedlayer` which of the plan's three causes keeps it still (never played, played but not repainted, played but drawn at one frame). Flag a declared animation whose pixels never change. Done when it runs over gold+silver, two runs agree on every verdict, and its first findings are filed | `xml-tag '^animatedlayer$'`: gold 26/56, silver 29/54, bronze 356/827, quarantine 34/54 (manifest 9e68ffe0) | M | 2 |
+
+**Closed 2026-10-19.** `scripts/wal_motion_sweep.sh` and `WinampModernMotionSweepTests`
+(`harness.md` → *The motion sweep*). Gold+silver, 114 archives, 10 shards: ~60 s. Two runs at rev
+`1dff452a` had identical `verdict` columns; 3 of 748 rows differed in `frames`/`anim`, all looping
+layers whose phase depends on the absolute uptime.
+
+**First run, at rest:** 748 layouts — 93 moving, 2 reverted, 653 static. Of the `animatedlayer`s:
+338 never played, 54 hidden, 14 moving, 9 one-frame, 4 stuck, 2 not repainted. Known behaviour
+reproduced: Love is War Miku's opening slide (a 300 ms timer) moves its main window, Defix's tickers
+move, and Defix's speaker cabinets stay still while closed. B203 is the one cause that is certain by
+construction; B204 holds the rest for triage.
+
+**Decisions measured.** The plan's skin-level rule counted a script `Timer` as a motion declaration;
+51 of 114 skins then came out suspect, because nearly every skin starts a timer for interaction.
+The summary counts self-playing layers only, which leaves 4. `suspect` per layout needs an open
+window, which drops Defix's closed speakers. The render clock runs on `systemUptime`, not from 0,
+because a script's `play()` stamps `animstart` with the uptime.
+
 ## B174 — the S4 demand index — closed 2026-10-19
 
 | B174 | **The S4 demand index (plan §7 step 3, §3 S4).** Invert `features.tsv` into one table: capability → skins that declare it, per tier, with sample skins to test against, reproducible from the index plus the manifest rev. Start with the MAKI calls the runtime lacks (`maki-call`, `implemented=no`), because those have a verdict. XML rows wait on the supported-surface manifest (§7 step 6). Rank with the plan's `skins × severity × visibility ÷ cost` and file the top 20 as rows here, each with its Reach from `wal_reach.sh`. Done when the table regenerates byte-identically and the top 20 are filed | `maki-call implemented=no`: 157 distinct calls across 538 skins | M | 2 |

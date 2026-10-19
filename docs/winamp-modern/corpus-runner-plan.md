@@ -4,11 +4,13 @@
 
 - **Shipped:** S0 (tiered corpus, manifest, crawler, intake), S1 (load census), S2's MAKI half and
   its XML census (static feature index, per-tier reach), S4's MAKI demand index (`wal_demand.sh`,
-  B174, whose top 20 are B182–B201), and the §6 regression sweep with impact-selected and sharded
-  runs. All are documented in `skills/winamp-modern-skin-guide/reference/harness.md`; read none of
-  those sections below as pending. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
-- **Next, by §7:** step 4, the S3 motion sweep.
-- **Not built:** S3, S3.5, S4's impact and coverage scores (they need S3), and S2's supported-surface
+  B174, whose top 20 are B182–B201), the §6 regression sweep with impact-selected and sharded
+  runs, and S3's motion sweep at rest (`wal_motion_sweep.sh`, B202). All are documented in
+  `skills/winamp-modern-skin-guide/reference/harness.md`; read none of those sections below as
+  pending. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
+- **Next, by §7:** step 5, the S3 interaction sweep.
+- **Not built:** S3's interaction and menu sweeps, the motion sweep during playback, S3.5, S4's impact
+  and coverage scores (they need S3's interaction half), and S2's supported-surface
   manifest (§7 step 6, deferred), which S4's XML rows wait on. The rest of this file is their
   specification.
 

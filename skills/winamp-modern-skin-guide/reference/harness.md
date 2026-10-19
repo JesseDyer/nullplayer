@@ -413,6 +413,42 @@ consequences: the backlog's S4 ranking multiplies the count by a severity and vi
 the call site, because every miss aborts its whole handler and *which* handler decides the damage.
 Skins that ship `scripts/*.m` show the handler directly; `RENDER_DISASM=@<source>` covers the rest.
 
+### The motion sweep — does declared motion move? (B202, S3)
+
+```sh
+scripts/wal_motion_sweep.sh <outdir> --shards 10      # gold+silver, ~60 s; --corpus <dir[:dir…]>
+```
+
+`WinampModernMotionSweepTests` (`WINAMP_MODERN_MOTION_SWEEP=<dir[:dir…]>`,
+`WINAMP_MODERN_MOTION_SWEEP_OUT=<file>`) loads each skin, starts its scripts, seeds `onResize`, and
+draws every window container's **opening** layout at t = 0, 0.25, 1 and 4 s. Each rung is a pair: the
+run loop is pumped until t, so a script `Timer` ticks, and the render clock is pinned to the same
+instant, so a play head agrees with it. The clock is `systemUptime`-based, not zero-based, because
+`play()` stamps `animstart` with the uptime, and a ladder from 0 reads every script-started
+animation as frame 0. The host is `WinampModernStubHost`: **nothing is playing**, so this is motion
+*at rest*, and a VU meter or beat layer reading `never-played` is the expected answer, not a defect.
+Every skin costs the 4 s ladder, so shard it.
+
+`motion.tsv`, one row per (skin, container, layout):
+
+| Column | Meaning |
+|---|---|
+| `open` | `1` for the main player and `default_visible` windows the app opens; a closed window legitimately waits for `onSetVisible` (Defix's speakers) |
+| `frames` | each rung labelled by the first rung it is pixel-identical to: `aaaa` still, `abcd` moving, `abca` back where it started |
+| `verdict` | `static`, `moving`, or `reverted` (the last rung equals the first: a timer undid its transition, Phase 26) |
+| `animatedlayers`, `autoplay` | `animatedlayer`s under the layout, and how many self-play (`autoplay` or `autoreplay`, as `WasabiAnimation.state` reads them) |
+| `timer` | a bound program calls `Timer.start` — nearly every skin, so it is not a motion signal on its own |
+| `suspect` | an open window, an `animatedlayer` declared, and `static` |
+| `moved` | scene nodes whose frame, bitmap or alpha changed across the ladder. Pixel motion with no node here is drawn content: a ticker, a scrolling text |
+| `anim` | per `animatedlayer`: `moving`; `never-played`; `stuck` (playing, frame never advanced); `one-frame` (playing, but its sheet resolves to one frame); `not-repainted` (frame advanced, layout pixels did not); `hidden` (advancing, not in the drawn scene) |
+
+The summary names suspect skins: a self-playing `animatedlayer` declared and no window moved.
+**Verdicts are repeatable; the detail is not quite.** Two runs on 2026-10-19 (manifest `9e68ffe0`)
+had identical `verdict` columns, and 3 of 748 rows differed in `frames` or `anim`, all layers whose
+looping phase depends on the absolute uptime. Diff `verdict` across a change, not the whole file.
+`not-repainted` compares the *layout's* pixels, so a layer that moves beside a ticker reads as
+`moving` either way. Its first run's findings are in B202's archive entry.
+
 ### Growing the corpus — the crawler and the intake
 
 New skins enter in two steps (`corpus-runner-plan.md` §8). Neither touches gold.
