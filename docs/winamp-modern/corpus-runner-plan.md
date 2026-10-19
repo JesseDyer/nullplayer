@@ -6,7 +6,8 @@ shipped**; S2's supported-surface manifest is §7 step 6, still deferred, as did
 regression sweep with impact-selected and sharded runs — all documented in
 `skills/winamp-modern-skin-guide/reference/harness.md`, and none of those sections below should be
 read as pending. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history. **S3, S3.5 and
-S4 are not built**; by §7 the next step is S4's demand index, and the rest of this file is their specification.
+S4 are not built**; by §7 the next step is S4's demand index (B174). The 54 quarantined skins are
+sorted (B173): no traps, seven loader gaps, B175–B181, and the rest of this file is their specification.
 
 The durable method — defect classes, instrument blind spots, isolating one issue, dispositions,
 regression safety — lives in `skills/winamp-modern-skin-guide/triage-playbook.md`, whose §3 carries

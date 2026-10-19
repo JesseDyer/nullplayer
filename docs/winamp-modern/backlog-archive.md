@@ -3,6 +3,76 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B173 — the quarantined skins, sorted by cause — closed 2026-10-19
+
+| B173 | **Sort the 54 quarantined skins by cause.** Each one is a `load failed` row in the index, and nobody has looked at why. Split them into (a) a trap, hang or limit breach in our code: a security bug, filed as its own row ahead of everything (S1); (b) a malformed or non-`.wal` archive: stays quarantined; (c) a well-formed skin we reject: a loader gap, ranked like any capability. Record each skin's cause and evidence (the loader's error or the crash) in the archive entry. Done when all 54 have a cause and every (a) and (c) cause has a row | `load '^failed$'`: gold 0/56, silver 0/54, bronze 0/827, quarantine 54/54 (manifest 9e68ffe0) | M | 2 |
+
+**Closed 2026-10-19.** Every one of the 54 is a controlled `WalFailure` from the loader: no trap,
+hang or limit breach in our code, so no security row. Every one is also a well-formed published skin
+that we refuse, so each is a loader gap, and there is one row per cause, B175–B181. The evidence is the
+B169 intake capture's `SKIN … FAILED` lines (rev `69dbc2ee`), whose skin set matched the manifest's
+quarantine exactly. That capture lived in a session scratchpad, so the lines are kept here. The
+invalidRoot archives were checked by hand: Red Pearl and Hal's Eye 1.3 carry a root `skin.xml` plus a
+nested one, AniTransformers a stray `.avs`, and MalteseXp is four wrappers deep. None of it comes from
+the crawler's repack.
+
+| Skin | Code | Loader's diagnostic | Row |
+|---|---|---|---|
+| Alfa_Romeo_History.wal | `imageDimensionsExceeded` | Image resource '/Skins/Alfa_Romeo_History/player/play/vfani.png' is 11520×90; limits are 8192×8192 and 32000000 pixels. | B175 |
+| AS-FxS.wal | `imageDimensionsExceeded` | Image resource '/Skins/AS-FxS/immagini/vu-meter_smooth.png' is 98×17018; limits are 8192×8192 and 32000000 pixels. | B175 |
+| ASfx21Evo.wal | `imageDimensionsExceeded` | Image resource '/Skins/ASfx21Evo/immagini/vu-meter_smooth.png' is 98×17018; limits are 8192×8192 and 32000000 pixels. | B175 |
+| asnw.wal | `imageDimensionsExceeded` | Image resource '/Skins/asnw/immagini/vu-meter_smooth.png' is 98×17018; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Baroque_1.0.wal | `imageDimensionsExceeded` | Image resource '/Skins/Baroque_1.0/player/HPD-anim.png' is 121×9640; limits are 8192×8192 and 32000000 pixels. | B175 |
+| CC_Red_Aler_2.wal | `imageDimensionsExceeded` | Image resource '/Skins/CC_Red_Aler_2/eq/anim.png' is 212×16960; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Chicken_Little.wal | `imageDimensionsExceeded` | Image resource '/Skins/Chicken_Little/player/danceC.png' is 163×8680; limits are 8192×8192 and 32000000 pixels. | B175 |
+| DOMINO.wal | `imageDimensionsExceeded` | Image resource '/Skins/DOMINO/video/dominovideo.png' is 169×28380; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Fast__Furious_Winamp5_Skin.wal | `imageDimensionsExceeded` | Image resource '/Skins/Fast__Furious_Winamp5_Skin/player/opening.png' is 500×16000; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Helloween.wal | `imageDimensionsExceeded` | Image resource '/Skins/Helloween/player/ani.png' is 387×9860; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Kepler_1.1.wal | `imageDimensionsExceeded` | Image resource '/Skins/Kepler_1.1/player/saturn-anim.png' is 150×18000; limits are 8192×8192 and 32000000 pixels. | B175 |
+| M3.wal | `imageDimensionsExceeded` | Image resource '/Skins/M3/elements/normal/lights/tube-ani3.png' is 83×10065; limits are 8192×8192 and 32000000 pixels. | B175 |
+| ORBAMP.wal | `imageDimensionsExceeded` | Image resource '/Skins/ORBAMP/EQ/orb.anim.png' is 15360×46; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Orbis.wal | `imageDimensionsExceeded` | Image resource '/Skins/Orbis/player/volani.png' is 9075×81; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Stargate_Winamp_-_SG1_edition.wal | `imageDimensionsExceeded` | Image resource '/Skins/Stargate_Winamp_-_SG1_edition/gate/waterstrip.png' is 10320×344; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Steamed up 1.0.wal | `imageDimensionsExceeded` | Image resource '/Skins/Steamed up 1.0/player/HPD-anim.png' is 121×9640; limits are 8192×8192 and 32000000 pixels. | B175 |
+| The_Official_Slither_Winamp5_Skin.wal | `imageDimensionsExceeded` | Image resource '/Skins/The_Official_Slither_Winamp5_Skin/player/slug1-anim.png' is 335×19000; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Tokyo_Drift.wal | `imageDimensionsExceeded` | Image resource '/Skins/Tokyo_Drift/intro_anim.png' is 480×14400; limits are 8192×8192 and 32000000 pixels. | B175 |
+| Assmosis.wal | `malformedXML` | Unterminated XML comment. | B176 |
+| cPro_Relax.wal | `malformedXML` | Unexpected closing tag </elements>. | B176 |
+| cPro_smpldrk.wal | `malformedXML` | Unexpected closing tag </elements>. | B176 |
+| Dynamic.wal | `malformedXML` | Unexpected closing tag </elements>. | B176 |
+| Eve_01_Amp.wal | `malformedXML` | Unexpected closing tag </WinampAbstractionLayer>. | B176 |
+| iNTELLI_design.wal | `malformedXML` | Unexpected closing tag </elements>. | B176 |
+| PioNner3.wal | `malformedXML` | Unterminated XML comment. | B176 |
+| Quadcore.wal | `malformedXML` | Unexpected closing tag </gammaset>. | B176 |
+| RayPlayer.wal | `malformedXML` | Unterminated XML comment. | B176 |
+| SleekyXtra.wal | `malformedXML` | Unterminated XML comment. | B176 |
+| sucksdotcomwinamp.wal | `malformedXML` | Unexpected closing tag </groupdef>. | B176 |
+| sx-2.wal | `malformedXML` | Unexpected closing tag </groupdef>. | B176 |
+| sx.wal | `malformedXML` | Unexpected closing tag </groupdef>. | B176 |
+| AniTransformers.wal | `invalidRoot` | Entry 'AniTransformers.avs' sits outside the archive's single wrapper directory 'AniTransformers'. | B177 |
+| Boarding_House_Winamp3_Skin.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| Draculas_Helmet.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| Gothic_Metal_v2_1.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| Hals_Eye_1_3.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| MalteseXpSkin.wal | `invalidRoot` | skin.xml may be nested under at most one wrapper directory. | B177 |
+| Multiplastic.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| Official_Merv_4_Skin.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| Official_Six_Feet_Under_Skin.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| Red_Pearl.wal | `invalidRoot` | Archive contains multiple case-insensitive skin.xml candidates. | B177 |
+| -Graviton-.wal | `groupInheritanceCycle` | Recursive group expansion for 'wasabi.tabsheet'. | B178 |
+| _Mercury.wal | `groupInheritanceCycle` | Recursive group expansion for 'wasabi.titlebox'. | B178 |
+| Bubble_Tea_-_Updated.wal | `groupInheritanceCycle` | Recursive group expansion for 'wasabi.titlebox'. | B178 |
+| Graviton.wal | `groupInheritanceCycle` | Recursive group expansion for 'wasabi.tabsheet'. | B178 |
+| Official_Coldplay_skin.wal | `groupInheritanceCycle` | Group inheritance cycle detected: wasabi.titlebox -> wasabi.titlebox. | B178 |
+| cPro_SC.wal | `resourceMissing` | Logical resource '/Plugins/classicPro/engine/miniexes.xml' was not found in any mounted provider. | B179 |
+| Cpro_Tokio.wal | `resourceMissing` | Logical resource '/Plugins/classicPro/engine/miniexes.xml' was not found in any mounted provider. | B179 |
+| CPro_Winamp3000.wal | `resourceMissing` | Logical resource '/Plugins/classicPro/engine/miniexes.xml' was not found in any mounted provider. | B179 |
+| Slim.wal | `resourceMissing` | Logical resource '/Skins/Slim/scripts/TimeDisplay.maki ' was not found in any mounted provider. | B180 |
+| VANDREAD_WINAMP5_SKIN.wal | `resourceEscapesVFS` | Host path 'c:/vandread/pic1.jpg' is not allowed. | B180 |
+| VISION_WINAMP_SKIN_.wal | `resourceEscapesVFS` | Host path 'c:/vision/pic1.jpg' is not allowed. | B180 |
+| Braun_CC_50.wal | `missingRequiredMount` | This skin requires the skin 'Big Bento' to be installed. | B181 |
+| Nokia_5800_XpressMusic.wal | `missingRequiredMount` | This skin requires the skin 'Big Bento' to be installed. | B181 |
+
 ## B172 — corpus docs close-out — closed 2026-10-19
 
 | B172 | **Docs close-out.** `reference/harness.md` (crawler, intake, index, `--touching`, `--shards`, the new corpus location), `triage-playbook.md` §3 (S0 and S2-MAKI → Built), `corpus-runner-plan.md` (§8 → history), and the `app-control`/`skin-screenshots`/`window-census` skills' corpus paths. Done when no doc names `WinampModernSkins/` as the corpus | the docs | S | 3 |
