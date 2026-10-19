@@ -30,18 +30,6 @@ without a seam change; **L** = a host seam, protocol change, or new fixture harn
 | B163 | **Make the hosted-window registry exhaustive.** `WinampModernHostedWindowRegistry.all` is an array searched by `entry(id:)`, which returns an Optional, and every definition's `makeSurface` is Optional too, although every `WinampModernHostedWindowID` has an entry and every entry builds a surface. Three production callers (`WindowManager`, `WinampModernComponentBridge.makeHostedWindowSurface`, `WinampModernHostedWindowMaterializer`) guard a nil that cannot happen, about fifteen test lines `XCTUnwrap` it, and `WinampModernHostedProviderTests` asserts the two promises the types do not make. Give `WinampModernHostedWindowID` a `definition` built by an exhaustive `switch`, make `makeSurface` non-optional, and keep `all` as `allCases.map(\.definition)` for the synthesizer. A new hosted id then fails to compile without an entry rather than falling back at run time. No behaviour change. Done when `swift test` passes with the nil guards and the registration assertions gone | none on screen; every hosted window routes through it | S | 3 |
 | B165 | **Let the hosted-frame descriptor carry a `WasabiSurfaceSynthesizer.Frame` instead of mirroring it.** `WinampModernHostedFrameDescriptor` has exactly `Frame`'s fields (`groupIdentifier`, `xuiTag`, `hasArtwork`, `exemplar`, `clientInsets`), and a `Frame` is rebuilt from it field by field in `WinampModernHostedWindowInstantiation.raised`, `WasabiSkinInitializer.instantiateHostedWindowAtRuntime` and three places in `WinampModernB140Tests`. A rebuild that dropped the client rect is what B140's second screenshot was, and every new frame field has to be threaded through all of them. Store the `Frame` in the descriptor (or replace the descriptor with it) so the rebuilds go away. While there, move `hasContentScript` and `hasArtwork` onto `inheritanceChain(of:definitions:)`, which `clientInsets(of:definitions:)` already uses, so no frame helper walks `inherit_group` by hand. No behaviour change. Done when `swift test` passes and no code builds a `Frame` from a descriptor's fields. Deferred from PR #559's review | none on screen; every hosted window wearing a skin frame routes through it | S | 3 |
 
-### Corpus scale
-
-Spec: [`corpus-runner-plan.md` §8](../docs/winamp-modern/corpus-runner-plan.md#8-scaling-the-corpus-past-1000-skins-locked-2026-10-19).
-Take in order — each row needs the one above it. **End every session on these rows by updating the
-row and §8**, so the next session starts from the record rather than re-deriving it, **and by copying
-every skin it admitted into the app's `WinampModernSkins/` folder** for in-app evaluation (§8). The 906
-crawled candidates were admitted by B169 (silver 58, bronze 827, quarantine 54); the corpus manifest has each source URL.
-
-| Id | Item | Reach | Effort | Tier |
-|---|---|---:|:---:|---|
-| B172 | **Docs close-out.** `reference/harness.md` (crawler, intake, index, `--touching`, `--shards`, the new corpus location), `triage-playbook.md` §3 (S0 and S2-MAKI → Built), `corpus-runner-plan.md` (§8 → history), and the `app-control`/`skin-screenshots`/`window-census` skills' corpus paths. Done when no doc names `WinampModernSkins/` as the corpus | the docs | S | 3 |
-
 ### Awaiting manual QA
 
 | Id | Item | Remaining check |

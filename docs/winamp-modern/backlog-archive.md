@@ -3,6 +3,20 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B172 — corpus docs close-out — closed 2026-10-19
+
+| B172 | **Docs close-out.** `reference/harness.md` (crawler, intake, index, `--touching`, `--shards`, the new corpus location), `triage-playbook.md` §3 (S0 and S2-MAKI → Built), `corpus-runner-plan.md` (§8 → history), and the `app-control`/`skin-screenshots`/`window-census` skills' corpus paths. Done when no doc names `WinampModernSkins/` as the corpus | the docs | S | 3 |
+
+**Closed 2026-10-19.** `harness.md` already carried the crawler, intake, index, `--touching` and
+`--shards` from their own rows. It now also says which tier each action runs on and that admitted
+Gold/Silver archives are copied into `WinampModernSkins/`; until now both lived only in §8. Its last
+"whatever is installed" wording is gone. The triage playbook's §3 marks S0 and S2 built. The plan's
+status names S0, S1 and S2 shipped, and §8 is marked history. The backlog's *Corpus scale* section
+went with its last row. `window-census` names gold+silver as its `.wal` family. `skin-screenshots`
+says its `.wal` set is the Skins menu, so the user's installs and not the corpus. `app-control`
+already named both folders correctly. A `git grep WinampModernSkins` over the docs now finds only
+the install folder, phase-handoff history and the dated 2026-09-05 provenance audit in `skins.md`.
+
 ## B171 — reach from the index — closed 2026-10-19
 
 | B171 | **Reach from the index.** Replace *Reproducible reach commands* with one `features.tsv` query reported per tier ("silver n/N, bronze m/M") plus the manifest rev as the denominator's identity; move each open row's grep into its archive entry as it closes. Done when every open row's Reach comes from the query | every row's Reach | S | 2 |

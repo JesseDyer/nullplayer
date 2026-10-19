@@ -31,7 +31,7 @@ WINAMP_MODERN_RENDER_DUMP=/tmp/render \
 
 `WINAMP_MODERN_WAL` also accepts a **directory**, which renders every `.wal` in it inside one
 invocation — the corpus sweep, 79 archives in about five minutes as of 2026-09-06. The count is
-whatever is installed at run time; the sweep prints it rather than asserting one. See *The corpus render sweep* below.
+whatever the directories hold at run time (the corpus scripts default to gold+silver); the sweep prints it rather than asserting one. See *The corpus render sweep* below.
 
 Optional env switches, all off by default:
 
@@ -311,7 +311,7 @@ That is how a title box overlapping the artist beneath it survived a clean rende
 are deliberately long enough to need more room than a toast declares, because auto-width and ticker
 behaviour are only exercised by a string that does not fit.
 
-### The corpus census — one structural row per installed skin
+### The corpus census — one structural row per corpus skin
 
 `scripts/wal_skin_census.sh <outdir>` is the sweep's reporting sibling. It runs one render-dump pass
 and one `WINAMP_MODERN_DRAG_HOSTED` pass over the corpus and writes **one TSV row per archive** —
@@ -349,7 +349,8 @@ without paying five minutes for another one. Two things about it are load-bearin
   asserting a fixed number goes wrong in a way that looks right. On 2026-09-06 it measured **79
   archives, 75 distinct skins** — four archives are byte-identical duplicates under a second filename,
   which the sha256 column makes visible. **Count per file where a row is per file, per distinct skin
-  where a row is per skin.**
+  where a row is per skin.** Since B167 the committed manifest pins the corpus, and its rev is the
+  corpus's name — `wal_reach.sh` prints it beside every count.
 - **Each row is parsed from that skin's own log, `png/<skin>.log`** — see *one log per skin* under
   the sweep's traps below. Until B166 the census parsed the shared stdout and needed a `damaged`
   column for the rows interleaving had eaten.
@@ -435,6 +436,13 @@ It takes ~48 min over 906 candidates (2026-10-19), ~40 of it the census's hosted
 past a foreground tool call's 10-minute limit: run it with `run_in_background` and trust the run only
 on its `wal_intake: … -> intake.tsv` line. A backgrounded run survived to a complete capture under
 this harness on 2026-10-19 (39 skins, byte-identical to the foreground run).
+
+**Tier decides what runs.** The pre-merge render sweep, the census and the app-driven tools
+(`window-census.sh --all wal`, `skin-pick-matrix`) take gold+silver. `--touching` selects from every
+tier. A full Bronze census is a batch job, after an intake or before a release. Gold and Silver are
+eligible for a live audit (`/wal-skin-report`), Bronze never. **After an admission, copy (never move)
+each new Gold or Silver archive into `WinampModernSkins/`**, so the user can try it from the skin
+menu. Copy, because the corpus file is the measured input and must not change when the app is used.
 
 ### The corpus render sweep — what an engine-wide change reached
 

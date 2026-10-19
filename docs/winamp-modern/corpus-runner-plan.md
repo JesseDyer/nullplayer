@@ -1,12 +1,11 @@
 # Winamp Modern (`.wal`) — Corpus Runner Plan
 
-**Status: partly built (reviewed 2026-09-06).** **S1 (load census) shipped** as
-`scripts/wal_skin_census.sh`, and the §6 regression sweep shipped as `scripts/wal_render_sweep.sh`
-(`capture` / `compare`) — both documented in `skills/winamp-modern-skin-guide/reference/harness.md`,
-and neither section below should be read as pending. **S0 is partial** (no committed manifest and no
-Gold/Silver tiering; the census emits a sha256 per row instead) — its completion is locked in §8. **S2, S3, S3.5 and S4 are not
-built**, and the rest of this file is their specification. The stand-in for S2's demand ranking is the
-hand-run grep set under *Reproducible reach commands* in `WINAMP5_TASKS.md`.
+**Status: partly built (reviewed 2026-10-19).** **S0 (tiered corpus, manifest, crawler, intake),
+S1 (load census) and S2 (static feature index and per-tier reach) shipped**, as did the §6
+regression sweep with impact-selected and sharded runs — all documented in
+`skills/winamp-modern-skin-guide/reference/harness.md`, and none of those sections below should be
+read as pending. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history. **S3, S3.5 and
+S4 are not built**, and the rest of this file is their specification.
 
 The durable method — defect classes, instrument blind spots, isolating one issue, dispositions,
 regression safety — lives in `skills/winamp-modern-skin-guide/triage-playbook.md`, whose §3 carries
@@ -240,12 +239,16 @@ re-measure as the definition of done. A skin is not a milestone any more — it 
 
 ---
 
-## 8. Scaling the corpus past ~1,000 skins (locked 2026-10-19)
+## 8. Scaling the corpus past ~1,000 skins (locked 2026-10-19; built 2026-10-19 — history)
+
+**History.** B166–B172 are closed into `backlog-archive.md`, and every command below is documented
+in `reference/harness.md`, the copy to keep current. The decisions stand; the instructions to
+sessions are spent.
 
 **Why.** `scripts/wal_corpus_crawl.py` found 906 modern skins not in the 89-skin corpus
 (winampheritage, archive.org `winampskinsmodern`, wincustomize). Admitting them as-is breaks every
-corpus-wide action, so S0 is finished as below and the actions are re-scoped by tier. The work is the
-**B166–B172** rows in `tasks/WINAMP5_TASKS.md`, in that order; this section is their spec, and each
+corpus-wide action, so S0 is finished as below and the actions are re-scoped by tier. The work was the
+**B166–B172** rows, in that order; this section is their spec, and each
 row is closed against its own done-criterion.
 
 **Update this section at the end of every session that touches it** — this is a multi-session plan and
@@ -324,6 +327,10 @@ so a corpus run can't lose lines, not *what* is measured.
   **Decision changed:** the manifest lists four byte-identical archives twice, in gold and as silver
   re-adds, so tier is joined by content and a duplicate counts once at its better tier — silver's
   denominator is 54 distinct skins, not 58 rows. No skins admitted, so none handed over. Next: B172.
+- **B172 closed 2026-10-19.** The docs name `WinampModernCorpus/` as the corpus and
+  `WinampModernSkins/` only as the install folder; the tier rules and the hand-over copy moved into
+  `harness.md`, and the triage playbook's §3 marks S0 and S2 built. No skins admitted, so none
+  handed over. §8 is complete.
 
 ### Decisions (fixed — re-open only with a measurement)
 
