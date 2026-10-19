@@ -60,11 +60,6 @@ final class WinampModernRenderDumpTests: XCTestCase {
         }
 
         for wal in wals {
-            // The sweep's own frame. Every other line the harness prints is keyed by
-            // `<container>/<layout>`, which is not unique across skins, so without this a directory
-            // run is an unattributable wall of text. Printed for a single archive too, so one skin's
-            // capture and its row in a sweep stay byte-identical and diff cleanly.
-            print("SKIN \(wal.lastPathComponent)")
             // Each skin gets its own subdirectory in a sweep, so 36 skins' PNGs cannot collide on a
             // shared container name. A single archive keeps writing straight into the directory it
             // was given — every existing invocation and every documented path stays as it was.
@@ -73,13 +68,45 @@ final class WinampModernRenderDumpTests: XCTestCase {
                                                        isDirectory: true)
                 : dumpDirectory
             try FileManager.default.createDirectory(at: skinDump, withIntermediateDirectories: true)
-            do {
-                try render(wal: wal, dumpDirectory: skinDump, store: store, env: env)
-            } catch {
-                // One unloadable skin must not abandon the other 35 — the sweep's whole value is
-                // that it is comparable end to end. The failure is printed where the diff will see it.
-                print("SKIN \(wal.lastPathComponent) FAILED \(error)")
+            let log = isDirectory.boolValue
+                ? dumpDirectory.appendingPathComponent(wal.deletingPathExtension().lastPathComponent + ".log")
+                : nil
+            Self.writingStdout(to: log) {
+                // The sweep's own frame. Every other line the harness prints is keyed by
+                // `<container>/<layout>`, which is not unique across skins, so without this a
+                // directory run is an unattributable wall of text. Printed for a single archive too,
+                // so one skin's capture and its row in a sweep stay byte-identical and diff cleanly.
+                print("SKIN \(wal.lastPathComponent)")
+                do {
+                    try render(wal: wal, dumpDirectory: skinDump, store: store, env: env)
+                } catch {
+                    // One unloadable skin must not abandon the other 35 — the sweep's whole value is
+                    // that it is comparable end to end. The failure is printed where the diff will see it.
+                    print("SKIN \(wal.lastPathComponent) FAILED \(error)")
+                }
             }
+        }
+    }
+
+    /// B166: in a directory run, every line one skin prints goes to its own `<dumpdir>/<skin>.log`.
+    /// On the shared stdout, XCTest's own writes and the stdio buffer landed inside one another in
+    /// about half of all corpus passes and lost whole blocks of a skin's lines (`harness.md`). A
+    /// file only this skin writes to cannot interleave. The log is echoed to stdout afterwards so a
+    /// person running a directory probe by hand still reads it there; the scripts read the files.
+    private static func writingStdout(to log: URL?, _ body: () -> Void) {
+        guard let log else { return body() }
+        fflush(stdout)
+        let file = open(log.path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+        guard file >= 0 else { return body() }
+        let saved = dup(STDOUT_FILENO)
+        dup2(file, STDOUT_FILENO)
+        close(file)
+        body()
+        fflush(stdout)
+        dup2(saved, STDOUT_FILENO)
+        close(saved)
+        if let data = FileManager.default.contents(atPath: log.path) {
+            FileHandle.standardOutput.write(data)
         }
     }
 

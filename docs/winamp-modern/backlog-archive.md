@@ -3,6 +3,21 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B166 — each skin's dump goes to its own log file — closed 2026-10-19
+
+| B166 | **Each skin's dump goes to its own log file.** `WinampModernRenderDumpTests` over a directory writes every skin's lines to `<dumpdir>/<skin>.log` instead of the shared stdout, so nothing can interleave. `wal_render_sweep.sh` and `wal_skin_census.sh` read the per-skin files, and `damaged.txt` plus the solo re-run go away. Done when two consecutive full `capture` passes report zero damaged skins (today about half of all passes damage one or more), and the invariants match the last stdout-era capture for every skin that capture didn't damage | every corpus run | M | 2 |
+
+**Closed 2026-10-19.** In a directory run `WinampModernRenderDumpTests` points fd 1 at
+`<dumpdir>/<skin>.log` for the duration of each skin and echoes the file to stdout afterwards;
+`wal_render_sweep.sh` and `wal_skin_census.sh` build `invariants.txt` and every census row from those
+files, and `damaged.txt`, the `damaged` column and `compare`'s banner/damaged filtering are gone. The
+sweep's archive count now uses the census's `*.[wW][aA][lL]` rule (it had missed `Defix Hi-END
+200.WAL`). Measured over the 89-archive corpus at b63ccf61: a stdout-era pass damaged XENERGY1 as
+usual; two consecutive per-skin passes had zero mid-line collisions in any log, identical invariants
+(2,620 lines), and for each of the 88 skins the stdout-era pass had not damaged, invariants identical
+to it. XENERGY1 now gets a populated census row. The one image diff in every pair is Anexa's
+wall-clock `main-shade`.
+
 ## B164 — Anaheim's library text was the saved Text Size, not a defect — closed 2026-10-15
 
 | B164 | **The library window's text draws too large on Anaheim.** Reported 2026-10-13, not yet reproduced or measured. The library rows are host-drawn (`drawSurfaceText`), so the skin declares neither their face nor their size: the face is the undeclared-font Arial default, and the size comes from `WinampModernTextScale`'s cell height through `playlistCellToPointSize` (0.9), per `reference/rendering/text.md` § *Host-drawn text is not skin-declared text (B130)*. **Unmeasured, take first**: the point size the library rows draw at on Anaheim beside a small skin, and what cell height `auto` chose for it. Do not retune `pixelHeightToPointSize` (0.8) to fix it; that constant governs every skin-declared `<text>`. **Done when** Anaheim's library rows draw at the same size as its playlist rows, and a corpus sweep shows no other skin's host lists changed size unintentionally. | 1 skin reported | S–M | Live |

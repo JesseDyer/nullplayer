@@ -275,6 +275,13 @@ Three depths, and only the first is part of this plan for every skin:
 B166's per-skin log files are none of these — they change *where* the existing dump output is written
 so a corpus run can't lose lines, not *what* is measured.
 
+### Progress
+
+- **B166 closed 2026-10-19.** Every skin's dump lines go to `png/<skin>.log`; two consecutive
+  89-archive passes had zero damaged logs and matched the stdout-era pass for every skin it had not
+  damaged. The table row "Damaged logs" below no longer scales with the corpus: there are none to
+  re-run. No skins admitted, so none handed over. Next: B167.
+
 ### Decisions (fixed — re-open only with a measurement)
 
 - **The corpus leaves the app's skin folder.** `WinampModernSkins/` is the importer's install folder

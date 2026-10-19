@@ -9,8 +9,8 @@
 #
 #   scripts/wal_skin_census.sh <outdir> [--corpus <dir>] [--allow-dirty] [--skip-hosted]
 #
-# Output: <outdir>/census.tsv, plus the raw logs it was derived from (render.txt, hosted.txt) and
-# damaged.txt.
+# Output: <outdir>/census.tsv, plus the logs it was derived from (png/<skin>.log, hosted.txt) and the
+# render pass's stdout (render.txt), kept for reading only.
 #
 # See skills/winamp-modern-skin-guide/reference/harness.md and scripts/wal_render_sweep.sh, whose
 # rules this script inherits wholesale:
@@ -20,12 +20,10 @@
 #     dirty tree without --allow-dirty. Never run it while the user may be building: SwiftPM lock
 #     contention stalls both.
 #   * **Redirect, do not pipe.** Piping the run into a filter drops whole blocks with no error.
-#   * **Interleaved writes eat blocks of the log at random, in about half of all passes.** That is
-#     measured, it is not a dropped container, and re-running does not cure it. A census that
-#     inherited the sweep but not this rule would emit *silently missing columns*. So `damaged` is a
-#     first-class column: a skin whose log came back damaged gets a row carrying its identity and
-#     nothing else, and is named for a re-run alone (`--corpus` a directory holding just that
-#     archive). No skin ships to a published document from a damaged log.
+#   * **Read each skin's own log.** On the shared stdout, interleaved writes ate whole blocks of the
+#     log in about half of all passes, which a census would turn into *silently missing columns*.
+#     Since B166 the render harness writes every skin's lines to `png/<skin>.log`, which nothing else
+#     writes to, and the per-skin parse reads those files.
 #
 # **Enumeration rule.** `*.[wW][aA][lL]`, `-type f`. A plain `*.wal` silently drops
 # `Defix Hi-END 200.WAL` — one of the six skins that already carries a letter — and a bare `*` picks
@@ -99,6 +97,7 @@ echo "wal_skin_census: $archives archives in $corpus -> $out (rev $rev)"
 # the sweep again. It is how a parsing or rating change is checked against a capture that is already
 # known-good, and it never touches the tree or the build.
 if [ "$parse_only" -eq 0 ]; then
+    rm -f "$out"/png/*.log
     # Redirect, do not pipe. RENDER_BITMAPS is what produces the resolved/missing artwork columns.
     WINAMP_MODERN_WAL="$corpus" \
     WINAMP_MODERN_RENDER_DUMP="$out/png" \
@@ -106,7 +105,7 @@ if [ "$parse_only" -eq 0 ]; then
         swift test ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} --filter WinampModernRenderDumpTests > "$out/render.txt" 2> "$out/render.stderr.txt"
     render_status=$?
 
-    grep -E "$INVARIANT_PATTERN" "$out/render.txt" > "$out/invariants.txt"
+    cat "$out"/png/*.log 2>/dev/null | grep -E "$INVARIANT_PATTERN" > "$out/invariants.txt"
     lines=$(wc -l < "$out/invariants.txt" | tr -d ' ')
     floor=$((archives * MINIMUM_INVARIANT_LINES_PER_SKIN))
     if [ "$lines" -lt "$floor" ]; then
@@ -128,8 +127,8 @@ if [ "$parse_only" -eq 0 ]; then
     else
         : > "$out/hosted.txt"
     fi
-elif [ ! -f "$out/render.txt" ]; then
-    echo "wal_skin_census: --parse-only needs a previous capture at $out (missing render.txt)" >&2
+elif ! ls "$out"/png/*.log >/dev/null 2>&1; then
+    echo "wal_skin_census: --parse-only needs a previous capture at $out (no png/*.log)" >&2
     exit 1
 fi
 
@@ -179,31 +178,17 @@ for name in files:
     else:
         first_seen[digest] = name
 
-# ---- damaged-log detection, identical in rule to wal_render_sweep.sh -------------------------
-DAMAGE = re.compile(r"(SKIN |RENDER-DUMP |BITMAPS |HOLDERS |FINDING \[|Test Case)")
-
+# ---- one log per skin (B166) ---------------------------------------------------------------------
 def read(path):
     if not os.path.exists(path):
         return []
     return open(path, errors="replace").read().splitlines()
 
-render = read(os.path.join(out, "render.txt"))
-
-blocks, damaged, current = {}, set(), None
-for line in render:
-    if line.startswith("SKIN ") and " FAILED " not in line:
-        current = line[len("SKIN "):].strip()
-        blocks.setdefault(current, [])
-    if current is None:
-        continue
-    blocks[current].append(line)
-    hit = DAMAGE.search(line, 1)
-    if hit and not line.startswith(" "):
-        damaged.add(current)
-
-with open(os.path.join(out, "damaged.txt"), "w") as handle:
-    for name in sorted(damaged):
-        handle.write(name + "\n")
+blocks = {}
+for name in files:
+    log = os.path.join(out, "png", os.path.splitext(name)[0] + ".log")
+    if os.path.exists(log):
+        blocks[name] = read(log)
 
 # ---- the hosted pass ---------------------------------------------------------------------------
 # The probe prints the archive's basename *without* its extension for a measured or fallback window
@@ -285,7 +270,7 @@ def rating(row):
         return "player-skinned"
     return "fully-skinned"
 
-COLUMNS = ["file", "sha256", "duplicate_of", "damaged", "load", "level",
+COLUMNS = ["file", "sha256", "duplicate_of", "load", "level",
            "findings_error", "findings_warning", "findings_info", "finding_codes",
            "arrangement", "surface_embedded", "surface_declared", "surface_synthesized",
            "surface_fallback", "containers", "dropped_containers", "layouts", "nodes",
@@ -300,24 +285,17 @@ rows = []
 for name in files:
     row = dict.fromkeys(COLUMNS, "-")
     row.update(file=name, sha256=digests[name], duplicate_of=duplicate_of.get(name, "-"),
-               damaged="no", load="ok", screenshot="yes" if screenshots[name] else "no",
+               load="ok", screenshot="yes" if screenshots[name] else "no",
                measured_rev=rev, measured_at=measured)
     lines = blocks.get(name)
 
     if lines is None:
         # The sweep never reached it at all — a row that says so is the honest one.
-        row.update(damaged="no", load="not-run", rating="unknown")
+        row.update(load="not-run", rating="unknown")
         rows.append(row)
         continue
 
-    if name in damaged:
-        # A populated row derived from a log with blocks missing would carry silently wrong columns.
-        # Emit identity and the flag, nothing else, and name it for a solo re-run.
-        row.update(damaged="yes", load="unknown", rating="unknown")
-        rows.append(row)
-        continue
-
-    if any(line.startswith("SKIN " + name + " FAILED") for line in render):
+    if any(line.startswith("SKIN " + name + " FAILED") for line in lines):
         row["load"] = "failed"
 
     severities = {"error": 0, "warning": 0, "info": 0}
@@ -379,11 +357,6 @@ tally = {}
 for row in rows:
     tally[row["rating"]] = tally.get(row["rating"], 0) + 1
 print("wal_skin_census: rating " + ", ".join(f"{k}={v}" for k, v in sorted(tally.items())))
-if damaged:
-    print("wal_skin_census: DAMAGED LOG — no populated row for:")
-    for name in sorted(damaged):
-        print(f"  {name}")
-    print("  Re-run each alone: --corpus <dir holding just that archive>")
 PYCENSUS
 
 echo "wal_skin_census: done — $out/census.tsv"

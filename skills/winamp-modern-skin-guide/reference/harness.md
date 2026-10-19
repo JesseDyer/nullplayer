@@ -322,9 +322,9 @@ was measured at. It answers "what is the state of the whole corpus" where the sw
 change move anything". No engine code: everything in a row already existed on a dump line.
 
 ```sh
-scripts/wal_skin_census.sh <outdir>                 # census.tsv, plus render.txt/hosted.txt/damaged.txt
+scripts/wal_skin_census.sh <outdir>                 # census.tsv, plus png/<skin>.log, hosted.txt, render.txt
 scripts/wal_skin_census.sh <outdir> --parse-only    # re-derive census.tsv from a capture already there
-scripts/wal_skin_census.sh <outdir> --corpus <dir>  # one skin alone, for a damaged-log re-run
+scripts/wal_skin_census.sh <outdir> --corpus <dir>  # one skin alone
 ```
 
 It inherits the sweep's freeze rule, its dirty-tree refusal and its redirect-don't-pipe rule, and
@@ -339,12 +339,9 @@ without paying five minutes for another one. Two things about it are load-bearin
   archives, 75 distinct skins** — four archives are byte-identical duplicates under a second filename,
   which the sha256 column makes visible. **Count per file where a row is per file, per distinct skin
   where a row is per skin.**
-- **`damaged` is a column, not an afterthought.** The sweep's interleaved writes eat whole blocks of
-  the log at random in about half of all passes, so a census that inherited the sweep but not this
-  would emit *silently missing fields*. A skin whose log came back damaged gets a row carrying its
-  identity and the flag and nothing else, and is named for a solo re-run. Two consecutive passes on
-  an unchanged tree (2026-09-06) came back byte-identical, with one skin damaged in both; run alone it
-  produced a full row.
+- **Each row is parsed from that skin's own log, `png/<skin>.log`** — see *one log per skin* under
+  the sweep's traps below. Until B166 the census parsed the shared stdout and needed a `damaged`
+  column for the rows interleaving had eaten.
 
 **A count in this guide is dated by its corpus, and the date cannot be recovered from `git blame`.**
 Sentences like "19 of the 36 installed skins ship `<slider>`" are measurements: the denominator is a
@@ -387,7 +384,7 @@ checked on screen.
 It is a committed script. Do not paste a shell function out of this file:
 
 ```sh
-scripts/wal_render_sweep.sh capture <outdir>        # one pass: raw.txt, invariants.txt, png/
+scripts/wal_render_sweep.sh capture <outdir>        # one pass: png/ (+ png/<skin>.log), invariants.txt, raw.txt
 scripts/wal_render_sweep.sh compare <base> <curr>   # invariants diff + per-image maxdelta report
 ```
 
@@ -458,17 +455,19 @@ need the worktree at all — capture the baseline *before* you start editing.
   lines, reproducibly and with no error. *Handled:* the script redirects, and keeps **stderr in its
   own file** — `2>&1` is not enough, because the runner's banners reach fd 2 through a second file
   offset and overwrite stdout mid-line.
-- **Interleaved writes still eat whole blocks of the log, and they look exactly like a dropped
-  container.** Splitting stderr helps and does not cure it. Measured 2026-09-02: one pass lost 25 of
-  BLAKK.wal's invariant lines and another lost 3 of Itemskin.wal's, while every one of their PNGs
-  stayed byte-identical and **both skins came back identical when run alone**. Re-running does not
-  reliably clear it — four consecutive passes over one build damaged the same skin every time.
-  *Handled:* `capture` attributes each collision to its owning `SKIN` line and writes the names to
-  `damaged.txt`; `compare` leaves those skins out of the invariants diff and tells you to run each
-  alone. Their PNGs are unaffected and are still compared.
+- **One log per skin; the shared stdout is for reading only.** On stdout, interleaved writes ate
+  whole blocks of the log in about half of all passes and looked exactly like a dropped container —
+  measured 2026-09-02, one pass lost 25 of BLAKK.wal's invariant lines and another 3 of Itemskin.wal's,
+  PNGs byte-identical, both skins identical run alone; XENERGY1's last `FINDING` line took XCTest's
+  `Test Case … passed` banner every pass. *Handled (B166):* in a directory run the harness points
+  fd 1 at `<dumpdir>/<skin>.log` for the duration of that skin (`writingStdout(to:)` in
+  `WinampModernRenderDumpTests`), then echoes the file to stdout for a person reading by hand.
+  `capture` and the census build everything from those files. Measured 2026-10-19, 89 archives: two
+  consecutive passes with zero mid-line collisions in any log, invariants identical to each other and,
+  for all 88 skins the stdout-era pass had not damaged, to that pass.
 - **Run the same build twice before believing any diff.** Verified 2026-09-02 on this corpus: two
   passes over one unchanged build were byte-identical on all 590 images and differed on the
-  invariants only where a runner banner landed (which `compare` sets aside and counts separately).
+  invariants only where a runner banner landed (before B166's per-skin logs).
   Some skins can be genuinely non-deterministic — Anexa's `main/shade` draws an analogue clock from
   the wall clock — so record which images those are *before* the change, or every later diff is
   unreadable.

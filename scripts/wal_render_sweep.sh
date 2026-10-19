@@ -21,19 +21,12 @@
 #   * Redirect the run to a file and grep the file. Piping the sweep straight into `grep` drops
 #     lines: the test binary's stdout and the runner's interleave under a pipe and whole blocks go
 #     missing with no error, which reads exactly like a dropped container and is not one.
-#   * **Interleaved writes eat whole blocks of the log, at random, in about half of all passes.**
-#     Two writers land inside one another and the dump lines they collide with are lost outright,
-#     not merely mangled. Measured 2026-09-02: one pass lost 25 of BLAKK.wal's invariant lines and
-#     another lost 3 of Itemskin.wal's, while every one of their PNGs stayed byte-identical and both
-#     skins came back identical when run alone. That is precisely the shape of a dropped container
-#     and it is not one. Splitting stderr into its own file (below) helps and does not cure it, and
-#     neither does re-running: four consecutive passes over one build damaged the same skin every
-#     time, and a later pass over a different build damaged a different one. `capture` names the
-#     skins whose log came back damaged
-#     in `damaged.txt`, and `compare` leaves those skins out of the invariants diff and tells you to
-#     run them alone (`--corpus` a directory holding just that archive). Their PNGs are unaffected
-#     and are still compared.
-#
+#   * **Read each skin's own log, never the shared stdout.** On stdout, interleaved writes ate whole
+#     blocks of the log at random in about half of all passes (measured 2026-09-02: one pass lost 25
+#     of BLAKK.wal's invariant lines, another 3 of Itemskin.wal's, PNGs byte-identical). Since B166
+#     the harness writes every skin's lines to `png/<skin>.log`, which nothing else writes to, and
+#     `invariants.txt` is built from those files. `raw.txt` is kept for reading, not for diffing.
+
 # Never capture the baseline with `git stash` — it relinks .build under the user's running app. Use
 # a worktree:
 #
@@ -86,7 +79,7 @@ capture() {
         exit 1
     fi
     local archives
-    archives=$(find "$corpus" -maxdepth 1 -name '*.wal' | wc -l | tr -d ' ')
+    archives=$(find "$corpus" -maxdepth 1 -type f -name '*.[wW][aA][lL]' | wc -l | tr -d ' ')
     if [ "$archives" -eq 0 ]; then
         echo "wal_render_sweep: no .wal archives in $corpus" >&2
         exit 1
@@ -102,6 +95,7 @@ capture() {
     fi
 
     mkdir -p "$out/png"
+    rm -f "$out"/png/*.log
     echo "wal_render_sweep: capturing $archives skins -> $out"
     # Redirect, do not pipe. See the note at the top.
     WINAMP_MODERN_WAL="$corpus" \
@@ -110,7 +104,8 @@ capture() {
         swift test ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} --filter WinampModernRenderDumpTests > "$out/raw.txt" 2> "$out/stderr.txt"
     local status=$?
 
-    grep -E "$INVARIANT_PATTERN" "$out/raw.txt" > "$out/invariants.txt"
+    # One log per skin (B166), concatenated in a fixed order so two captures line up.
+    cat "$out"/png/*.log 2>/dev/null | grep -E "$INVARIANT_PATTERN" > "$out/invariants.txt"
     local lines
     lines=$(wc -l < "$out/invariants.txt" | tr -d ' ')
     echo "wal_render_sweep: $lines invariant lines, $(find "$out/png" -name '*.png' | wc -l | tr -d ' ') images"
@@ -121,29 +116,10 @@ capture() {
         tail -30 "$out/stderr.txt" "$out/raw.txt" >&2
         exit 1
     fi
-    # A record prefix appearing anywhere but the start of a line is one write landing inside
-    # another, and the dump lines it lands on are lost rather than mangled. Name the skins it
-    # damaged so `compare` can leave them out instead of reporting them as a regression.
-    python3 - "$out/raw.txt" > "$out/damaged.txt" <<'PYDAMAGED'
-import re, sys
-
-PREFIX = re.compile(r"(SKIN |RENDER-DUMP |BITMAPS |HOLDERS |FINDING \[|Test Case)")
-skin, damaged = "<before any skin>", []
-for line in open(sys.argv[1], errors="replace"):
-    line = line.rstrip("\n")
-    if line.startswith("SKIN "):
-        skin = line.split()[1]
-    hit = PREFIX.search(line, 1)
-    if hit and not line.startswith(" "):
-        damaged.append(skin)
-for name in dict.fromkeys(damaged):
-    print(name)
-PYDAMAGED
-    if [ -s "$out/damaged.txt" ]; then
-        echo "wal_render_sweep: interleaved writes damaged the log for:" >&2
-        sed 's/^/  /' "$out/damaged.txt" >&2
-        echo '  Their PNGs are unaffected and still compare; compare leaves their lines out.' >&2
-        echo "  To check those lines, run each alone: --corpus <dir holding just that .wal>" >&2
+    local logs
+    logs=$(find "$out/png" -maxdepth 1 -name '*.log' | wc -l | tr -d ' ')
+    if [ "$logs" -ne "$archives" ]; then
+        echo "wal_render_sweep: $logs skin logs for $archives archives — a skin is missing its log; see $out/stderr.txt" >&2
     fi
     if [ $status -ne 0 ]; then
         echo "wal_render_sweep: swift test exited $status; capture kept, read $out/raw.txt before trusting it" >&2
@@ -167,52 +143,21 @@ compare() {
     done
 
     echo "=== invariants ==="
-    # XCTest's own "Test Case … passed" banner shares the runner's stdout with the dump and lands
-    # *inside* a line — the dump lines carry no trailing newline — so a line it collides with differs
-    # between two runs of one unchanged binary. Verified 2026-09-02: two passes over the same build
-    # differed on exactly those lines and on nothing else, with all 590 images byte-identical. Set
-    # them aside and count them separately rather than making a human re-derive that every sweep.
-    cat "$base/damaged.txt" "$curr/damaged.txt" 2>/dev/null | sort -u > /tmp/wal_sweep_damaged.txt
-    python3 - "$base/invariants.txt" "$curr/invariants.txt" /tmp/wal_sweep_damaged.txt <<'PYINVARIANTS'
-import difflib, os, sys
-
-BANNER = "Test Case '-["
+    python3 - "$base/invariants.txt" "$curr/invariants.txt" <<'PYINVARIANTS'
+import difflib, sys
 
 def read(path):
     return open(path, errors="replace").read().splitlines()
 
-damaged = set(read(sys.argv[3])) if os.path.exists(sys.argv[3]) else set()
-
-def usable(lines):
-    """Drop the blocks of skins whose log came back damaged — their lines are missing, not
-    changed, and diffing them reports a regression that is not there."""
-    kept, skipping = [], False
-    for line in lines:
-        if line.startswith("SKIN "):
-            skipping = line.split()[1] in damaged
-        if not skipping:
-            kept.append(line)
-    return kept
-
-base = usable(read(sys.argv[1]))
-curr = usable(read(sys.argv[2]))
-
-real, noise = [], 0
+base, curr = read(sys.argv[1]), read(sys.argv[2])
+real = []
 for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, base, curr, autojunk=False).get_opcodes():
     if tag == "equal":
-        continue
-    block = base[i1:i2] + curr[j1:j2]
-    if any(BANNER in line for line in block):
-        noise += len(block)
         continue
     real += ["- " + line for line in base[i1:i2]]
     real += ["+ " + line for line in curr[j1:j2]]
 
 summary = "%d base lines, %d curr lines" % (len(base), len(curr))
-if noise:
-    summary += ", %d set aside as XCTest banner interleaving" % noise
-if damaged:
-    summary += ", %d skin(s) not compared" % len(damaged)
 if not real:
     print("identical (" + summary + ")")
 else:
@@ -222,10 +167,6 @@ else:
     if len(real) > 80:
         print("  \u2026 %d more" % (len(real) - 80))
 PYINVARIANTS
-    if [ -s /tmp/wal_sweep_damaged.txt ]; then
-        echo "NOT COMPARED — interleaved writes damaged these skins' log lines; run each alone:"
-        sed 's/^/  /' /tmp/wal_sweep_damaged.txt
-    fi
 
     echo
     echo "=== images ==="

@@ -102,9 +102,9 @@ measurements behind them, are in [reference/harness.md](reference/harness.md):
 - **A sweep or census is a build. Freeze the tree.** Both scripts refuse a dirty tree without
   `--allow-dirty`, because a binary that will not compile writes an *empty* capture that diffs as
   "everything changed".
-- **A damaged log is a first-class outcome, not a finding.** Interleaved writes eat whole blocks of
-  the capture in about half of all passes, and the result looks exactly like a dropped container.
-  `damaged.txt` names those skins; re-run each alone before believing anything about it.
+- **Read a skin's own log, `png/<skin>.log`, never the shared stdout.** On stdout, interleaved writes
+  ate whole blocks of the capture in about half of all passes and looked exactly like a dropped
+  container; the per-skin logs (B166) cannot interleave.
 
 The specification for the unbuilt stages, and the build order that would deliver them, are in
 `docs/winamp-modern/corpus-runner-plan.md` — a project plan, kept where the phase handoffs live. As
@@ -277,7 +277,7 @@ What §6 asked for in 2026-08-18 and what shipped are not quite the same thing, 
 worth keeping straight: it asked for **render hashes**; what exists is a **per-pixel delta**, which is
 strictly better, because a hash tells you a skin changed and a delta tells you by how much. Read the
 magnitude before calling a difference a regression — a `maxdelta` of 1 is one LSB. The traps that
-apply to every run (freeze the tree, redirect don't pipe, damaged logs, capture the baseline in a
+apply to every run (freeze the tree, redirect don't pipe, per-skin logs, capture the baseline in a
 worktree and never by `git stash`, and the one genuinely nondeterministic image in the corpus) are
 documented once in [reference/harness.md](reference/harness.md); do not re-derive them here.
 
