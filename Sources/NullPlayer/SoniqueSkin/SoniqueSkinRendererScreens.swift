@@ -23,7 +23,7 @@ extension SoniqueSkinPainter {
             context.setFillColor(CGColor(gray: 0, alpha: 1))
             context.fill(Screen.well.offset(x, top).cgRect)
         }
-        text(SoniqueSkinText(string: scene.visualModeTitle, x: x + Screen.well.left, baseline: top + Screen.titleBaseline,
+        text(SoniqueSkinText(string: scene.state.visualModeTitle, x: x + Screen.well.left, baseline: top + Screen.titleBaseline,
                              size: 8, colour: .systemColor1).centred(on: x + Screen.titleCentre))
 
         let s = host.elapsedSeconds

@@ -17,7 +17,7 @@ final class AudionFaceMainWindowController: NSWindowController, MainWindowProvid
     private var uiScale: CGFloat = 1
     /// The face on screen and its folder, nil while the unskinned player is up.
     private var shown: (skin: AudionFace, url: URL)? { didSet { faceView.face = shown?.skin } }
-    var loadedFaceURL: URL? { shown?.url }
+    var loadedSkinURL: URL? { shown?.url }
     /// NullPlayer's own windows, coloured from the face on screen (`AudionFacePalette`).
     private(set) var surfaceStyle = AudionFacePalette.neutral
 

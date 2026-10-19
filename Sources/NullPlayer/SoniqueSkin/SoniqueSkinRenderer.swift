@@ -22,7 +22,7 @@ enum SoniqueSkinRenderer {
         // is transparent.
         context.setFillColor(CGColor(gray: 0, alpha: 1))
         context.fill(CGRect(x: scene.canvas.left, y: scene.canvas.top, width: w, height: h))
-        switch scene.mode {
+        switch scene.state.mode {
         case .navigator: painter.navigator()
         case .mid: painter.mid()
         case .small: painter.small()
@@ -44,7 +44,7 @@ struct SoniqueSkinPainter {
     let context: CGContext
     let scene: SoniqueSkinScene
     var skin: SoniqueSkin { scene.skin }
-    var host: SoniqueSkinHostState { scene.host }
+    var host: SoniqueSkinHostState { scene.state.host }
 
     func clip(to rects: [SoniqueSkinRegion.Rect]) {
         context.clip(to: rects.map(\.cgRect))
@@ -71,9 +71,9 @@ struct SoniqueSkinPainter {
     }
 
     func picture() {
-        guard let picture = skin.image(scene.mode.picture) else { return }
+        guard let picture = skin.image(scene.state.mode.picture) else { return }
         context.saveGState()
-        if let frame = skin.region(scene.mode.frame) { clip(to: frame.rects) }
+        if let frame = skin.region(scene.state.mode.frame) { clip(to: frame.rects) }
         draw(picture, x: 0, y: 0)
         context.restoreGState()
     }
@@ -84,35 +84,35 @@ struct SoniqueSkinPainter {
     /// size of the control's bounds (skinpack `how-to-make-skins` § *misc locations*), drawn over
     /// the control and cut to its shape. The play button is a play/stop toggle: while playing it
     /// shows the stop picture, `…STOPOFF`, lit to `…STOPON` while pressed.
-    func litStates(prefix: String, upDown: Bool) {
+    /// The navigator reads each state's `NAV_` position and adds the rocker's.
+    func litStates(navigator: Bool) {
         guard let misc = skin.image("/jpeg/misc") else { return }
-        let pressed = scene.pressed
-        var lit: [(SoniqueSkinControl, String)] = []
+        let pressed = scene.state.pressed
+        var lit: [(SoniqueSkinControl, SoniqueLitState)] = []
         if host.playState == .playing {
-            lit.append((.play, pressed == .play ? "STOPON" : "STOPOFF"))
+            lit.append((.play, pressed == .play ? .stopOn : .stopOff))
         } else if pressed == .play {
-            lit.append((.play, "PLAYON"))
+            lit.append((.play, .playOn))
         }
-        if host.playState == .paused || pressed == .pause { lit.append((.pause, "PAUSEON")) }
-        if pressed == .prev { lit.append((.prev, "PREV")) }
-        if pressed == .next { lit.append((.next, "NEXT")) }
-        if pressed == .eject { lit.append((.eject, "ORANGEON")) }
-        if host.shuffle { lit.append((.shuffle, "GREENON")) }
-        // Sonique's loop-one, `GREENON2`, is unreachable: NullPlayer's repeat is on or off.
-        if host.repeatAll { lit.append((.repeatButton, "CYANON")) }
-        if pressed == .navButton { lit.append((.navButton, "REDON")) }
-        for (control, key) in lit {
-            draw(misc, lit: key, prefix: prefix, control: control)
+        if host.playState == .paused || pressed == .pause { lit.append((.pause, .pauseOn)) }
+        if pressed == .prev { lit.append((.prev, .prev)) }
+        if pressed == .next { lit.append((.next, .next)) }
+        if pressed == .eject { lit.append((.eject, .orangeOn)) }
+        if host.shuffle { lit.append((.shuffle, .greenOn)) }
+        if host.repeatAll { lit.append((.repeatButton, .cyanOn)) }
+        if pressed == .navButton { lit.append((.navButton, .redOn)) }
+        if navigator {
+            if pressed == .up { lit.append((.up, .bigUp)) }
+            if pressed == .down { lit.append((.down, .bigOnDown)) }
         }
-        if upDown {
-            if pressed == .up { draw(misc, lit: "BIGUP", prefix: "", control: .up) }
-            if pressed == .down { draw(misc, lit: "BIGON_DOWN", prefix: "", control: .down) }
+        for (control, state) in lit {
+            draw(misc, lit: state, navigator: navigator, control: control)
         }
     }
 
-    private func draw(_ misc: CGImage, lit key: String, prefix: String, control: SoniqueSkinControl) {
+    private func draw(_ misc: CGImage, lit state: SoniqueLitState, navigator: Bool, control: SoniqueSkinControl) {
         guard let region = scene.region(for: control) else { return }
-        let (x, y) = skin.settings.point("misc locations", prefix + key)
+        let (x, y) = skin.settings.origin(state, navigator: navigator)
         let b = region.bounds
         draw(misc, source: .init(left: x, top: y, right: x + b.right - b.left, bottom: y + b.bottom - b.top),
              x: b.left, y: b.top, clip: region.rects)
@@ -125,11 +125,12 @@ struct SoniqueSkinPainter {
     /// A knob's frame is opaque, its pure black drawn black over the picture (257 captures closer); the
     /// shuttle's is not (26 mid captures worse opaque), so it passes `opaque: false`. `turn` is the
     /// share of the strip, centred on its middle, that the value spans.
-    func knob(control: SoniqueSkinControl, strip name: String, key: String, value: Double,
-                      tint: SoniqueColour? = nil, opaque: Bool = true, turn: Double = 1) {
-        guard let strip = skin.image(name), let region = scene.region(for: control) else { return }
-        let width = max(1, skin.settings.int("misc values", key + "_width"))
-        let frames = max(1, min(skin.settings.int("misc values", key + "_images"), strip.width / width))
+    func knob(control: SoniqueSkinControl, strip key: SoniqueKnobStrip, value: Double,
+              tint: SoniqueColour? = nil, opaque: Bool = true, turn: Double = 1) {
+        guard let strip = skin.image(key.image), let region = scene.region(for: control) else { return }
+        let declared = skin.settings.frames(key)
+        let width = max(1, declared.width)
+        let frames = max(1, min(declared.count, strip.width / width))
         let frame = Int(((0.5 + (min(1, max(0, value)) - 0.5) * turn) * Double(frames - 1)).rounded())
         let b = region.bounds
         if opaque {

@@ -11,7 +11,9 @@ pattern every engine follows is `skin-subsystem-blueprint`.
 
 **Status:** Phase 1 (the spike) closed 2026-10-17, Phase 2 2026-10-18; public since then
 (decision record Amendment 5), behind `AppFeature.soniqueSkinMode` for editions only. `Sources/NullPlayer/SoniqueSkin/` holds the bounded loader and model,
-`SoniqueSkinScene` (layout and hit-testing) and `SoniqueSkinRenderer` (the modes, the navigator's screens, Sonique's glyphs and its lettering, `SoniqueSkinText`, each in its own `SoniqueSkinRenderer*.swift`); `Windows/SoniqueSkin/` the
+`SoniqueSkinScene` (layout and hit-testing, drawn from one `SoniqueSkinScene.State` the window keeps; its
+inputs in `SoniqueSkinSceneState.swift`, the visual mode screen's layout in `SoniqueSkinVisualScreen.swift`;
+`skin.ini` geometry read through `SoniqueSkinSettings`' typed accessors, never a key string) and `SoniqueSkinRenderer` (the modes, the navigator's screens, Sonique's glyphs and its lettering, `SoniqueSkinText`, each in its own `SoniqueSkinRenderer*.swift`); `Windows/SoniqueSkin/` the
 one window in three modes. `PlayerUIMode.sonique` routes it. The harness is a census, a render probe
 and an oracle: real Sonique 1.96 under Wine, scripted to capture any skin in any mode
 (`reference/harness.md`), and the oracle sweep measures every skin's render against it

@@ -16,7 +16,7 @@ final class SoniqueSkinSceneTests: XCTestCase {
         entries += [("/rgn/nav/drawer", SoniqueSkinFixture.region([(0, 0, 120, 60)])),
                     ("/rgn/nav/dknobamp", SoniqueSkinFixture.region([(100, 5, 110, 15)]))]
         let skin = try SoniqueSkinLoader.load(data: SoniqueSkinFixture.sgf(entries))
-        return SoniqueSkinScene(skin: skin, mode: .navigator, navDrawerOpen: open)
+        return SoniqueSkinScene(skin: skin, state: .init(mode: .navigator, navDrawerOpen: open))
     }
 
     /// A point in skin pixels, as the scene hits canvas pixels.
@@ -43,7 +43,7 @@ final class SoniqueSkinSceneTests: XCTestCase {
         entries[2] = ("/rgn/nav/frame", SoniqueSkinFixture.region([(0, 0, 320, 260)]))
         entries.append(("/rgn/nav/display", SoniqueSkinFixture.region([(10, 20, 311, 248)])))
         let skin = try SoniqueSkinLoader.load(data: SoniqueSkinFixture.sgf(entries))
-        return SoniqueSkinScene(skin: skin, mode: .navigator, navScreen: screen)
+        return SoniqueSkinScene(skin: skin, state: .init(mode: .navigator, navScreen: screen))
     }
 
     func testTheMenuScreenHitsItsItemsFromTheDisplayCorner() throws {
@@ -86,8 +86,8 @@ final class SoniqueSkinSceneTests: XCTestCase {
                                                 blinkersLit: true)
                 for pressed in controls {
                     for screen in [SoniqueSkinNavScreen.menu, .visualMode] {
-                        let scene = SoniqueSkinScene(skin: skin, mode: mode, host: host, pressed: pressed,
-                                                     smallDrawer: .top, navDrawerOpen: true, navScreen: screen)
+                        let scene = SoniqueSkinScene(skin: skin, state: .init(mode: mode, host: host, pressed: pressed, smallDrawer: .top,
+                                                                                   navDrawerOpen: true, navScreen: screen))
                         XCTAssertNotNil(SoniqueSkinRenderer.render(scene), "\(mode) \(state) \(pressed)")
                     }
                 }
@@ -98,5 +98,16 @@ final class SoniqueSkinSceneTests: XCTestCase {
     func testEveryColourKeyHasADefault() {
         let settings = SoniqueSkin.defaultSkin.settings
         for key in SoniqueColour.allCases { _ = settings.colour(key) }
+    }
+
+    /// The scene and renderer read these with no fallback, so a key without a default traps.
+    func testEveryTypedKeyHasADefault() {
+        let settings = SoniqueSkinSettings(SoniqueSkinINI(""))
+        for state in SoniqueLitState.allCases {
+            _ = settings.origin(state)
+            _ = settings.origin(state, navigator: true)
+        }
+        for strip in SoniqueKnobStrip.allCases { _ = settings.frames(strip) }
+        _ = (settings.drawerSliders, settings.midBallOrigins, settings.navBallInset, settings.midPlaylistMode)
     }
 }

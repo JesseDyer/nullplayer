@@ -88,8 +88,8 @@ delete. The family keeps its file test, loader call and naming. WMP, `.wal`, Aud
 go through it (Sonique S13, 2026-10-18). Beside it, **`SkinSelection(key:)`** is the saved choice
 (WMP, Audion and Sonique; WMP keeps its view id itself, `.wal` its bundled fallback). A
 single-canvas window (`SingleCanvasMainWindow`, Audion and Sonique) supplies its selection, URL lookup,
-loader and `present(_:error:)`, and gets `reloadSelectedSkin`, `selectSkin(named:)` and
-`resetToUnskinned` over one `SkinLoadTask` (Sonique S18).
+loader, `loadedSkinURL` and `present(_:error:)`, and gets `reloadSelectedSkin`, `selectSkin(named:)` and
+`resetToUnskinned` over one `SkinLoadTask` (`App/Skinning/`, Sonique S18).
 
 One seam the compiler will not list: **the window drop shadow.** A family's windows never set
 `hasShadow`; they set `window.hasSkinShadow = true`, or attach `SkinWindowShadow` to the outline the

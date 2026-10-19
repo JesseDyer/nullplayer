@@ -24,25 +24,14 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     private var blinkersLit = false
 
     static let effectKey = "soniqueEffect"
-    /// The visual mode screen's effect and preset, remembered across launches: Sonique had one
-    /// visualizer choice, not one per skin. Restored once, then saved on every change.
-    @MainActor private static let effectPersistence: NSObjectProtocol = {
-        let selection = SkinEffectSelection.sonique, defaults = UserDefaults.standard
-        selection.restore(effect: defaults.string(forKey: effectKey), preset: defaults.integer(forKey: effectKey + "Preset"))
-        return NotificationCenter.default.addObserver(forName: SkinEffectSelection.didChange, object: selection,
-                                                      queue: .main) { _ in
-            MainActor.assumeIsolated {
-                defaults.set(selection.current.id, forKey: effectKey)
-                defaults.set(selection.preset, forKey: effectKey + "Preset")
-            }
-        }
-    }()
+    /// Saves the visual mode screen's effect and preset on every change (`persistEffect`).
+    private var effectObserver: NSObjectProtocol?
 
     var mode: SoniqueSkin.Mode {
-        get { skinView.mode }
+        get { skinView.state.mode }
         set {
-            guard newValue != skinView.mode else { return }
-            skinView.mode = newValue
+            guard newValue != skinView.state.mode else { return }
+            skinView.state.mode = newValue
             UserDefaults.standard.set(newValue.rawValue, forKey: Self.modeKey)
             fitWindow()
         }
@@ -59,11 +48,11 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         window.title = "NullPlayer — Sonique"
         window.setAccessibilityIdentifier("SoniqueSkinMainWindow")
         window.center()
-        _ = MainActor.assumeIsolated { Self.effectPersistence }
         super.init(window: window)
+        effectObserver = MainActor.assumeIsolated { Self.persistEffect() }
         window.delegate = self
         window.contentView = skinView
-        skinView.mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(SoniqueSkin.Mode.init(rawValue:)) ?? .navigator
+        skinView.state.mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(SoniqueSkin.Mode.init(rawValue:)) ?? .navigator
         skinView.onCommand = { [weak self] control in MainActor.assumeIsolated { self?.perform(control) } }
         skinView.onDial = { [weak self] control, value in
             MainActor.assumeIsolated { SoniqueSkinAudioEngineHost.setDial(control, to: value, WindowManager.shared.audioEngine) }
@@ -75,6 +64,20 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// The visual mode screen's effect and preset, remembered across launches: Sonique had one
+    /// visualizer choice, not one per skin. Put back as the window opens, then saved on every change.
+    @MainActor private static func persistEffect() -> NSObjectProtocol {
+        let selection = SkinEffectSelection.sonique, defaults = UserDefaults.standard
+        selection.restore(effect: defaults.string(forKey: effectKey), preset: defaults.integer(forKey: effectKey + "Preset"))
+        return NotificationCenter.default.addObserver(forName: SkinEffectSelection.didChange, object: selection,
+                                                      queue: .main) { _ in
+            MainActor.assumeIsolated {
+                defaults.set(selection.current.id, forKey: effectKey)
+                defaults.set(selection.preset, forKey: effectKey + "Preset")
+            }
+        }
+    }
 
     // MARK: - Choosing a skin (`SingleCanvasMainWindow`)
 
@@ -145,17 +148,17 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     // MARK: - The drawer is the equaliser
 
     /// Whether the equaliser is on screen: the navigator with its drawer open.
-    var isEqualizerShowing: Bool { mode == .navigator && skinView.navDrawerOpen }
+    var isEqualizerShowing: Bool { mode == .navigator && skinView.state.navDrawerOpen }
 
     /// NullPlayer's Equalizer request, answered with the drawer, which is this family's equaliser
     /// (decision record § *Auxiliary-window policy*). A toggle goes to the navigator first; a show is
     /// the restore path, which never changes the mode the user left.
     func revealEqualizer(toggle: Bool) {
         if toggle {
-            if isEqualizerShowing { skinView.navDrawerOpen = false; return }
+            if isEqualizerShowing { skinView.state.navDrawerOpen = false; return }
             mode = .navigator
         }
-        if mode == .navigator { skinView.navDrawerOpen = true }
+        if mode == .navigator { skinView.state.navDrawerOpen = true }
     }
 
     // MARK: - Controls
@@ -170,15 +173,15 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         switch control {
         case .ball(.modeUp): mode = mode == .small ? .mid : .navigator
         case .ball(.modeUpTwice), .navButton: mode = .navigator
-        case .ball(.back): skinView.navScreen = .menu
+        case .ball(.back): skinView.state.navScreen = .menu
         case .vis, .menu(.visualMode):
             mode = .navigator
-            skinView.navScreen = .visualMode
+            skinView.state.navScreen = .visualMode
         case .songInfo, .menu(.playlist): WindowManager.shared.togglePlaylist()
         case .menu(.library): WindowManager.shared.toggleMediaLibrary()
         case .menu(.setup):
             skinView.popUp(ContextMenuBuilder.buildMenu(includeOutputDevices: false, includeRepeatShuffle: false), under: .setup)
-        case .menu(.audio): skinView.navDrawerOpen = true
+        case .menu(.audio): skinView.state.navDrawerOpen = true
         case .menu(.spectrum): WindowManager.shared.toggleSpectrum()
         case .menu(.peppyMeter): WindowManager.shared.togglePeppyMeter()
         case .menu(.art): WindowManager.shared.toggleArt()
@@ -199,12 +202,12 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
         case .eject: MenuActions.shared.openFile()
         case .shuffle: engine.shuffleEnabled.toggle()
         case .repeatButton: engine.repeatEnabled.toggle()
-        case .drawerTab: skinView.navDrawerOpen.toggle()
+        case .drawerTab: skinView.state.navDrawerOpen.toggle()
         // The rocker (S17): on the visual mode screen it steps the effect, as ⌘↓/⌘↑ do; anywhere
         // else it pages the Playlist Editor when that is open. Sonique paged its display with it.
         case .up, .down:
             let step = control == .down ? 1 : -1
-            if skinView.navScreen == .visualMode {
+            if skinView.state.navScreen == .visualMode {
                 SkinEffectSelection.sonique.step(by: step)
             } else if let playlist = WindowManager.shared.playlistWindowController, playlist.window?.isVisible == true {
                 playlist.page(by: step)
@@ -218,7 +221,7 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
     // MARK: - Host state
 
     private func refreshHostState() {
-        skinView.host = MainActor.assumeIsolated {
+        skinView.state.host = MainActor.assumeIsolated {
             SoniqueSkinAudioEngineHost.snapshot(WindowManager.shared.audioEngine, blinkersLit: blinkersLit)
         }
     }
@@ -243,6 +246,8 @@ final class SoniqueSkinMainWindowController: NSWindowController, MainWindowProvi
 
     func prepareForUITeardown() {
         skinLoad.cancel()
+        effectObserver.map(NotificationCenter.default.removeObserver)
+        effectObserver = nil
     }
 
     // MARK: - Window delegate

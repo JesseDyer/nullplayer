@@ -45,6 +45,40 @@ struct SoniqueSkinSettings {
     /// How far the navigator's drawer slides down to open.
     var drawerSlide: Int { int("misc values", "MISC_DRAWER_DISTANCE_TOSLIDE") }
 
+    // MARK: - What the scene and renderer read
+
+    // Every key below has a default, so none of these traps; `SoniqueSkinSettingsTests` reads each.
+
+    /// A lit state's top-left in `/jpeg/misc`; `navigator` reads its `NAV_` twin where it has one.
+    func origin(_ lit: SoniqueLitState, navigator: Bool = false) -> (x: Int, y: Int) {
+        point("misc locations", (navigator && lit.hasNavigatorTwin ? "NAV_" : "") + lit.rawValue)
+    }
+
+    /// A knob strip's frame width and frame count (`<key>_width`, `<key>_images`).
+    func frames(_ strip: SoniqueKnobStrip) -> (width: Int, count: Int) {
+        (int("misc values", strip.rawValue + "_width"), int("misc values", strip.rawValue + "_images"))
+    }
+
+    /// The navigator drawer's EQ sliders, in the drawer's own pixels.
+    var drawerSliders: SoniqueDrawerSliders {
+        let v = { int("misc values", "MISC_DRAWER_SLIDER_" + $0) }
+        return SoniqueDrawerSliders(left: v("ARRAY_POS_x"), top: v("ARRAY_POS_y"), pitch: v("PITCH"),
+                                    width: v("SIZE_x"), height: v("SIZE_y"),
+                                    handleWidth: v("HANDLE_SIZE_width"), handleHeight: v("HANDLE_SIZE_height"))
+    }
+
+    /// Mid mode's balls' top-lefts from the vis window's corner (`[msm locations]`): mode up, mode
+    /// down, help, minimise, close.
+    var midBallOrigins: [(x: Int, y: Int)] {
+        ["MSM_SINGLEUP", "MSM_SINGLEDOWN", "MSM_HELP", "MSM_MINIMIZE", "MSM_CLOSE"].map { point("msm locations", $0) }
+    }
+
+    /// How far the navigator's balls sit in from the display's right edge.
+    var navBallInset: Int { int("misc values", "NC_BB_DIST_FROM_RIGHT") }
+
+    /// Mid mode's rings: 0 fills clockwise from the top, anything else across 270° from the bottom left.
+    var midPlaylistMode: Int { int("misc values", "mid_playlistmode") }
+
     /// The skin's own value; an empty one (`MISC_DRAWER_POS_x=`; 8 skins write one) counts as unwritten.
     private func written(_ section: String, _ key: String) -> String? {
         ini.value(section, key).flatMap { $0.isEmpty ? nil : $0 }
@@ -109,4 +143,41 @@ enum SoniqueColour: String, CaseIterable {
     case openFileColor = "OpenFileColor", ampKnobColor = "AmpKnobColor", balKnobColor = "BalKnobColor"
     case pitchKnobColor = "PitchKnobColor", logoColor = "LogoColor", logoRingColor = "LogoRingColor"
     case blueBallsColor = "BlueBallsColor"
+}
+
+/// The `[misc locations]` lit states NullPlayer draws from `/jpeg/misc`. Sonique's loop-one,
+/// `GREENON2`, is not here: NullPlayer's repeat is on or off.
+enum SoniqueLitState: String, CaseIterable {
+    case playOn = "PLAYON", stopOn = "STOPON", stopOff = "STOPOFF", pauseOn = "PAUSEON"
+    case prev = "PREV", next = "NEXT", orangeOn = "ORANGEON", greenOn = "GREENON", cyanOn = "CYANON", redOn = "REDON"
+    case bigUp = "BIGUP", bigOnDown = "BIGON_DOWN", sliderOff = "SLIDEROFF", sliderOn = "SLIDERON", drawer = "DRAWER"
+
+    /// Whether the navigator has its own `NAV_` position for it: the transport and the round buttons do.
+    var hasNavigatorTwin: Bool {
+        switch self {
+        case .bigUp, .bigOnDown, .sliderOff, .sliderOn, .drawer: return false
+        default: return true
+        }
+    }
+}
+
+/// A knob's animation strip: its picture and its `[misc values]` key.
+enum SoniqueKnobStrip: String, CaseIterable {
+    case volume = "MISC_VOLUME_KNOB", navVolume = "MISC_NAV_VOLUME_KNOB"
+    case drawer = "MISC_SMALL_KNOB", shuttle = "MISC_SHUTTLE_KNOB"
+
+    var image: String {
+        switch self {
+        case .volume: return "/jpeg/volumeknob"
+        case .navVolume: return "/jpeg/nav_volumeknob"
+        case .drawer: return "/jpeg/smallknob"
+        case .shuttle: return "/jpeg/shuttle"
+        }
+    }
+}
+
+/// The navigator drawer's 20 EQ slider tracks, `pitch` apart from (`left`, `top`) in the drawer's
+/// own pixels, and the handle that rides them.
+struct SoniqueDrawerSliders {
+    let left, top, pitch, width, height, handleWidth, handleHeight: Int
 }

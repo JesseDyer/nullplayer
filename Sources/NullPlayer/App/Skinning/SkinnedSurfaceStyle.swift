@@ -89,11 +89,8 @@ struct SkinnedSurfaceStyle: Equatable {
     /// The text a *selected* row is drawn in — the skin's own choice wherever that can be read on
     /// `selectionBackground`, and only otherwise something else. See `legible(preferring:on:)`.
     let selectedText: NSColor
-    /// A selected playlist row's text: the family's pick (`SkinnedSurfaceRoles.playlistMarks`) or
-    /// white, the classic idiom, guarded against the background.
-    let playlistSelectedText: NSColor
-    /// The playing playlist row's text: the family's pick, or `currentText`.
-    let playlistPlayingText: NSColor
+    /// The family's playlist row marks (`SkinnedSurfaceRoles.playlistMarks`), nil for the classic idiom.
+    let playlistMarks: SkinnedSurfaceRoles.PlaylistMarks?
 
     // Roles derived by blending, so a partial palette still produces a coherent surface.
     /// Toolbars, tab strips, status bars — a step away from the content background.
@@ -155,16 +152,18 @@ struct SkinnedSurfaceStyle: Equatable {
                                                      roles.text, roles.background],
                                         on: roles.selectionBackground)
         }
-        if let marks = roles.playlistMarks {
-            playlistPlayingText = Self.marked(marks.playing, apartFrom: text, on: roles.background)
-            playlistSelectedText = Self.marked(marks.selected, apartFrom: text, on: roles.background)
-        } else {
-            playlistPlayingText = currentText
-            // `legibleText(.white, on: background)`, written out: `self` is not complete until this is set.
-            playlistSelectedText = Self.legible(preferring: [.white, text, currentText, roles.selectionText,
-                                                             roles.background],
-                                                on: roles.background)
-        }
+        playlistMarks = roles.playlistMarks
+    }
+
+    /// A selected playlist row's text: the family's pick, or white, the classic idiom, guarded
+    /// against the background.
+    var playlistSelectedText: NSColor {
+        playlistMarks.map { Self.marked($0.selected, apartFrom: text, on: background) } ?? legibleText(.white, on: background)
+    }
+
+    /// The playing playlist row's text: the family's pick, or `currentText`.
+    var playlistPlayingText: NSColor {
+        playlistMarks.map { Self.marked($0.playing, apartFrom: text, on: background) } ?? currentText
     }
 
     // MARK: - Legibility

@@ -49,8 +49,8 @@ final class SoniqueSkinRenderProbeTests: XCTestCase {
                 continue
             }
             for (mode, tag) in [(SoniqueSkin.Mode.navigator, "nav"), (.mid, "mid"), (.small, "small")] {
-                let scene = SoniqueSkinScene(skin: skin, mode: mode, host: host, smallDrawer: playing ? .top : nil,
-                                             navDrawerOpen: drawerOpen, navScreen: screen)
+                let scene = SoniqueSkinScene(skin: skin, state: .init(mode: mode, host: host, smallDrawer: playing ? .top : nil,
+                                                                       navDrawerOpen: drawerOpen, navScreen: screen))
                 guard let image = SoniqueSkinRenderer.render(scene) else {
                     HarnessOutput.emit("RENDER \(name) \(tag) EMPTY")
                     continue

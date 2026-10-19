@@ -6,19 +6,22 @@ import AppKit
 /// through `WindowManager`, and a double-click there jumps a mode (help `02.htm` § *Jumping Between
 /// Modes*). A pixel outside the outline is not part of the window.
 final class SoniqueSkinMainView: NSView {
-    var skin: SoniqueSkin? { didSet { pressed = nil; smallDrawer = nil; dropEffects(); redraw() } }
-    var mode: SoniqueSkin.Mode = .navigator { didSet { if mode != oldValue { pressed = nil; smallDrawer = nil; redraw() } } }
-    /// The navigator's drawer, opened and closed by its tab.
-    var navDrawerOpen = false { didSet { if navDrawerOpen != oldValue { redraw(); onOutlineChange?() } } }
-    /// What the navigator's display shows.
-    var navScreen = SoniqueSkinNavScreen.menu { didSet { if navScreen != oldValue { redraw() } } }
-    var host = SoniqueSkinHostState() {
+    var skin: SoniqueSkin? {
         didSet {
-            guard host != oldValue else { return }
-            effects?.setActive(host.playState == .playing)
-            if host.title != oldValue.title { marqueeOffset = 0 }
-            updateMarqueeTimer()
+            dropEffects()
+            state.pressed = nil
+            state.smallDrawer = nil
             redraw()
+        }
+    }
+    /// Everything on screen but the skin. A mode change lets go of the press and closes small mode's
+    /// drawer; a new title scrolls from its start.
+    var state = SoniqueSkinScene.State() {
+        didSet {
+            if state.mode != oldValue.mode { state.pressed = nil; state.smallDrawer = nil }
+            if state.host.title != oldValue.host.title { state.marqueeOffset = 0 }
+            guard state != oldValue else { return }
+            show(state, after: oldValue)
         }
     }
     /// Window points per skin pixel.
@@ -30,8 +33,6 @@ final class SoniqueSkinMainView: NSView {
     /// A drawer changes the outline, so the window's shadow is rebuilt.
     var onOutlineChange: (() -> Void)?
 
-    private var pressed: SoniqueSkinControl? { didSet { if pressed != oldValue { redraw() } } }
-    private var smallDrawer: SoniqueSmallDrawer? { didSet { if smallDrawer != oldValue { redraw(); onOutlineChange?() } } }
     private var drawerClose: DispatchWorkItem?
     private var image: CGImage?
     private var drag = SkinnedWindowDrag()
@@ -41,8 +42,7 @@ final class SoniqueSkinMainView: NSView {
     /// stops its engine.
     private var effects: SkinEffectsSurfaceView?
     private var effectObserver: NSObjectProtocol?
-    /// Long titles scroll while one is showing (`SoniqueSkinScene.marqueeOffset`).
-    private var marqueeOffset = 0
+    /// Steps `State.marqueeOffset` while a title shows.
     private var marqueeTimer: Timer?
 
     override var isFlipped: Bool { true }
@@ -50,13 +50,16 @@ final class SoniqueSkinMainView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override init(frame frameRect: NSRect) {
+        state.visualModeTitle = SkinEffectSelection.sonique.current.title
         super.init(frame: frameRect)
         wantsLayer = true
         setAccessibilityIdentifier("SoniqueSkinMainView")
         setAccessibilityRole(.group)
         effectObserver = NotificationCenter.default.addObserver(
             forName: SkinEffectSelection.didChange, object: SkinEffectSelection.sonique, queue: .main
-        ) { [weak self] _ in MainActor.assumeIsolated { self?.redraw() } }
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.state.visualModeTitle = SkinEffectSelection.sonique.current.title }
+        }
     }
 
     deinit {
@@ -77,35 +80,41 @@ final class SoniqueSkinMainView: NSView {
         windowShadow.attach(to: window, name: "sonique") { [weak self] in self?.image.map { [$0] } ?? [] }
     }
 
-    private func redraw() {
-        scene = skin.map {
-            SoniqueSkinScene(skin: $0, mode: mode, host: host, pressed: pressed, smallDrawer: smallDrawer, navDrawerOpen: navDrawerOpen,
-                              navScreen: navScreen, visualModeTitle: SkinEffectSelection.sonique.current.title,
-                              marqueeOffset: marqueeOffset)
+    /// What one state change does beside the redraw. A marquee step alone only repaints: the
+    /// outline and the effects surface have not moved.
+    private func show(_ new: SoniqueSkinScene.State, after old: SoniqueSkinScene.State) {
+        if new.host != old.host {
+            effects?.setActive(new.host.playState == .playing)
+            updateMarqueeTimer()
         }
-        image = scene.flatMap(SoniqueSkinRenderer.render)
-        needsDisplay = true
+        var scrolled = old
+        scrolled.marqueeOffset = new.marqueeOffset
+        guard scrolled != new else { return render() }
+        redraw()
+        if new.navDrawerOpen != old.navDrawerOpen || new.smallDrawer != old.smallDrawer { onOutlineChange?() }
+    }
+
+    private func redraw() {
+        render()
         windowShadow.invalidateShape("redraw")
         layoutEffects()
+    }
+
+    private func render() {
+        scene = skin.map { SoniqueSkinScene(skin: $0, state: state) }
+        image = scene.flatMap(SoniqueSkinRenderer.render)
+        needsDisplay = true
     }
 
     /// ponytail: re-renders the whole mode 20 times a second while a title shows; render only the
     /// title lines over a cached picture if that shows up in a profile.
     private func updateMarqueeTimer() {
-        let wanted = !host.title.isEmpty && window != nil
+        let wanted = !state.host.title.isEmpty && window != nil
         guard wanted != (marqueeTimer != nil) else { return }
         marqueeTimer?.invalidate()
         marqueeTimer = wanted ? Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scrollMarquee() }
+            MainActor.assumeIsolated { self?.state.marqueeOffset += 1 }
         } : nil
-    }
-
-    /// One marquee step: a new picture of the same scene, whose outline has not moved.
-    private func scrollMarquee() {
-        marqueeOffset += 1
-        scene?.marqueeOffset = marqueeOffset
-        image = scene.flatMap(SoniqueSkinRenderer.render)
-        needsDisplay = true
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -118,18 +127,23 @@ final class SoniqueSkinMainView: NSView {
     private func layoutEffects() {
         guard let scene, let display = scene.visualScreenDisplay else { return dropEffects() }
         let well = SoniqueSkinScene.VisualScreen.effects.offset(display.bounds.left, display.bounds.top)
-        let scale = bounds.width / CGFloat(max(1, scene.width))
-        let frame = CGRect(x: CGFloat(well.left - scene.canvas.left) * scale, y: CGFloat(well.top - scene.canvas.top) * scale,
-                           width: CGFloat(well.right - well.left) * scale, height: CGFloat(well.bottom - well.top) * scale)
+        let frame = viewRect(well, in: scene)
         if effects?.frame == frame { return }
         let surface = effects ?? SkinEffectsSurfaceView(frame: frame, selection: .sonique)
         if effects == nil {
             addSubview(surface)
             effects = surface
-            surface.setActive(host.playState == .playing)
+            surface.setActive(state.host.playState == .playing)
         }
         surface.frame = frame
         surface.applyClippingShape(Self.mask(display.rects, over: well), rect: surface.bounds)
+    }
+
+    /// A skin-pixel rect of the scene in this view's points.
+    private func viewRect(_ rect: SoniqueSkinRegion.Rect, in scene: SoniqueSkinScene) -> CGRect {
+        let scale = bounds.width / CGFloat(max(1, scene.width))
+        return CGRect(x: CGFloat(rect.left - scene.canvas.left) * scale, y: CGFloat(rect.top - scene.canvas.top) * scale,
+                      width: CGFloat(rect.right - rect.left) * scale, height: CGFloat(rect.bottom - rect.top) * scale)
     }
 
     private func dropEffects() {
@@ -177,7 +191,7 @@ final class SoniqueSkinMainView: NSView {
     private func sliderValue(_ index: Int, at event: NSEvent) -> Double? {
         guard let scene, let point = canvasPoint(convert(event.locationInWindow, from: nil)) else { return nil }
         let track = scene.eqSliderTrack(index)
-        let handle = scene.skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
+        let handle = scene.skin.settings.drawerSliders.handleHeight
         let y = Double(point.y + scene.canvas.top - track.top - handle / 2)
         return 1 - y / Double(max(1, track.bottom - track.top - handle))
     }
@@ -185,8 +199,8 @@ final class SoniqueSkinMainView: NSView {
     /// `menu` popped up under a menu screen entry, as Sonique's own items open in place.
     func popUp(_ menu: NSMenu, under item: SoniqueSkinMenu.Item) {
         guard let scene, let rect = scene.menuEntries.first(where: { $0.item == item })?.hit else { return }
-        let scale = bounds.width / CGFloat(max(1, scene.width))
-        let point = NSPoint(x: CGFloat(rect.left - scene.canvas.left) * scale, y: CGFloat(rect.bottom - scene.canvas.top) * scale)
+        let under = viewRect(rect, in: scene)
+        let point = NSPoint(x: under.minX, y: under.maxY)
         menu.popUp(positioning: nil, at: point, in: self)
     }
 
@@ -209,10 +223,10 @@ final class SoniqueSkinMainView: NSView {
     /// Small mode's drawer slides out while the pointer is over the bar or the open drawer, upward
     /// unless the screen's top edge leaves it no room.
     override func mouseMoved(with event: NSEvent) {
-        guard mode == .small else { return }
+        guard state.mode == .small else { return }
         if hit(event)?.inside == true {
             drawerClose?.cancel()
-            if smallDrawer == nil { smallDrawer = roomAbove ? .top : .bottom }
+            if state.smallDrawer == nil { state.smallDrawer = roomAbove ? .top : .bottom }
         } else {
             scheduleDrawerClose()
         }
@@ -221,8 +235,8 @@ final class SoniqueSkinMainView: NSView {
     override func mouseExited(with event: NSEvent) { scheduleDrawerClose() }
 
     private func scheduleDrawerClose() {
-        guard smallDrawer != nil, drawerClose == nil || drawerClose!.isCancelled else { return }
-        let work = DispatchWorkItem { [weak self] in self?.smallDrawer = nil; self?.drawerClose = nil }
+        guard state.smallDrawer != nil, drawerClose == nil || drawerClose!.isCancelled else { return }
+        let work = DispatchWorkItem { [weak self] in self?.state.smallDrawer = nil; self?.drawerClose = nil }
         drawerClose = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
@@ -235,23 +249,23 @@ final class SoniqueSkinMainView: NSView {
     override func mouseDown(with event: NSEvent) {
         guard let hit = hit(event), hit.inside else { return }
         if let control = hit.control, control.isActionable {
-            pressed = control
+            state.pressed = control
             if case .eqSlider(let index) = control, let value = sliderValue(index, at: event) {
                 onDial?(control, value)
-            } else if let value = host.dial(control) {
+            } else if let value = state.host.dial(control) {
                 knobDrag = (control, event.locationInWindow, value)
             }
             return
         }
         if event.clickCount == 2 {
-            onMode?(Self.mode(after: mode))
+            onMode?(Self.mode(after: state.mode))
             return
         }
         drag.begin(event)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        if case .eqSlider(let index) = pressed, let value = sliderValue(index, at: event) {
+        if case .eqSlider(let index) = state.pressed, let value = sliderValue(index, at: event) {
             onDial?(.eqSlider(index), value)
             return
         }
@@ -267,9 +281,9 @@ final class SoniqueSkinMainView: NSView {
     override func mouseUp(with event: NSEvent) {
         drag.end(event)
         knobDrag = nil
-        guard let pressed else { return }
-        self.pressed = nil
-        guard host.dial(pressed) == nil, hit(event)?.control == pressed else { return }
+        guard let pressed = state.pressed else { return }
+        state.pressed = nil
+        guard state.host.dial(pressed) == nil, hit(event)?.control == pressed else { return }
         onCommand?(pressed)
     }
 

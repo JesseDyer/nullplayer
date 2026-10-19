@@ -34,4 +34,26 @@ struct SoniqueSkinRegion: Equatable {
         region.rects = rects.map(clip).filter { $0.right > $0.left && $0.bottom > $0.top }
         return region
     }
+
+    init(rect: Rect) {
+        bounds = rect
+        rects = [rect]
+    }
+
+    func contains(_ x: Int, _ y: Int) -> Bool { bounds.contains(x, y) && rects.contains { $0.contains(x, y) } }
+
+    func offset(_ dx: Int, _ dy: Int) -> SoniqueSkinRegion {
+        var moved = self
+        moved.bounds = bounds.offset(dx, dy)
+        moved.rects = rects.map { $0.offset(dx, dy) }
+        return moved
+    }
+}
+
+extension SoniqueSkinRegion.Rect {
+    func contains(_ x: Int, _ y: Int) -> Bool { x >= left && x < right && y >= top && y < bottom }
+    func offset(_ dx: Int, _ dy: Int) -> Self { .init(left: left + dx, top: top + dy, right: right + dx, bottom: bottom + dy) }
+    func union(_ o: Self) -> Self {
+        .init(left: min(left, o.left), top: min(top, o.top), right: max(right, o.right), bottom: max(bottom, o.bottom))
+    }
 }

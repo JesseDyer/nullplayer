@@ -988,10 +988,8 @@ class WindowManager {
             return (mainWindowController as? WinampModernMainWindowController)?.loadedSkinURL?.path
         case .wmp:
             return (mainWindowController as? WMPMainWindowController)?.loadedSkinURL?.path
-        case .audion:
-            return (mainWindowController as? AudionFaceMainWindowController)?.loadedFaceURL?.path
-        case .sonique:
-            return (mainWindowController as? SoniqueSkinMainWindowController)?.loadedSkinURL?.path
+        case .audion, .sonique:
+            return (mainWindowController as? any SingleCanvasMainWindow)?.loadedSkinURL?.path
         }
     }
 

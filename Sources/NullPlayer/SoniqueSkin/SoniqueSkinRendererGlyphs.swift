@@ -10,7 +10,7 @@ extension SoniqueSkinPainter {
             let r = rect.cgRect
             context.setFillColor(fill)
             context.fillEllipse(in: r)
-            if scene.pressed == .ball(ball) {
+            if scene.state.pressed == .ball(ball) {
                 context.setFillColor(CGColor(gray: 0, alpha: 0.35))
                 context.fillEllipse(in: r)
             }

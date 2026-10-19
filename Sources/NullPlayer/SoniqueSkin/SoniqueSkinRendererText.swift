@@ -62,7 +62,7 @@ extension SoniqueSkinPainter {
     func draw(_ string: NSAttributedString, x: Int, baseline: Int, lettering: Bool) {
         context.saveGState()
         if lettering {
-            context.setShouldAntialias(scene.mode != .small)
+            context.setShouldAntialias(scene.state.mode != .small)
             context.setShouldSmoothFonts(false)
         }
         // Text draws upright in an unflipped space: undo the flip around the baseline.
@@ -83,7 +83,7 @@ extension SoniqueSkinPainter {
         marquee(title, right: right)
     }
 
-    /// `t` from its `x` to `right`, always scrolling: `scene.marqueeOffset` px left, coming round
+    /// `t` from its `x` to `right`, always scrolling: `scene.state.marqueeOffset` px left, coming round
     /// again after a gap (or after the whole span, for a title shorter than it), cut to the span.
     /// Always, not only when too long: a skin's own art can cover any part of the line (the sonique
     /// skin's rocker hides the status line's right end), so "fits" cannot be measured.
@@ -91,7 +91,7 @@ extension SoniqueSkinPainter {
         let left = t.x
         let period = max(Int(t.width.rounded(.up)) + SoniqueSkinScene.marqueeGap, right - left)
         var shown = t
-        shown.x = left - scene.marqueeOffset % period
+        shown.x = left - scene.state.marqueeOffset % period
         context.saveGState()
         context.clip(to: CGRect(x: left, y: t.baseline - Int(t.size * 2), width: right - left, height: Int(t.size * 3)))
         text(shown)

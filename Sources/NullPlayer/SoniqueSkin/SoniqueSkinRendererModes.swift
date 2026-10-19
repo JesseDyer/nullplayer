@@ -7,11 +7,11 @@ extension SoniqueSkinPainter {
         // The drawer first: the console is drawn over all of it but what hangs below the frame.
         if let drawer = scene.drawer, let misc = skin.image("/jpeg/misc") {
             let b = drawer.bounds, origin = scene.drawerOrigin
-            let at = skin.settings.point("misc locations", "DRAWER")
+            let at = skin.settings.origin(.drawer)
             let x = at.x + b.left - origin.x, y = at.y + b.top - origin.y
             draw(misc, source: .init(left: x, top: y, right: x + b.right - b.left, bottom: y + b.bottom - b.top),
                  x: b.left, y: b.top, clip: drawer.rects)
-            if scene.navDrawerOpen { drawerDials(misc, clip: drawer.rects) }
+            if scene.state.navDrawerOpen { drawerDials(misc, clip: drawer.rects) }
         }
         // The screen is Sonique's own surface, opaque: black in the picture there stays black (k2),
         // and nothing behind it, the drawer included, shows through (Trigun).
@@ -20,27 +20,26 @@ extension SoniqueSkinPainter {
             context.fill(display.rects.map(\.cgRect))
         }
         picture()
-        if scene.navScreen == .menu { menuScreen() }
+        if scene.state.navScreen == .menu { menuScreen() }
         visualModePanel()
         statusLine()
-        litStates(prefix: "NAV_", upDown: true)
-        let ownKnob = skin.image("/jpeg/nav_volumeknob") != nil
-        knob(control: .volume, strip: ownKnob ? "/jpeg/nav_volumeknob" : "/jpeg/volumeknob",
-             key: ownKnob ? "MISC_NAV_VOLUME_KNOB" : "MISC_VOLUME_KNOB", value: host.volume)
+        litStates(navigator: true)
+        let strip: SoniqueKnobStrip = skin.image(SoniqueKnobStrip.navVolume.image) != nil ? .navVolume : .volume
+        knob(control: .volume, strip: strip, value: host.volume)
     }
 
     /// The open drawer's EQ slider handles (`SLIDEROFF`, `SLIDERON` while held), centred on their
     /// tracks and see-through by their darkness (`handle(_:)`), and its three knobs, `/jpeg/smallknob`'s
     /// grey frames tinted with each knob's colour (skinpack § *animations*).
     private func drawerDials(_ misc: CGImage, clip drawer: [SoniqueSkinRegion.Rect]) {
-        let w = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_width")
-        let h = skin.settings.int("misc values", "MISC_DRAWER_SLIDER_HANDLE_SIZE_height")
-        let handles = ["SLIDEROFF", "SLIDERON"].map { key -> CGImage? in
-            let at = skin.settings.point("misc locations", key)
+        let sliders = skin.settings.drawerSliders
+        let w = sliders.handleWidth, h = sliders.handleHeight
+        let handles = [SoniqueLitState.sliderOff, .sliderOn].map { state -> CGImage? in
+            let at = skin.settings.origin(state)
             return misc.cropping(to: CGRect(x: at.x, y: at.y, width: w, height: h)).flatMap(Self.handle)
         }
         for (index, value) in host.eq.prefix(SoniqueSkinScene.eqSliders).enumerated() {
-            guard let handle = handles[scene.pressed == .eqSlider(index) ? 1 : 0] else { continue }
+            guard let handle = handles[scene.state.pressed == .eqSlider(index) ? 1 : 0] else { continue }
             let track = scene.eqSliderTrack(index)
             let top = track.top + Int((1 - min(1, max(0, value))) * Double(track.bottom - track.top - h))
             context.saveGState()
@@ -52,8 +51,7 @@ extension SoniqueSkinPainter {
                                          (.balance, host.balance, .balKnobColor), (.pitch, host.pitch, .pitchKnobColor)] {
             // A drawer knob's strip is a full turn, of which the knob sweeps 250° about its middle frame
             // (oracle: frames 5–30 of sonique's 36, 3–16 of metrobin's 20, 2–8 of bluehorizon's 11).
-            knob(control: control, strip: "/jpeg/smallknob", key: "MISC_SMALL_KNOB", value: value, tint: colour,
-                 turn: 250.0 / 360)
+            knob(control: control, strip: .drawer, value: value, tint: colour, turn: 250.0 / 360)
         }
     }
 
@@ -78,10 +76,10 @@ extension SoniqueSkinPainter {
 
     func mid() {
         picture()
-        litStates(prefix: "", upDown: false)
-        knob(control: .volume, strip: "/jpeg/volumeknob", key: "MISC_VOLUME_KNOB", value: host.volume)
+        litStates(navigator: false)
+        knob(control: .volume, strip: .volume, value: host.volume)
         // The shuttle at rest is its first frame (258 mid captures closer than the middle one).
-        knob(control: .shuttle, strip: "/jpeg/shuttle", key: "MISC_SHUTTLE_KNOB", value: 0, opaque: false)
+        knob(control: .shuttle, strip: .shuttle, value: 0, opaque: false)
         ring(.songRing, progress: host.songProgress, colour: .progressColor1)
         ring(.listRing, progress: host.listProgress, colour: .playListColor1)
         songDisplay()
@@ -98,7 +96,7 @@ extension SoniqueSkinPainter {
         clip(to: region.rects)
         let b = region.bounds.cgRect
         // Skin pixels run top-down, so angles grow clockwise; -90° is the top.
-        let (start, sweep) = skin.settings.int("misc values", "mid_playlistmode") == 0
+        let (start, sweep) = skin.settings.midPlaylistMode == 0
             ? (-Double.pi / 2, 2 * Double.pi) : (3 * Double.pi / 4, 1.5 * Double.pi)
         let centre = CGPoint(x: b.midX, y: b.midY)
         context.move(to: centre)
@@ -151,7 +149,7 @@ extension SoniqueSkinPainter {
 
     func small() {
         guard let picture = skin.image(SoniqueSkin.Mode.small.picture), let bar = skin.region(SoniqueSkin.Mode.small.frame) else { return }
-        if let side = scene.smallDrawer { smallDrawer(side) }
+        if let side = scene.state.smallDrawer { smallDrawer(side) }
         // `/jpeg/smallstate` is the bar twice: unlit above, lit below. The lit half shows through
         // the progress lines as far as they have come, and the blinker caps by loudness.
         let barHeight = bar.bounds.bottom
@@ -184,7 +182,7 @@ extension SoniqueSkinPainter {
                  clip: placement.region.rects.map { $0.offset(placement.dx, placement.dy) })
         }
         for (control, rect) in scene.drawerButtons {
-            icon(control, in: rect, lit: scene.pressed == control)
+            icon(control, in: rect, lit: scene.state.pressed == control)
         }
         if let marquee = scene.marqueeRect, !host.title.isEmpty {
             context.saveGState()
