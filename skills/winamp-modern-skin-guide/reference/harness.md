@@ -386,7 +386,8 @@ the 906 crawl candidates (2026-10-19), mostly the build.
   It reads the bound programs (the engine's too, for a cPro skin) **plus every `.maki` the archive
   ships** — a `<script>` inside a `<groupdef>` binds only when something instantiates the group, and
   the bound-only first draft missed Hal's Eye's `manual.maki` that way. The GUID is
-  `MakiClassGUID.canonical`; there is no name table, so `d6f50f64…` is `System`.
+  `MakiClassGUID.canonical`; `docs/winamp-modern/maki-classes.tsv` names it (`d6f50f64…` is
+  `System`), harvested from the `extern class` lines of the `.mi` headers the corpus ships.
 - `xml-tag`, `xml-attr` (`tag@attr`), `xml-action`, `xml-display`: every comment-stripped `.xml` in
   the archive, lowercased. The **tree**, not the include closure — an orphan file counts.
 - `family` (cpro / standardframe / own-wasabi / plain, a path heuristic) and `load` (ok/failed). A
@@ -402,6 +403,15 @@ the index covers in part, or a skin the manifest lacks, fails as a stale index. 
 an intake. At B168's close the plain `awk … | cut -f1 | sort -u | wc -l` count matched an independent extract-and-`rg` over gold+silver for `getEndFrame` (3),
 `setClipboardText` (2), `activeimage` (75) and `text@wrap` (8, which needs `rg -U` — Wasabi tags span
 lines). Two runs are byte-identical.
+
+The **demand index** is `scripts/wal_demand.sh [--index <features.tsv>] > demand.tsv` (B174, the S4
+table): one row per MAKI call the runtime lacks (`maki-call`, `implemented` `no`), named
+`Class.method`, with distinct skins per tier and three sample skins, best tier first. It joins tier
+the way `wal_reach.sh` does, and its first line carries the manifest rev. Rows are ordered by skins,
+then gold+silver, then call, so two runs are byte-identical (~1 s). It counts declarations, not
+consequences: the backlog's S4 ranking multiplies the count by a severity and visibility read from
+the call site, because every miss aborts its whole handler and *which* handler decides the damage.
+Skins that ship `scripts/*.m` show the handler directly; `RENDER_DISASM=@<source>` covers the rest.
 
 ### Growing the corpus — the crawler and the intake
 

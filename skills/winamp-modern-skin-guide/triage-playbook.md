@@ -94,7 +94,8 @@ which half you are standing on before planning work:
 | S1 load census | **Built** — `scripts/wal_skin_census.sh`, one TSV row per archive | [reference/harness.md](reference/harness.md) → *The corpus census* |
 | Regression sweep (§6) | **Built** — `scripts/wal_render_sweep.sh capture` / `compare`, invariants **and** every PNG | [reference/harness.md](reference/harness.md) → *The corpus render sweep* |
 | S2 static MAKI/XML demand | **Built for MAKI; XML half partial** — the XML census exists, but the supported-surface manifest it diffs against does not (corpus-runner-plan §7 step 6), so XML rows carry `implemented` `-`. `scripts/wal_feature_index.sh` writes `features.tsv`, and `scripts/wal_reach.sh` turns it into the per-tier Reach every measured backlog row carries; `wal_render_sweep.sh --touching` selects from it | [reference/harness.md](reference/harness.md) → *The static feature index* |
-| S3 motion + interaction, S3.5 state space, S4 rank | **Not built.** Provoke motion and interaction by hand | — |
+| S4 demand index | **Built for MAKI** — `scripts/wal_demand.sh` inverts the index into call → skins per tier; the ranked queue it fed is B182–B201. XML waits on the supported-surface manifest; the impact and coverage scores wait on S3 | [reference/harness.md](reference/harness.md) → *The static feature index* |
+| S3 motion + interaction, S3.5 state space | **Not built.** Provoke motion and interaction by hand | — |
 
 Two rules follow from the built half, and both are already paid for — the full versions, with the
 measurements behind them, are in [reference/harness.md](reference/harness.md):

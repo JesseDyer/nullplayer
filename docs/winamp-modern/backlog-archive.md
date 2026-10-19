@@ -3,6 +3,53 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B174 — the S4 demand index — closed 2026-10-19
+
+| B174 | **The S4 demand index (plan §7 step 3, §3 S4).** Invert `features.tsv` into one table: capability → skins that declare it, per tier, with sample skins to test against, reproducible from the index plus the manifest rev. Start with the MAKI calls the runtime lacks (`maki-call`, `implemented=no`), because those have a verdict. XML rows wait on the supported-surface manifest (§7 step 6). Rank with the plan's `skins × severity × visibility ÷ cost` and file the top 20 as rows here, each with its Reach from `wal_reach.sh`. Done when the table regenerates byte-identically and the top 20 are filed | `maki-call implemented=no`: 157 distinct calls across 538 skins | M | 2 |
+
+**Closed 2026-10-19.** `scripts/wal_demand.sh` (`harness.md` → *The static feature index*) prints
+the 157 calls over the all-tier index (manifest `9e68ffe0`), and two runs are byte-identical. Class
+names come from the new `docs/winamp-modern/maki-classes.tsv`: 60 classes from the `extern class`
+lines of every `.mi` the gold, silver and bronze archives ship. One GUID has two names there,
+`Component` (older headers) and `WindowHolder` (newer); the table keeps `WindowHolder`. One class
+the headers lack, `686fa9c9…` (two skins), prints as its GUID. Quarantine is 0 on every row,
+because a skin that does not load has no MAKI rows.
+
+**Scoring.** Every miss aborts the handler that made it, so severity comes from the handler. It was
+read from the `scripts/*.m` that 57 gold and silver skins ship (780 files). Severity: surface-dead
+4, control-dead 3, partial or cosmetic 2. Visibility: main window at rest 3, a click or hover
+away 2, a config page 1. Cost: S 1, M 2. Sibling calls with one fix share a row and count the union
+of their skins.
+
+| Row | Calls | Skins | Sev | Vis | Cost | Priority |
+|---|---|---:|---:|---:|---:|---:|
+| B182 | events called as methods (13 names) | 255 | 3 | 2 | 1 | 1,530 |
+| B183 | `restoreApplication`, `activateApplication` | 179 | 2 | 2 | 1 | 716 |
+| B184 | `getAlbumArt` | 117 | 3 | 2 | 1 | 702 |
+| B185 | `ConfigAttribute.getAttributeName` | 97 | 3 | 2 | 1 | 582 |
+| B186 | `windowMenu` | 95 | 3 | 2 | 1 | 570 |
+| B187 | `Application.shutdown` | 92 | 3 | 2 | 1 | 552 |
+| B188 | `next`, `previous` | 39 | 3 | 3 | 1 | 351 |
+| B189 | `Edit.setAutoEnter`, `onIdleEditUpdate`, `enter` | 55 | 4 | 1 | 1 | 220 |
+| B190 | `Vis.getMode` | 23 | 3 | 3 | 1 | 207 |
+| B191 | `chr` | 34 | 3 | 2 | 1 | 204 |
+| B192 | `CheckBox.setChecked`, `isChecked` | 50 | 4 | 2 | 2 | 200 |
+| B193 | `WindowHolder.getComponentName` | 91 | 2 | 2 | 2 | 182 |
+| B194 | `setEq` | 27 | 3 | 2 | 1 | 162 |
+| B195 | `getViewport*FromPoint` | 25 | 2 | 3 | 1 | 150 |
+| B196 | `getDateHour`, `getDateMin` | 11 | 3 | 3 | 1 | 99 |
+| B197 | `eject` | 11 | 3 | 3 | 1 | 99 |
+| B198 | `TabSheet.getCurPage`, `setCurPage` | 31 | 3 | 2 | 2 | 93 |
+| B199 | `minimizeApplication` | 9 | 3 | 3 | 1 | 81 |
+| B200 | `isObjectValid` | 10 | 3 | 2 | 1 | 60 |
+| B201 | `Layout.center` | 10 | 3 | 2 | 1 | 60 |
+
+Just below the cut: `getSnapAdjustBottom`/`clientToScreenH` (10 skins, 60, one gold), `showWindow`
+(17, M, 51), `ComponentBucket.get/setScroll` (15, M, 45), `Container.enumLayout` (7, 42),
+`getMonitor*FromGuiObject` (10, config-deep, 30), `Browser.back/forward` (23, L: no browser, 23),
+and Zygote's `CfgGroup.cfg*` and `getWac` (21, config-deep, M). Each severity, filed or not, rests on one or two call sites,
+so it is the column to re-check when a row is taken.
+
 ## B173 — the quarantined skins, sorted by cause — closed 2026-10-19
 
 | B173 | **Sort the 54 quarantined skins by cause.** Each one is a `load failed` row in the index, and nobody has looked at why. Split them into (a) a trap, hang or limit breach in our code: a security bug, filed as its own row ahead of everything (S1); (b) a malformed or non-`.wal` archive: stays quarantined; (c) a well-formed skin we reject: a loader gap, ranked like any capability. Record each skin's cause and evidence (the loader's error or the crash) in the archive entry. Done when all 54 have a cause and every (a) and (c) cause has a row | `load '^failed$'`: gold 0/56, silver 0/54, bronze 0/827, quarantine 54/54 (manifest 9e68ffe0) | M | 2 |

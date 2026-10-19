@@ -3,14 +3,15 @@
 **Status: partly built (reviewed 2026-10-19).**
 
 - **Shipped:** S0 (tiered corpus, manifest, crawler, intake), S1 (load census), S2's MAKI half and
-  its XML census (static feature index, per-tier reach), and the §6 regression sweep with
-  impact-selected and sharded runs. All are documented in
-  `skills/winamp-modern-skin-guide/reference/harness.md`; read none of those sections below as pending.
-  §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
-- **Next, by §7:** step 3, S4's demand index (B174). The 54 quarantined skins are sorted (B173): no
-  traps, and seven loader gaps filed as B175–B181.
-- **Not built:** S3, S3.5, S4, and S2's supported-surface manifest (§7 step 6, deferred). The rest of
-  this file is their specification.
+  its XML census (static feature index, per-tier reach), S4's MAKI demand index (`wal_demand.sh`,
+  B174, whose top 20 are B182–B201), and the §6 regression sweep with impact-selected and sharded
+  runs. All are documented in `skills/winamp-modern-skin-guide/reference/harness.md`; read none of
+  those sections below as pending. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
+- **Next, by §7:** step 4, the S3 motion sweep. The capability work runs from the backlog meanwhile:
+  B175–B181 (the quarantine's loader gaps, B173) and B182–B201 (the demand queue).
+- **Not built:** S3, S3.5, S4's impact and coverage scores (they need S3), and S2's supported-surface
+  manifest (§7 step 6, deferred), which S4's XML rows wait on. The rest of this file is their
+  specification.
 
 The durable method — defect classes, instrument blind spots, isolating one issue, dispositions,
 regression safety — lives in `skills/winamp-modern-skin-guide/triage-playbook.md`, whose §3 carries
