@@ -1913,12 +1913,7 @@ final class WasabiSceneRenderer {
         guard let container = enclosingContainer(of: object),
               container.attributes[WinampModernContainerTopology.synthesizedAttribute] == "1"
         else { return nil }
-        for id in WinampModernHostedWindowID.allCases {
-            if reference == "guid:np.\(id.rawValue)" {
-                return WinampModernHostedWindowRegistry.entry(id: id)?.id
-            }
-        }
-        return nil
+        return WinampModernHostedWindowID.allCases.first { reference == $0.holderReference }
     }
 
     private static func enclosingContainer(of object: WasabiObject) -> WasabiObject? {

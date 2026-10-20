@@ -177,8 +177,8 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
 
     private func materialize(_ id: WinampModernHostedWindowID) -> MaterializedWindow? {
         if let instance = instances[id] { return instance }
+        let definition = id.definition
         guard !failedIDs.contains(id),
-              let definition = WinampModernHostedWindowRegistry.entry(id: id),
               case .skinFrame(let frame) = loadedSkin.surfaceSynthesis.hostedWindows[id],
               let instantiate = loadedSkin.runtime.instantiateHostedWindow,
               let componentHost else { return nil }

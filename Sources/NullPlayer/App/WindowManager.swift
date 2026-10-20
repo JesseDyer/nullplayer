@@ -750,8 +750,7 @@ class WindowManager {
                 add(window, snapTarget: !instances.contains(ObjectIdentifier(window)))
             }
             for hosted in controller.materializedHostedWindows {
-                let stack = WinampModernHostedWindowRegistry.entry(id: hosted.id)?
-                    .stackPolicy.participatesInCenterStack == true
+                let stack = hosted.id.definition.stackPolicy.participatesInCenterStack
                 add(hosted.window, centerStack: stack, snapTarget: true)
             }
         }

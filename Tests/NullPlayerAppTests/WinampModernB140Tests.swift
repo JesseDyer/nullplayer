@@ -59,7 +59,7 @@ final class WinampModernB140Tests: XCTestCase {
         guard case .skinFrame(let frame) = loaded.surfaceSynthesis.hostedWindows[.cava] else {
             return XCTFail("expected a skin-frame route")
         }
-        let definition = try XCTUnwrap(WinampModernHostedWindowRegistry.entry(id: .cava))
+        let definition = WinampModernHostedWindowID.cava.definition
         let request = WinampModernHostedWindowInstantiation(definition: definition, frame: frame)
         // 25 left against 15 right and 28 top against 22 bottom: the sides are centred on 25, the
         // top and bottom keep the skin's own 28 and 22, so the client's own size plus 50x50.
@@ -76,7 +76,7 @@ final class WinampModernB140Tests: XCTestCase {
         guard case .skinFrame(let frame) = loaded.surfaceSynthesis.hostedWindows[.cava] else {
             return XCTFail("expected a skin-frame route")
         }
-        let definition = try XCTUnwrap(WinampModernHostedWindowRegistry.entry(id: .cava))
+        let definition = WinampModernHostedWindowID.cava.definition
         let request = WinampModernHostedWindowInstantiation(definition: definition, frame: frame)
         XCTAssertEqual(request.defaultSize, definition.defaultSize)
         let nodes = WasabiSurfaceSynthesizer.frameNodes(
@@ -152,7 +152,7 @@ final class WinampModernB140Tests: XCTestCase {
         guard case .skinFrame(let frame) = loaded.surfaceSynthesis.hostedWindows[.cava] else {
             return XCTFail("expected a skin-frame route")
         }
-        let definition = try XCTUnwrap(WinampModernHostedWindowRegistry.entry(id: .cava))
+        let definition = WinampModernHostedWindowID.cava.definition
         let instantiate = try XCTUnwrap(loaded.runtime.instantiateHostedWindow)
         let root = try instantiate(WinampModernHostedWindowInstantiation(definition: definition,
                                                                         frame: frame))
