@@ -120,9 +120,10 @@ Optional env switches, all off by default:
 Timing probes need an optimized build: `swift test -Xswiftc -O --filter WinampModernRenderDumpTests`
 (a debug build is ~6× slower and will mislead you; `swift test -c release` does not compile, because
 the test target uses `#if DEBUG` hooks). Two things that waste an afternoon: `cd`-ing out of the repo
-before `swift test` fails silently when the output is piped to `grep`, and the harness's skin
-configuration persists in the **xctest** UserDefaults domain between runs
-(`defaults delete com.apple.dt.xctest.tool` resets it).
+before `swift test` fails silently when the output is piped to `grep`. Skin configuration does
+**not** persist between runs: an `xctest` process keeps it in memory
+(`WinampModernConfiguration.processDefaults`, B211), so every harness run starts from a skin's
+first-run state — Big Bento Modern at 1536×878, BOOM on its packaging intro.
 
 ### What the probe models about windows
 
@@ -227,16 +228,12 @@ that changes the right attributes but nothing on screen is a renderer gap.
 > **Anexa's `main-shade` is genuinely nondeterministic**, not just an encoder artifact: two runs of
 > the same binary differ in the pixels around `(47, 38)-(75, 64)`. Discount it in a sweep.
 >
-> **Reset the xctest defaults domain before a before/after sweep, and take both halves of the pair
-> without running anything else in between.** Skin configuration persists in that domain (see above),
-> so *any* probe run between the two halves contaminates the second one — and a probe that calls
-> `runtime.start()` is enough on its own, because a skin's `onScriptLoaded` writes configuration.
-> This has produced a false regression: a `ColorMgr` pass whose "after" sweep was taken downstream of
-> a corpus-wide probe reported changed images in a skin the change could not touch, and the diff read
-> exactly like a real defect — **no new diagnostic, no failed handler, and reproducible against the
-> stale baseline** (two runs of the same binary agreed with each other, which is the check that
-> normally separates a real change from noise, and it passed). The tell is a skin changing that the
-> change has no mechanism to reach. `defaults delete com.apple.dt.xctest.tool`, then re-run.
+> **Every harness process starts from no stored skin settings** (B211). They used to share the
+> `xctest` tool's defaults domain, so a probe run between the two halves of a before/after pair
+> contaminated the second one — a skin's `onScriptLoaded` writes configuration — and produced false
+> regressions with no new diagnostic. The store is now in memory per process, so a sweep is a
+> function of the tree: two captures with a full feature-index run between them differ only in the
+> known nondeterministic items and the live clocks (Vortex's and Mac OS X Panther's dashboards).
 
 > **A click is driven when the loop reaches its container, so the clicked container is dumped
 > first.** The dump walks containers in declaration order and drives `RENDER_CLICK` inside that walk;

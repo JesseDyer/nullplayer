@@ -3,6 +3,62 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B207, B211 and the demand table's tail — closed 2026-10-19
+
+| B207 | **A `text` or `AlbumArt` a script hooks the mouse on is never under the pointer.** `isInteractive` (`WasabiRendererHitTesting.swift`) admits buttons, sliders, layers and objects with an `action=`; a `text` or `AlbumArt` whose only behaviour is a script binding is skipped, so a press falls through to the layout. Wasabi gives every non-ghost GuiObject its rect. The time readout that toggles elapsed/remaining is the visible case: `text#timer` on Defix and Ebonite, `text#s2timer` on Vortex; also TRON Legacy's `songticker`, EPS's `volumetext`, and Darjah's and Formamp's album art. Found by the interaction sweep (B205) as `covered:layout`. Admit an object a script binds a pointer event on; the renderer will need the binding answer from the runtime. Done when those seven read `works` or `silent` instead of `unreachable`, and a ghost text still passes clicks through | 7 skins in gold+silver (the sweep's `covered:layout` rows on `text`/`AlbumArt`, rev `f3ca6c5c`) | M | 2 |
+| B211 | **Keep the corpus harnesses' skin settings out of each other's runs.** Every harness process (`wal_render_sweep.sh`, `wal_feature_index.sh`, the census, the motion and interaction sweeps) builds `WinampModernConfiguration` on `UserDefaults.standard`, which for `xctest` is the shared `com.apple.dt.xctest.tool` domain, so what one run's scripts store with `setPrivateInt` is the next run's starting state. Since B192 made `isChecked` work, the opensource notifier writes its checkboxes back at `onScriptUnloading`: the render sweep at `b3d4a676` drew EPS's and Itemskin's notifier prefs checked, the feature index run after it stored them as 0, and the next sweep drew them unchecked with no code change between them (B193's sweep, `fcc8d1fc`→`f25bccc6`). Give each harness run a fresh defaults suite, so a sweep is a function of the tree and not of the runs before it. Done when two sweeps with an index run between them are byte-identical bar the known nondeterministic pair | the corpus regression gate; every skin that persists private ints (`defaults find OpenNote` lists 8 skins today) | S | 2 |
+
+**B207 closed 2026-10-19** (commit `ddbdec7b`). `isInteractive` admits any non-group object a script
+binds a press on (`WinampModernScriptRuntime.pressEvents`: left/right down, up, click and double).
+The renderer asks through `pressBindingProvider`, which is wired where `configStateProvider` is. A
+hover-only binding is left out, so an `onMouseMove` overlay does not swallow clicks. The
+interaction sweep over the seven named skins now reads `hit=yes` for every one: `text#timer` on
+Defix and Ebonite, `text#s2timer` on Vortex, TRON Legacy's songticker and EPS's `volumetext` (works or silent),
+and Darjah's and Formamp's album art (right-click works). A ghost text still passes the click through
+(`testATextAScriptHooksAPressOnTakesTheClick`). In the app, Ebonite's timer right-click opens its
+four-entry clock menu.
+
+**B211 closed 2026-10-19** (commit `7989a2c9`, the in-memory store). An `xctest` process keeps
+`.wal` skin settings in a `UserDefaults` subclass held in memory
+(`WinampModernConfiguration.processDefaults`). The app keeps its own domain. Two earlier attempts
+failed in ways worth recording. Clearing the shared domain at process start raced the shards: a
+late shard wiped what an early one had written, and BLAKK lost a checkbox mid-sweep. A suite per
+process left a plist in `~/Library/Preferences` every run. Done-criterion: two
+`wal_render_sweep.sh --shards 10` captures with a full `wal_feature_index.sh` run between them
+differ only in the known pair (Anexa `main-shade`, S7Reflex's `MLibrary` minimum), Vortex's and Mac
+OS X Panther's dashboard clock (which ticks now that `dateToLongTime` works) and Itemskin's
+`MLibrary` minimum (same flake). The first clean capture moved 23 images against the polluted
+baseline. Those are first-run states that stored settings had been hiding: Big Bento Modern's four
+variants open at 1536×878, the size its skin page records, not a stored 814×530; BOOM shows its
+packaging intro; cPro Bento, Enkera, TomK and the notifier prefs show their defaults.
+
+**The demand table's tail** (commit `ddbdec7b`): `wal_demand.sh` went from 93 unimplemented calls to
+**4**. All four left are on class `686fa9c9…` (`appearance_getGlowButton*`, `applyStyle`), one bronze
+skin each (Winamp Portrait WMP12, cPro Creed Full Circle). No `.mi` the corpus ships declares that
+class: it is a third-party plugin's own object. What landed, by seam:
+
+- **System.** Date fields (`getDateDay`/`Month`/`Dow`/`Dst`), `formatDate`, `formatLongDate`,
+  `dateToLongTime`, `sqr`, `frac`, `enqueueFile`, `getMonitor*FromGuiObject`, `getWac` and
+  `Wac.sendCommand` (answers 0, "not handled"), `showWindow` (a component GUID opens that window
+  show-only, a group id shows its container), `get`/`popMainBrowser`.
+- **PlEdit.** `moveUp`, `moveDown`, `getRating`, `setRating` (per row, through `TrackRatingService`).
+- **GUI objects.** Container `getNumLayouts`/`enumLayout`/`setName`; `Group.isLayout`/`endModal`
+  (no modal loop, so it closes the window); Layout snap-adjust read-back and desktop alpha; client
+  and screen W/H; `bringBelow`/`bringAbove`; `Button.rightClick`; `Slider.lock`/`unlock`;
+  `Vis.nextMode`/`setRealtime`; `AnimatedLayer.getAutoReplay`; `Browser.back`/`forward`.
+- **Other objects.** `Timer.getSkipped`, `PopupMenu.disableCommand`, `Map.getRegion`.
+- **Widgets** (`WinampModernScriptRuntimeWidgets.swift`). `CfgGroup`; `DropDownList`
+  `getSelectedText`/`selectItem`/`setListHeight` (`selectItem` is gated by class against
+  `GuiTree.selectItem`); `ComponentBucket` `get`/`setScroll`; `MouseRedir.setRedirection` (the view
+  dispatches to the target); the `GuiList` row and column edits; `GuiTree`/`TreeItem`, modelled in
+  the runtime and drawn and clicked through the list renderer as indented rows.
+- **Colour themes.** `GammaSet.enumGammaGroup` and `GammaGroup` `setRed`/`Green`/`Blue`, which retint
+  a group of the active theme. `apply()` on the active theme repaints, for Ebonite's colour changer.
+
+Render sweep against the previous capture: Vortex's and Panther's dashboards lay their panels out
+and show the clock. Zygote's big time digits go blank at rest, because its script now hides the real
+timer and copies it only while playing.
+
 ## B193 — `WindowHolder.getComponentName` — closed 2026-10-19
 
 | B193 | **`WindowHolder.getComponentName()`.** cPro skins name the drawer tab after the hosted component (`refreshAIOTab.onTimer`, `checkVisName.onTimer`, Venus's `CentroSUI.m`), so the timer aborts every tick and the tab keeps its default label. Return the hosted window's display name. S4: 91 × cosmetic-to-control 2 × off-rest 2 ÷ M 2 = 182. Done when `wal_demand.sh` does not list it and cPro Venus's tab shows the component's name | `maki-call '^403abcc0[0-9a-f]*[.]getcomponentname$'`: gold 10/56, silver 7/54, bronze 74/827, quarantine 0/54 (manifest 9e68ffe0) | M | 2 |
