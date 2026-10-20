@@ -33,6 +33,9 @@
 - **Library Browser Tiles mode keeps tiles small in a narrow window** — narrowing the window made
   the tiles bigger, down to a single column of two large tiles. Tiles are now never wider than
   120 pt: a narrower window fits more, smaller tiles.
+- **Plex no longer floods the log at startup** — connecting and preloading the library logged every
+  step and, in debug builds, a dump of every server response. Startup now logs two lines; failures
+  are still logged. Debug builds also stop dumping every Subsonic, Jellyfin and Emby response.
 
 ## 0.33.0
 
