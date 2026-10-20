@@ -701,6 +701,16 @@ final class WasabiTextMetrics {
     /// What a text object currently shows. `display=` binds it to a playback value; a `songticker`
     /// carries no text of its own and always shows the current track.
     static func content(of object: WasabiObject, host: WinampModernHost) -> String {
+        let text = uncasedContent(of: object, host: host)
+        // `forceuppercase` / `forcelowercase` (and Wasabi's short spellings) restyle whatever the
+        // object shows. 97 corpus skins use them, BOOM on every window title.
+        let flag = { (keys: [String]) in keys.contains { object.attributes[$0] == "1" } }
+        if flag(["forceuppercase", "forceupcase"]) { return text.uppercased() }
+        if flag(["forcelowercase", "forcelocase"]) { return text.lowercased() }
+        return text
+    }
+
+    private static func uncasedContent(of object: WasabiObject, host: WinampModernHost) -> String {
         // The status line is claimed **either** by `id="PE_Info"` (mmd3) **or** by
         // `display="PE_Info"` (Defix, whose `<text id="info.input" display="PE_Info" w="0" h="0"
         // visible="0"/>` is a hidden feed its script parses into the playlist box's track count and
@@ -807,10 +817,24 @@ final class WasabiTextMetrics {
     /// `<text default=":componentname"/>` — the colon marks a value the frame supplies, not a string
     /// to draw. Left unresolved, a window's title bar reads ":componentname" *and* the script's
     /// `getAutoWidth()` sizes the title to that literal, so the box does not fit the real name.
+    /// Skins spell it `@COMPONENTNAME@` too, the path-variable form (krazyPlayer, on every frame),
+    /// and embed it in a longer title (Symplicipod: `symplicipod | :componentname`).
     private static func resolvePlaceholder(_ value: String, on object: WasabiObject) -> String {
-        guard value.hasPrefix(":") else { return value }
-        let key = String(value.dropFirst()).lowercased()
+        let key: String
+        if value.hasPrefix(":") {
+            key = String(value.dropFirst()).lowercased()
+        } else if value.count > 2, value.hasPrefix("@"), value.hasSuffix("@") {
+            key = String(value.dropFirst().dropLast()).lowercased()
+        } else if let token = value.range(of: ":componentname", options: .caseInsensitive) {
+            return value.replacingCharacters(in: token, with: componentName(for: object))
+        } else {
+            return value
+        }
         guard key == "componentname" || key == "name" else { return value }
+        return componentName(for: object)
+    }
+
+    private static func componentName(for object: WasabiObject) -> String {
         // Nearest wins: the XUI frame instance that declares `componentname=`, else the container's
         // own `name=`.
         var current: WasabiObject? = object

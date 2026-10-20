@@ -184,7 +184,7 @@ struct WasabiGroupDefinition {
     let xuiTag: String?
     let inheritedGroup: String?
     let embeddedXUITag: String?
-    let defaultAttributes: [String: String]
+    var defaultAttributes: [String: String]
     let templateChildren: [WalXMLNode]
     let source: WalSourceLocation
     /// Where this `<groupdef>` sits in the expanded document, in pre-order. Winamp's parser is
@@ -198,7 +198,7 @@ struct WasabiGroupDefinition {
 struct WasabiResolvedGroupDefinition {
     let identifier: String
     let embeddedXUITag: String?
-    let defaultAttributes: [String: String]
+    var defaultAttributes: [String: String]
     let templateChildren: [WalXMLNode]
 }
 
@@ -218,6 +218,16 @@ final class WasabiTypeRegistry {
 
     func register(_ definition: WasabiGroupDefinition) {
         let key = Self.fold(definition.identifier)
+        // A redefinition that states no size keeps the one the id already had. NEO_CLASSIC declares
+        // `albumart.content.group` 259x259 for its player and again, sizeless, for its album-art
+        // window; the player's layout comes after both, and its 259px pane — the skin's dividers are
+        // spaced for it — drew as nothing.
+        var definition = definition
+        if let previous = byIdentifier[key] {
+            for axis in ["w", "h"] where definition.defaultAttributes[axis] == nil {
+                definition.defaultAttributes[axis] = previous.defaultAttributes[axis]
+            }
+        }
         // Same rule as the resource registry: a re-include of an identical `<groupdef>` is not a
         // redefinition, and warning about it says nothing about the skin (B29).
         if let previous = byIdentifier[key], !Self.isSameDefinition(previous, definition) {
@@ -1541,7 +1551,8 @@ final class WasabiSkinInitializer {
             guard createdCount <= maximumObjectCount else {
                 throw WalFailure(WalDiagnostic(.expandedNodeLimitExceeded, "Retained graph exceeds \(maximumObjectCount) objects.", location: node.location))
             }
-            let object = graph.makeObject(typeName: typeName, attributes: attributes, source: node.location)
+            let object = graph.makeObject(typeName: typeName, attributes: attributes, source: node.location,
+                                          attributeOrder: node.attributeOrder)
             if let parent { try parent.appendChild(object) } else { graph.appendRoot(object) }
             if replacesHostedWidget { skinClaimedObjects.insert(object.stableID) }
             // A top-level container's *declared* visibility, snapshotted before anything can write
@@ -1615,6 +1626,21 @@ final class WasabiSkinInitializer {
             // (this group, that id) is what the lookup above already resolved.
             if embeddedParent !== object, let tag = embeddedXUITag {
                 _ = object.setAttribute("nullplayer.embedxui", value: tag.lowercased())
+                // Geometry and identity never cross: they belong to the wrapper, and forwarding them
+                // would move the control inside its own group. What crosses is what the embedded
+                // object itself acts on — its range, its commands, a text's or button's label
+                // styling, a widget's structure — and only onto attributes it does not state.
+                @discardableResult
+                func inherit(_ keys: [String]) -> Bool {
+                    var forwarded = false
+                    for key in keys where embeddedParent.attributes[key] == nil {
+                        if let value = attributes[key] {
+                            _ = embeddedParent.setAttribute(key, value: value)
+                            forwarded = true
+                        }
+                    }
+                    return forwarded
+                }
                 // The wrapper *is* the control, so the range it declares is the **embedded** object's
                 // range — a `<SC:VScrollBar low="0" high="100">` wrapping a bare `<slider>` means that
                 // slider counts 0…100, not Winamp's default 0…255.
@@ -1624,22 +1650,36 @@ final class WasabiSkinInitializer {
                 // page computes `scrollToPercent(99 - position)`. On the 0…255 default the positions
                 // ran 113 → 118 → 123 → 128, so the percentage was *negative every time* and the page
                 // clamped back to the top on every press: the bar moved, and nothing scrolled (BB19).
-                // Only the range is carried across; geometry, identity and appearance belong to the
-                // wrapper, and forwarding those would move the control inside its own group.
-                for key in ["low", "high"] where embeddedParent.attributes[key] == nil {
-                    if let value = attributes[key] { _ = embeddedParent.setAttribute(key, value: value) }
+                inherit(["low", "high"])
+                // The **commands** the instance declares, for the same reason: the wrapper is a
+                // `<group>`, which has no click behaviour of its own, and the object the pointer
+                // actually lands on is the embedded one. Enkera's whole transport is `<button:glow …
+                // action="play">` over a bare `<button id="but" fitparent="1"/>`, and Defix's two
+                // button bars are `<Defix:Bottom.bar.button action="PE_Add">` over a `mousetrap`: in
+                // both the artwork drew, the press animated, and the command reached nothing, because
+                // it stayed on a group that cannot run it.
+                inherit(["action", "param", "dblclickaction", "dbclickaction", "rightclickaction", "tooltip"])
+                // A wrapped **text** draws with the typography its wrapper declares, because the
+                // wrapper draws no text of its own. Tristania's `<Deimos:TickerText font="ttf"
+                // fontsize="20" color="color.Display" valign="top">` wraps a bare `<text>`, and left
+                // with none of it the song ticker drew small, in the default font, across the
+                // display's EQ/PL/ML buttons. Styling only: `display`/`text` stay put, since Big
+                // Bento fills its wrapped lines from script and a bound value would show through the
+                // ones it leaves empty.
+                if (embeddedParent.typeName.lowercased().components(separatedBy: ":").last ?? "") == "text" {
+                    inherit(["font", "fontsize", "color", "align", "valign", "bold", "italic", "antialias",
+                             "shadowcolor", "shadowx", "shadowy", "forceuppercase", "forcelowercase",
+                             "timecolonwidth", "timeroffstyle", "timerhours", "wrap"])
                 }
-                // The **commands** the instance declares, for the same reason and by the same rule:
-                // the wrapper is a `<group>`, which has no click behaviour of its own, and the object
-                // the pointer actually lands on is the embedded one. Enkera's whole transport is
-                // `<button:glow … action="play">` over a bare `<button id="but" fitparent="1"/>`, and
-                // Defix's two button bars are `<Defix:Bottom.bar.button action="PE_Add">` over a
-                // `mousetrap`: in both the artwork drew, the press animated, and the command reached
-                // nothing, because it stayed on a group that cannot run it. Commands only — geometry,
-                // identity and appearance stay on the wrapper, which is what draws.
-                for key in ["action", "param", "dblclickaction", "dbclickaction", "rightclickaction",
-                            "tooltip"] where embeddedParent.attributes[key] == nil {
-                    if let value = attributes[key] { _ = embeddedParent.setAttribute(key, value: value) }
+                // A wrapped **button** takes its label the same way, centred unless the skin says
+                // otherwise (Azenis²'s own `Wasabi:Button`, a grid under a bare `<button>`).
+                let embeddedType = embeddedParent.typeName.lowercased()
+                if embeddedType == "button" || embeddedType == "togglebutton",
+                   embeddedParent.attributes["text"] == nil, !(attributes["text"] ?? "").isEmpty {
+                    inherit(["text", "font", "fontsize", "color", "bold"])
+                    if embeddedParent.attributes["align"] == nil {
+                        _ = embeddedParent.setAttribute("align", value: attributes["align"] ?? "center")
+                    }
                 }
                 // A **vertical** slider starts at the top of its travel, which is `high` — not at the
                 // zero a missing value would otherwise read as. Only one that drives nothing itself
@@ -1663,14 +1703,7 @@ final class WasabiSkinInitializer {
                 // `<Deimos:ConfigSheet children=…>` a `<Wasabi:TabSheet>`. The widget was created
                 // with the template, before these reached it, so its body is built here; without it
                 // every page of that skin's Preferences window was an empty box (B214).
-                var forwardedStructure = false
-                for key in ["content", "title", "children"] where embeddedParent.attributes[key] == nil {
-                    if let value = attributes[key] {
-                        _ = embeddedParent.setAttribute(key, value: value)
-                        forwardedStructure = true
-                    }
-                }
-                if forwardedStructure {
+                if inherit(["content", "title", "children"]) {
                     try buildHostedWidgetBody(of: embeddedParent, location: node.location)
                 }
             }

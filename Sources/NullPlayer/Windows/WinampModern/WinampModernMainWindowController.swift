@@ -2076,7 +2076,11 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         if !pinned {
             let visible = screen.visibleFrame
             origin.x = min(max(origin.x, visible.minX), max(visible.minX, visible.maxX - size.width))
-            origin.y = min(max(origin.y, visible.minY), max(visible.minY, visible.maxY - size.height))
+            // A window taller than the work area keeps its *top* on screen: that is where a skin's
+            // title bar and close button are.
+            origin.y = size.height > visible.height
+                ? visible.maxY - size.height
+                : min(max(origin.y, visible.minY), visible.maxY - size.height)
         }
         // A pin places the window relative to another one, so `place` must not tile it afresh when it
         // first opens: ONYX V2 pins its visualization over the player's art box and then shows it.
@@ -2200,8 +2204,12 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // including during startup before its borderless window becomes the application's main
         // window. `NSScreen.frame` is already in logical screen points; never multiply it by the
         // Retina backing scale or MAKI would mix physical pixels with its desktop coordinates.
+        // The menu bar is not part of it: no window can draw there, so a skin that covers its monitor
+        // (Nitrous Audio's monitor mode) lost its title bar under it, and its transport off the bottom.
         scripts.monitorSizeRequested = { [weak self] in
-            (self?.window?.screen ?? NSScreen.main)?.frame.size
+            (self?.window?.screen ?? NSScreen.main).map {
+                CGSize(width: $0.frame.width, height: $0.visibleFrame.maxY - $0.frame.minY)
+            }
         }
         // A script moved something. Every container diffs its own scene and notifies what moved; a
         // container nothing happened in dispatches nothing.
@@ -2443,7 +2451,15 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             pendingUIScaleRequest = factor
             return
         }
-        let level = UIScaleLevel.nearest(toScaleFactor: factor)
+        // **A skin may scale itself up only as far as the screen.** Alpha Media Player X5 fills the
+        // display by picking a standard resolution from the viewport and scaling to it; an 1800-wide
+        // work area lands in its 1920×1200 bucket, and the 1.5625 it asks for put the player past
+        // both edges. Capped at the largest level that still fits, and never below 100%.
+        var level = UIScaleLevel.nearest(toScaleFactor: factor)
+        if let canvas = skinView?.renderer.canvasSize,
+           let area = (window?.screen ?? NSScreen.main)?.visibleFrame.size {
+            level = level.capped(fitting: canvas, into: area)
+        }
         guard WindowManager.shared.uiScaleLevel != level else { return }
         WindowManager.shared.uiScaleLevel = level
     }
@@ -2454,6 +2470,21 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         guard let view = skinView else { return nil }
         return NSSize(width: (view.renderer.canvasSize.width * scale).rounded(),
                       height: (view.renderer.canvasSize.height * scale).rounded())
+    }
+
+    /// The player's frame with its layout's `snapadjust*` margins taken off: the edges Wasabi docks
+    /// other windows against. CopperdeckII's player is 289px of artwork in a 645px layout with
+    /// `snapadjustleft="178" snapadjustright="178"`, and tiled against the raw frame every window
+    /// it opened hung 178px left of the player.
+    var playerSnapFrame: NSRect? {
+        guard let frame = window?.frame, let layout = skinView?.renderer.layout else { return nil }
+        func margin(_ edge: String) -> CGFloat {
+            max(0, CGFloat(WinampModernScriptRuntime.snapAdjust(edge, of: layout))) * skinScale
+        }
+        let inset = NSRect(x: frame.minX + margin("left"), y: frame.minY + margin("bottom"),
+                           width: frame.width - margin("left") - margin("right"),
+                           height: frame.height - margin("top") - margin("bottom"))
+        return inset.width > 0 && inset.height > 0 ? inset : frame
     }
 
     /// The main layout's own resize limits at the current UI Size. Each `.wal` container has its own

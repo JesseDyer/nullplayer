@@ -303,9 +303,14 @@ Look for this shape before assuming the geometry is off.
 layout that has not opted in with `desktopalpha="1"`. It has two bounds, and the sweep caught a
 regression without each one:
 
-- **Standard frames only.** Backing every artwork-less `sysregion="1"` object moved 98 images.
+- **Standard frames and `<rect>`s only.** Backing every artwork-less `sysregion="1"` object moved 98 images.
   S7Reflex's player and Lobe's pods grew black slabs across the desktop, because a plain positive
-  group there is a drawer or a silhouette's wrapper, not a window body.
+  group there is a drawer or a silhouette's wrapper, not a window body. A `<rect>` is a box by
+  construction, so it is the other exception (2026-10-20): Prakrit's whole player body is
+  `<rect id="bckg" sysregion="1" w="200" h="250"/>`, colourless and unfilled, and without the
+  backing every panel was desktop. Of the 12 corpus skins with `rect@sysregion`
+  (`scripts/wal_reach.sh xml-attr '^rect@sysregion$'`), 107 renders before and after: only
+  Prakrit's player changed (Vortex's dashboard differs run to run).
 - **Not when the layout has a real region cut.** In that case the skin has drawn the shape itself.
   Ebonite cuts its client window down to the opening in a separate frame window (B110), and a
   backing laid black strips under that frame's edges.

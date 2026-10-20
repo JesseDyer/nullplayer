@@ -34,6 +34,9 @@ final class WasabiObject {
     private(set) var scriptBindings: [WasabiScriptBinding] = []
     private(set) var dirtyFlags: WasabiDirtyFlags = .all
     private(set) var isTornDown = false
+    /// The attribute names in the order the instance's tag wrote them (lowercased). Empty for an
+    /// object built in code. See `orderedAttributeNames`.
+    let declaredAttributeOrder: [String]
 
     /// Memo for `WasabiSceneRenderer.surfaceID(of:)`, which is a pure function of this object's
     /// attributes and its enclosing container — see there for why it is worth keeping.
@@ -49,15 +52,24 @@ final class WasabiObject {
     private weak var graph: WasabiObjectGraph?
 
     init(stableID: WasabiObjectID, typeName: String, attributes: [String: String],
-         source: WalSourceLocation, graph: WasabiObjectGraph) {
+         source: WalSourceLocation, graph: WasabiObjectGraph, attributeOrder: [String] = []) {
         self.stableID = stableID
         self.typeName = typeName
+        self.declaredAttributeOrder = attributeOrder
         self.attributes = Dictionary(uniqueKeysWithValues: attributes.map { ($0.key.lowercased(), $0.value) })
         self.source = source
         self.graph = graph
     }
 
     var xmlID: String? { attributes["id"] }
+
+    /// The current attribute names in the order the tag wrote them, for the events Wasabi delivers
+    /// in document order — `onSetXuiParam` above all. Names the tag did not write (a groupdef's
+    /// defaults, anything set since) follow, sorted, as `WalXMLNode.orderedAttributes` does.
+    var orderedAttributeNames: [String] {
+        let declared = declaredAttributeOrder.filter { attributes[$0] != nil }
+        return declared + attributes.keys.filter { !declared.contains($0) }.sorted()
+    }
 
     /// `minimum_w` / `minimum_h` a **script** wrote on this layout, as lowercased keys.
     ///
@@ -321,11 +333,13 @@ final class WasabiObjectGraph {
 
     var objectCount: Int { objectsByID.count }
 
-    func makeObject(typeName: String, attributes: [String: String], source: WalSourceLocation) -> WasabiObject {
+    func makeObject(typeName: String, attributes: [String: String], source: WalSourceLocation,
+                    attributeOrder: [String] = []) -> WasabiObject {
         precondition(!isTornDown, "Cannot add objects to a torn-down Wasabi graph")
         let id = WasabiObjectID(rawValue: nextRawID)
         nextRawID += 1
-        let object = WasabiObject(stableID: id, typeName: typeName, attributes: attributes, source: source, graph: self)
+        let object = WasabiObject(stableID: id, typeName: typeName, attributes: attributes, source: source,
+                                  graph: self, attributeOrder: attributeOrder)
         objectsByID[id] = object
         invalidated[id] = .all
         xmlIDIndex = nil

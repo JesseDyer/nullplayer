@@ -163,8 +163,9 @@ final class WinampModernWindowTilingTests: XCTestCase {
     }
 
     /// The same session at 150%: the library is 826pt wide and fits on neither side. Something has
-    /// to overlap, so it takes the clamp that covers less. Pulled onto the left edge it covers 64pt
-    /// of the player's width; pulled back from the right it covered 291pt.
+    /// to overlap, so it takes the candidate that covers least. Pulled onto the left edge it covered
+    /// 64pt of the player's width, and pulled back from the right 291pt; the region's bottom-left
+    /// corner covers none of it.
     func testWithNoRoomOnEitherSideTheClampCoversLess() {
         let region = NSRect(x: 0, y: 0, width: 1800, height: 1130)
         let player = NSRect(x: 762, y: 717, width: 503, height: 159)
@@ -175,8 +176,8 @@ final class WinampModernWindowTilingTests: XCTestCase {
         }
         let library = tiler.nextSlot(for: NSSize(width: 826, height: 596))
         XCTAssertTrue(region.contains(library))
-        XCTAssertEqual(library.minX, region.minX)
-        XCTAssertEqual(library.intersection(player).width, 64)
+        XCTAssertEqual(library.origin, CGPoint(x: region.minX, y: region.minY))
+        XCTAssertFalse(library.intersects(player))
     }
 
     /// A clamp that lands on nothing is still the answer: the slot stays in its own column, under a

@@ -170,6 +170,29 @@ final class WinampModernB114Tests: XCTestCase {
         XCTAssertEqual(Int(try XCTUnwrap(scene.pixel(x: 1, y: 20)).alpha), 0)
     }
 
+    /// A `<rect>` is a box by construction, so `sysregion="1"` on one says the same thing a standard
+    /// frame does. Prakrit's whole player body is `<rect id="bckg" sysregion="1" w="200" h="250"/>`,
+    /// colourless and unfilled, and without the backing every panel on it was desktop.
+    func testASysregionRectIsBackedBlack() throws {
+        let scene = try makeScene(
+            layoutAttributes: "", resources: Self.sheenBitmap,
+            markup: #"<rect id="bckg" x="0" y="0" w="120" h="40" sysregion="1"/>"#
+                + #"<layer id="face" x="20" y="10" w="40" h="20" image="sheen"/>"#,
+            art: Self.sheenArt)
+        let body = try XCTUnwrap(scene.pixel(x: 80, y: 20))
+        XCTAssertEqual(Int(body.alpha), 255, "the rect's box is window")
+        XCTAssertEqual(Int(body.red), 0, "and nothing painted it, so it is black")
+        XCTAssertEqual(Int(try XCTUnwrap(scene.pixel(x: 30, y: 20)).red), 180, accuracy: 1,
+                       "the face drawn on it is untouched")
+    }
+
+    /// A layout's own size parses as an object's geometry does, whitespace and all: wTunes' player
+    /// is `w=" 300"`, and unparsed it fell back to the classic 275 and lost its right edge.
+    func testAPaddedLayoutSizeStillParses() throws {
+        let scene = try makeScene(layoutAttributes: "", size: #"w=" 300" h=" 100 ""#)
+        XCTAssertEqual(scene.renderer.canvasSize, CGSize(width: 300, height: 100))
+    }
+
     // MARK: - Fixture
 
     /// B151's shape: a skin-defined standard frame that paints nothing, and a face inset 2px.
@@ -214,6 +237,7 @@ final class WinampModernB114Tests: XCTestCase {
     }
 
     private func makeScene(layoutAttributes: String,
+                           size: String = #"w="120" h="40""#,
                            resources: String = "",
                            markup: String = "",
                            art: [String: Data] = [:]) throws -> Scene {
@@ -222,7 +246,7 @@ final class WinampModernB114Tests: XCTestCase {
         <WasabiXML>
           <elements>\(resources)</elements>
           <container id="Main">
-            <layout id="normal" w="120" h="40" \(layoutAttributes)>
+            <layout id="normal" \(size) \(layoutAttributes)>
         \(markup)
             </layout>
           </container>

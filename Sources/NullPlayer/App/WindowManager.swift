@@ -120,6 +120,16 @@ enum UIScaleLevel: String, Codable, CaseIterable {
         }) ?? .p100
     }
 
+    /// This level, or the largest one at or above 100% below it that fits `size` (unscaled) into
+    /// `area` — 100% when none does.
+    func capped(fitting size: CGSize, into area: CGSize) -> UIScaleLevel {
+        let fits = { (level: UIScaleLevel) in
+            size.width * level.scaleFactor <= area.width && size.height * level.scaleFactor <= area.height
+        }
+        guard !fits(self) else { return self }
+        return Self.allCases.last { $0.scaleFactor >= 1 && $0.scaleFactor <= scaleFactor && fits($0) } ?? .p100
+    }
+
     init?(storedRawValue: String) {
         switch storedRawValue {
         case "normal":
@@ -2402,11 +2412,23 @@ class WindowManager {
                     let leftClamped = clampedToBottom(NSRect(
                         x: region.minX, y: leftSlotTop(for: size) - size.height,
                         width: size.width, height: size.height))
-                    if overlap(of: leftClamped) < overlap(of: clamped) {
+                    // The region's bottom corners too: on a crowded display a window wider than
+                    // either side of the player clamped onto the **player** both ways, where a corner
+                    // only clips a sub-window. Mac OS X Panther's 834pt library beside a centred
+                    // 310pt player is the measured case.
+                    // Ties go to the earlier candidate, so `clamped` wins unless something beats it.
+                    let bottomCorners = corners(for: size).prefix(2)
+                    let best = leastCovered([clamped, leftClamped] + bottomCorners, among: placed) ?? clamped
+                    if best == leftClamped {
                         _ = nextLeftSlot(for: size, clampingTo: leftClamped)
                         placed.append(leftClamped)
                         lastSlotWasLeft = true
                         return leftClamped
+                    }
+                    if best != clamped {
+                        placed.append(best)
+                        lastSlotWasLeft = false
+                        return best
                     }
                     slot = clamped
                 }
@@ -2466,9 +2488,31 @@ class WindowManager {
             return slot
         }
 
+        /// A window of `size` pushed into each of the region's corners, the bottom two first.
+        func corners(for size: NSSize) -> [NSRect] {
+            [region.minY, region.maxY - size.height].flatMap { y in
+                [region.minX, region.maxX - size.width].map {
+                    WindowPlacement.rescued(NSRect(x: $0, y: y, width: size.width, height: size.height),
+                                            into: region)
+                }
+            }
+        }
+
+        /// The candidate that covers least of `others`, with the player's share counted four times:
+        /// covering the player hides the controls everything else is opened from. Ties go to the
+        /// earlier candidate.
+        func leastCovered(_ candidates: [NSRect], among others: [NSRect]) -> NSRect? {
+            func cost(_ slot: NSRect) -> CGFloat {
+                Self.area(of: slot, on: others) + 3 * Self.area(of: slot, on: [placed[0]])
+            }
+            return candidates.min { cost($0) < cost($1) }
+        }
+
         /// How much of `slot` lies on windows already placed.
-        private func overlap(of slot: NSRect) -> CGFloat {
-            placed.reduce(0) { total, other in
+        private func overlap(of slot: NSRect) -> CGFloat { Self.area(of: slot, on: placed) }
+
+        private static func area(of slot: NSRect, on others: [NSRect]) -> CGFloat {
+            others.reduce(0) { total, other in
                 let shared = other.intersection(slot)
                 return total + (shared.isNull ? 0 : shared.width * shared.height)
             }
@@ -2477,7 +2521,7 @@ class WindowManager {
 
     /// A tiler anchored on the player's current frame, over the screen it is on.
     func winampModernTiler() -> WinampModernTiler? {
-        guard let player = mainWindowController?.window?.frame,
+        guard let player = winampModernHostedController?.playerSnapFrame ?? mainWindowController?.window?.frame,
               let region = (mainWindowController?.window?.screen ?? NSScreen.main)?.visibleFrame
         else { return nil }
         return WinampModernTiler(playerFrame: player, region: region)
@@ -2521,10 +2565,10 @@ class WindowManager {
     /// returned: an overlapping window the user can drag apart, rather than an invisible one.
     func tiledOrigin(for size: NSSize, avoiding occupied: [NSRect]) -> NSPoint? {
         guard var tiler = winampModernTiler() else { return nil }
-        var lastSlot: NSRect?
+        var tried: [NSRect] = []
         for _ in 0..<64 {
             let slot = tiler.nextSlot(for: size)
-            lastSlot = slot
+            tried.append(WindowPlacement.rescued(slot, into: tiler.region))
             let hits = occupied.filter { $0.intersects(slot) }
             if hits.isEmpty { return slot.origin }
             if slot.minX + size.width >= tiler.region.maxX && slot.minY <= tiler.region.minY {
@@ -2532,8 +2576,11 @@ class WindowManager {
             }
             tiler.skip(past: hits)
         }
-        guard let lastSlot else { return nil }
-        return WindowPlacement.rescued(lastSlot, into: tiler.region).origin
+        guard !tried.isEmpty else { return nil }
+        // Nothing is clear, so take whichever candidate covers least — every slot the walk tried and
+        // the region's four corners. Rescuing the *last* slot instead parked New_Night's 806pt
+        // browser on the player and its colour-theme list.
+        return tiler.leastCovered(tried + tiler.corners(for: size), among: occupied)?.origin
     }
 
     /// The materialized hosted windows, for the arrangement sweep to lay out alongside the skin's own.

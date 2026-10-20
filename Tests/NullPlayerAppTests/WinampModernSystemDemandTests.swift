@@ -147,15 +147,18 @@ final class WinampModernSystemDemandTests: XCTestCase {
                                           program: program).stringValue, "Show clock")
     }
 
-    /// B195: the display under a point, in Winamp's top-left screen space.
+    /// B195: the display under a point, in Winamp's top-left screen space — its work area, the
+    /// menu bar and the Dock taken out, as Winamp's viewport is the screen minus its taskbars.
     func testViewportFromPointAnswersTheDisplayUnderIt() throws {
-        let primary = try XCTUnwrap(NSScreen.screens.first, "no display").frame
+        let primary = try XCTUnwrap(NSScreen.screens.first, "no display")
+        let visible = primary.visibleFrame
         let (runtime, program) = try makeRuntime()
         let point: [MakiValue] = [.integer(10), .integer(10)]
-        XCTAssertEqual(try system(runtime, program, "getViewportLeftFromPoint", point).integerValue, 0)
-        XCTAssertEqual(try system(runtime, program, "getViewportTopFromPoint", point).integerValue, 0)
-        XCTAssertEqual(try system(runtime, program, "getViewportWidthFromPoint", point).integerValue, Int32(primary.width))
-        XCTAssertEqual(try system(runtime, program, "getViewportHeightFromPoint", point).integerValue, Int32(primary.height))
+        XCTAssertEqual(try system(runtime, program, "getViewportLeftFromPoint", point).integerValue, Int32(visible.minX))
+        XCTAssertEqual(try system(runtime, program, "getViewportTopFromPoint", point).integerValue,
+                       Int32(primary.frame.height - visible.maxY))
+        XCTAssertEqual(try system(runtime, program, "getViewportWidthFromPoint", point).integerValue, Int32(visible.width))
+        XCTAssertEqual(try system(runtime, program, "getViewportHeightFromPoint", point).integerValue, Int32(visible.height))
     }
 
     /// B184: positive only for the playing item, and only when the host has its art.

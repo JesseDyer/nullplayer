@@ -666,6 +666,10 @@ every other one.
 3. **the laid-out content's extent** — this rule;
 4. the 275×116 classic default.
 
+Every number in that chain is read trimmed, as an object's geometry is (`WasabiGeometrySpec`).
+wTunes' player is `<layout id="normal" w=" 300" h="100">`; untrimmed, `" 300"` did not parse and
+the width fell through to the classic 275, cutting the right 25px off a 300×100 background.
+
 Before this, a layout with neither a box nor a background fell through to its **`minimum_w`** — the
 floor it is *allowed to shrink to*, which is not a size anybody drew. ClassicPro's Widgets Manager is
 the case: `<layout id="normal" minimum_h="400" minimum_w="100" noparent="1" ontop="1" nodock="1">`

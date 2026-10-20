@@ -710,6 +710,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         WasabiGeometrySpec.geometryAttributes.contains(name.lowercased())
     }
 
+    /// What a plain `<group>` answers itself, so its scripts never hear it as an XUI param.
+    static let groupClaimedParams: Set<String> = [
+        "id", "name", "background", "drawbackground", "sysregion", "notify", "alpha", "activealpha",
+        "inactivealpha", "visible", "ghost", "tooltip", "move", "fitparent", "wantfocus", "regionop",
+        "rectrgn", "cursor", "droptarget", "userdata",
+    ]
+
     private func deliverXUIParams(forSubtreeOf object: WasabiObject) {
         deliverXUIParams(for: object)
         for child in object.children { deliverXUIParams(forSubtreeOf: child) }
@@ -719,14 +726,24 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         guard !object.scriptBindings.isEmpty else { return }
         let owned = programs.filter { $0.ownerID == object.stableID }
         guard !owned.isEmpty else { return }
-        if loadedSkin.runtime.types.isXUITag(object.typeName) {
-            // `onSetXuiParam` is a *System* event, and each XUI instance gets its own program
-            // instance, so the params must go only to the programs that instance owns —
-            // dispatching to every program would hand one frame's `content` to all of them.
-            for (name, value) in object.attributes.sorted(by: { $0.key < $1.key })
-            where !Self.isConsumedBeforeXUIParams(name) {
+        // `onSetXuiParam` is a *System* event, and each XUI instance gets its own program instance,
+        // so the params must go only to the programs that instance owns — dispatching to every
+        // program would hand one frame's `content` to all of them.
+        //
+        // A plain `<group>` hears what it does not claim itself too. Prakrit's equalizer is
+        // `<group id="wasabi.standardframe.statusbar" content="eq.generic">` around the skin's own
+        // frame script, which builds the body from `content`; with only XUI tags delivered, the
+        // window was an empty frame.
+        let isXUI = loadedSkin.runtime.types.isXUITag(object.typeName)
+        if isXUI || object.typeName.caseInsensitiveCompare("group") == .orderedSame {
+            // In the order the tag wrote them, as Wasabi delivers them: Simple's `xui-button.m`
+            // reads `symboltype` to decide what the `symbol` after it means, and alphabetised the
+            // symbol came first and every button drew its symbol's group id as a label.
+            for name in object.orderedAttributeNames
+            where !Self.isConsumedBeforeXUIParams(name)
+                && (isXUI || !Self.groupClaimedParams.contains(name.lowercased())) {
                 _ = try? dispatch(target: MakiObjectReference(.system), event: "onsetxuiparam",
-                                  arguments: [.string(name), .string(value)], in: owned)
+                                  arguments: [.string(name), .string(object.attributes[name] ?? "")], in: owned)
             }
         }
         // Wasabi's `notify="key,value"` delivers `key` as an XUI param with the given value.
@@ -1328,11 +1345,28 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// another window. See `WinampModernBorrowedOrigin`.
     private var borrowedOrigin = WinampModernBorrowedOrigin()
 
+    /// Window objects whose origin a script has read since their last geometry write: the only ones
+    /// a write of that same origin can be a round trip on (B61). A layout reports (0, 0), so without
+    /// this every script that parks its window at the desktop's corner — Nitrous Audio's monitor
+    /// mode writes `x=0`/`y=0` on its layout and never asks where it is — was taken as one.
+    private var originReadSinceWrite: Set<WasabiObjectID> = []
+
+    /// Whether a geometry write on `object` can be a round trip of its own origin: it is a window
+    /// object whose origin a script read since its last move. A write that `moves` the origin
+    /// spends the read.
+    func takeOriginRead(of object: WasabiObject, moves: Bool) -> Bool {
+        guard Self.isWindowObject(object) else { return false }
+        return moves ? originReadSinceWrite.remove(object.stableID) != nil
+                     : originReadSinceWrite.contains(object.stableID)
+    }
+
     /// `getLeft()`/`getTop()`: the reported origin, remembered when it was read off a window object
     /// so a write on another window can be recognised as relative to it.
     func scriptReadsOrigin(of object: WasabiObject) -> CGPoint {
         let reported = reportedOrigin(of: object)
-        if Self.isWindowObject(object), let desktop = windowOrigin(of: object) {
+        guard Self.isWindowObject(object) else { return reported }
+        originReadSinceWrite.insert(object.stableID)
+        if let desktop = windowOrigin(of: object) {
             let onScreen = enclosingWindowID(of: object).flatMap { containerVisibilityQuery?($0) } != false
             borrowedOrigin.record(.init(window: object.stableID, reported: reported, desktop: desktop,
                                         onScreen: onScreen))

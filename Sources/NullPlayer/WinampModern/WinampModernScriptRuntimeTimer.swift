@@ -55,7 +55,8 @@ extension WinampModernScriptRuntime {
     /// skin switch's script start-up.
     func writeGeometry(_ attributes: [(key: String, value: String)], on object: WasabiObject,
                        borrowed: WinampModernBorrowedOrigin.Request? = nil) {
-        let reportedBeforeWrite = Self.isWindowObject(object) ? reportedOrigin(of: object) : nil
+        let moves = attributes.contains { $0.key == "x" || $0.key == "y" }
+        let reportedBeforeWrite = takeOriginRead(of: object, moves: moves) ? reportedOrigin(of: object) : nil
         for (key, value) in attributes { _ = object.setAttribute(key, value: value) }
         applyContainerGeometry(object, reportedOrigin: reportedBeforeWrite, borrowed: borrowed)
         noteGeometryChange()
@@ -92,6 +93,12 @@ extension WinampModernScriptRuntime {
         // results (BB31); `resize()` on a layout already routed its size here, and `setXmlParam` of
         // the same four attributes now does too, position included.
         guard let target = Self.windowTarget(of: object) else { return }
+        // **A layout that is not showing is not the window.** Each Wasabi layout is a window of its
+        // own, so a write to one the container is not on lands on that hidden window and waits for
+        // the switch. Vortex parks its Dashboard layout at the screen edge from `onScriptLoaded` —
+        // `x`/`y`/`h` on `layout#dashboard` — and taking that as the player's window squeezed the
+        // 505-wide normal player into a 180×1169 strip.
+        if object !== target, activeLayoutByContainer[target.stableID] != object.stableID { return }
         func applySize() {
             guard let width = Double(object.attributes["w"] ?? ""),
                   let height = Double(object.attributes["h"] ?? "") else { return }

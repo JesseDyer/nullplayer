@@ -22,6 +22,35 @@ supported-surface manifest. Re-open one only when the queue runs dry or a fix ne
 and tooltips). Re-run `wal_motion_sweep.sh` / `wal_interaction_sweep.sh` after the method batch
 lands — many of those suspects are handlers aborting on the methods above — and only then decide.
 
+### Progress: the B169 silver intake, first pass (2026-10-20)
+
+The 25 skins B169 admitted to Silver were tried in the app and fixed skin by skin. Each fix is
+general, so it applies to every skin with the same shape, named after the skin that showed it.
+
+| Skin | What was wrong | Fix (where) |
+|---|---|---|
+| Mac OS X Panther, New_Night | A library or browser wider than either side of the player was clamped onto the player. | The tiler also tries the region's corners and takes the least-covered candidate, counting the player 4× (`WindowManager.WinampModernTiler`) |
+| CopperdeckII | Every window hung 178px off the player; the shade collapsed to 1px; the video window opened 2147 wide | Tiling uses the player's `snapadjust*` edges; a `linkwidth` entry keeps the entered layout's declared height; the content fit ignores an axis the skin sized with an absolute number |
+| Anunaki | The LCD was empty | A sizeless `<CustomObject>` takes the size of the group it hosts |
+| WinampAzenis2 | Switch, Prev, Next and the search buttons were blank | A plain `<button text=…>` draws its label; an `embed_xui` wrapper passes its label down |
+| NEO_CLASSIC | The 259px album-art pane was missing; the invisible crossfade toggle drew a font sheet | A sizeless group redefinition keeps the earlier size; a bare `image=` falls back only when `activeimage` is set |
+| Symplicipod | The library mounted twice (once blank white) and the playlist had no window | A container's actual contents outrank a `component=` that contradicts them; `:componentname` resolves inside a longer title |
+| Official_Tristania | The ticker drew small, in the default font | An `embed_xui` wrapper passes typography down to its `<text>` |
+| BOOM (97 skins) | Window titles were not uppercased | `forceuppercase`/`forcelowercase` |
+| krazyPlayer | Every frame title read `@COMPONENTNAME@` | `@COMPONENTNAME@` resolves |
+| Prakrit | The equalizer window was an empty frame; the player body was see-through | A plain `<group>` gets `onSetXuiParam` for the params it does not use itself; a `sysregion="1"` `<rect>` is backed black |
+| Simple | Every button drew its symbol's group id as a label | `onSetXuiParam` arrives in document order |
+| Nitrous_Audio_CTI_2_Glass | Monitor mode never moved; the title bar was under the menu bar | Only a write after its own origin was read counts as a round trip (B61); monitor height leaves out the menu bar |
+| 1010_Fullscreen | The transport left the canvas; the window was taller than the screen | `getGui*` on a relative axis returns the skin's markup value, not the resolved box; viewport is the work area; a window taller than the screen keeps its top on screen |
+| --Vortex-- | The 505-wide player became a 180×1169 strip | A write to a layout that is not showing is not applied to the window; winhelper crops a glued window group |
+| Alpha_Media_Player_X5 | The player scaled itself past both screen edges | A skin's `setScale` is capped at the largest UI Size that fits on screen |
+| wTunes | The right 25px were cut off | Layout sizes are trimmed (`w=" 300"`) |
+
+Not yet looked at in the app: Dronev11, JRS, shark5, cPro2__minimal_1_1, Zygote,
+CPro_Winamp_for_Mac_Sync, LogicallityV1_0, machina. Filed from the code review: B216 (check `.wmz`
+placement after the tiler change, then move the tiler out of `WindowManager.swift`) and B217 (one
+type-name accessor; one button-label rule).
+
 Below is reference: the pipeline as designed (§3), what was built (§7), and the corpus-scale
 decisions (§8).
 

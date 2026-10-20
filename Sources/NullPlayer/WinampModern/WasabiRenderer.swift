@@ -885,7 +885,8 @@ final class WasabiSceneRenderer {
         let previous = layout
         layout = next
         let restored = canvasSizeByLayout[next.stableID]
-            ?? Self.linkedWidthCarry(into: next, from: previous, width: storedCanvasSize.width)
+            ?? Self.linkedWidthCarry(into: next, from: previous, width: storedCanvasSize.width,
+                                     height: defaultSize(for: next).height)
         storedCanvasSize = defaultSize(for: next)
         // A size this renderer is *restoring* is not one it chose, so the content fit must leave it
         // alone — the same rule `resize(to:)` already relies on. Clamped by the layout being entered,
@@ -913,12 +914,14 @@ final class WasabiSceneRenderer {
     /// layout being entered for the *first* time — after that its own remembered size is the better
     /// answer, and it already carries the width.
     private static func linkedWidthCarry(into next: WasabiObject, from previous: WasabiObject,
-                                         width: CGFloat) -> CGSize? {
+                                         width: CGFloat, height: CGFloat) -> CGSize? {
         guard let link = next.attributes["linkwidth"], !link.isEmpty,
               previous.xmlID?.caseInsensitiveCompare(link) == .orderedSame else { return nil }
-        // Height is the entered layout's own business; `resize(to:)` clamps it back up to that
-        // layout's minimum, which is what makes `shade`'s `maximum_h="23"` win here.
-        return CGSize(width: width, height: 0)
+        // Height is the entered layout's own business: its declared height, which `resize(to:)`
+        // then clamps to its limits, so `shade`'s `maximum_h="23"` still wins. Carried as 0 and left
+        // to the minimum, a shade that states `h="36"` and no `minimum_h` (CopperdeckII's player and
+        // equalizer) collapsed to a 1px strip.
+        return CGSize(width: width, height: height)
     }
 
     /// The active layout's own `minimum_w`/`minimum_h`, in skin pixels, raised to the protective
@@ -2338,6 +2341,19 @@ final class WasabiSceneRenderer {
                 intrinsic.height = Double(background.height)
             }
         }
+        // A `<CustomObject>` that states no size is the size of the group it hosts, the way Wasabi
+        // sizes any object from its content's suggested size. Anunaki's LCD is
+        // `<customobject groupid="main.lcd.layout2" x="51" y="32"/>` around a `fitparent="1"`
+        // group declared 482x281: at 0x0 the group fitted to nothing and the display stayed empty.
+        if (object.typeName.lowercased().components(separatedBy: ":").last ?? "") == "customobject",
+           let content = object.children.first(where: { $0.typeName.caseInsensitiveCompare("group") == .orderedSame }) {
+            if object.attributes["w"] == nil, intrinsic.width == 0, content.attributes["relatw"] != "1" {
+                intrinsic.width = max(0, Double(content.attributes["w"] ?? "") ?? 0)
+            }
+            if object.attributes["h"] == nil, intrinsic.height == 0, content.attributes["relath"] != "1" {
+                intrinsic.height = max(0, Double(content.attributes["h"] ?? "") ?? 0)
+            }
+        }
         // A `<Menu>`'s hover or pressed art that states no size of its own is the entry's size (B150).
         // winampmodern566 and The_Nokia_5220 write `<menu:button_hover id="File.hover.btn" x="0"
         // y="0"/>` into a groupdef with only `h="16"`, and the art inside is a three-slice cut to
@@ -2632,6 +2648,14 @@ final class WasabiSceneRenderer {
             drawTitleBox(object, frame: node.frame, context: context)
         } else if WasabiTabSheet.isHosted(object) {
             drawTabSheet(object, frame: node.frame, context: context)
+        }
+        // A plain `<button text="…">` draws its label over its artwork, as Wasabi's button does.
+        // It arrives through `embed_xui`: Azenis² redefines `Wasabi:Button` as a grid under a bare
+        // `<button>`, and its Switch/Prev/Next and search buttons were blank boxes.
+        if type == "button" || type == "togglebutton",
+           let label = object.attributes["text"], !label.isEmpty {
+            drawText(label, object: object, frame: node.frame, context: context,
+                     undeclaredColor: palette.listText)
         }
         context.restoreGState()
     }
@@ -4593,8 +4617,11 @@ final class WasabiSceneRenderer {
                 // `image` with a separate `activeimage`. Fall back to the base rather than a
                 // dangling id — and to the rest state's artwork rather than to nothing, so a skin
                 // that ships no hover frame stays visible under the mouse instead of blinking out.
+                // Only that shape, though: a bare `image` is otherwise a prefix with no states behind
+                // it, which Wasabi draws as nothing. NEO_CLASSIC's invisible crossfade toggle is
+                // `image="dummy"`, and `dummy` is its 300x50 title-bar font sheet.
                 candidates.append("\(image)\(state)")
-                candidates.append(image)
+                if object.attributes["activeimage"] != nil { candidates.append(image) }
             }
             return candidates.first { resources.bitmap(identifier: $0) != nil } ?? candidates.first
         }
@@ -4812,7 +4839,9 @@ final class WasabiSceneRenderer {
 
     private static func dimension(_ attributes: [String: String], keys: [String], fallback: CGFloat) -> CGFloat {
         for key in keys {
-            if let raw = attributes[key], let value = Double(raw), value > 0 { return CGFloat(value) }
+            // Trimmed, as `WasabiGeometrySpec` trims an object's: wTunes' player is `w=" 300"`.
+            if let raw = attributes[key], let value = Double(raw.trimmingCharacters(in: .whitespaces)),
+               value > 0 { return CGFloat(value) }
         }
         return fallback
     }
@@ -5011,9 +5040,20 @@ final class WasabiSceneRenderer {
         for _ in 0..<4 {
             var growth = CGSize.zero
             let nodes = sceneNodes(canvas: size)
+            // An axis the object sized with an absolute number is its author's box, and one that
+            // overhangs its parent does so on purpose: CopperdeckII's frames run a `w="2136"` bottom
+            // strip under every window and let the window clip it, and fitting to it opened the
+            // video window 2147 wide. What the fit is for is artwork with no box of its own.
+            func authored(_ object: WasabiObject, _ axis: String, _ relative: String) -> Bool {
+                object.attributes[axis] != nil && object.attributes[relative] != "1"
+            }
             for node in nodes where node.object !== layout {
-                growth.width = max(growth.width, node.frame.maxX - node.parentFrame.maxX)
-                growth.height = max(growth.height, node.frame.maxY - node.parentFrame.maxY)
+                if !authored(node.object, "w", "relatw") {
+                    growth.width = max(growth.width, node.frame.maxX - node.parentFrame.maxX)
+                }
+                if !authored(node.object, "h", "relath") {
+                    growth.height = max(growth.height, node.frame.maxY - node.parentFrame.maxY)
+                }
             }
             if trace { print("FIT \(key) at \(size) growth=\(growth) nodes=\(nodes.count)") }
             // Overflow that does not shrink when the canvas grows is not content the window is too

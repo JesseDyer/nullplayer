@@ -307,12 +307,17 @@ extension WasabiSceneRenderer {
     /// laid black slabs across S7Reflex and Lobe. **Not when the skin cut a real region**: then it
     /// has drawn the window's shape itself — Ebonite cuts its client window down to the opening in a
     /// separate frame window, and a backing grew black strips under that frame's edges.
+    ///
+    /// A `<rect>` is a box by construction, so one with `sysregion="1"` is backed the same way.
+    /// Prakrit's whole player body is `<rect id="bckg" sysregion="1" w="200" h="250"/>`, and
+    /// without a backing its panels were desktop.
     func regionBoxes() -> [CGRect] {
         guard windowRegion() == nil else { return [] }
         return regionCuts().compactMap { cut in
+            let type = cut.object.typeName.lowercased()
             guard cut.additive, cut.bitmapID == nil,
-                  cut.object.typeName.lowercased().hasPrefix("wasabi:standardframe:"),
-                  cut.object.attributes["background"].map({ resources.bitmap(identifier: $0) == nil }) ?? true
+                  type == "rect" || (type.hasPrefix("wasabi:standardframe:")
+                      && cut.object.attributes["background"].map({ resources.bitmap(identifier: $0) == nil }) ?? true)
             else { return nil }
             let box = cut.frame.intersection(cut.clip)
             return box.isNull || box.isEmpty ? nil : box

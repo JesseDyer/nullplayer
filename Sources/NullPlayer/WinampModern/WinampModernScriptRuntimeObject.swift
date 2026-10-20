@@ -377,14 +377,24 @@ extension WinampModernScriptRuntime {
         // its hover region off the artwork it belongs to. The read-back-and-write-it-again idiom
         // that made this look necessary is handled on the **write** instead — see
         // `applyContainerGeometry`.
+        //
+        // **`getGui*` on a relative axis answers the markup, not the resolved box.** Wasabi's
+        // `getGuiX/Y/W/H` are the object's own `x`/`y`/`w`/`h` parameters, with `relat*` beside
+        // them, so the stock `centerobject.m` — read `getGuiY()`, write it back as `y` — leaves a
+        // `y="-83" relaty="1"` group where it is. Answered with the resolved 1086, the write-back
+        // added the layout's height on every resize and 1010 Fullscreen's transport left the canvas.
         case "getleft", "getguix":
+            if method == "getguix", let markup = Self.relativeMarkup(of: object, axis: "x") { return .integer(markup) }
             return .integer(Int32(clamping: Int(scriptReadsOrigin(of: object).x)))
         case "gettop", "getguiy":
+            if method == "getguiy", let markup = Self.relativeMarkup(of: object, axis: "y") { return .integer(markup) }
             return .integer(Int32(clamping: Int(scriptReadsOrigin(of: object).y)))
         case "getwidth", "getguiw":
+            if method == "getguiw", let markup = Self.relativeMarkup(of: object, axis: "w") { return .integer(markup) }
             return .integer(dimension(resolvedFrame(of: object)?.width,
                                       declared: declaredFrame(of: object).width))
         case "getheight", "getguih":
+            if method == "getguih", let markup = Self.relativeMarkup(of: object, axis: "h") { return .integer(markup) }
             return .integer(dimension(resolvedFrame(of: object)?.height,
                                       declared: declaredFrame(of: object).height))
         // Both sides of this comparison must be in the *same* window's space, so the point comes from
@@ -1383,6 +1393,20 @@ extension WinampModernScriptRuntime {
     /// active scene does not contain (a hidden layout, or a runtime with no window wired at all).
     static let maximumPendingCalls = 256
     static let snapAdjustKeys = ["left", "top", "right", "bottom"].map { "nullplayer.snapadjust." + $0 }
+
+    /// A layout's snap margin on `edge` (`left`/`top`/`right`/`bottom`): what a script's
+    /// `snapAdjust()` stored, else the markup's `snapadjust<edge>`.
+    static func snapAdjust(_ edge: String, of layout: WasabiObject) -> Double {
+        Double(layout.attributes["nullplayer.snapadjust." + edge] ?? layout.attributes["snapadjust" + edge] ?? "") ?? 0
+    }
+
+    /// `getGui*` on an axis the markup made relative: the markup's own value, or nil for an absolute
+    /// axis, which answers the resolved box like `getLeft`/`getWidth`.
+    static func relativeMarkup(of object: WasabiObject, axis: String) -> Int32? {
+        guard ["1", "2"].contains(object.attributes["relat" + axis]),
+              let raw = Double(object.attributes[axis] ?? "") else { return nil }
+        return Int32(clamping: Int(raw))
+    }
 
     func resolvedFrame(of object: WasabiObject) -> CGRect? {
         guard let geometry = resolvedGeometryRequested?(object) else { return nil }

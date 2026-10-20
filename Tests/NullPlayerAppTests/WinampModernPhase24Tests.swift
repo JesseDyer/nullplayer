@@ -444,7 +444,16 @@ final class WinampModernPhase24Tests: XCTestCase {
         XCTAssertEqual(layout.attributes["tooltip"], "Player", "the writes themselves still land")
         XCTAssertEqual(holder.attributes["w"], "30")
 
-        // The counter is live: a window's geometry write does read its origin first.
+        // A window's geometry write with no read of its origin behind it is no round trip, and
+        // reads nothing either (Nitrous Audio's monitor mode writes `x=0`/`y=0` blind).
+        _ = try runtime.invoke(method: "setxmlparam", on: reference(layout),
+                               arguments: [.string("w"), .string("45")], program: emptyProgram())
+        XCTAssertEqual(resolves, 0)
+
+        // The counter is live: once a script has read the window's origin, its geometry write reads
+        // it again to recognise the round trip.
+        _ = try runtime.invoke(method: "getleft", on: reference(layout), arguments: [], program: emptyProgram())
+        resolves = 0
         _ = try runtime.invoke(method: "setxmlparam", on: reference(layout),
                                arguments: [.string("w"), .string("50")], program: emptyProgram())
         XCTAssertGreaterThan(resolves, 0)

@@ -41,6 +41,12 @@
   the end of a song moved the highlight but kept playing the same song, for as long as 17 minutes
   on a large playlist. The chosen track now loads and plays at once. A song that fails to stream
   also moves on to the next one and plays it, instead of stopping there.
+- **Modern skins: sixteen more skins draw and behave as designed** — among them Prakrit's player is
+  no longer see-through and its equalizer is no longer empty, wTunes is no longer cut short on the
+  right, Anunaki's display and NEO_CLASSIC's album-art pane appear, WinampAzenis2's text buttons have
+  labels, and Vortex, Alpha Media Player X5 and 1010 Fullscreen stay on screen. Windows that cannot
+  fit beside the player now open in a screen corner rather than on top of it, and skins that ask for
+  uppercase window titles (BOOM and 96 others) get them.
 
 ## 0.33.0
 

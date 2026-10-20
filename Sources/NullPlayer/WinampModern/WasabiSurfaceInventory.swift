@@ -257,8 +257,14 @@ struct WinampModernSurfaceInventory {
         for container in containers where !container.isMainPlayer && container.isVisibleWindow {
             // The container's declared kind first; failing that, a container that reaches exactly one
             // managed surface *is* that surface's window (mmd3's `Pledit` would qualify either way).
-            let kind = container.kind
-                ?? container.reachableKinds.intersection(Set(managedKinds)).singleElement
+            // What the window **holds** outranks a `component=` it contradicts: Symplicipod's
+            // `MediaLib` says `component="guid:pl"` and hosts `param="guid:ml"`. Taken at its word,
+            // the library was mounted there *and* in a synthesized library window, which a surface
+            // that exists once left empty white, while the playlist had no window at all.
+            let reached = container.reachableKinds.intersection(Set(managedKinds))
+            let declaredKind = container.kind.flatMap { reached.isEmpty || reached.contains($0) ? $0 : nil }
+            let kind = declaredKind
+                ?? reached.singleElement
                 ?? (container.hasEqualizerControls ? .equalizer : nil)
             guard let kind, declared[kind] == nil else { continue }
             declared[kind] = container.id

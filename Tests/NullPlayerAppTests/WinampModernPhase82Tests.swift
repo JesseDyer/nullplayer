@@ -170,8 +170,13 @@ final class WinampModernPhase82Tests: XCTestCase {
         try resize(runtime, program, chrome, to: CGRect(x: 0, y: 0, width: 330, height: 137))
         try resize(runtime, program, chrome, to: CGRect(x: 0, y: 0, width: 400, height: 200))
 
-        XCTAssertEqual(moves.count, 1, "the second write has no fresh read behind it")
         XCTAssertEqual(moves.first?.1, CGPoint(x: 1309, y: 318))
+        XCTAssertTrue(moves.first?.2 ?? false, "the first write is pinned to the read")
+        // The second has no fresh read behind it — of the content or of itself — so it is a plain,
+        // clamped move to what it names rather than a pin or a suppressed round trip.
+        XCTAssertEqual(moves.count, 2)
+        XCTAssertEqual(moves.last?.1, CGPoint(x: 0, y: 0))
+        XCTAssertFalse(moves.last?.2 ?? true, "the second write has no fresh read behind it")
     }
 
     /// A plain object is not a window: its `x`/`y` are read back out of the scene like everything

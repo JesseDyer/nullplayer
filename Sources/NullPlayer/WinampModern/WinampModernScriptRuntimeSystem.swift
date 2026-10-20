@@ -229,11 +229,18 @@ extension WinampModernScriptRuntime {
         // A skin's trace output. Deliberately dropped rather than logged: it is per-frame in some
         // skins, and nothing in NullPlayer consumes it.
         case "debugstring": return .null
-        case "getviewportwidth": return .integer(Int32(NSScreen.main?.frame.width ?? 0))
-        case "getviewportheight": return .integer(Int32(NSScreen.main?.frame.height ?? 0))
-        case "getviewportleft", "getviewporttop", "getviewportleftfromguiobject", "getviewporttopfromguiobject":
-            return .integer(0)
-        case "getviewportwidthfromguiobject": return .integer(Int32(NSScreen.main?.frame.width ?? 0))
+        // The viewport is Winamp's *work area* — the screen minus its taskbars — so here the visible
+        // frame, below the menu bar and clear of the Dock. 1010_Fullscreen sizes its window to it:
+        // answered with the whole display, it asked for a 1169-tall window at y=0 on a 1130-tall
+        // work area, and the (0, 0) it wrote read as a round trip (B61), so it never moved either.
+        case "getviewportwidth", "getviewportwidthfromguiobject":
+            return .integer(Int32(Self.workArea(of: NSScreen.main).width))
+        case "getviewportheight", "getviewportheightfromguiobject":
+            return .integer(Int32(Self.workArea(of: NSScreen.main).height))
+        case "getviewportleft", "getviewportleftfromguiobject":
+            return .integer(Int32(Self.workArea(of: NSScreen.main).minX))
+        case "getviewporttop", "getviewporttopfromguiobject":
+            return .integer(Int32(Self.workArea(of: NSScreen.main).minY))
         // The display holding the point, in Winamp's top-left screen space. The stock `tooltips.m`
         // keeps its tip on that display (B195); a point on no display answers the main one.
         case "getviewportleftfrompoint", "getviewporttopfrompoint",
@@ -241,16 +248,15 @@ extension WinampModernScriptRuntime {
             let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
             let point = CGPoint(x: Int(arguments[0].integerValue),
                                 y: Int(primaryHeight) - Int(arguments[1].integerValue))
-            let frame = (NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main)?.frame ?? .zero
+            let area = Self.workArea(of: NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main)
             let value: CGFloat
             switch method {
-            case "getviewportleftfrompoint": value = frame.minX
-            case "getviewporttopfrompoint": value = primaryHeight - frame.maxY
-            case "getviewportwidthfrompoint": value = frame.width
-            default: value = frame.height
+            case "getviewportleftfrompoint": value = area.minX
+            case "getviewporttopfrompoint": value = area.minY
+            case "getviewportwidthfrompoint": value = area.width
+            default: value = area.height
             }
             return .integer(Int32(value))
-        case "getviewportheightfromguiobject": return .integer(Int32(NSScreen.main?.frame.height ?? 0))
         // The monitor is the whole display containing the skin's player window. Do not derive this
         // from `NSScreen.main`: that is the primary display, not necessarily the one the skin is on.
         // The controller answers in logical screen points so Retina backing pixels never enter MAKI
@@ -1078,5 +1084,17 @@ extension WinampModernScriptRuntime {
             unsupportedMethodCalls[method, default: 0] += 1
             return .null
         }
+    }
+}
+
+extension WinampModernScriptRuntime {
+    /// A screen's work area in Winamp's space: top-left origin on the primary display, the menu bar
+    /// and the Dock taken out. What MAKI's `getViewport*` answer.
+    static func workArea(of screen: NSScreen?) -> CGRect {
+        guard let screen else { return .zero }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let visible = screen.visibleFrame
+        return CGRect(x: visible.minX, y: primaryHeight - visible.maxY,
+                      width: visible.width, height: visible.height)
     }
 }
