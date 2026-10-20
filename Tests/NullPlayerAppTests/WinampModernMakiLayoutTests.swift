@@ -21,9 +21,16 @@ final class WinampModernMakiLayoutTests: XCTestCase {
         XCTAssertEqual(program.methods.first?.name, "café")
     }
 
+    func testAnAnyVariableParsesAsUntyped() throws {
+        let program = try MakiBytecodeParser().parse(makeScript(shortVariables: false, methodName: "x", secondType: 8),
+                                                     source: WalSourceLocation(path: "/x.maki"))
+        XCTAssertEqual(program.variables[1].declaredKind, .null)
+    }
+
     // MARK: - Fixture
 
-    private func makeScript(shortVariables: Bool, methodName: String, ansi: Bool = false) -> Data {
+    private func makeScript(shortVariables: Bool, methodName: String, ansi: Bool = false,
+                            secondType: UInt8 = MakiValueKind.integer.rawValue) -> Data {
         var data = Data([0x46, 0x47])
         append16(0x0403, &data)
         append32(shortVariables ? 0x16 : 0x17, &data)
@@ -37,7 +44,7 @@ final class WinampModernMakiLayoutTests: XCTestCase {
         data.append(name)
         append32(2, &data)                                      // variables
         for (index, object) in [true, false].enumerated() {
-            data.append(index == 0 ? 0 : MakiValueKind.integer.rawValue)
+            data.append(index == 0 ? 0 : secondType)
             data.append(object ? 1 : 0)
             for _ in 0..<5 { append16(0, &data) }             // subclass, two initials, two unused
             if shortVariables { data.append(1) }                 // the one `global` byte

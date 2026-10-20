@@ -588,9 +588,14 @@ struct MakiBytecodeParser {
                     variables.append(MakiVariable(declaredKind: .object, classGUID: guid,
                                                   isGlobal: global, isSystem: system, value: initial))
                 } else {
-                    let kind = MakiValueKind(rawValue: UInt8(typeOffset))
+                    // Type 8 is MAKI's untyped `Any` (`List.findItem(Any)`): it holds whatever is stored
+                    // in it, so it is declared `.null`, which no assignment coerces. Moon Groove's and
+                    // BeatSugar's notifier declares one, and refusing it failed the whole script.
+                    let kind = typeOffset == 8 ? .null : MakiValueKind(rawValue: UInt8(typeOffset))
                     let value: MakiValue
                     switch kind {
+                    case .null:
+                        value = .null
                     case .integer:
                         // A 32-bit value split across both halves, low half first. Reading only
                         // `initial1` turned ONYX V2's one-hour test (3600000 ms) into 61056, so every
