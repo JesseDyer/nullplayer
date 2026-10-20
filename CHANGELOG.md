@@ -35,7 +35,7 @@
   120 pt: a narrower window fits more, smaller tiles.
 - **Plex no longer floods the log at startup** — connecting and preloading the library logged every
   step and, in debug builds, a dump of every server response. Startup now logs two lines; failures
-  are still logged.
+  are still logged. Debug builds also stop dumping every Subsonic, Jellyfin and Emby response.
 
 ## 0.33.0
 
