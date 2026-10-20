@@ -11,8 +11,8 @@ works belongs in `skills/winamp-modern-skin-guide/`.
 [`docs/winamp-modern/corpus-runner-plan.md`](../docs/winamp-modern/corpus-runner-plan.md).** Its
 status line says what is built, and §7 is the build order: what is next is the next §7 step. The
 plan's own rows are in *Corpus plan queue*, in the plan's order; everywhere else this file records
-issues and does not order them. When a corpus row closes, update the plan's status line in the same
-change.
+issues and does not order them. A corpus step is done only when every box under it in the plan's §7 is
+ticked; see the plan's *Rules for every session*.
 
 ## Columns
 
@@ -40,8 +40,8 @@ without a seam change; **L** = a host seam, protocol change, or new fixture harn
 
 **WIP: this queue is incomplete and its order is provisional.** It is what the
 [corpus plan](../docs/winamp-modern/corpus-runner-plan.md) has measured so far: S0, S1, S2's MAKI half,
-S4's MAKI demand index and S3's motion and interaction sweeps are built, and §7 step 5b, coverage and
-S3.5 state-space enumeration, is next. S3.5 will add coverage rows, the supported-surface manifest (§7 step 6) will add the
+S4's MAKI demand index are built, and §7 steps 4 and 5 (S3) are in progress — see their checklists.
+S3 will add motion-dead and control-dead rows through S4, S3.5 will add coverage rows, the supported-surface manifest (§7 step 6) will add the
 XML rows, and each can reorder what is here. The plan sets which step is next; this list is the order
 to work a step's capability rows in, not a substitute for the plan.
 

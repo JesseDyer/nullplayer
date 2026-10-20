@@ -85,8 +85,8 @@ The first two would be addressed by the unbuilt stages in §3; today, provoke th
 
 **Partly built.** The five-stage pipeline was specified in 2026-08-18 as S0 ingest/tier, S1 load
 census, S2 static MAKI demand, S3 motion + interaction sweep, S3.5 state-space enumeration, S4
-aggregate and rank. S0, S1, S2 and S3's motion and interaction sweeps now exist as committed scripts,
-and the rest is still manual. Know
+aggregate and rank. What is done is recorded only in `docs/winamp-modern/corpus-runner-plan.md` §7;
+this table says what exists to run. Know
 which half you are standing on before planning work:
 
 | Stage | State | What to run |
@@ -96,9 +96,9 @@ which half you are standing on before planning work:
 | Regression sweep (§6) | **Built** — `scripts/wal_render_sweep.sh capture` / `compare`, invariants **and** every PNG | [reference/harness.md](reference/harness.md) → *The corpus render sweep* |
 | S2 static MAKI/XML demand | **Built for MAKI; XML half partial** — the XML census exists, but the supported-surface manifest it diffs against does not (corpus-runner-plan §7 step 6), so XML rows carry `implemented` `-`. `scripts/wal_feature_index.sh` writes `features.tsv`, and `scripts/wal_reach.sh` turns it into the per-tier Reach every measured backlog row carries; `wal_render_sweep.sh --touching` selects from it | [reference/harness.md](reference/harness.md) → *The static feature index* |
 | S4 demand index | **Built for MAKI** — `scripts/wal_demand.sh` inverts the index into call → skins per tier; the ranked queue it fed is B182–B201. XML waits on the supported-surface manifest; the impact and coverage scores wait on S3 | [reference/harness.md](reference/harness.md) → *The static feature index* |
-| S3 motion sweep | **Built, at rest** — `scripts/wal_motion_sweep.sh` draws every window's opening layout on a t = 0/0.25/1/4 s ladder (run loop and render clock paired) and writes `motion.tsv`: moving/reverted/static per layout, what moved, and why each `animatedlayer` did not | [reference/harness.md](reference/harness.md) → *The motion sweep* |
-| S3 interaction sweep | **Built, opening layouts at rest** — `scripts/wal_interaction_sweep.sh` drives every script-hooked control in an open window with the gesture its bindings call for (click, double-click, drag, right-click), each on a fresh load, and writes `interaction.tsv`: works / silent / blocked (with the missing method) / unbound / unreachable (with what covers it). Menus are counted, not walked | [reference/harness.md](reference/harness.md) → *The interaction sweep* |
-| S3 menu items, S3.5 state space | **Not built.** Walk menus and non-default states by hand | — |
+| S3 motion sweep | **In progress** — `scripts/wal_motion_sweep.sh` exists; what is left is `corpus-runner-plan.md` §7 step 4 | [reference/harness.md](reference/harness.md) → *The motion sweep* |
+| S3 interaction + menu sweep | **In progress** — `scripts/wal_interaction_sweep.sh` exists; the menu sweep and the rest are §7 step 5 | [reference/harness.md](reference/harness.md) → *The interaction sweep* |
+| S3.5 state space | **Not built.** Walk non-default states by hand | — |
 
 Two rules follow from the built half, and both are already paid for — the full versions, with the
 measurements behind them, are in [reference/harness.md](reference/harness.md):
