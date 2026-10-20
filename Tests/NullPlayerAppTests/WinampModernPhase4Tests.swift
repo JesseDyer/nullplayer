@@ -117,7 +117,7 @@ final class WinampModernPhase4Tests: XCTestCase {
         """
         let loaded = try WinampModernSkinLoader().load(from: try makeArchive(xml: xml))
         defer {
-            UserDefaults.standard.removeObject(
+            WinampModernConfiguration.processDefaults.removeObject(
                 forKey: "winampModern.config.\(loaded.configuration.namespace).appearance.theme")
         }
         let host = Host()

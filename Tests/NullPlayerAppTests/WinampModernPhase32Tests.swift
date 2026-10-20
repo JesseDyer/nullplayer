@@ -112,7 +112,7 @@ final class WinampModernPhase32Tests: XCTestCase {
         let loaded = try WinampModernSkinLoader().load(from: url)
         let renderer = try WasabiSceneRenderer(loadedSkin: loaded, host: host)
         defer {
-            UserDefaults.standard.removeObject(
+            WinampModernConfiguration.processDefaults.removeObject(
                 forKey: "winampModern.config.\(loaded.configuration.namespace).appearance.theme")
         }
         let list = try XCTUnwrap(renderer.colorThemeLists().first { $0.object.xmlID == "near.list" })
@@ -242,7 +242,7 @@ final class WinampModernPhase32Tests: XCTestCase {
     private func makeSkin() throws -> (WinampModernLoadedSkin, WasabiSceneRenderer) {
         let loaded = try WinampModernSkinLoader().load(from: try makeArchive(xml: Self.skinXML))
         addTeardownBlock {
-            UserDefaults.standard.removeObject(
+            WinampModernConfiguration.processDefaults.removeObject(
                 forKey: "winampModern.config.\(loaded.configuration.namespace).appearance.theme")
         }
         return (loaded, try WasabiSceneRenderer(loadedSkin: loaded, host: Host()))

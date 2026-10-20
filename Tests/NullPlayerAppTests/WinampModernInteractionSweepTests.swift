@@ -373,12 +373,12 @@ final class WinampModernInteractionSweepTests: XCTestCase {
     private static let configurationPrefix = "winampModern.config."
 
     private static func storedConfiguration(prefix: String) -> [String: Any] {
-        UserDefaults.standard.dictionaryRepresentation().filter { $0.key.hasPrefix(prefix) }
+        WinampModernConfiguration.processDefaults.dictionaryRepresentation().filter { $0.key.hasPrefix(prefix) }
     }
 
     /// Put one skin's keys back as they were, touching no other skin's: shards share the domain.
     private static func restore(_ stored: [String: Any], prefix: String) {
-        let defaults = UserDefaults.standard
+        let defaults = WinampModernConfiguration.processDefaults
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
             if let value = stored[key] { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
         }

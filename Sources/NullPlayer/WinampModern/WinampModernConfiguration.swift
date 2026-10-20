@@ -7,24 +7,28 @@ final class WinampModernConfiguration {
     let namespace: String
     private let defaults: UserDefaults
 
-    init(namespace: String, defaults: UserDefaults = .standard) {
+    init(namespace: String, defaults: UserDefaults = WinampModernConfiguration.processDefaults) {
         self.namespace = Self.safeComponent(namespace)
         self.defaults = defaults
-        if defaults === UserDefaults.standard { Self.startTestProcessClean }
     }
 
-    /// An `xctest` process — the corpus harnesses and the unit tests — starts with no stored skin
-    /// settings. They share the test tool's one defaults domain, so what a skin's scripts stored in
+    /// Where a skin's settings live: the app's own domain, except in an `xctest` process — the corpus
+    /// harnesses and the unit tests — which gets a suite of its own, empty at start and removed at
+    /// exit. They all used to share the test tool's one domain, so what a skin's scripts stored in
     /// one run (the opensource notifier saves its checkboxes at `onScriptUnloading`) was the next
-    /// run's starting state, and two sweeps of one tree differed (B211). The app's own domain is
-    /// never this one.
-    private static let startTestProcessClean: Void = {
-        guard Bundle.main.bundleIdentifier == "com.apple.dt.xctest.tool" else { return }
-        let defaults = UserDefaults.standard
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(keyPrefix) {
-            defaults.removeObject(forKey: key)
-        }
+    /// run's starting state, and two sweeps of one tree differed (B211). Per process rather than
+    /// cleared at start, because a sweep's shards run side by side.
+    static let processDefaults: UserDefaults = {
+        guard Bundle.main.bundleIdentifier == "com.apple.dt.xctest.tool" else { return .standard }
+        let name = testSuiteName()
+        UserDefaults.standard.removePersistentDomain(forName: name)
+        atexit { UserDefaults.standard.removePersistentDomain(forName: WinampModernConfiguration.testSuiteName()) }
+        return UserDefaults(suiteName: name) ?? .standard
     }()
+
+    private static func testSuiteName() -> String {
+        "nullplayer.wal-harness.\(ProcessInfo.processInfo.processIdentifier)"
+    }
 
     func integer(section: String, key: String, default defaultValue: Int32 = 0) -> Int32 {
         let name = storageKey(section: section, key: key)
