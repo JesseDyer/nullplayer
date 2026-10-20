@@ -1,7 +1,7 @@
 import XCTest
 @testable import NullPlayer
 
-/// `System` methods the S4 demand queue ranked (B183, B186, B187, B188, B191, B194, B196, B197,
+/// `System` methods the S4 demand queue ranked, and events called as methods (B182, B183, B186, B187, B188, B191, B194, B196, B197,
 /// B199, B200). Each was a call that aborted
 /// the whole handler it sat in.
 final class WinampModernSystemDemandTests: XCTestCase {
@@ -74,6 +74,23 @@ final class WinampModernSystemDemandTests: XCTestCase {
         let bytecodeGUID = MakiClassGUID.canonical(MakiClassGUID.application)
         XCTAssertNotNil(runtime.signature(for: "Shutdown", classGUID: bytecodeGUID))
         XCTAssertNil(runtime.signature(for: "shutdown", classGUID: nil))
+    }
+
+    /// B182: the thirteen events scripts call as methods have their `std.mi` arity, and the three
+    /// names another class declares with a different arity get that one on that class.
+    func testEventsCalledAsMethodsHaveTheirDeclaredArity() throws {
+        let (runtime, _) = try makeRuntime()
+        let arities = ["onLeftButtonDown": 2, "onLeftButtonUp": 2, "onRightButtonDown": 2,
+                       "onRightButtonUp": 2, "onMouseMove": 2, "onNotify": 4, "onEqChanged": 1,
+                       "onInfoChange": 1, "onSwitchToLayout": 1, "onPlay": 0, "onStop": 0,
+                       "onAccelerator": 1, "onFrame": 1]
+        for (event, arity) in arities {
+            XCTAssertEqual(runtime.signature(for: event, classGUID: nil)?.argumentCount, arity, event)
+        }
+        let bytecode = MakiClassGUID.canonical
+        XCTAssertEqual(runtime.signature(for: "onNotify", classGUID: bytecode(MakiClassGUID.wac))?.argumentCount, 3)
+        XCTAssertEqual(runtime.signature(for: "onAccelerator", classGUID: bytecode(MakiClassGUID.system))?.argumentCount, 3)
+        XCTAssertEqual(runtime.signature(for: "onFrame", classGUID: bytecode(MakiClassGUID.vis))?.argumentCount, 0)
     }
 
     // MARK: - Helpers

@@ -406,6 +406,24 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // made itself, `tagviewer.m` does the same, and a script that reuses its `onSetVisible` or
         // `onTitleChange` body is the same idiom `onSetPosition` already had.
         "onresize": 4,
+        // Scripts call their own pointer and notify handlers to reuse them: Bio-Nid's playlist editor
+        // runs `poppler.onMouseMove(x, y)` while it resizes, NMP10's `about` script
+        // `Next.onLeftButtonDown(0, 0)` (B182). Arities from `std.mi`. Three names are declared
+        // with another arity on a class the corpus never calls them on (`Wac.onNotify` 3,
+        // `System.onAccelerator` 3, `Vis.onFrame` 0); `signature(for:classGUID:)` gates those.
+        "onleftbuttondown": 2,
+        "onleftbuttonup": 2,
+        "onrightbuttondown": 2,
+        "onrightbuttonup": 2,
+        "onmousemove": 2,
+        "onnotify": 4,
+        "oneqchanged": 1,
+        "oninfochange": 1,
+        "onswitchtolayout": 1,
+        "onplay": 0,
+        "onstop": 0,
+        "onaccelerator": 1,
+        "onframe": 1,
         // `onUserResize` is **not** `onResize`: it fires only for a resize the *user* dragged, which
         // is the whole difference a standard frame is built on. Ebonite's frame writes the client's
         // new box from it (through a 1 ms timer) and would otherwise fight its own `onResize`.
@@ -2941,6 +2959,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         case MakiClassGUID.colorManager where method.caseInsensitiveCompare("getcolor") == .orderedSame:
             return .init(argumentCount: 1, returnKind: .object)
         case MakiClassGUID.gammaSet where method.caseInsensitiveCompare("apply") == .orderedSame:
+            return .init(argumentCount: 0, returnKind: .null)
+        // The other arities of three events `dispatchableEventArity` keys by name (B182).
+        case MakiClassGUID.wac where name == "onnotify":
+            return .init(argumentCount: 3, returnKind: .integer)
+        case MakiClassGUID.system where name == "onaccelerator":
+            return .init(argumentCount: 3, returnKind: .null)
+        case MakiClassGUID.vis where name == "onframe":
             return .init(argumentCount: 0, returnKind: .null)
         // `Application.shutdown()`; gated for the same reason, a short verb another class could declare.
         case MakiClassGUID.application where method.caseInsensitiveCompare("shutdown") == .orderedSame:

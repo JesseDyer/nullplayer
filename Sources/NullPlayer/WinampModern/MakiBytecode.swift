@@ -53,6 +53,11 @@ enum MakiClassGUID {
     /// that keeps the System object, so its `shutdown()` reaches `invokeSystem`.
     static let application = "b8e867b04da72715db53baa5acfefca1"
 
+    /// Classes that declare an event under another class's name with a different arity (B182).
+    static let system = "d6f50f6449b793fa66baf193983eaeef"
+    static let vis = "ce4f97be4e1977b098d45699276cc933"
+    static let wac = "00c074a049a0fea2bbfa8dbe401616db"
+
     /// Host singletons the **runtime** binds by class, and which the parser must therefore leave
     /// alone. Deliberately a carve-out rather than an allow-list of one: a system-flagged global of
     /// any other class keeps the System object it has always been given, so nothing that worked
