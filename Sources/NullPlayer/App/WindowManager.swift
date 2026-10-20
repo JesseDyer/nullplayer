@@ -5674,7 +5674,7 @@ class WindowManager {
         // window it is drawn on. Every caller raises through here — NullPlayer's own windows as well
         // as the skin's — so the frames are put back here, not in each caller's `windowDidBecomeKey`.
         if family == .winampModern {
-            (mainWindowController as? WinampModernMainWindowController)?.restackGluedWindows()
+            (mainWindowController as? WinampModernMainWindowController)?.glue.restack()
         }
     }
     
@@ -7089,7 +7089,7 @@ class WindowManager {
         // A `.wal` script-glued partner sits on this window's exact rect and follows it. Snapping
         // to it held the dragged window in place until the pointer passed the threshold, then
         // moved it in ~16 pt jumps every ~35 ms.
-        let gluedPartner = winampModernHostedController?.gluedPartner(of: window)
+        let gluedPartner = winampModernHostedController?.glue.partner(of: window)
         for otherWindow in windowsToSnapTo {
             guard otherWindow != window else { continue }
             // Skip docked windows as they're moving with us
