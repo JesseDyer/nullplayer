@@ -148,6 +148,23 @@ final class WinampModernDemandTailTests: XCTestCase {
         XCTAssertEqual(configuration.integer(section: "s", key: "k", default: -1), -1)
     }
 
+    /// `new Text; t.init(parent)` puts a real text in the graph (Nitrous Audio's playlist rows), the
+    /// reference then answers as it, and `delete` takes it out.
+    func testAScriptMadeTextEntersTheGraphOnInit() throws {
+        let (runtime, program) = try makeRuntime()
+        let layout = try object(runtime, "normal")
+        let text = try runtime.makeObject(classGUID: MakiClassGUID.canonical("efaa867241fa310ea985dcb74bcb5b52"),
+                                          program: program)
+        _ = try runtime.invoke(method: "init", on: text, arguments: [runtime.objectValue(layout)], program: program)
+        _ = try runtime.invoke(method: "setXmlParam", on: text, arguments: [.string("id"), .string("line0")],
+                               program: program)
+        let created = try object(runtime, "line0")
+        XCTAssertEqual(created.typeName, "text")
+        XCTAssertTrue(created.parent === layout)
+        runtime.releaseObject(text)
+        XCTAssertNil(runtime.loadedSkin.runtime.graph.allObjectsUnordered.first { $0.xmlID == "line0" })
+    }
+
     // MARK: - Helpers
 
     private static let program = MakiProgram(

@@ -58,6 +58,18 @@ enum MakiClassGUID {
     static let vis = "ce4f97be4e1977b098d45699276cc933"
     static let wac = "00c074a049a0fea2bbfa8dbe401616db"
     static let dropDownList = "36d59b714af803fd020595977a26dbb7"
+
+    /// GUI classes a script may `new` and then `init(parent)` into the graph, and the element each
+    /// becomes. Nitrous Audio's playlist builds every row as `new Text` (`playlistPlus.m`).
+    static let scriptCreatableElements: [String: String] = [
+        "efaa867241fa310ea985dcb74bcb5b52": "text",
+        "5ab9fa1545579a7d5765c8aba97cc6a6": "layer",
+        "6b64cd274c4b5a26a7e6598c3a49f60c": "animatedlayer",
+        "698eddcd4fec8f1e44f9129b45ff09f9": "button",
+        "b4dccfff4bcc81fe0f721b96ff0fbed5": "togglebutton",
+        "62b65e3f408d375e8176ea8d771bb94a": "slider",
+        "45be95e5419120725fbb5c93fd17f1f9": "group",
+    ]
     static let guiTree = "d59514f745e8ed364e3f0f98d92c52a0"
 
     /// Host singletons the **runtime** binds by class, and which the parser must therefore leave

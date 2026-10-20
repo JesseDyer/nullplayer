@@ -9,6 +9,8 @@ import Foundation
 extension WinampModernScriptRuntime {
     struct DynamicObjectState {
         var role: DynamicRole = .generic
+        /// The element a `new Text`/`new Layer`… becomes on `init(parent)`; nil for a non-GUI class.
+        var guiType: String?
         var delayMilliseconds: Int32 = 5_000
         /// Backing store for a MAKI `List`. Kept on every dynamic object rather than in the role: a
         /// `List` is created by the same `new` as a `Timer` or a `Map` and only its first list call
@@ -1215,7 +1217,18 @@ extension WinampModernScriptRuntime {
             case .gammaGroup(_, let group): return .string(group)
             case .generic: return .string("dynamic_\(id)")
             }
-        case "init", "callme": return .null
+        // A GUI object the script made with `new`: it enters the graph beneath its parent here, and
+        // from then on the reference answers as that object (`dynamicGUIObjects`).
+        case "init":
+            guard let type = state.guiType, case .object(let reference) = arguments.first,
+                  case .gui(let parentID) = reference.kind,
+                  let parent = loadedSkin.runtime.graph.object(withID: parentID),
+                  let created = try loadedSkin.runtime.instantiateElement?(type, parent) else { return .null }
+            dynamicGUIObjects[id] = created.stableID
+            noteGeometryChange()
+            notifyGraphDidMutate()
+            return .null
+        case "callme": return .null
         default:
             if let value = classicProFileMethod(method, arguments: arguments) { return value }
             throw unsupported(method, program: program)
@@ -1390,6 +1403,9 @@ extension WinampModernScriptRuntime {
 
     func object(_ value: MakiValue, equals reference: MakiObjectReference) -> Bool {
         guard case .object(let candidate) = value else { return false }
+        if case .dynamic(let id) = candidate.kind, let objectID = dynamicGUIObjects[id] {
+            return reference == MakiObjectReference(.gui(objectID)) || candidate == reference
+        }
         return candidate == reference
     }
 }

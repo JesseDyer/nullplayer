@@ -58,6 +58,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     private(set) var programs: [MakiProgram] = []
     /// The `TreeItem`s scripts made, by their dynamic id, and each `GuiTree`'s top-level items.
     var treeNodes: [UInt64: TreeNode] = [:]
+    /// Script-made GUI objects (`new Text` then `init`), by their dynamic id.
+    var dynamicGUIObjects: [UInt64: WasabiObjectID] = [:]
     var treeRoots: [WasabiObjectID: [UInt64]] = [:]
     private(set) var isTornDown = false
 
@@ -3185,6 +3187,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         case .popupMenu(let id):
             return invokePopup(method: method, id: id, arguments: arguments)
         case .dynamic(let id):
+            if let objectID = dynamicGUIObjects[id] {
+                guard let object = loadedSkin.runtime.graph.object(withID: objectID) else { return .null }
+                return try invokeGUI(method: method, object: object, arguments: arguments, program: program)
+            }
             return try invokeDynamic(method: method, id: id, arguments: arguments, program: program)
         }
     }
@@ -3206,6 +3212,12 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         case .dynamic(let id):
             timers.cancel(id: id)
             dynamicObjects.removeValue(forKey: id)
+            // `delete` on a script-made GUI object takes it out of the graph.
+            if let objectID = dynamicGUIObjects.removeValue(forKey: id),
+               let object = loadedSkin.runtime.graph.object(withID: objectID) {
+                loadedSkin.runtime.graph.discardSubtree(object)
+                notifyGraphDidMutate()
+            }
         case .popupMenu(let id):
             popupCommands.removeValue(forKey: id)
         case .system, .playlistEditor, .colorManager, .playlistManager, .gui:
@@ -3233,7 +3245,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
             popupCommands[id] = []
             return MakiObjectReference(.popupMenu(id))
         }
-        dynamicObjects[id] = DynamicObjectState()
+        dynamicObjects[id] = DynamicObjectState(
+            guiType: MakiClassGUID.scriptCreatableElements[Self.canonicalGUID(classGUID)])
         return MakiObjectReference(.dynamic(id))
     }
 

@@ -502,6 +502,9 @@ final class WasabiSkinRuntime {
     /// Set by `WasabiSkinInitializer`, which owns the expansion machinery (type registry, object
     /// limits, script path resolution).
     var instantiateGroup: ((_ identifier: String, _ parent: WasabiObject) throws -> WasabiObject)?
+    /// One bare element (`text`, `layer`, `button`…) beneath `parent`, for a script's
+    /// `new Text; t.init(parent)`. Same budget and machinery as `instantiateGroup`.
+    var instantiateElement: ((_ name: String, _ parent: WasabiObject) throws -> WasabiObject)?
 
     /// Trusted, host-only request-time window growth. Unlike `instantiateGroup`, this closure is not
     /// reachable from MAKI and accepts only the typed NullPlayer hosted-window description.
@@ -711,6 +714,21 @@ final class WasabiSkinInitializer {
         runtime.instantiateGroup = { [self] identifier, parent in
             try instantiateGroupAtRuntime(identifier: identifier, parent: parent,
                                           graph: graph, types: types, createdCount: &createdCount)
+        }
+        runtime.instantiateElement = { [self] name, parent in
+            let node = WalXMLNode(name: name, attributes: [:], location: parent.source)
+            let existingChildren = parent.children.count
+            var pendingScripts: [PendingScript] = []
+            var pendingMetaCommands: [PendingMetaCommand] = []
+            try createObjects(from: [node], parent: parent, graph: graph, types: types,
+                              pendingScripts: &pendingScripts, pendingMetaCommands: &pendingMetaCommands,
+                              definitionStack: [], createdCount: &createdCount,
+                              documentOrder: [:], enclosingOrder: nil)
+            guard parent.children.count > existingChildren else {
+                throw WalFailure(WalDiagnostic(.missingGroupDefinition, "Element '\(name)' was not created.",
+                                               location: parent.source))
+            }
+            return parent.children[existingChildren]
         }
         runtime.instantiateHostedWindow = { [self] request in
             let root = try instantiateHostedWindowAtRuntime(request, graph: graph, types: types,
