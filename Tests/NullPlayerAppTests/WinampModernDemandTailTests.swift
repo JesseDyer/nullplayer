@@ -173,8 +173,10 @@ final class WinampModernDemandTailTests: XCTestCase {
                                            program: program)
         _ = try runtime.invoke(method: "setXmlParam", on: layer, arguments: [.string("id"), .string("pixel_0")], program: program)
         _ = try runtime.invoke(method: "setXmlParam", on: layer, arguments: [.string("w"), .string("7")], program: program)
+        _ = try runtime.invoke(method: "setAlpha", on: layer, arguments: [.integer(40)], program: program)
         _ = try runtime.invoke(method: "init", on: layer, arguments: [runtime.objectValue(layout)], program: program)
         XCTAssertEqual(try object(runtime, "pixel_0").attributes["w"], "7")
+        XCTAssertEqual(try object(runtime, "pixel_0").attributes["alpha"], "40", "a call made before init is replayed")
     }
 
     func testGroupListAndDropDownItems() throws {

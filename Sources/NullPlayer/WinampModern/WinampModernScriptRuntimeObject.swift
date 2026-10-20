@@ -14,6 +14,9 @@ extension WinampModernScriptRuntime {
         /// What a script wrote with `setXmlParam` before `init`; the element is created with it.
         /// 1010 Fullscreen's analyzer sets a layer's id, image and box this way, then `init`s it.
         var pendingAttributes: [String: String] = [:]
+        /// Any other call made before `init` (1010's analyzer: `setRegionFromMap`), replayed in order
+        /// on the element once it exists. Bounded, since nothing runs it until then.
+        var pendingCalls: [(method: String, arguments: [MakiValue])] = []
         var delayMilliseconds: Int32 = 5_000
         /// Backing store for a MAKI `List`. Kept on every dynamic object rather than in the role: a
         /// `List` is created by the same `new` as a `Timer` or a `Map` and only its first list call
@@ -926,6 +929,12 @@ extension WinampModernScriptRuntime {
         if state.guiType != nil, method == "getxmlparam" {
             return .string(state.pendingAttributes[arguments[0].stringValue.lowercased()] ?? "")
         }
+        if state.guiType != nil, method != "init", signature(for: method, classGUID: nil) != nil,
+           state.pendingCalls.count < Self.maximumPendingCalls {
+            state.pendingCalls.append((method, arguments))
+            dynamicObjects[id] = state
+            return .null
+        }
         switch method {
         // `GammaSet.apply()` — switch to the theme this object names, through the one route
         // `System.setColorTheme` already uses. A theme the skin does not ship is refused by the
@@ -1237,6 +1246,10 @@ extension WinampModernScriptRuntime {
                   let created = try loadedSkin.runtime.instantiateElement?(type, state.pendingAttributes, parent)
             else { return .null }
             dynamicGUIObjects[id] = created.stableID
+            for call in state.pendingCalls {
+                _ = try invokeGUI(method: call.method, object: created, arguments: call.arguments, program: program)
+            }
+            dynamicObjects[id]?.pendingCalls = []
             noteGeometryChange()
             notifyGraphDidMutate()
             return .null
@@ -1367,6 +1380,7 @@ extension WinampModernScriptRuntime {
     /// answered **−4**, `CproTabs.m` concluded it had no room for its tabs, switched to short names and
     /// squeezed every tab to the 20px floor. The declared value stays as the fallback for an object the
     /// active scene does not contain (a hidden layout, or a runtime with no window wired at all).
+    static let maximumPendingCalls = 256
     static let snapAdjustKeys = ["left", "top", "right", "bottom"].map { "nullplayer.snapadjust." + $0 }
 
     func resolvedFrame(of object: WasabiObject) -> CGRect? {
