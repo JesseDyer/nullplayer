@@ -136,6 +136,18 @@ final class WinampModernDemandTailTests: XCTestCase {
         XCTAssertEqual(components, [.playlist])
     }
 
+    /// B211: a test process keeps skin settings in memory, so no run inherits the last one's.
+    func testATestProcessKeepsSkinSettingsInMemory() {
+        let defaults = WinampModernConfiguration.processDefaults
+        XCTAssertFalse(defaults === UserDefaults.standard)
+        let configuration = WinampModernConfiguration(namespace: "B211")
+        configuration.setInteger(7, section: "s", key: "k")
+        XCTAssertEqual(configuration.integer(section: "s", key: "k"), 7)
+        XCTAssertNil(UserDefaults.standard.object(forKey: "winampModern.config.B211.s.k"))
+        configuration.removeValue(section: "s", key: "k")
+        XCTAssertEqual(configuration.integer(section: "s", key: "k", default: -1), -1)
+    }
+
     // MARK: - Helpers
 
     private static let program = MakiProgram(

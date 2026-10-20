@@ -13,22 +13,13 @@ final class WinampModernConfiguration {
     }
 
     /// Where a skin's settings live: the app's own domain, except in an `xctest` process — the corpus
-    /// harnesses and the unit tests — which gets a suite of its own, empty at start and removed at
-    /// exit. They all used to share the test tool's one domain, so what a skin's scripts stored in
-    /// one run (the opensource notifier saves its checkboxes at `onScriptUnloading`) was the next
-    /// run's starting state, and two sweeps of one tree differed (B211). Per process rather than
-    /// cleared at start, because a sweep's shards run side by side.
-    static let processDefaults: UserDefaults = {
-        guard Bundle.main.bundleIdentifier == "com.apple.dt.xctest.tool" else { return .standard }
-        let name = testSuiteName()
-        UserDefaults.standard.removePersistentDomain(forName: name)
-        atexit { UserDefaults.standard.removePersistentDomain(forName: WinampModernConfiguration.testSuiteName()) }
-        return UserDefaults(suiteName: name) ?? .standard
-    }()
-
-    private static func testSuiteName() -> String {
-        "nullplayer.wal-harness.\(ProcessInfo.processInfo.processIdentifier)"
-    }
+    /// harnesses and the unit tests — which keeps them in memory. They all used to share the test
+    /// tool's one domain, so what a skin's scripts stored in one run (the opensource notifier saves
+    /// its checkboxes at `onScriptUnloading`) was the next run's starting state, and two sweeps of one
+    /// tree differed (B211). In memory rather than cleared at start, because a sweep's shards run side
+    /// by side, and rather than a suite per process, which leaves a plist behind every run.
+    static let processDefaults: UserDefaults = Bundle.main.bundleIdentifier == "com.apple.dt.xctest.tool"
+        ? VolatileDefaults(suiteName: nil) ?? .standard : .standard
 
     func integer(section: String, key: String, default defaultValue: Int32 = 0) -> Int32 {
         let name = storageKey(section: section, key: key)
@@ -98,4 +89,31 @@ final class WinampModernConfiguration {
         }
         return result
     }
+}
+
+/// A `UserDefaults` that keeps its values in memory, for `WinampModernConfiguration.processDefaults`.
+/// It answers the calls the configuration and the harnesses make, and nothing reaches disk.
+private final class VolatileDefaults: UserDefaults {
+    private var values: [String: Any] = [:]
+    private let lock = NSLock()
+
+    override func object(forKey key: String) -> Any? { lock.withLock { values[key] } }
+    override func set(_ value: Any?, forKey key: String) { lock.withLock { values[key] = value } }
+    override func set(_ value: Int, forKey key: String) { set(value as Any?, forKey: key) }
+    override func set(_ value: Bool, forKey key: String) { set(value as Any?, forKey: key) }
+    override func set(_ value: Double, forKey key: String) { set(value as Any?, forKey: key) }
+    override func removeObject(forKey key: String) { lock.withLock { values[key] = nil } }
+    // Both convert between strings and numbers the way `UserDefaults` does: a setting written as
+    // "1" reads back as 1, and one written as 1 reads back as "1".
+    override func string(forKey key: String) -> String? {
+        let value = object(forKey: key)
+        return value as? String ?? (value as? NSNumber)?.stringValue
+    }
+    override func integer(forKey key: String) -> Int {
+        let value = object(forKey: key)
+        if let number = value as? NSNumber { return number.intValue }
+        guard let text = value as? String else { return 0 }
+        return Int(text) ?? Int(Double(text) ?? 0)
+    }
+    override func dictionaryRepresentation() -> [String: Any] { lock.withLock { values } }
 }
