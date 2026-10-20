@@ -308,31 +308,8 @@ extension WinampModernHostedWindowID {
     }
 }
 
-struct WinampModernHostedFrameDescriptor {
-    let groupIdentifier: String
-    let xuiTag: String
-    let hasArtwork: Bool
-    /// Set when the skin lays its own windows out around this frame rather than letting the frame's
-    /// script build them — see `WasabiSurfaceSynthesizer.FrameExemplar`.
-    let exemplar: WasabiSurfaceSynthesizer.FrameExemplar?
-    /// The border we place our client inside, for the ordinary `content=` case — see
-    /// `WasabiSurfaceSynthesizer.Frame.clientInsets`. The border is just as real there as an
-    /// exemplar's, and the window has to carry it too.
-    let clientInsets: WasabiSurfaceSynthesizer.ClientInsets?
-
-    init(groupIdentifier: String, xuiTag: String, hasArtwork: Bool,
-         exemplar: WasabiSurfaceSynthesizer.FrameExemplar? = nil,
-         clientInsets: WasabiSurfaceSynthesizer.ClientInsets? = nil) {
-        self.groupIdentifier = groupIdentifier
-        self.xuiTag = xuiTag
-        self.hasArtwork = hasArtwork
-        self.exemplar = exemplar
-        self.clientInsets = clientInsets
-    }
-}
-
 enum WinampModernHostedWindowRoute {
-    case skinFrame(WinampModernHostedFrameDescriptor)
+    case skinFrame(WasabiSurfaceSynthesizer.Frame)
     case classicFallback(reason: String)
 }
 
@@ -340,12 +317,12 @@ enum WinampModernHostedWindowRoute {
 /// Skin XML and MAKI never receive this API.
 struct WinampModernHostedWindowInstantiation {
     let definition: WinampModernHostedWindowDefinition
-    let frame: WinampModernHostedFrameDescriptor
+    let frame: WasabiSurfaceSynthesizer.Frame
     /// The skin player's own width, in skin pixels, when one is on screen to measure.
     let playerWidth: CGFloat?
 
     init(definition: WinampModernHostedWindowDefinition,
-         frame: WinampModernHostedFrameDescriptor,
+         frame: WasabiSurfaceSynthesizer.Frame,
          playerWidth: CGFloat? = nil) {
         self.definition = definition
         self.frame = frame
@@ -374,11 +351,7 @@ struct WinampModernHostedWindowInstantiation {
     /// `WasabiSurfaceSynthesizer.Frame.floor(under:)`, which is the same rule for the skin's own
     /// synthesized surfaces.
     private func raised(_ size: CGSize) -> CGSize {
-        WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
-                                       xuiTag: frame.xuiTag,
-                                       hasArtwork: frame.hasArtwork,
-                                       exemplar: frame.exemplar,
-                                       clientInsets: frame.clientInsets).floor(under: size)
+        frame.floor(under: size)
     }
 }
 

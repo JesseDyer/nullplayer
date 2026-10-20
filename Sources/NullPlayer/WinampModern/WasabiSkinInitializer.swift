@@ -895,11 +895,7 @@ final class WasabiSkinInitializer {
             if maximum.height.isFinite { layoutAttributes["maximum_h"] = String(Int(maximum.height)) }
         }
         let frameNodes = WasabiSurfaceSynthesizer.frameNodes(
-            frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: request.frame.groupIdentifier,
-                                                  xuiTag: request.frame.xuiTag,
-                                                  hasArtwork: request.frame.hasArtwork,
-                                                  exemplar: request.frame.exemplar,
-                                                  clientInsets: request.frame.clientInsets),
+            frame: request.frame,
             frameID: "\(id.contentGroupIdentifier).frame",
             contentGroupID: id.contentGroupIdentifier,
             componentName: request.definition.title,

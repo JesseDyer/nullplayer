@@ -80,10 +80,7 @@ final class WinampModernB140Tests: XCTestCase {
         let request = WinampModernHostedWindowInstantiation(definition: definition, frame: frame)
         XCTAssertEqual(request.defaultSize, definition.defaultSize)
         let nodes = WasabiSurfaceSynthesizer.frameNodes(
-            frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
-                                                  xuiTag: frame.xuiTag, hasArtwork: frame.hasArtwork,
-                                                  exemplar: frame.exemplar,
-                                                  clientInsets: frame.clientInsets),
+            frame: frame,
             frameID: "f", contentGroupID: "c", componentName: "Cava",
             location: WalSourceLocation(path: "test"))
         XCTAssertEqual(nodes.count, 1)
@@ -100,10 +97,7 @@ final class WinampModernB140Tests: XCTestCase {
             return XCTFail("expected a skin-frame route")
         }
         let nodes = WasabiSurfaceSynthesizer.frameNodes(
-            frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
-                                                  xuiTag: frame.xuiTag, hasArtwork: frame.hasArtwork,
-                                                  exemplar: frame.exemplar,
-                                                  clientInsets: frame.clientInsets),
+            frame: frame,
             frameID: "f", contentGroupID: "c", componentName: "Cava",
             location: WalSourceLocation(path: "test"))
         XCTAssertEqual(nodes.count, 2)
@@ -131,10 +125,7 @@ final class WinampModernB140Tests: XCTestCase {
         XCTAssertEqual(frame.groupIdentifier, "wasabi.standardframe.nostatusbar",
                        "the status frame's empty strip costs it the window")
         let nodes = WasabiSurfaceSynthesizer.frameNodes(
-            frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: frame.groupIdentifier,
-                                                  xuiTag: frame.xuiTag, hasArtwork: frame.hasArtwork,
-                                                  exemplar: frame.exemplar,
-                                                  clientInsets: frame.clientInsets),
+            frame: frame,
             frameID: "f", contentGroupID: "c", componentName: "Cava",
             location: WalSourceLocation(path: "test"))
         let group = try XCTUnwrap(nodes.last)

@@ -108,9 +108,9 @@ final class WinampModernHostedProviderTests: XCTestCase {
         let definition = id.definition
         return WinampModernHostedWindowInstantiation(
             definition: definition,
-            frame: WinampModernHostedFrameDescriptor(groupIdentifier: "test.frame",
-                                                     xuiTag: "Wasabi:StandardFrame",
-                                                     hasArtwork: true),
+            frame: WasabiSurfaceSynthesizer.Frame(groupIdentifier: "test.frame",
+                                                  xuiTag: "Wasabi:StandardFrame",
+                                                  hasArtwork: true),
             playerWidth: playerWidth)
     }
 
