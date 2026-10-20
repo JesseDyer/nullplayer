@@ -3,6 +3,38 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B209, B210 — the motion-dead classes — dismissed 2026-10-20
+
+| B209 | **Motion-dead: a script `Timer` declared, no animated layer, nothing moves at rest** (S4 motion ranking, §3 S3 suspect rule). 27 Gold+Silver skins declare a `Timer`, no `animatedlayer`, and render byte-identically across the 0–4 s ladder in every window. Find which capability the samples' timers are waiting on (a host event the harness does not send, a handler blocked on a method, or nothing — a timer used only for interaction), working across the samples, not one skin. S4: 27 × motion-dead 2 × at rest 3 ÷ cost 1 (untuned) = 162. Done when the cause is named for the class, fixed or dispositioned, and `wal_motion_sweep.sh`'s `ranking.tsv` re-measures the row | suspect skins: 27 of 114 Gold+Silver (`ranking.tsv`, rev `b24690b3`); samples canum, Core-X5, Darjah 1 | M | 2 |
+| B210 | **Motion-dead: an `animatedlayer` that never plays at rest** (S4 motion ranking, §3 S3 cause "never played"). 23 suspect Gold+Silver skins declare animated layers whose play head never starts and whose windows never change. Find which capability starts them in Winamp and not here (an event the harness does not send, `autoplay` semantics, a blocked handler), across the samples. S4: 23 × motion-dead 2 × at rest 3 ÷ cost 1 (untuned) = 138. Done when the cause is named for the class, fixed or dispositioned, and `ranking.tsv` re-measures the row | suspect skins: 23 of 114 Gold+Silver (`ranking.tsv`, rev `b24690b3`); samples --Vortex--, Dreliction, Anaheim_Player_01 | M | 2 |
+
+**Dismissed 2026-10-20**, after the method batches landed, as the plan asked. `wal_motion_sweep.sh`
+over gold+silver at rev `3b7a2c9f`: `ranking.tsv` keeps **B209 at 27 skins** and has **B210 at 19**,
+down from 23. Neither class is waiting on a missing capability. Both are what a skin's at-rest state
+looks like when the harness host is stopped and its clock does not advance.
+
+- **B209 (a Timer, no animated layer, nothing moved).** The 27 suspects were loaded with
+  `WINAMP_MODERN_TRACE_MAKI` and their `MAKI timer start` lines counted. **13 start no timer at
+  rest**: canum, Core-X5, Darjah 1, the five DewyTears, Simple, SingItKitty, Ujola Cat, Wiimote and
+  Winamp 3.0 Default. Their timers start on interaction. In canum's `main.m` the Thinger's wobble
+  starts `onEnterArea` and the songticker reverts after a volume change; Core-X5's run on volume
+  and seek hover. **14 start timers that redraw playback state.** wTunes's `timers.m` updates the
+  up/down time tickers and stops itself when stopped. TomK's and Formamp's 1 s timers and the
+  K-jr/MoonLight/Pure Inspired 10 ms family read position and VU levels. A stopped host gives them
+  nothing to change. After this session's fixes none of the 27 has a failing handler; the one
+  that had (Nitrous Audio's `playlistPlus.m`, `setXmlParam` on a `new Text`) was fixed.
+- **B210 (an animated layer that never plays at rest).** These layers are **frame-indexed
+  indicators**, not animations: a script scrubs them with `gotoFrame` and never `play()`s them. In
+  the 19 suspects `play()` reached an animated layer once (Dreliction), with or without a driven
+  `onPlay`, while `gotoFrame` reached 1–16 layers per skin at rest (Enkera 11 of 11, Nullsoft
+  Winamp 2000 15 of 15, ONYX V2 16). The rest are bound to values a stopped player holds still:
+  Overdrive_2's `VisAnim` is its VU meter, `SeekAnim`/`VolumeAnim` (Overdrive_2, Lobe, PionNer)
+  follow hidden seek and volume sliders, The Nokia 5220's `EQAnim1`…`10` the EQ bands, and
+  Tristania's clock hands and knobs the clock, pan and volume.
+
+Re-open only with a skin whose animation is meant to run at rest (an intro, a spinner, `autoplay`
+with no script stopping it) and does not. Checking that in the app while playing is part of B212.
+
 ## B207, B211 and the demand table's tail — closed 2026-10-19
 
 | B207 | **A `text` or `AlbumArt` a script hooks the mouse on is never under the pointer.** `isInteractive` (`WasabiRendererHitTesting.swift`) admits buttons, sliders, layers and objects with an `action=`; a `text` or `AlbumArt` whose only behaviour is a script binding is skipped, so a press falls through to the layout. Wasabi gives every non-ghost GuiObject its rect. The time readout that toggles elapsed/remaining is the visible case: `text#timer` on Defix and Ebonite, `text#s2timer` on Vortex; also TRON Legacy's `songticker`, EPS's `volumetext`, and Darjah's and Formamp's album art. Found by the interaction sweep (B205) as `covered:layout`. Admit an object a script binds a pointer event on; the renderer will need the binding answer from the runtime. Done when those seven read `works` or `silent` instead of `unreachable`, and a ghost text still passes clicks through | 7 skins in gold+silver (the sweep's `covered:layout` rows on `text`/`AlbumArt`, rev `f3ca6c5c`) | M | 2 |
