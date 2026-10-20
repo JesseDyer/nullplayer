@@ -154,6 +154,22 @@ cache is dropped on a track change, or the previous track's cover stays on scree
 title. Art arrives asynchronously, so the window controller repaints on
 `NowPlayingManager.artworkDidLoadNotification` — with playback paused nothing else would.
 
+#### A cover a script looks for beside the playing file (2026-10-20)
+
+Skins older than `<AlbumArt>` find the cover themselves. Deimos's `cover.maki` — **57 corpus
+skins**, Mac OS X Panther the reported one — takes `getPath(getPlayItemString())`, drops its first
+seven characters, appends `cover.jpg`, `coverart.jpg`, `folder.jpg`, `front.jpg`…, sets each as an
+`AnimatedLayer`'s `image=`, takes `getLength() > 0` as "found", and puts the hit on `cover.layer`.
+Winamp read the file from disk; a skin never may here. `WinampModernTrackFolderImage` answers it
+without opening anything: a value whose folder is the tail of the playing track's folder and whose
+leaf is an image **names** the cover, and the cover is `albumArtwork`. Three places honour it —
+`setXmlParam` lets that one unregistered image value through (any other is still refused, which
+Defix needs), the renderer draws the artwork for a `<layer>` wearing it, and `getLength()` answers 1
+while the art is present **or still loading** (the script asks once, on the title change, before
+the fetch lands) and 0 otherwise, so the skin's own "no cover found" art still shows when there is
+none. Dronev11 is **not** covered: its own `behaviors.m` only searches when the play item starts
+with `file://`, and probes with `Map.loadMap`, so its Cover Art window still says "No cover art".
+
 #### `alpha` belongs to the object, not to one kind of drawing
 
 It is set once per scene node, before the type-specific draw, so text and bitmap fonts fade with
@@ -618,6 +634,23 @@ and CornerAmp and Anexa are themselves among them. The containment was never the
 it is the `text=` and no-bitmap test below. Corrected while measuring B95.) The renderer draws a 1px border in `palette.listText` with the label centred, but
 only when the instance resolves *no* bitmap and carries a non-empty `text=` — a skin with its own
 button artwork never reaches the fallback.
+
+**A labelled one with no `h` is 20 tall.** Winamp's stock button sizes itself to its label, so
+machina's help window writes `<wasabi:button text="switch" w="100">` and no height; it resolved 0
+tall and the only route to the winshade help never drew. 20 is machina's own About switch buttons'
+`h`, not a measured label.
+
+##### A standard frame in a layout with no backing (2026-10-20)
+
+Winamp's own `wasabi.standardframe.*` groupdefs carry `background="wasabi.frame.basetexture"`
+(Zygote ships a copy that says so), so a skin that wraps a window in a frame and gives the
+`<layout>` no `background=` still had one in Winamp. 19 corpus skins have that shape, most of them
+declaring `wasabi.frame.basetexture` without naming it anywhere. machina's help window was the
+reported case: dark-on-transparent help art on the bare desktop, where its playlist — the same
+frame on `background="component.bg"` — was gold. `WasabiSceneRenderer.frameBaseTexture` paints
+`wasabi.frame.basetexture`, else `component.basetexture`, under the frame, only when its layout
+declares no backing and is not `desktopalpha="1"`. JRS's config window and machina's skin-config
+went from white/holed to the skin's texture in the same sweep.
 
 ##### Window-chrome buttons with no artwork (B95, 2026-09-01)
 

@@ -81,8 +81,17 @@ Two rules about *which* objects may claim a point:
   notifier is nothing but `ghost="1"` artwork over a layout whose script raises the player from
   `notifier_layout.onLeftButtonDown`. So for such a layout the view's `hitTest` counts ghost artwork
   as painted (`containsVisiblePixel(at:includingGhosts:)`), and `pressTarget(at:)` hands the press
-  to the layout when `object(at:)` finds nothing. Any other window stays click-through where only
-  ghosts paint.
+  to the layout when `object(at:)` finds nothing.
+- **Ghost artwork is window, in every layout** (2026-10-20). The rule above used to stop there and
+  leave any other window click-through where only ghosts paint. Dronev11's compact player is
+  `ghost="1"` from edge to edge — frame, display, overlays — so every press fell through to the
+  desktop and the player could not be dragged at all (`WINAMP_MODERN_DRAG_TRACE`: `hitTest … -> nil
+  (no visible pixel)` over solid bezel). A ghost passes its press *on*, to the layout; it does not
+  make its pixels desktop. `hitTest` now counts ghost pixels for every layout and `pressTarget`
+  gives such a press to the layout, which `shouldDragWindow` drags. A ghost still never *takes* a
+  press, so which control wins is unchanged; only fully transparent pixels click through.
+  `WINAMP_MODERN_DRAG_PROBE` does not see this — it samples `object(at:)` through the drag policy,
+  not the view's `hitTest`, and measures only each container's first layout.
 
 #### The three action attributes (Phase 36)
 

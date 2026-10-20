@@ -193,6 +193,78 @@ final class WinampModernB114Tests: XCTestCase {
         XCTAssertEqual(scene.renderer.canvasSize, CGSize(width: 300, height: 100))
     }
 
+    /// Winamp's own standard frame paints `wasabi.frame.basetexture`, so a skin that wraps a window
+    /// in one and gives the layout no `background=` still has a backing: machina's help window drew
+    /// its dark-on-transparent help art on the bare desktop without it.
+    func testAStandardFrameInABackgroundlessLayoutIsBackedByTheFrameTexture() throws {
+        let scene = try makeScene(
+            layoutAttributes: "",
+            resources: Self.frameResources + #"<bitmap id="wasabi.frame.basetexture" file="sheen.png"/>"#,
+            markup: #"<Wasabi:StandardFrame:NoStatus id="frame" x="0" y="0" w="0" h="0" relatw="1" relath="1"/>"#,
+            art: Self.sheenArt)
+        let backing = try XCTUnwrap(scene.pixel(x: 60, y: 20))
+        XCTAssertEqual(Int(backing.alpha), 255)
+        XCTAssertEqual(Int(backing.red), 180, accuracy: 1)
+    }
+
+    /// Winamp's stock button sizes itself to its label; machina's help `switch` states only a width
+    /// and drew 0 tall.
+    func testALabelledWasabiButtonWithNoHeightStillDraws() throws {
+        let scene = try makeScene(layoutAttributes: "",
+                                  markup: #"<Wasabi:Button id="switch" text="switch" x="10" y="5" w="60"/>"#)
+        XCTAssertGreaterThan(Int(try XCTUnwrap(scene.pixel(x: 10, y: 15)).alpha), 0,
+                             "the button's left border is drawn below its top edge")
+    }
+
+    /// A playlist window's `<LayoutStatus>` holds the playlist's command bar — JRS's playlist had
+    /// no other way to add or remove a track — unless the skin draws its own buttons beside it.
+    func testAPlaylistStatusSlotGetsTheCommandBarUnlessTheSkinHasItsOwn() throws {
+        let playlist = #"component="guid:{45F3F7C1-A6F3-4ee6-A15E-125E92FC3F8D}""#
+        let status = #"<LayoutStatus id="status" x="0" y="-15" relaty="1" w="0" relatw="1" h="15"/>"#
+        let bare = try makeScene(layoutAttributes: "", containerAttributes: playlist, markup: status)
+        let bar = bare.objects(withIDPrefix: WasabiStandardFrames.commandBarIDPrefix)
+        XCTAssertEqual(bar.compactMap { $0.attributes["action"] },
+                       ["PE_Add", "PE_Rem", "PE_Sel", "PE_Misc", "PE_List"])
+        XCTAssertTrue(bar.allSatisfy { $0.attributes["visible"] != "0" })
+
+        let ownButtons = try makeScene(
+            layoutAttributes: "", containerAttributes: playlist,
+            markup: status + #"<button id="add" action="PE_Add" x="0" y="0" w="10" h="10"/>"#)
+        XCTAssertTrue(ownButtons.objects(withIDPrefix: WasabiStandardFrames.commandBarIDPrefix)
+            .allSatisfy { $0.attributes["visible"] == "0" })
+
+        let notAPlaylist = try makeScene(layoutAttributes: "", markup: status)
+        XCTAssertTrue(notAPlaylist.objects(withIDPrefix: WasabiStandardFrames.commandBarIDPrefix).isEmpty)
+    }
+
+    /// Deimos's `cover.maki` (57 corpus skins) asks for `cover.jpg`, `folder.jpg`… beside the playing
+    /// file, with the folder's first seven characters dropped. That names the cover; nothing opens it.
+    func testACoverBesideThePlayingFileIsRecognisedByItsFolder() {
+        let host = Host()
+        host.trackPath = "/Users/someone/Music/Album/01.mp3"
+        XCTAssertTrue(host.isTrackFolderImage("someone/Music/Album/cover.jpg"))
+        XCTAssertTrue(host.isTrackFolderImage(#"someone\Music\Album\FOLDER.JPG"#), "Windows separators, any case")
+        XCTAssertFalse(host.isTrackFolderImage("someone/Music/Other/cover.jpg"), "another folder")
+        XCTAssertFalse(host.isTrackFolderImage("cover.jpg"), "no folder at all")
+        XCTAssertFalse(host.isTrackFolderImage("someone/Music/Album/notes.txt"), "not an image")
+    }
+
+    /// …and a layer wearing that path draws the host's album art, which is how Mac OS X Panther's
+    /// Cover Art window shows the cover instead of "No cover found".
+    func testALayerNamingACoverBesideThePlayingFileDrawsTheHostArtwork() throws {
+        let host = Host()
+        host.trackPath = "/Users/someone/Music/Album/01.mp3"
+        let png = Self.solidPNG(red: 30, green: 200, blue: 90)
+        host.albumArtwork = CGImageSourceCreateWithData(png as CFData, nil)
+            .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+        let scene = try makeScene(
+            layoutAttributes: "",
+            markup: #"<layer id="cover" x="0" y="0" w="120" h="40" image="someone/Music/Album/cover.jpg"/>"#,
+            host: host)
+        let pixel = try XCTUnwrap(scene.pixel(x: 60, y: 20))
+        XCTAssertEqual(Int(pixel.green), 200, accuracy: 1)
+    }
+
     // MARK: - Fixture
 
     /// B151's shape: a skin-defined standard frame that paints nothing, and a face inset 2px.
@@ -210,6 +282,17 @@ final class WinampModernB114Tests: XCTestCase {
 
     private struct Scene {
         let renderer: WasabiSceneRenderer
+        let graph: WasabiObjectGraph
+
+        func objects(withIDPrefix prefix: String) -> [WasabiObject] {
+            var found: [WasabiObject] = []
+            func walk(_ object: WasabiObject) {
+                if object.xmlID?.hasPrefix(prefix) == true { found.append(object) }
+                object.children.forEach(walk)
+            }
+            graph.roots.forEach(walk)
+            return found
+        }
 
         func pixel(x: Int, y: Int, scale: Int = 1) -> (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)? {
             let width = Int(renderer.canvasSize.width) * scale
@@ -238,14 +321,16 @@ final class WinampModernB114Tests: XCTestCase {
 
     private func makeScene(layoutAttributes: String,
                            size: String = #"w="120" h="40""#,
+                           containerAttributes: String = "",
                            resources: String = "",
                            markup: String = "",
-                           art: [String: Data] = [:]) throws -> Scene {
+                           art: [String: Data] = [:],
+                           host: Host = Host()) throws -> Scene {
         var files: [String: Data] = art
         files["skin.xml"] = Data("""
         <WasabiXML>
           <elements>\(resources)</elements>
-          <container id="Main">
+          <container id="Main" \(containerAttributes)>
             <layout id="normal" \(size) \(layoutAttributes)>
         \(markup)
             </layout>
@@ -255,9 +340,9 @@ final class WinampModernB114Tests: XCTestCase {
 
         let loaded = try WinampModernSkinLoader(engineStore: nil).load(from: try makeArchive(files: files))
         addTeardownBlock { loaded.teardown() }
-        let renderer = try WasabiSceneRenderer(loadedSkin: loaded, host: Host(), clock: { 0 })
+        let renderer = try WasabiSceneRenderer(loadedSkin: loaded, host: host, clock: { 0 })
         addTeardownBlock { renderer.teardown() }
-        return Scene(renderer: renderer)
+        return Scene(renderer: renderer, graph: loaded.runtime.graph)
     }
 
     private func makeArchive(files: [String: Data]) throws -> URL {
@@ -303,6 +388,8 @@ final class WinampModernB114Tests: XCTestCase {
         var trackTitle = ""
         var trackInfo = ""
         var spectrumLevels: [Float] = []
+        var trackPath = ""
+        var albumArtwork: CGImage?
 
         func play() {}
         func pause() {}

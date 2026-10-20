@@ -2354,6 +2354,13 @@ final class WasabiSceneRenderer {
                 intrinsic.height = max(0, Double(content.attributes["h"] ?? "") ?? 0)
             }
         }
+        // A labelled `<Wasabi:Button>` that states no height is Winamp's stock button, which sizes
+        // itself to its label. machina's help window writes `<wasabi:button text="switch" w="100">`
+        // with no `h`, so it resolved 0 tall and the one way to reach the winshade help never drew.
+        // ponytail: a fixed 20 (machina's own About switch buttons state h="20"), not a measured label.
+        if object.attributes["h"] == nil, intrinsic.height == 0, Self.isTextButton(object) {
+            intrinsic.height = 20
+        }
         // A `<Menu>`'s hover or pressed art that states no size of its own is the entry's size (B150).
         // winampmodern566 and The_Nokia_5220 write `<menu:button_hover id="File.hover.btn" x="0"
         // y="0"/>` into a groupdef with only `h="16"`, and the art inside is a three-slice cut to
@@ -2558,6 +2565,8 @@ final class WasabiSceneRenderer {
                 context.setFillColor(palette.contentBackground.cgColor)
                 context.fill(node.frame)
             }
+        } else if let texture = frameBaseTexture(for: object) {
+            drawImage(texture.image, in: node.frame, context: context)
         }
 
         // The window chrome Winamp's own standard frame drew. Before the type chain because a frame
@@ -2634,6 +2643,9 @@ final class WasabiSceneRenderer {
             } else {
                 draw(bitmap, object: object, frame: node.frame, context: context)
             }
+        } else if type == "layer", let imageID = object.attributes["image"],
+                  let artwork = host.trackFolderArtwork(forImage: imageID) {
+            drawImage(artwork, in: node.frame, context: context)
         } else if let role = chromeButtonRole(
                     of: object,
                     bitmapID: resolvedBitmapID(for: object,
@@ -4745,6 +4757,22 @@ final class WasabiSceneRenderer {
     private func drawsBackground(_ object: WasabiObject) -> Bool {
         guard let value = object.attributes["drawbackground"]?.lowercased() else { return true }
         return value != "0" && value != "false" && value != "no"
+    }
+
+    /// The backing Winamp's own standard frame paints, for a frame whose window gives none.
+    ///
+    /// 19 corpus skins put a `<Wasabi:StandardFrame:*>` in a layout with no `background=` and
+    /// declare `wasabi.frame.basetexture` (or `component.basetexture`) without ever naming it: the
+    /// stock frame draws it. machina's help window drew its dark-on-transparent help art on the
+    /// bare desktop without it, where its playlist — the same frame on `background="component.bg"`
+    /// — was gold. A layout that declares a backing, or composites against the desktop, keeps its own.
+    private func frameBaseTexture(for object: WasabiObject) -> WasabiBitmap? {
+        guard WasabiStandardFrames.isStandardFrame(object),
+              let layout = object.parent, layout.typeName.lowercased() == "layout",
+              layout.attributes["background"] == nil,
+              layout.attributes["desktopalpha"] != "1" else { return nil }
+        return resources.bitmap(identifier: "wasabi.frame.basetexture")
+            ?? resources.bitmap(identifier: "component.basetexture")
     }
 
     /// The object's declared geometry, with `fitparent="1"` folded in.

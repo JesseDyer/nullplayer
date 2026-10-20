@@ -1830,9 +1830,15 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
     private func applyDefaultContainerVisibility() {
         var opened = false
         for container in auxiliaryContainers where !container.window.isVisible {
+            // The container's own `hold=` GUID as well as the catalog: this runs before
+            // `makeSurfaceCoordinator`, so the catalog is still nil here and machina's
+            // `<container id="Video" hold="guid:{F0816D7B-…}" default_visible="1">` opened empty at
+            // every launch, with nothing in the Windows menu to close it from.
+            let hostsVideo = container.kind == .video
+                || routedSurfaceKind(ofContainer: container.containerID) == .video
             guard Self.opensAtLoad(opensByDefault: container.opensByDefault,
                                    remembered: rememberedContainerVisibility(id: container.containerID),
-                                   hostsVideo: routedSurfaceKind(ofContainer: container.containerID) == .video)
+                                   hostsVideo: hostsVideo)
             else { continue }
             setAuxiliaryWindow(id: container.containerID, visible: true, activate: false)
             opened = true

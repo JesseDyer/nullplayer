@@ -47,6 +47,13 @@
   labels, and Vortex, Alpha Media Player X5 and 1010 Fullscreen stay on screen. Windows that cannot
   fit beside the player now open in a screen corner rather than on top of it, and skins that ask for
   uppercase window titles (BOOM and 96 others) get them.
+- **Modern skins: playlist buttons, window backings and a stray video window** — playlist windows
+  that leave a slot for Winamp's Add / Rem / Sel / Misc / List buttons now show them, so JRS's
+  playlist (and about 220 others) can be edited. machina's help screen and skin configuration, and
+  JRS's configuration, draw on the skin's own background instead of the desktop or a white sheet,
+  and machina's help screen gets its switch button. A skin's video window no longer opens empty at
+  launch with no way to close it. Dronev11's compact player can be dragged again, and the Cover Art
+  window in Mac OS X Panther and 56 other skins shows the playing track's cover.
 
 ## 0.33.0
 

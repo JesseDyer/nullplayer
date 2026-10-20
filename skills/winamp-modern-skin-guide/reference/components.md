@@ -68,6 +68,13 @@ Shield_Amp, S7Reflex and Defix enter this same path rather than being parsed as 
   playback is not the user deciding, and recording it was what wrote the stale `Video = 1` this fix
   now ignores.
 
+  **The exemption reads the container's own `hold=`/`component=` as well as the catalog**
+  (2026-10-20). `applyDefaultContainerVisibility` runs *before* `makeSurfaceCoordinator`, so the
+  catalog is still nil there and `routedSurfaceKind` answers nil for every container. machina's
+  `<container id="Video" hold="guid:{F0816D7B-…}" default_visible="1">` therefore opened empty at
+  every launch — and the Windows menu could not close it, because a routed surface is listed under
+  NullPlayer's Video Player item, which stays disabled until a film has played.
+
   **A persisted per-skin decision is part of the state a "clean" launch reproduces.** This defect is
   invisible to the render dump — the harness installs no windows, so nothing is ever restored — and
   invisible to a fresh profile. `defaults read NullPlayer | grep '_nullplayer_windows'` is the state
@@ -220,6 +227,19 @@ synthesize — still falls back to NullPlayer's chrome (`library=classic('wasabi
 has no frame script that instantiates its content')`) even though the initializer could now fill that
 frame. Unpicked deliberately: it changes the hosted-window catalog for three skins and wants its own
 live QA.
+
+#### A playlist frame's `<LayoutStatus>` is the playlist's command bar (2026-10-20)
+
+Winamp draws a component's command bar into the standard frame's `<LayoutStatus>` slot (the one
+that `exclude="{system}"`s; an `includeonly="{system}"` slot holds only the system menu). For the
+playlist that is Add / Rem / Sel / Misc / List, and a skin that hosts it `noshowcmdbar="1"` draws
+none of its own: JRS's playlist could not be edited at all. `WasabiStandardFrames.playlistCommandBar`
+creates five labelled `<Wasabi:Button>`s sending the `PE_*` actions into a `LayoutStatus` whose
+container declares the playlist GUID, and `hidePlaylistCommandBarsBesideSkinButtons` hides them in
+any layout that already has a skin `PE_Add` — 89 corpus skins draw their own and most also inherit a
+status frame. ~220 skins gain the bar, NullPlayer's own playlist window among them where it borrows
+the skin's frame. Only the playlist: the video and library components fill their own slots
+differently and none of those is wired.
 
 #### The component bucket — Winamp's thinger (B34, 2026-08-25)
 

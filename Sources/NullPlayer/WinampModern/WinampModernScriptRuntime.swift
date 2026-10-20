@@ -915,7 +915,16 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// divided by the layer's frame box (MMD3's volume knob is a 44×1012 strip of 44×44 frames).
     func animationFrameCount(of object: WasabiObject) -> Int {
         if let raw = object.attributes["frames"], let count = Int(raw), count > 0 { return count }
-        guard let imageID = object.attributes["image"], let sheet = bitmapSize(identifier: imageID) else { return 1 }
+        guard let imageID = object.attributes["image"], let sheet = bitmapSize(identifier: imageID) else {
+            // A cover looked for beside the playing file (`WinampModernTrackFolderImage`) is found
+            // when the host has artwork or is still fetching it — the script asks once, on the title
+            // change, before the fetch lands. "Found" with neither left the skin's own
+            // "cover not found" image unreached behind an empty layer.
+            if let imageID = object.attributes["image"], host.isTrackFolderImage(imageID) {
+                return host.albumArtwork != nil || host.isArtworkLoading ? 1 : 0
+            }
+            return 1
+        }
         let frameWidth = Int(object.attributes["framewidth"] ?? object.attributes["w"] ?? "") ?? Int(sheet.width)
         let frameHeight = Int(object.attributes["frameheight"] ?? object.attributes["h"] ?? "") ?? Int(sheet.height)
         guard frameWidth > 0, frameHeight > 0 else { return 1 }

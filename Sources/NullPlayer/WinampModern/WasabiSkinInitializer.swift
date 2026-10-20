@@ -687,6 +687,7 @@ final class WasabiSkinInitializer {
                           definitionStack: [], createdCount: &createdCount,
                           documentOrder: documentOrder, enclosingOrder: nil)
         applyMetaCommands(pendingMetaCommands)
+        WasabiStandardFrames.hidePlaylistCommandBarsBesideSkinButtons(in: graph)
         // Buckets are filled *before* scripts are bound, so a `<groupdef>` a bucket brings in has its
         // own `<script>` collected into the same `pendingScripts` batch as the rest of the skin and
         // comes up at load, not later. Anything else would leave a widget's script unbound.
@@ -1802,6 +1803,15 @@ final class WasabiSkinInitializer {
             if formWidget?.kind == .dropDownList,
                findObject(xmlID: WasabiFormWidgets.dropDownLabelID, beneath: object) == nil {
                 try createObjects(from: [WasabiFormWidgets.labelNode(location: node.location)],
+                                  parent: object, graph: graph, types: types,
+                                  pendingScripts: &pendingScripts,
+                                  pendingMetaCommands: &pendingMetaCommands,
+                                  definitionStack: nextDefinitionStack,
+                                  createdCount: &createdCount,
+                                  documentOrder: documentOrder, enclosingOrder: nodeOrder)
+            }
+            if WasabiStandardFrames.hostsPlaylistCommandBar(node: node, object: object) {
+                try createObjects(from: WasabiStandardFrames.playlistCommandBar(location: node.location),
                                   parent: object, graph: graph, types: types,
                                   pendingScripts: &pendingScripts,
                                   pendingMetaCommands: &pendingMetaCommands,

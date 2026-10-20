@@ -270,3 +270,69 @@ extension WasabiStandardFrames {
         }
     }
 }
+
+extension WasabiStandardFrames {
+
+    /// Whether this `<LayoutStatus>` is a playlist window's, the one slot Winamp fills with the
+    /// playlist's command bar when the component is hosted `noshowcmdbar="1"`.
+    static func hostsPlaylistCommandBar(node: WalXMLNode, object: WasabiObject) -> Bool {
+        // `includeonly="{system}"` is the other kind of slot — Zygote's 14x9 title-bar box that
+        // holds the system menu and nothing else; the command bar goes in the one that excludes it.
+        guard node.name.caseInsensitiveCompare("LayoutStatus") == .orderedSame,
+              node.attribute("includeonly") == nil else { return false }
+        var ancestor = object.parent
+        while let current = ancestor {
+            if current.typeName.caseInsensitiveCompare("container") == .orderedSame {
+                let declared = current.attributes["component"] ?? current.attributes["hold"]
+                return declared.flatMap(WinampModernComponentRegistry.kind(for:)) == .playlist
+            }
+            ancestor = current.parent
+        }
+        return false
+    }
+
+    /// The playlist's command bar, drawn **into the frame's `<LayoutStatus>`**. JRS's playlist
+    /// frame is that slot and nothing else — no Add/Remove/Select/Misc/List of its own — so with
+    /// the slot empty its playlist could not be edited at all. 773 corpus skins declare a
+    /// `LayoutStatus`; only one inside a playlist container gets these. They send the `PE_*`
+    /// actions a skin's own playlist buttons send.
+    static func playlistCommandBar(location: WalSourceLocation) -> [WalXMLNode] {
+        let buttons = [("Add", "PE_Add"), ("Rem", "PE_Rem"), ("Sel", "PE_Sel"),
+                       ("Misc", "PE_Misc"), ("List", "PE_List")]
+        return buttons.enumerated().map { index, button in
+            WalXMLNode(name: "Wasabi:Button", attributes: [
+                "id": commandBarIDPrefix + button.0.lowercased(), "text": button.0,
+                "action": button.1, "x": String(index * 34), "y": "0",
+                "w": "32", "h": "0", "relath": "1",
+            ], location: location)
+        }
+    }
+
+    static let commandBarIDPrefix = "nullplayer.pe."
+
+    /// A layout that already carries the skin's own `PE_Add` button keeps only those: 89 corpus
+    /// skins draw their playlist buttons themselves, and most also inherit a status frame, so the
+    /// bar would be a second Add/Rem/Sel/Misc row under their own. Run once the graph is built,
+    /// because the skin's buttons can come after the frame in document order.
+    static func hidePlaylistCommandBarsBesideSkinButtons(in graph: WasabiObjectGraph) {
+        func walk(_ object: WasabiObject, visit: (WasabiObject) -> Void) {
+            visit(object)
+            object.children.forEach { walk($0, visit: visit) }
+        }
+        for root in graph.roots {
+            walk(root) { layout in
+                guard layout.typeName.caseInsensitiveCompare("layout") == .orderedSame else { return }
+                var bar: [WasabiObject] = []
+                var skinAdds = false
+                walk(layout) { object in
+                    if object.xmlID?.hasPrefix(commandBarIDPrefix) == true {
+                        bar.append(object)
+                    } else if object.attributes["action"]?.caseInsensitiveCompare("PE_Add") == .orderedSame {
+                        skinAdds = true
+                    }
+                }
+                if skinAdds { bar.forEach { _ = $0.setAttribute("visible", value: "0") } }
+            }
+        }
+    }
+}

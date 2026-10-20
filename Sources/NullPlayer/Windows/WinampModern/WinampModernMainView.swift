@@ -912,10 +912,10 @@ final class WinampModernMainView: NSView {
             traceHitTest(point, verdict: "self (holder)")
             return self
         }
-        // A layout whose script takes presses is reachable through its ghosts — `pressTarget`.
-        let visible = renderer.containsVisiblePixel(at: skin)
-            || (scripts.hasPressBinding(for: renderer.layout)
-                && renderer.containsVisiblePixel(at: skin, includingGhosts: true))
+        // A ghost passes its press to the layout under it; it does not make its pixels desktop.
+        // Dronev11's compact player is ghost artwork from edge to edge and could not be dragged
+        // anywhere. The press itself is routed by `pressTarget`.
+        let visible = renderer.containsVisiblePixel(at: skin, includingGhosts: true)
         traceHitTest(point, verdict: visible ? "self (pixel)" : "nil (no visible pixel)")
         return visible ? self : nil
     }
@@ -1719,7 +1719,9 @@ final class WinampModernMainView: NSView {
     /// script handles presses there, as in Wasabi: the stock notifier raises a minimized player from
     /// `notifier_layout.onLeftButtonDown`, and its window is all text and art (B183).
     private func pressTarget(at point: CGPoint) -> WasabiObject? {
-        renderer.object(at: point) ?? (scripts.hasPressBinding(for: renderer.layout) ? renderer.layout : nil)
+        renderer.object(at: point)
+            ?? (scripts.hasPressBinding(for: renderer.layout)
+                || renderer.containsVisiblePixel(at: point, includingGhosts: true) ? renderer.layout : nil)
     }
 
     override func mouseDown(with event: NSEvent) {

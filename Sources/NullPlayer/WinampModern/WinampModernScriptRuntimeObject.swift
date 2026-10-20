@@ -152,7 +152,10 @@ extension WinampModernScriptRuntime {
             // (`background="BG1"`) and the frame around the player, both speakers, the playlist and
             // the library, leaving flat black boxes. The skin ships a screenshot of itself framed and
             // panelled, which is what Winamp shows for a set that never loaded.
+            // The one unregistered value that does load: a cover beside the playing file, which
+            // draws the host's artwork (`WinampModernTrackFolderImage`).
             guard !Self.imageKeys.contains(key.lowercased()) || resolvesToResource(value)
+                    || host.isTrackFolderImage(value)
             else { return .null }
             if Self.geometryKeys.contains(key.lowercased()) {
                 // A container or a layout is a *window*: its box is not read back out of the graph at

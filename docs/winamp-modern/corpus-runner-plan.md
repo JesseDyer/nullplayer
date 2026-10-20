@@ -46,8 +46,19 @@ general, so it applies to every skin with the same shape, named after the skin t
 | Alpha_Media_Player_X5 | The player scaled itself past both screen edges | A skin's `setScale` is capped at the largest UI Size that fits on screen |
 | wTunes | The right 25px were cut off | Layout sizes are trimmed (`w=" 300"`) |
 
-Not yet looked at in the app: Dronev11, JRS, shark5, cPro2__minimal_1_1, Zygote,
-CPro_Winamp_for_Mac_Sync, LogicallityV1_0, machina. Filed from the code review: B216 (check `.wmz`
+Second pass, the remaining eight (Dronev11, JRS, shark5, cPro2__minimal_1_1, Zygote,
+CPro_Winamp_for_Mac_Sync, LogicallityV1_0, machina):
+
+| Skin | What was wrong | Fix (where) |
+|---|---|---|
+| machina | The help window drew on the bare desktop; its switch button drew 0 tall | A standard frame in a backgroundless layout paints `wasabi.frame.basetexture` (`WasabiRenderer.frameBaseTexture`); a labelled `<Wasabi:Button>` with no `h` is 20 tall |
+| machina | An empty video window opened at launch, missing from the Windows menu | The B97 video exemption reads the container's own `hold=` — the catalog is not built yet at that point (`applyDefaultContainerVisibility`) |
+| JRS (~220 skins) | The playlist had no Add/Rem/Sel/Misc/List anywhere | A playlist frame's `<LayoutStatus>` gets the command bar, hidden where the skin has its own `PE_Add` (`WasabiStandardFrames`) |
+| Dronev11 | The compact player could not be dragged anywhere | Ghost artwork is window: `hitTest` counts it and `pressTarget` hands the press to the layout (`WinampModernMainView`) |
+| Mac OS X Panther (57 skins) | The Cover Art window always said "No cover found" | A cover `cover.maki` looks for beside the playing file draws the host's artwork; nothing is opened (`WinampModernTrackFolderImage`) |
+
+The other skins showed nothing more on a first look. Left: Dronev11's playlist info sits high in its
+bar (cosmetic), and its own cover script (`behaviors.m`, `file://` only) still finds no cover. Filed from the code review: B216 (check `.wmz`
 placement after the tiler change, then move the tiler out of `WindowManager.swift`) and B217 (one
 type-name accessor; one button-label rule).
 
