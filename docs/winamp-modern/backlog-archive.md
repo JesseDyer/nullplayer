@@ -19,8 +19,8 @@ Panther and Official Tristania draw their tree and About sheet, and Anunaki's Co
 five-tab page instead of an empty slab; nothing else changed beyond the known pair and the two live
 clocks. In the app, 1010 Fullscreen's Cover Search page opens from the tree with its fields set
 (`setAutoEnter` runs on `edit#filename`; Image Quality reads "Large"), which is B189's check.
-Panther's restyled tab buttons (`wasabi.tabsheet.button.*.group`) are not used yet: its tab strip is
-blank.
+A restyle is the content background, so it now sits below the tab strip (`d83b3abb`'s successor),
+and Panther's tabs draw with its own `wasabi.tabsheet.button.*` art.
 
 ## B162 — the script-glue type — closed 2026-10-20
 

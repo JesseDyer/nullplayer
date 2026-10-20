@@ -336,6 +336,8 @@ Group semantics worth knowing:
 - A skin's `<groupdef id="wasabi.tabsheet">` **restyles** Winamp's tab sheet, which still builds the
   pages it is given (Mac OS X Panther, Anunaki). Only a skin's own `xuitag="Wasabi:TabSheet"`
   groupdef under another id replaces the widget and leaves its pages to the skin.
+  The restyle is the **content** background: it sits in a group below the tab strip, where Winamp
+  draws its buttons; laid over the whole sheet, Panther's grid painted the tabs out.
 - `xuitag` registers a custom XML tag name for group instantiation.
 - A duplicate definition does **not** replace the earlier one wholesale: every version is kept, and a
   `<group>` expands the version in force *where that group is written*. Winamp's parser is streaming,

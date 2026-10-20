@@ -72,6 +72,9 @@ final class WinampModernLoaderGapTests: XCTestCase {
         """)
         let ids = Set(loaded.runtime.graph.allObjectsUnordered.compactMap(\.xmlID))
         XCTAssertTrue(ids.isSuperset(of: ["restyle", "tab.leaf"]), "\(ids)")
+        // The restyle is the content background, below the strip the tabs are drawn in.
+        let restyle = try XCTUnwrap(loaded.runtime.graph.allObjectsUnordered.first { $0.xmlID == "restyle" })
+        XCTAssertEqual(restyle.parent?.attributes["y"], String(Int(WasabiTabSheet.stripHeight)))
     }
 
     /// B179: the installed ClassicPro engine lacks `miniexes.xml`, which three cPro skins include.

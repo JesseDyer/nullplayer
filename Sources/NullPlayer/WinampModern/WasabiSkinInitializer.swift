@@ -1576,6 +1576,20 @@ final class WasabiSkinInitializer {
                     let pages = WasabiTabSheet.pageNodes(for: widget, location: location)
                     if !pages.isEmpty {
                         _ = widget.setAttribute(WasabiTabSheet.hostedAttribute, value: "1")
+                        // A skin's `wasabi.tabsheet` restyle is the **content** background: Winamp
+                        // draws its buttons in the strip above it. Laid over the whole sheet, Mac OS
+                        // X Panther's grid painted out the strip and its tabs.
+                        let restyle = widget.children
+                        if !restyle.isEmpty {
+                            let background = graph.makeObject(
+                                typeName: "group",
+                                attributes: ["x": "0", "y": String(Int(WasabiTabSheet.stripHeight)),
+                                             "w": "0", "h": String(-Int(WasabiTabSheet.stripHeight)),
+                                             "relatw": "1", "relath": "1"],
+                                source: location)
+                            for child in restyle { try background.appendChild(child) }
+                            try widget.insertChild(background, at: 0)
+                        }
                         try createObjects(from: pages, parent: widget, graph: graph, types: types,
                                           pendingScripts: &pendingScripts,
                                           pendingMetaCommands: &pendingMetaCommands,
