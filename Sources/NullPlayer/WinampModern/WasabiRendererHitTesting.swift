@@ -7,14 +7,14 @@ import Foundation
 /// Split out of `WasabiRenderer.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/rendering/hit-testing.md`.
 extension WasabiSceneRenderer {
-    func object(at point: CGPoint, interactiveOnly: Bool = true,
+    func object(at point: CGPoint, interactiveOnly: Bool = true, includingGhosts: Bool = false,
                 ignoring shouldIgnore: ((WasabiObject) -> Bool)? = nil) -> WasabiObject? {
         // Outside the window's own shape there is nothing to hit: a corner the skin trimmed away is
         // gone for the pointer as well as for the eye (B76).
         guard containsRegionPixel(at: point) else { return nil }
         for node in sceneNodes().reversed() where node.clip.contains(point) && node.frame.contains(point) {
             let object = node.object
-            guard isVisible(object), object.attributes["ghost"] != "1" else { continue }
+            guard isVisible(object), includingGhosts || object.attributes["ghost"] != "1" else { continue }
             if shouldIgnore?(object) == true { continue }
             if interactiveOnly && !isInteractive(object) { continue }
             if !interactiveOnly && !isRenderable(object, bitmapID: node.bitmapID) { continue }
@@ -65,8 +65,10 @@ extension WasabiSceneRenderer {
                                         y: Int((point.y - frame.minY).rounded(.down)) - region.offsetY)
     }
 
-    func containsVisiblePixel(at point: CGPoint) -> Bool {
-        object(at: point, interactiveOnly: false) != nil
+    /// `includingGhosts` counts `ghost="1"` artwork too: it takes no press itself, but the window it
+    /// paints still does, and the press goes to the layout (the stock notifier is all ghosts, B183).
+    func containsVisiblePixel(at point: CGPoint, includingGhosts: Bool = false) -> Bool {
+        object(at: point, interactiveOnly: false, includingGhosts: includingGhosts) != nil
     }
 
     /// Every draggable `<Wasabi:Frame>` divider in the active scene, with its grab strip in skin

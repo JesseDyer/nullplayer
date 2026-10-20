@@ -244,6 +244,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// `System.restoreApplication()` (`true`: bring minimized windows back too) and
     /// `activateApplication()` (`false`): put the player in front.
     var applicationRaiseRequested: ((Bool) -> Void)?
+    /// `System.isMinimized()` — the notifier's "only when minimized" modes gate on it.
+    var applicationMinimizedRequested: (() -> Bool)?
     /// `System.windowMenu()` — Winamp's window list, at the pointer.
     var windowMenuRequested: (() -> Void)?
     /// The playlist the `PlEdit` singleton addresses. Weak: the window controller owns the bridge,

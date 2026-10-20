@@ -346,7 +346,11 @@ extension WinampModernScriptRuntime {
             let themes = themeNamesRequested?() ?? []
             let index = Int(arguments[0].integerValue)
             return .string(themes.indices.contains(index) ? themes[index] : "")
-        case "gettimeofday": return .integer(Int32(truncatingIfNeeded: Int64(Date().timeIntervalSince1970 * 1000)))
+        // Milliseconds since local midnight: cPro2 shows it as its stopped clock through
+        // `integerToLongTime`, and the epoch count read as 415 hours.
+        case "gettimeofday":
+            let now = Date()
+            return .integer(Int32(now.timeIntervalSince(Calendar.current.startOfDay(for: now)) * 1000))
         case "getplayitemdisplaytitle": return .string(host.trackDisplayTitle)
         // Winamp's play item string is the entry's filename or URL, not its title: 61 corpus call
         // sites hand it straight to `getExtension`, and ONYX V2's File Type readout printed the
@@ -372,7 +376,8 @@ extension WinampModernScriptRuntime {
         // The argument names an item, but every call site in the corpus passes the *current* one, and
         // the host only knows what it is decoding now — so the answer is about the playing track.
         case "getdecodername": return .string(host.decoderName)
-        case "isvideo", "isvideofullscreen", "iskeydown", "isminimized":
+        case "isminimized": return .boolean(applicationMinimizedRequested?() ?? false)
+        case "isvideo", "isvideofullscreen", "iskeydown":
             return .boolean(false)
         // A *component's* window, addressed by GUID. Winamp answers for the plugin windows it has
         // loaded; the only ones we have are the components we put in a holder, so the question is

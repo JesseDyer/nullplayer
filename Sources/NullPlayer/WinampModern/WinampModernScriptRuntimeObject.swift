@@ -511,12 +511,14 @@ extension WinampModernScriptRuntime {
             _ = object.setAttribute("animstart", value: String(WasabiAnimation.now()))
             _ = object.setAttribute("playing", value: "1")
             notifyObjectDidMutate(object)
+            startFrameEvents(for: object)
             return .null
         case "pause", "stop":
             // Freeze where the animation actually is, not where it started.
             _ = object.setAttribute("frame", value: String(animationFrame(of: object)))
             _ = object.setAttribute("playing", value: "0")
             notifyObjectDidMutate(object)
+            if method == "stop" { stopFrameEvents(for: object) }
             return .null
         case "gotoframe", "setframe":
             let moved = object.setAttribute("frame", value: String(max(0, arguments[0].integerValue)))

@@ -69,6 +69,14 @@ final class WinampModernSystemDemandTests: XCTestCase {
         XCTAssertEqual(requests, ["MINIMIZE", "CLOSE", "restore", "activate", "windowmenu", "eq true", "eq false"])
     }
 
+    /// B183: the stock notifier's "only when minimized" modes read `isMinimized`, which answered false.
+    func testIsMinimizedAsksTheHost() throws {
+        let (runtime, program) = try makeRuntime()
+        XCTAssertEqual(try system(runtime, program, "isMinimized").integerValue, 0)
+        runtime.applicationMinimizedRequested = { true }
+        XCTAssertEqual(try system(runtime, program, "isMinimized").integerValue, 1)
+    }
+
     /// `shutdown` has an arity only on `Application`, so another class declaring the verb is not given it.
     func testShutdownIsGatedToApplication() throws {
         let (runtime, _) = try makeRuntime()

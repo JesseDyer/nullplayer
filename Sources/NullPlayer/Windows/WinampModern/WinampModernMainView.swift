@@ -66,6 +66,13 @@ final class WinampModernMainView: NSView {
     }
 
     private var pressedObject: WasabiObject?
+    /// Set while a click is released on an object whose script also handles its double-click. The
+    /// main menu's tracking loop would swallow the second click, so the menu waits out the
+    /// double-click interval and a second press cancels it: cPro2 minimal's system button opens the
+    /// menu on one click (`onLeftClick` → a hidden SYSMENU button's `leftClick()`) and calls
+    /// `Application.shutdown()` on two (B187).
+    private var holdsMenuForDoubleClick = false
+    private var pendingMainMenu: DispatchWorkItem?
     private var rightPressedObject: WasabiObject?
     private var pressedEQHolder: WasabiObject?
     private var draggedDivider: WasabiObject?
@@ -686,6 +693,9 @@ final class WinampModernMainView: NSView {
             }
             NSApp.activate(ignoringOtherApps: true)
         }
+        scripts.applicationMinimizedRequested = {
+            NSApp.isHidden || NSApp.windows.contains { $0.isMiniaturized }
+        }
         scripts.componentShowRequested = { [weak self] kind in
             guard let self, surfaceVisibilityQuery?(kind) != true else { return }
             routeComponentToggle(kind)
@@ -901,7 +911,10 @@ final class WinampModernMainView: NSView {
             traceHitTest(point, verdict: "self (holder)")
             return self
         }
+        // A layout whose script takes presses is reachable through its ghosts — `pressTarget`.
         let visible = renderer.containsVisiblePixel(at: skin)
+            || (scripts.hasPressBinding(for: renderer.layout)
+                && renderer.containsVisiblePixel(at: skin, includingGhosts: true))
         traceHitTest(point, verdict: visible ? "self (pixel)" : "nil (no visible pixel)")
         return visible ? self : nil
     }
@@ -1690,6 +1703,13 @@ final class WinampModernMainView: NSView {
 
     #endif
 
+    /// What a left press at `point` lands on. A press on no control goes to the layout itself when a
+    /// script handles presses there, as in Wasabi: the stock notifier raises a minimized player from
+    /// `notifier_layout.onLeftButtonDown`, and its window is all text and art (B183).
+    private func pressTarget(at point: CGPoint) -> WasabiObject? {
+        renderer.object(at: point) ?? (scripts.hasPressBinding(for: renderer.layout) ? renderer.layout : nil)
+    }
+
     override func mouseDown(with event: NSEvent) {
         // Before anything else this click might do: a transient popup elsewhere goes away, which is
         // what `autoclose="1"` means and the only way a chromeless one can be dismissed.
@@ -1854,12 +1874,14 @@ final class WinampModernMainView: NSView {
             }
             return
         }
-        guard let object = renderer.object(at: point) else { return }
+        guard let object = pressTarget(at: point) else { return }
         pressedObject = object
         dispatch(object: object, event: "onleftbuttondown", point: point)
         // A skin puts real commands on a double-click: cPro's beat display cycles its animation from
         // `mouseTrap.onLeftButtonDblClk`, and a tab's own dblclk suppresses the drag-to-reorder.
         if event.clickCount == 2 {
+            pendingMainMenu?.cancel()
+            pendingMainMenu = nil
             isDispatchingDoubleClick = true
             dispatch(object: object, event: "onleftbuttondblclk", point: point)
             isDispatchingDoubleClick = false
@@ -2034,7 +2056,7 @@ final class WinampModernMainView: NSView {
             return
         }
         if pressedEQHolder != nil { pressedEQHolder = nil; needsDisplay = true; return }
-        let releasedOver = renderer.object(at: point)
+        let releasedOver = pressTarget(at: point)
         // The drag session is closed **before** any action runs. A titlebar mousetrap is both a drag
         // handle and a `dblclickaction="SWITCH;shade"` control, so its double-click ends in a layout
         // switch that resizes the window — and doing that inside an open drag session hands the
@@ -2058,8 +2080,11 @@ final class WinampModernMainView: NSView {
         if let pressedObject, !moved {
             dispatch(object: pressedObject, event: "onleftbuttonup", point: point)
             if releasedOver === pressedObject {
+                holdsMenuForDoubleClick = event.clickCount < 2
+                    && scripts.hasBinding(for: pressedObject, event: "onleftbuttondblclk")
                 _ = try? scripts.dispatch(object: pressedObject, event: "onleftclick")
                 performAction(for: pressedObject)
+                holdsMenuForDoubleClick = false
                 // The *second* click carries its own command in Wasabi, and for most objects that
                 // carry one it is the only command they have: a titlebar mousetrap's
                 // `dblclickaction="SWITCH;shade"`, a song title's `TRACKINFO`. It runs after the
@@ -3117,6 +3142,12 @@ final class WinampModernMainView: NSView {
     /// The host's context menu, dropped under the button that asked for it (the mouse if that button
     /// has no resolved frame — a script can raise this from anywhere).
     private func showMainMenu(from object: WasabiObject?) {
+        if holdsMenuForDoubleClick {
+            let item = DispatchWorkItem { [weak self] in self?.showMainMenu(from: object) }
+            pendingMainMenu = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: item)
+            return
+        }
         let menu = ContextMenuBuilder.buildMenu()
         popUpMenu(menu, from: object)
     }

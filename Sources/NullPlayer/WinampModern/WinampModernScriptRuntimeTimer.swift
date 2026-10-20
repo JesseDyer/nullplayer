@@ -286,6 +286,37 @@ extension WinampModernScriptRuntime {
         abs(state.currentAlpha - state.targetAlpha) < 0.5
     }
 
+    /// `AnimatedLayer.onFrame(frame)` for every frame a script-started play head moves to, and
+    /// `onStop()` once a range play reaches its end frame. The play head is a function of the clock
+    /// (`WasabiAnimation`), so nothing stepped it and neither event was ever raised. mmd3's knobs
+    /// set the EQ from `onFrame` alone, so its bass knob turned without touching the EQ (B194).
+    func startFrameEvents(for object: WasabiObject) {
+        guard hasBinding(for: object, event: "onframe") || hasBinding(for: object, event: "onstop") else { return }
+        let id = object.stableID
+        var last = animationFrame(of: object)
+        _ = try? timers.schedule(id: frameEventsTimerID(for: id), period: 1.0 / 60.0) { [weak self] in
+            guard let self, let object = loadedSkin.runtime.graph.object(withID: id) else { return }
+            let state = WasabiAnimation.state(of: object, frameCount: animationFrameCount(of: object))
+            if state.frame != last {
+                last = state.frame
+                _ = try? dispatch(object: object, event: "onframe", arguments: [.integer(Int32(state.frame))])
+            }
+            if !state.isPlaying { stopFrameEvents(for: object) }
+        }
+    }
+
+    /// Ends `startFrameEvents` with the layer's `onStop()`, if it was running.
+    func stopFrameEvents(for object: WasabiObject) {
+        let timerID = frameEventsTimerID(for: object.stableID)
+        guard timers.contains(id: timerID) else { return }
+        timers.cancel(id: timerID)
+        _ = try? dispatch(object: object, event: "onstop")
+    }
+
+    private func frameEventsTimerID(for objectID: WasabiObjectID) -> UInt64 {
+        objectID.rawValue | 0x4000_0000_0000_0000
+    }
+
     func cancelTargetAnimation(objectID: WasabiObjectID) {
         activeTargetAnimations.removeValue(forKey: objectID)
         timers.cancel(id: targetTimerID(for: objectID))

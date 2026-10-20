@@ -20,6 +20,9 @@ final class WinampModernDemandTailTests: XCTestCase {
         XCTAssertFalse(try system(runtime, program, "formatLongDate", stamp).stringValue.isEmpty)
         XCTAssertEqual(try system(runtime, program, "sqr", [.double(3)]).doubleValue, 9)
         XCTAssertEqual(try system(runtime, program, "frac", [.double(-2.25)]).doubleValue, -0.25)
+        // Time of day is milliseconds since midnight, so it reads as a clock (cPro2's stopped timer).
+        let timeOfDay = try system(runtime, program, "getTimeOfDay").integerValue
+        XCTAssertTrue((0..<86_400_000).contains(timeOfDay))
         // A component with nothing to command answers "not handled".
         guard case .object(let wac) = try system(runtime, program, "getWac", [.string("{guid}")]) else {
             return XCTFail("no Wac")
@@ -214,7 +217,52 @@ final class WinampModernDemandTailTests: XCTestCase {
         })
     }
 
+    /// B194: a script-played AnimatedLayer raises `onFrame` for each frame its play head reaches and
+    /// `onStop` at the end of the range. mmd3's knobs set the EQ from `onFrame` alone.
+    func testAPlayedAnimationRaisesFrameAndStopEvents() throws {
+        let loaded = try makeWinampModernSkin(xml: """
+        <WasabiXML><container id="main"><layout id="normal" w="64" h="64">
+          <animatedlayer id="knob" w="10" h="10" frames="10"/><script id="s" file="s.maki"/>
+        </layout></container></WasabiXML>
+        """, files: ["s.maki": Self.handlerScript(["onframe", "onstop"])])
+        let runtime = try WinampModernScriptRuntime(loadedSkin: loaded, host: WinampModernStubHost())
+        addTeardownBlock { runtime.teardown() }
+        let knob = try object(runtime, "knob")
+        let program = try XCTUnwrap(runtime.programs.first)
+        program.variables[0].value = .object(MakiObjectReference(.gui(knob.stableID)))
+        var events: [String] = []
+        runtime.dispatchObserver = { event, _, _ in events.append(event) }
+
+        _ = try call(runtime, program, knob, "setStartFrame", [.integer(0)])
+        _ = try call(runtime, program, knob, "setEndFrame", [.integer(2)])
+        _ = try call(runtime, program, knob, "setSpeed", [.integer(10)])
+        _ = try call(runtime, program, knob, "play")
+        let deadline = Date().addingTimeInterval(2)
+        while !events.contains("onstop"), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertEqual(events, ["onframe", "onframe", "onstop"])
+    }
+
     // MARK: - Helpers
+
+    /// One object variable with a bare-`return` handler bound per event name.
+    private static func handlerScript(_ events: [String]) -> Data {
+        var data = Data([0x46, 0x47])
+        func u8(_ value: UInt8) { data.append(value) }
+        func u16(_ value: UInt16) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        u16(0x0403); u32(23)
+        u32(1); data.append(contentsOf: repeatElement(UInt8(0), count: 16))
+        u32(UInt32(events.count))
+        for name in events { u16(0); u16(0); u16(UInt16(name.utf8.count)); data.append(contentsOf: name.utf8) }
+        u32(1); u8(0); u8(1); u16(0); u16(0); u16(0); u16(0); u16(0); u8(1); u8(0)
+        u32(0)
+        u32(UInt32(events.count))
+        for index in events.indices { u32(0); u32(UInt32(index)); u32(UInt32(index)) }
+        u32(UInt32(events.count)); for _ in events { u8(33) }
+        return data
+    }
 
     private static let program = MakiProgram(
         version: 0x0403, classes: [], methods: [], variables: [], bindings: [], instructions: [],
