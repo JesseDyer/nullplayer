@@ -82,7 +82,7 @@ import glob, os, sys
 
 out, archives = sys.argv[1], {os.path.basename(p) for p in sys.argv[2].splitlines() if p}
 COLUMNS = ["skin", "container", "layout", "open", "frames", "verdict", "animatedlayers", "autoplay",
-           "timer", "suspect", "moved", "anim"]
+           "timer", "suspect", "moved", "anim", "still"]
 rows = []
 for path in sorted(glob.glob(os.path.join(out, "motion-*.tsv"))):
     rows += [line.rstrip("\n").split("\t") for line in open(path, errors="replace") if line.strip()]
@@ -101,12 +101,20 @@ failed = [s for s, r in by_skin.items() if r[0]["verdict"] == "failed"]
 counts = {}
 for row in rows:
     counts[row[5]] = counts.get(row[5], 0) + 1
-# Skin-level suspect: it declares a self-playing (autoplay) animatedlayer and no layout of any window
-# moved at all. The plan's rule also counted a script Timer, but 2026-10-19's first run found one in
-# nearly every skin, mostly for interaction, so Timer alone named half the corpus.
+# The plan's suspect rule (corpus-runner-plan.md §3 S3): the skin declares an animatedlayer, an
+# autoplay or a script Timer, and its pixels are byte-identical across the ladder in every window.
 still = sorted((s for s, r in by_skin.items() if s not in failed
                 and all(x["verdict"] == "static" for x in r)
-                and any(x["autoplay"] != "0" for x in r)), key=str.lower)
+                and (r[0]["timer"] == "yes" or any(x["animatedlayers"] != "0" or x["autoplay"] != "0" for x in r))),
+               key=str.lower)
+# The S4 impact score for motion (§3 S4): still animated layers / animated layers, per skin.
+with open(os.path.join(out, "impact.tsv"), "w") as handle:
+    handle.write("skin\tanimated\tstill\tsuspect\n")
+    for skin in sorted(by_skin, key=str.lower):
+        if skin in failed:
+            continue
+        animated = sum(int(x["animatedlayers"]) for x in by_skin[skin])
+        handle.write(f"{skin}\t{animated}\t{sum(int(x['still']) for x in by_skin[skin])}\t{int(skin in still)}\n")
 layouts = [r for r in rows if r[9] == "1"]
 causes = {}
 for row in rows:
@@ -118,7 +126,7 @@ print(f"wal_motion_sweep: {len(rows)} layouts over {len(by_skin)} skins -> {out}
       + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
 print("  animatedlayers: " + (", ".join(f"{k} {v}" for k, v in sorted(causes.items())) or "none"))
 print(f"  suspect layouts (animatedlayer declared, static): {len(layouts)}")
-print(f"  suspect skins (autoplay declared, nothing moved): {len(still)}")
+print(f"  suspect skins (animatedlayer, autoplay or Timer declared, nothing moved): {len(still)} -> {out}/impact.tsv")
 for skin in still:
     print("    " + skin)
 PYMOTION

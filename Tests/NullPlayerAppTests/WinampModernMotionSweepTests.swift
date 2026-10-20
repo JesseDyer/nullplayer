@@ -33,7 +33,7 @@ final class WinampModernMotionSweepTests: XCTestCase {
                 rows += try Self.sweep(wal).map { "\(wal.lastPathComponent)\t\($0)" }
             } catch {
                 // A skin that will not load is still a row, so nothing is skipped silently.
-                rows.append("\(wal.lastPathComponent)\t-\t-\t-\t-\tfailed\t-\t-\t-\t-\t-\t-")
+                rows.append("\(wal.lastPathComponent)\t-\t-\t-\t-\tfailed\t-\t-\t-\t-\t-\t-\t-")
             }
         }
         try (rows.joined(separator: "\n") + "\n").write(toFile: out, atomically: true, encoding: .utf8)
@@ -48,7 +48,7 @@ final class WinampModernMotionSweepTests: XCTestCase {
     }
 
     /// Rows without the skin column: `container, layout, open, frames, verdict, animatedlayers,
-    /// autoplay, timer, suspect, moved, anim`.
+    /// autoplay, timer, suspect, moved, anim, still`.
     private static func sweep(_ wal: URL) throws -> [String] {
         let loaded = try WinampModernSkinLoader(engineStore: .shared).load(from: wal)
         defer { loaded.teardown() }
@@ -124,11 +124,15 @@ final class WinampModernMotionSweepTests: XCTestCase {
                 "\(object.xmlID ?? "-")=\(cause(of: object.stableID, ladder: ladder, moving: seen.count > 1))"
             }.sorted()
             let autoplay = animated.filter { $0.attributes["autoplay"] == "1" || $0.attributes["autoreplay"] == "1" }.count
-            // Open windows only: a closed one legitimately waits for `onSetVisible` (Defix's speakers).
-            let suspect = open && seen.count == 1 && !animated.isEmpty
+            // The plan's rule at layout level (§3 S3): an `animatedlayer` declared, pixels identical.
+            let suspect = seen.count == 1 && !animated.isEmpty
+            // The S4 impact score's numerator: animated layers that did not move.
+            let still = animated.filter {
+                cause(of: $0.stableID, ladder: ladder, moving: seen.count > 1) != "moving"
+            }.count
             return [info.id, layoutID, open ? "1" : "0", frames, verdict, "\(animated.count)", "\(autoplay)",
                     timer ? "yes" : "no", suspect ? "1" : "0",
-                    summary(moved), summary(anim)].joined(separator: "\t")
+                    summary(moved), summary(anim), "\(still)"].joined(separator: "\t")
         }
     }
 

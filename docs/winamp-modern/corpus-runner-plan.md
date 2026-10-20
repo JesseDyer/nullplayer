@@ -244,12 +244,12 @@ what to build.
      pinned clock, t = 0, 0.25, 1, 4 s.
    - [x] Hash each frame; record a per-object frame/attribute delta.
    - [x] A rung that goes back to a previous hash is "timer-reverted", not "static".
-   - [ ] **Suspect** = the skin declares `animatedlayer` / `autoplay` / a script `Timer`, and its
-     pixels are byte-identical across the ladder. (B202's script counts autoplay only — restore.)
+   - [x] **Suspect** = the skin declares `animatedlayer` / `autoplay` / a script `Timer`, and its
+     pixels are byte-identical across the ladder. (51 of 114 Gold+Silver skins, 2026-10-19.)
    - [x] Distinguish the three causes: never played, played but not repainted, played but drawn at
      frame 0.
-   - [ ] Output to S4: still objects / animated objects per skin (the impact score), and motion-dead
-     capability rows ranked by the S4 formula.
+   - [x] Output to S4: still objects / animated objects per skin (the impact score): `impact.tsv`.
+   - [ ] Output to S4: motion-dead capability rows ranked by the S4 formula.
    - **Done when:** every box is ticked over Gold+Silver, two runs agree on every verdict, and the
      motion-dead rows are in the queue.
 

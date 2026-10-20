@@ -438,11 +438,14 @@ Every skin costs the 4 s ladder, so shard it.
 | `verdict` | `static`, `moving`, or `reverted` (the last rung equals the first: a timer undid its transition, Phase 26) |
 | `animatedlayers`, `autoplay` | `animatedlayer`s under the layout, and how many self-play (`autoplay` or `autoreplay`, as `WasabiAnimation.state` reads them) |
 | `timer` | a bound program calls `Timer.start` — nearly every skin, so it is not a motion signal on its own |
-| `suspect` | an open window, an `animatedlayer` declared, and `static` |
+| `suspect` | an `animatedlayer` declared in this layout, and `static` |
 | `moved` | scene nodes whose frame, bitmap or alpha changed across the ladder. Pixel motion with no node here is drawn content: a ticker, a scrolling text |
 | `anim` | per `animatedlayer`: `moving`; `never-played`; `stuck` (playing, frame never advanced); `one-frame` (playing, but its sheet resolves to one frame); `not-repainted` (frame advanced, layout pixels did not); `hidden` (advancing, not in the drawn scene) |
+| `still` | how many of this layout's `animatedlayer`s are not `moving` |
 
-The summary names suspect skins: a self-playing `animatedlayer` declared and no window moved.
+The summary names suspect skins by the plan's rule (§3 S3): the skin declares an `animatedlayer`, an
+`autoplay` or a script `Timer`, and no window moved — 51 of 114 on 2026-10-19, most of them on the
+`Timer` clause. `impact.tsv` is S4's motion impact score per skin: `animated`, `still`, `suspect`.
 **Verdicts are repeatable; the detail is not quite.** Two runs on 2026-10-19 (manifest `9e68ffe0`)
 had identical `verdict` columns, and 3 of 748 rows differed in `frames` or `anim`, all layers whose
 looping phase depends on the absolute uptime. Diff `verdict` across a change, not the whole file.
