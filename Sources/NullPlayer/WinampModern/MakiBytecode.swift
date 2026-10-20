@@ -432,10 +432,11 @@ struct MakiBytecodeParser {
         mutating func readString() throws -> String {
             let length = Int(try readUInt16())
             let bytes = try readData(count: length)
-            guard let value = String(data: bytes, encoding: .utf8) else {
-                throw ParseError("MAKI string is not valid UTF-8.")
-            }
-            return value
+            // `mc.exe` wrote the compiler's ANSI code page, so a string that is not UTF-8 is read as
+            // Windows-1252 (a `©` or an accented label in five bronze skins failed the whole script).
+            return String(data: bytes, encoding: .utf8)
+                ?? String(data: bytes, encoding: .windowsCP1252)
+                ?? String(data: bytes, encoding: .isoLatin1) ?? ""
         }
 
         func peekUInt32() throws -> UInt32 {
@@ -466,8 +467,16 @@ struct MakiBytecodeParser {
         do {
             do {
                 return try parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                 classTablePresent: true)
+                                 classTablePresent: true, shortVariableRecords: false)
             } catch is ParseError {
+                // A third shape sits between the two: the class table **and** the short variable
+                // record. Its header word after the version is `0x16` where the ordinary form says
+                // `0x17` (Apill's `volume.maki`/`seek.maki`, Lounge, HARMONIA, The Duk Side: ten
+                // bronze skins whose scripts all failed to parse).
+                if let program = try? parse(data, source: source, ownerID: ownerID, parameter: parameter,
+                                            classTablePresent: true, shortVariableRecords: true) {
+                    return program
+                }
                 // A pre-5.0 `mc.exe` wrote a different shape under the *same* version word (0x0403),
                 // so the variant cannot be told apart by the header — only by trying it.
                 // `Overdrive_2`'s `scripts/seek.maki` (2001) is the measured case, and it sits beside
@@ -481,7 +490,7 @@ struct MakiBytecodeParser {
                 //     declares, so index 0 is the system object.
                 // Failing this reading too, its own error is the one reported.
                 return try parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                 classTablePresent: false)
+                                 classTablePresent: false, shortVariableRecords: true)
             }
         } catch let error as ParseError {
             throw WalFailure(WalDiagnostic(.invalidScript, error.message, location: source))
@@ -489,7 +498,8 @@ struct MakiBytecodeParser {
     }
 
     private func parse(_ data: Data, source: WalSourceLocation, ownerID: WasabiObjectID?,
-                       parameter: String?, classTablePresent: Bool) throws -> MakiProgram {
+                       parameter: String?, classTablePresent: Bool,
+                       shortVariableRecords: Bool) throws -> MakiProgram {
         do {
             var reader = Reader(data: data)
             guard try reader.readData(count: 2) == Data([0x46, 0x47]) else {
@@ -534,7 +544,7 @@ struct MakiBytecodeParser {
                 _ = try reader.readUInt16()
                 var global = false
                 var system = false
-                if classTablePresent {
+                if !shortVariableRecords {
                     global = try reader.readUInt8() != 0
                     system = try reader.readUInt8() != 0
                 } else {
