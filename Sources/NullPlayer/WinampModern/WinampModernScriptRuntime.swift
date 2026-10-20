@@ -2506,6 +2506,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "setregionfrommap": .init(argumentCount: 3, returnKind: .null),
         "setmode": .init(argumentCount: 1, returnKind: .null),
         "getmode": .init(argumentCount: 0, returnKind: .integer),
+        "getcomponentname": .init(argumentCount: 0, returnKind: .string),
         "play": .init(argumentCount: 0, returnKind: .null),
         "pause": .init(argumentCount: 0, returnKind: .null),
         "gotoframe": .init(argumentCount: 1, returnKind: .null),

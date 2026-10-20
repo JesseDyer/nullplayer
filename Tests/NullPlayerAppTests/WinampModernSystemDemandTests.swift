@@ -3,7 +3,7 @@ import XCTest
 @testable import NullPlayer
 
 /// MAKI methods the S4 demand queue ranked, and events called as methods (B182, B183, B184, B185,
-/// B189, B190, B192, B195, B198, B201, B206, B186, B187, B188, B191, B194, B196, B197,
+/// B189, B190, B192, B193, B195, B198, B201, B206, B186, B187, B188, B191, B194, B196, B197,
 /// B199, B200). Each was a call that aborted
 /// the whole handler it sat in.
 final class WinampModernSystemDemandTests: XCTestCase {
@@ -186,6 +186,19 @@ final class WinampModernSystemDemandTests: XCTestCase {
         XCTAssertEqual(try call("e", "getAutoEnter").integerValue, 1)
         _ = try call("e", "enter")
         XCTAssertEqual(runtime.signature(for: "onIdleEditUpdate", classGUID: nil)?.argumentCount, 0)
+    }
+
+    /// B193: a holder answers the name the thinger gives its surface, and an unknown one nothing.
+    func testWindowHolderAnswersItsComponentName() throws {
+        let (runtime, program) = try makeRuntime(
+            body: #"<windowholder id="h" hold="guid:pl"/><windowholder id="x" hold="guid:{12345678-0000-0000-0000-000000000000}"/>"#)
+        func name(_ id: String) throws -> String {
+            let object = try XCTUnwrap(runtime.loadedSkin.runtime.graph.allObjectsUnordered.first { $0.xmlID == id })
+            return try runtime.invoke(method: "getComponentName", on: MakiObjectReference(.gui(object.stableID)),
+                                      arguments: [], program: program).stringValue
+        }
+        XCTAssertEqual(try name("h"), "Playlist Editor")
+        XCTAssertEqual(try name("x"), "")
     }
 
     // MARK: - Helpers

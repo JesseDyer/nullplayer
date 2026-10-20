@@ -390,6 +390,11 @@ extension WinampModernScriptRuntime {
             writeGeometry([("x", String((Int32(screen.width) - width) / 2)),
                            ("y", String((Int32(screen.height) - height) / 2))], on: object, borrowed: nil)
             return .null
+        // The hosted surface's name, as the thinger titles it. cPro labels its drawer tab with it
+        // from a timer that aborted on every tick (`refreshAIOTab`, `checkVisName`, B193).
+        case "getcomponentname":
+            let kind = WasabiSceneRenderer.componentKind(of: object)
+            return .string(WinampModernComponentBucketCatalog.icons.first { $0.kind == kind }?.title ?? "")
         // The Bio-Nid lineage switches its playlist sidecar's page from script (B198).
         case "getcurpage" where WasabiTabSheet.isTabSheet(object):
             return .integer(Int32(WasabiTabSheet.selectedIndex(of: object)))
