@@ -1546,6 +1546,38 @@ final class WasabiSkinInitializer {
                 _ = object.setAttribute(WinampModernContainerTopology.declaredVisibleAttribute,
                                         value: object.attributes["visible"] ?? "1")
             }
+            // A `<Wasabi:TitleBox>` names its body by group id the way a standard frame does, and
+            // the object that would instantiate it lives in Winamp rather than in the skin. Without
+            // this the body never enters the graph at all: Bio-Nid's `dtabox.content` — the one
+            // control its only settings window exists to show — was simply absent.
+            // A `<Wasabi:TabSheet>` names its pages by group id the same way, and the object that
+            // shows one of them at a time lives in Winamp rather than in the skin. Without this not
+            // one page enters the graph: Shield_Amp's Configuration is a single tab sheet over three
+            // groups whose form widgets are all implemented, and it drew as an empty slab (B14).
+            func buildHostedWidgetBody(of widget: WasabiObject, location: WalSourceLocation) throws {
+                if WasabiTitleBox.isTitleBox(widget),
+                   let content = WasabiTitleBox.contentGroupNode(for: widget, location: location) {
+                    try createObjects(from: [content], parent: widget, graph: graph, types: types,
+                                      pendingScripts: &pendingScripts,
+                                      pendingMetaCommands: &pendingMetaCommands,
+                                      definitionStack: definitionStack,
+                                      createdCount: &createdCount,
+                                      documentOrder: documentOrder, enclosingOrder: nodeOrder)
+                }
+                if WasabiTabSheet.isTabSheet(widget) {
+                    let pages = WasabiTabSheet.pageNodes(for: widget, location: location)
+                    if !pages.isEmpty {
+                        _ = widget.setAttribute(WasabiTabSheet.hostedAttribute, value: "1")
+                        try createObjects(from: pages, parent: widget, graph: graph, types: types,
+                                          pendingScripts: &pendingScripts,
+                                          pendingMetaCommands: &pendingMetaCommands,
+                                          definitionStack: definitionStack,
+                                          createdCount: &createdCount,
+                                          documentOrder: documentOrder, enclosingOrder: nodeOrder)
+                        WasabiTabSheet.select(index: WasabiTabSheet.selectedIndex(of: widget), on: widget)
+                    }
+                }
+            }
             try createObjects(from: templateChildren, parent: object, graph: graph, types: types,
                               pendingScripts: &pendingScripts, pendingMetaCommands: &pendingMetaCommands,
                               definitionStack: nextDefinitionStack,
@@ -1603,6 +1635,21 @@ final class WasabiSkinInitializer {
                    embeddedParent.attributes["value"] == nil,
                    let high = embeddedParent.attributes["high"] {
                     _ = embeddedParent.setAttribute("value", value: high)
+                }
+                // The **structure** a host-built widget is told to show: 1010 Fullscreen's
+                // `<Deimos:ConfigPage content=… title=…>` wraps a `<Wasabi:TitleBox>`, and its
+                // `<Deimos:ConfigSheet children=…>` a `<Wasabi:TabSheet>`. The widget was created
+                // with the template, before these reached it, so its body is built here; without it
+                // every page of that skin's Preferences window was an empty box (B214).
+                var forwardedStructure = false
+                for key in ["content", "title", "children"] where embeddedParent.attributes[key] == nil {
+                    if let value = attributes[key] {
+                        _ = embeddedParent.setAttribute(key, value: value)
+                        forwardedStructure = true
+                    }
+                }
+                if forwardedStructure, embeddedParent.children.isEmpty {
+                    try buildHostedWidgetBody(of: embeddedParent, location: node.location)
                 }
             }
             try createObjects(from: instanceChildren, parent: embeddedParent, graph: graph, types: types,
@@ -1690,35 +1737,9 @@ final class WasabiSkinInitializer {
                                   createdCount: &createdCount,
                                   documentOrder: documentOrder, enclosingOrder: nodeOrder)
             }
-            // A `<Wasabi:TitleBox>` names its body by group id the way a standard frame does, and
-            // the object that would instantiate it lives in Winamp rather than in the skin. Without
-            // this the body never enters the graph at all: Bio-Nid's `dtabox.content` — the one
-            // control its only settings window exists to show — was simply absent.
-            if WasabiTitleBox.isTitleBox(object),
-               let content = WasabiTitleBox.contentGroupNode(for: object, location: node.location) {
-                try createObjects(from: [content], parent: object, graph: graph, types: types,
-                                  pendingScripts: &pendingScripts,
-                                  pendingMetaCommands: &pendingMetaCommands,
-                                  definitionStack: definitionStack,
-                                  createdCount: &createdCount,
-                                  documentOrder: documentOrder, enclosingOrder: nodeOrder)
-            }
-            // A `<Wasabi:TabSheet>` names its pages by group id the same way, and the object that
-            // shows one of them at a time lives in Winamp rather than in the skin. Without this not
-            // one page enters the graph: Shield_Amp's Configuration is a single tab sheet over three
-            // groups whose form widgets are all implemented, and it drew as an empty slab (B14).
-            if WasabiTabSheet.isTabSheet(object), !claimedBySkin {
-                let pages = WasabiTabSheet.pageNodes(for: object, location: node.location)
-                if !pages.isEmpty {
-                    _ = object.setAttribute(WasabiTabSheet.hostedAttribute, value: "1")
-                    try createObjects(from: pages, parent: object, graph: graph, types: types,
-                                      pendingScripts: &pendingScripts,
-                                      pendingMetaCommands: &pendingMetaCommands,
-                                      definitionStack: definitionStack,
-                                      createdCount: &createdCount,
-                                      documentOrder: documentOrder, enclosingOrder: nodeOrder)
-                    WasabiTabSheet.select(index: WasabiTabSheet.selectedIndex(of: object), on: object)
-                }
+            // A skin's own `<Wasabi:TabSheet>` definition builds its own pages.
+            if !(claimedBySkin && WasabiTabSheet.isTabSheet(object)) {
+                try buildHostedWidgetBody(of: object, location: node.location)
             }
             // Winamp's drop-down carries a label object inside itself, and a skin's script reaches
             // for it by name: Styx's and Shield_Amp's `customdropdownlist.maki` are the same script,

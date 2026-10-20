@@ -110,6 +110,10 @@ final class WinampModernDemandTailTests: XCTestCase {
         guard case .object(let found) = try call(runtime, program, tree, "getByLabel", [general, .string("Audio")]),
               case .object(let audioReference) = audio else { return XCTFail("getByLabel") }
         XCTAssertEqual(found, audioReference)
+        // From null the search covers the whole tree, nested items included.
+        guard case .object(let nested) = try call(runtime, program, tree, "getByLabel", [.null, .string("Audio")])
+        else { return XCTFail("getByLabel from null") }
+        XCTAssertEqual(nested, audioReference)
         guard case .object(let root) = try call(runtime, program, tree, "enumRootItem", [.integer(0)]) else { return XCTFail() }
         XCTAssertEqual(root, generalReference)
         XCTAssertEqual(try runtime.invoke(method: "getLabel", on: audioReference, arguments: [], program: program).stringValue, "Audio")

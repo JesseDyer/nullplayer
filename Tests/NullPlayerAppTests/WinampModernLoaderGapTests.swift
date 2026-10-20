@@ -40,6 +40,24 @@ final class WinampModernLoaderGapTests: XCTestCase {
         }
     }
 
+    /// B214: an `embed_xui` wrapper passes `content=` and `children=` on to the TitleBox or TabSheet it
+    /// embeds, which builds its body (1010 Fullscreen's `Deimos:ConfigPage` / `Deimos:ConfigSheet`).
+    func testAnEmbeddedTitleBoxAndTabSheetBuildTheBodyTheirWrapperNames() throws {
+        let loaded = try makeWinampModernSkin(xml: """
+        <WasabiXML>
+          <groupdef id="page" xuitag="X:Page" embed_xui="box"><Wasabi:TitleBox id="box"/></groupdef>
+          <groupdef id="sheet" xuitag="X:Sheet" embed_xui="tabs"><Wasabi:TabSheet id="tabs"/></groupdef>
+          <groupdef id="body"><layer id="page.leaf"/></groupdef>
+          <groupdef id="tab.one"><layer id="tab.leaf"/></groupdef>
+          <container id="main"><layout id="normal" w="20" h="10">
+            <X:Page content="body"/><X:Sheet children="tab.one"/>
+          </layout></container>
+        </WasabiXML>
+        """)
+        let ids = Set(loaded.runtime.graph.allObjectsUnordered.compactMap(\.xmlID))
+        XCTAssertTrue(ids.isSuperset(of: ["page.leaf", "tab.leaf"]), "\(ids)")
+    }
+
     /// B179: the installed ClassicPro engine lacks `miniexes.xml`, which three cPro skins include.
     /// A missing include inside a mounted engine is skipped; an uninstalled engine still fails (B92).
     func testAMissingIncludeInsideAnInstalledEngineIsSkipped() throws {

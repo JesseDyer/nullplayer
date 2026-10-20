@@ -314,10 +314,17 @@ extension WinampModernScriptRuntime {
             let index = Int(arguments[0].integerValue)
             return all.indices.contains(index) ? treeItemValue(all[index].id) : .null
         case "getnumvisibleitems": return .integer(Int32(flattenedTree(tree, visibleOnly: true).count))
+        // Depth-first under the item, or through the whole tree from null: 1010 Fullscreen finds a
+        // second-level page ("Cover Search") by label to hang its own sub-page under it.
         case "getbylabel":
-            let siblings = item(arguments[0]).flatMap { treeNodes[$0]?.children } ?? treeRoots[tree.stableID] ?? []
+            var pending = Array((item(arguments[0]).flatMap { treeNodes[$0]?.children }
+                                 ?? treeRoots[tree.stableID] ?? []).reversed())
             let wanted = arguments[1].stringValue
-            return siblings.first { treeNodes[$0]?.label == wanted }.map(treeItemValue) ?? .null
+            while let id = pending.popLast() {
+                if treeNodes[id]?.label == wanted { return treeItemValue(id) }
+                pending.append(contentsOf: (treeNodes[id]?.children ?? []).reversed())
+            }
+            return .null
         case "selectitem":
             guard let id = item(arguments[0]) else { return .null }
             // Selecting an item shows it: every ancestor opens.

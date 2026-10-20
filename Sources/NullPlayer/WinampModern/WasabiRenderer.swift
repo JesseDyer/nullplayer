@@ -2564,7 +2564,7 @@ final class WasabiSceneRenderer {
             drawText(object, frame: node.frame, context: context)
         } else if type == "edit" {
             drawEdit(object, frame: node.frame, context: context)
-        } else if type == "list" {
+        } else if type == "list" || WasabiGuiList.isTree(object) {
             drawGuiList(object, frame: node.frame, context: context)
         } else if type == "slider" {
             drawSlider(object, frame: node.frame, context: context,
