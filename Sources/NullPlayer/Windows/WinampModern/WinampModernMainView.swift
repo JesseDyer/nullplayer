@@ -376,6 +376,7 @@ final class WinampModernMainView: NSView {
         dispatchResize(seeding: true)
         // A different layout declares a different height, which is what `auto` Text Size is keyed on.
         pushLibraryContentScale()
+        matchResizableMaskToLayout()
         needsDisplay = true
         return true
     }
@@ -1000,7 +1001,18 @@ final class WinampModernMainView: NSView {
             })
         occlusionDidChange()
         attachWindowShadow(to: window)
+        matchResizableMaskToLayout()
         needsDisplay = true
+    }
+
+    /// AppKit's edge band only where the skin offers no handle of its own (B161).
+    private func matchResizableMaskToLayout() {
+        guard let window else { return }
+        if renderer.declaresResizeHandles {
+            window.styleMask.remove(.resizable)
+        } else {
+            window.styleMask.insert(.resizable)
+        }
     }
 
     /// Whether any of this view's window is visible: ordered in, not minimized, on the current Space
