@@ -805,6 +805,9 @@ final class WinampModernMainView: NSView {
         _ = edit.setAttribute("text", value: text)
         _ = edit.setAttribute(WasabiTextMetrics.scriptTextKey, value: text)
         _ = try? scripts.dispatch(object: edit, event: "oneditupdate")
+        // ponytail: per keystroke, not after an idle pause; add the pause when a skin's filter lags.
+        _ = try? scripts.dispatch(object: edit, event: "onidleeditupdate")
+        if edit.attributes["autoenter"] == "1" { _ = try? scripts.dispatch(object: edit, event: "onenter") }
         needsDisplay = true
         return true
     }

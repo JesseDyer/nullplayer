@@ -3,7 +3,7 @@ import XCTest
 @testable import NullPlayer
 
 /// MAKI methods the S4 demand queue ranked, and events called as methods (B182, B183, B184, B185,
-/// B190, B195, B201, B206, B186, B187, B188, B191, B194, B196, B197,
+/// B189, B190, B192, B195, B198, B201, B206, B186, B187, B188, B191, B194, B196, B197,
 /// B199, B200). Each was a call that aborted
 /// the whole handler it sat in.
 final class WinampModernSystemDemandTests: XCTestCase {
@@ -163,6 +163,31 @@ final class WinampModernSystemDemandTests: XCTestCase {
         XCTAssertEqual(try system(runtime, program, "getAlbumArt", [.string("/music/b.mp3")]).integerValue, 0)
     }
 
+    /// B192, B198, B189: a check box's checked state is its activation, a tab sheet's page reads
+    /// and switches, and an edit keeps its auto-enter flag.
+    func testFormWidgetMethods() throws {
+        let (runtime, program) = try makeRuntime(
+            body: #"<Wasabi:CheckBox id="c"/><Wasabi:TabSheet id="t" children="p1;p2"/><Wasabi:EditBox id="e"/>"#,
+            definitions: #"<groupdef id="p1" name="One"/><groupdef id="p2" name="Two"/>"#)
+        func call(_ id: String, _ method: String, _ arguments: [MakiValue] = []) throws -> MakiValue {
+            let object = try XCTUnwrap(runtime.loadedSkin.runtime.graph.allObjectsUnordered.first { $0.xmlID == id })
+            return try runtime.invoke(method: method, on: MakiObjectReference(.gui(object.stableID)),
+                                      arguments: arguments, program: program)
+        }
+        XCTAssertFalse(try call("c", "isChecked").truthy)
+        _ = try call("c", "setChecked", [.integer(1)])
+        XCTAssertTrue(try call("c", "isChecked").truthy)
+
+        XCTAssertEqual(try call("t", "getCurPage").integerValue, 0)
+        _ = try call("t", "setCurPage", [.integer(1)])
+        XCTAssertEqual(try call("t", "getCurPage").integerValue, 1)
+
+        _ = try call("e", "setAutoEnter", [.integer(1)])
+        XCTAssertEqual(try call("e", "getAutoEnter").integerValue, 1)
+        _ = try call("e", "enter")
+        XCTAssertEqual(runtime.signature(for: "onIdleEditUpdate", classGUID: nil)?.argumentCount, 0)
+    }
+
     // MARK: - Helpers
 
     private static let syntheticProgram = MakiProgram(
@@ -174,10 +199,10 @@ final class WinampModernSystemDemandTests: XCTestCase {
         try runtime.invoke(method: method, on: MakiObjectReference(.system), arguments: arguments, program: program)
     }
 
-    private func makeRuntime(host: WinampModernHost = WinampModernStubHost(), body: String = "") throws
-        -> (WinampModernScriptRuntime, MakiProgram) {
+    private func makeRuntime(host: WinampModernHost = WinampModernStubHost(), body: String = "",
+                             definitions: String = "") throws -> (WinampModernScriptRuntime, MakiProgram) {
         let loaded = try makeWinampModernSkin(xml: """
-        <WasabiXML><container id="main"><layout id="normal" w="16" h="16">\(body)</layout></container></WasabiXML>
+        <WasabiXML>\(definitions)<container id="main"><layout id="normal" w="16" h="16">\(body)</layout></container></WasabiXML>
         """)
         let runtime = try WinampModernScriptRuntime(loadedSkin: loaded, host: host)
         addTeardownBlock { runtime.teardown() }

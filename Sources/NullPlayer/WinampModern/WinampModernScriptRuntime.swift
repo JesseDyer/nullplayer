@@ -491,6 +491,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // entry, which is what opens the track a search result names).
         "ondoubleclick": 1,
         "oneditupdate": 0,
+        // Config pages call it to run their own field handler (B189).
+        "onidleeditupdate": 0,
         // `attribute.onDataChanged()` — a script running its own settings handler once at load, so
         // the layout the stored options describe is applied before anything is drawn. Zero
         // arguments, and it is the *only* way a skin has of saying "apply what I read". Big Bento
@@ -2462,6 +2464,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // `setActivated` there would re-enter `toggleDrawer` from inside its own notification.
         "setactivatednocallback": .init(argumentCount: 1, returnKind: .null),
         "getactivated": .init(argumentCount: 0, returnKind: .boolean),
+        "setchecked": .init(argumentCount: 1, returnKind: .null),
+        "ischecked": .init(argumentCount: 0, returnKind: .integer),
+        "getcurpage": .init(argumentCount: 0, returnKind: .integer),
+        "setcurpage": .init(argumentCount: 1, returnKind: .null),
+        "setautoenter": .init(argumentCount: 1, returnKind: .null),
+        "getautoenter": .init(argumentCount: 0, returnKind: .integer),
+        "enter": .init(argumentCount: 0, returnKind: .null),
         // The object's Wasabi class, which a script branches on to treat a heterogeneous set of
         // objects uniformly: multipass's `initStyle` walks its whole element list and swaps
         // `image=` on a LAYER, `image=`/`downImage=`/`hoverImage=` on a BUTTON, and the thumb

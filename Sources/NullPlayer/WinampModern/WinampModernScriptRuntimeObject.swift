@@ -279,7 +279,9 @@ extension WinampModernScriptRuntime {
         // persisted: the app came up silent on that skin, the slider could not lift it, and no other
         // skin in the corpus binds `onToggle` to the volume. `setActivatedNoCallback` remains the
         // deliberate silent write for a state that *did* move.
-        case "setactivated":
+        // A `<Wasabi:CheckBox>` is a togglebutton (`WasabiFormWidgets`), so its checked state is its
+        // activation: fifty skins set it in `onScriptLoaded` (B192).
+        case "setactivated", "setchecked":
             let wanted = arguments[0].truthy
             let activationChanged = (object.attributes["activated"] == "1") != wanted
             setActivated(object, wanted)
@@ -295,7 +297,7 @@ extension WinampModernScriptRuntime {
         // keeps no second copy, which is why `toggleActivation` refuses these. Answering from the
         // `activated` attribute instead reported every such button as off forever, and mmd3's whole
         // crossfade/shuffle/repeat indicator set is `alpha = 255 * getActivated()` at load.
-        case "getactivated":
+        case "getactivated", "ischecked":
             if Self.configBinding(of: object) != nil { return .boolean(configValue(of: object)) }
             return .boolean(object.attributes["activated"] == "1")
         // The graph type, which is the XML tag the object was declared with (`layer`, `button`,
@@ -387,6 +389,21 @@ extension WinampModernScriptRuntime {
             let height = dimension(resolvedFrame(of: object)?.height, declared: object.geometry.height ?? 0)
             writeGeometry([("x", String((Int32(screen.width) - width) / 2)),
                            ("y", String((Int32(screen.height) - height) / 2))], on: object, borrowed: nil)
+            return .null
+        // The Bio-Nid lineage switches its playlist sidecar's page from script (B198).
+        case "getcurpage" where WasabiTabSheet.isTabSheet(object):
+            return .integer(Int32(WasabiTabSheet.selectedIndex(of: object)))
+        case "setcurpage" where WasabiTabSheet.isTabSheet(object):
+            if WasabiTabSheet.select(index: Int(arguments[0].integerValue), on: object) { notifyGraphDidMutate() }
+            return .null
+        // `Edit`: auto-enter makes every change an enter (the view reads the flag), and `enter()`
+        // is the script pressing Return (B189).
+        case "setautoenter":
+            _ = object.setAttribute("autoenter", value: arguments[0].truthy ? "1" : "0")
+            return .null
+        case "getautoenter": return .integer(object.attributes["autoenter"] == "1" ? 1 : 0)
+        case "enter":
+            _ = try dispatch(object: object, event: "onenter")
             return .null
         // `Vis.getMode()`: what `setMode` and a click on the vis last wrote (Styx's `vis.m`, B190).
         case "getmode":
