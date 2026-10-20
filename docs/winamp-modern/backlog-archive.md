@@ -3,6 +3,35 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B208 — the interaction sweep's dead list — closed 2026-10-20
+
+| B208 | **Triage the interaction sweep's dead list.** B205's run (gold+silver, rev `f3ca6c5c`): 343 silent and 117 blocked gestures, 433 unreachable. Blocked calls the demand queue already holds are covered there (B182's events-as-methods, 47 gestures; `shutdown` B187, 16; `getViewport*FromPoint` B195, 16). Left: the skins mostly dead — machina 31/33, shark5 23/23, HeadAMP 27/32, Anunaki 44/60, wTunes 19/27, Dreliction 57/83 (mostly right-clicks and hover labels) — and `Layout.onAccelerator` (10, Alpha_Media_Player_X5), `sqr`, `getNumLayouts`. For each, read the handler and, where it is drawn at rest, the running app: is the control dead, or doing something the sweep does not see (a hover-only layer, a sound, a state another click needs first)? Done when each skin above has a filed row or a dismissal reason in the archive | 6 skins named, 117 blocked gestures (manifest 9e68ffe0) | M | 2 |
+
+**Closed 2026-10-20.** Re-measured after the method batches (`wal_interaction_sweep.sh`, gold+silver,
+rev `a80787a3`, 2,520 gestures): **blocked 117 → 0** (`blocked by: nothing`), unreachable 433 → 346,
+works 1,781, silent 393. Every call the old list was blocked on is implemented: events as methods
+(B182), `shutdown` (B187), `getViewport*FromPoint` (B195), `Layout.onAccelerator`'s arity (B182),
+`sqr` and `getNumLayouts` (the demand tail). For each skin the row named, what its dead gestures
+are:
+
+- **Dreliction** (54/83): 27 silent and 26 covered. The covered ones are hover-label and `…2`
+  layers stacked under the real buttons (`layer#Next2` beneath `button#Next`). The silent ones are
+  those labels' fade handlers, which act on hover, not on a click.
+- **Anunaki** (40/60): 34 covered. The EQ sliders sit under `main.lcd.base` until the EQ page is
+  chosen, and the volume knob is under `window.shutter` while it is closed. Another state has to
+  come first.
+- **HeadAMP** (27/32): 26 covered by `BGLayer`. They live in the `LeftDrawer` groupdef (`eq9Top`,
+  `LeftDrawerCloseX`…), which slides behind the player body while the drawer is shut.
+- **machina** (31/33): 30 silent. They are its ten EQ-band map layers: `onMouseMove` reads a
+  `Map` value under the pointer and calls `setEqPreamp`/`gotoFrame`. The harness has no EQ host and
+  its drag stays on one map value, so the write is invisible there.
+- **wTunes** (17/27): 14 clipped and 3 covered by its seek slider. The clipped ones are in its
+  collapsed playlist and display areas.
+- **shark5**: its 10 remaining dead gestures are covered by the buttons drawn over them.
+
+None of it is a missing capability, so no row is filed. The in-app check of the stateful ones
+(open the drawer or EQ page, then press) is part of B212.
+
 ## B209, B210 — the motion-dead classes — dismissed 2026-10-20
 
 | B209 | **Motion-dead: a script `Timer` declared, no animated layer, nothing moves at rest** (S4 motion ranking, §3 S3 suspect rule). 27 Gold+Silver skins declare a `Timer`, no `animatedlayer`, and render byte-identically across the 0–4 s ladder in every window. Find which capability the samples' timers are waiting on (a host event the harness does not send, a handler blocked on a method, or nothing — a timer used only for interaction), working across the samples, not one skin. S4: 27 × motion-dead 2 × at rest 3 ÷ cost 1 (untuned) = 162. Done when the cause is named for the class, fixed or dispositioned, and `wal_motion_sweep.sh`'s `ranking.tsv` re-measures the row | suspect skins: 27 of 114 Gold+Silver (`ranking.tsv`, rev `b24690b3`); samples canum, Core-X5, Darjah 1 | M | 2 |
