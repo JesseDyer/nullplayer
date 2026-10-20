@@ -33,6 +33,14 @@
 - **Library Browser Tiles mode keeps tiles small in a narrow window** — narrowing the window made
   the tiles bigger, down to a single column of two large tiles. Tiles are now never wider than
   120 pt: a narrower window fits more, smaller tiles.
+- **Plex no longer floods the log at startup** — connecting and preloading the library logged every
+  step and, in debug builds, a dump of every server response. Startup now logs two lines; failures
+  are still logged. Debug builds also stop dumping every Subsonic, Jellyfin and Emby response.
+- **Next and Previous work straight after a restart with a server playlist** — while a restored
+  Plex, Jellyfin, Emby or Subsonic playlist was still loading in the background, Next, Previous and
+  the end of a song moved the highlight but kept playing the same song, for as long as 17 minutes
+  on a large playlist. The chosen track now loads and plays at once. A song that fails to stream
+  also moves on to the next one and plays it, instead of stopping there.
 
 ## 0.33.0
 
