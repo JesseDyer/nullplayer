@@ -40,8 +40,14 @@ enum WasabiGuiList {
     /// `addItem` loop in a skin must not be able to grow it without bound.
     static let maximumItems = 4096
 
+    /// A `<Tree>` is drawn and clicked as a list of its visible items (`refreshTree`).
     static func isList(_ object: WasabiObject) -> Bool {
-        object.typeName.lowercased().components(separatedBy: ":").last == "list"
+        let type = object.typeName.lowercased().components(separatedBy: ":").last
+        return type == "list" || type == "tree"
+    }
+
+    static func isTree(_ object: WasabiObject) -> Bool {
+        object.typeName.lowercased().components(separatedBy: ":").last == "tree"
     }
 
     static func items(of object: WasabiObject) -> [String] {

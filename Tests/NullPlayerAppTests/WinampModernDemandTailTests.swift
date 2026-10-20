@@ -1,0 +1,167 @@
+import XCTest
+@testable import NullPlayer
+
+/// The tail of the S4 demand table: the System date/math/format fields, the window and layout reads,
+/// `CfgGroup`, the drop-down reads, the `GuiList` edits, `GuiTree`/`TreeItem`, gamma groups and
+/// `showWindow`. Each was a call that aborted the handler it sat in.
+final class WinampModernDemandTailTests: XCTestCase {
+
+    func testDateFieldsFormatsAndMath() throws {
+        let (runtime, program) = try makeRuntime()
+        let stamp: [MakiValue] = [.integer(1_700_000_000)]
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let parts = Calendar.current.dateComponents([.day, .month, .weekday, .hour, .minute, .second], from: date)
+        XCTAssertEqual(try system(runtime, program, "getDateDay", stamp).integerValue, Int32(parts.day!))
+        XCTAssertEqual(try system(runtime, program, "getDateMonth", stamp).integerValue, Int32(parts.month! - 1))
+        XCTAssertEqual(try system(runtime, program, "getDateDow", stamp).integerValue, Int32(parts.weekday! - 1))
+        XCTAssertEqual(try system(runtime, program, "dateToLongTime", stamp).stringValue,
+                       String(format: "%d:%02d:%02d", parts.hour!, parts.minute!, parts.second!))
+        XCTAssertFalse(try system(runtime, program, "formatDate", stamp).stringValue.isEmpty)
+        XCTAssertFalse(try system(runtime, program, "formatLongDate", stamp).stringValue.isEmpty)
+        XCTAssertEqual(try system(runtime, program, "sqr", [.double(3)]).doubleValue, 9)
+        XCTAssertEqual(try system(runtime, program, "frac", [.double(-2.25)]).doubleValue, -0.25)
+        // A component with nothing to command answers "not handled".
+        guard case .object(let wac) = try system(runtime, program, "getWac", [.string("{guid}")]) else {
+            return XCTFail("no Wac")
+        }
+        XCTAssertEqual(try runtime.invoke(method: "sendCommand", on: wac,
+                                          arguments: [.string("x"), .integer(0), .integer(0), .string("")],
+                                          program: program).integerValue, 0)
+    }
+
+    func testContainerAndLayoutReads() throws {
+        let (runtime, program) = try makeRuntime(body: #"<layer id="a" w="2" h="2"/><layer id="b" w="2" h="2"/><vis id="v"/>"#)
+        let container = try object(runtime, "main")
+        XCTAssertEqual(try call(runtime, program, container, "getNumLayouts").integerValue, 1)
+        guard case .object(let layoutReference) = try call(runtime, program, container, "enumLayout", [.integer(0)]),
+              case .gui(let layoutID) = layoutReference.kind,
+              let layout = runtime.loadedSkin.runtime.graph.object(withID: layoutID) else { return XCTFail("no layout") }
+        XCTAssertTrue(try call(runtime, program, layout, "isLayout").truthy)
+        XCTAssertFalse(try call(runtime, program, container, "isLayout").truthy)
+        _ = try call(runtime, program, container, "setName", [.string("Renamed")])
+        XCTAssertEqual(container.attributes["name"], "Renamed")
+        _ = try call(runtime, program, layout, "snapAdjust", [.integer(1), .integer(2), .integer(3), .integer(4)])
+        XCTAssertEqual(try call(runtime, program, layout, "getSnapAdjustBottom").integerValue, 4)
+        XCTAssertEqual(try call(runtime, program, layout, "clientToScreenH", [.integer(17)]).integerValue, 17)
+        // `bringBelow` puts the object just under the other, among the same parent's children.
+        let a = try object(runtime, "a"), b = try object(runtime, "b")
+        _ = try call(runtime, program, b, "bringBelow", [runtime.objectValue(a)])
+        XCTAssertEqual(layout.children.compactMap(\.xmlID).prefix(2), ["b", "a"])
+        let vis = try object(runtime, "v")
+        _ = try call(runtime, program, vis, "nextMode")
+        XCTAssertEqual(try call(runtime, program, vis, "getMode").integerValue, 2)
+    }
+
+    func testCfgGroupReadsAndWritesItsAttribute() throws {
+        let (runtime, program) = try makeRuntime(body: #"<group id="g" cfgattrib="{1234};Volume step"/>"#)
+        let group = try object(runtime, "g")
+        _ = try call(runtime, program, group, "cfgSetInt", [.integer(5)])
+        XCTAssertEqual(try call(runtime, program, group, "cfgGetInt").integerValue, 5)
+        XCTAssertEqual(try call(runtime, program, group, "cfgGetName").stringValue, "Volume step")
+        XCTAssertEqual(try call(runtime, program, group, "cfgGetGuid").stringValue, "{1234}")
+        _ = try call(runtime, program, group, "cfgSetString", [.string("hi")])
+        XCTAssertEqual(try call(runtime, program, group, "cfgGetString").stringValue, "hi")
+    }
+
+    func testDropDownAndListEdits() throws {
+        let (runtime, program) = try makeRuntime(
+            body: #"<Wasabi:DropDownList id="d" items="one;two;three"/><list id="l" w="40" h="40"/>"#)
+        let dropDown = try object(runtime, "d")
+        _ = try call(runtime, program, dropDown, "selectItem", [.integer(1), .integer(0)])
+        XCTAssertEqual(try call(runtime, program, dropDown, "getSelectedText").stringValue, "two")
+
+        let list = try object(runtime, "l")
+        _ = try call(runtime, program, list, "addItem", [.string("a")])
+        _ = try call(runtime, program, list, "addItem", [.string("c")])
+        _ = try call(runtime, program, list, "insertItem", [.integer(1), .string("b")])
+        XCTAssertEqual(WasabiGuiList.items(of: list), ["a", "b", "c"])
+        _ = try call(runtime, program, list, "moveItem", [.integer(0), .integer(2)])
+        _ = try call(runtime, program, list, "deleteByPos", [.integer(0)])
+        XCTAssertEqual(WasabiGuiList.items(of: list), ["c", "a"])
+        _ = try call(runtime, program, list, "setSubItem", [.integer(0), .integer(1), .string("sub")])
+        XCTAssertEqual(try call(runtime, program, list, "getSubitemText", [.integer(0), .integer(1)]).stringValue, "sub")
+        XCTAssertEqual(try call(runtime, program, list, "addColumn", [.string("Name"), .integer(50), .integer(0)]).integerValue, 0)
+        _ = try call(runtime, program, list, "setColumnLabel", [.integer(0), .string("Title")])
+        XCTAssertEqual(try call(runtime, program, list, "getColumnLabel", [.integer(0)]).stringValue, "Title")
+    }
+
+    /// A tree is a model of script-made items, drawn through the list renderer as visible rows.
+    func testTreeItemsAddExpandAndDraw() throws {
+        let (runtime, program) = try makeRuntime(body: #"<tree id="t" w="60" h="60"/>"#)
+        let tree = try object(runtime, "t")
+        func newItem(_ label: String) throws -> MakiValue {
+            let item = runtime.dynamicValue(role: .generic)
+            guard case .object(let reference) = item else { throw XCTSkip("no item") }
+            _ = try runtime.invoke(method: "setLabel", on: reference, arguments: [.string(label)], program: program)
+            return item
+        }
+        let general = try newItem("General"), audio = try newItem("Audio")
+        _ = try call(runtime, program, tree, "addTreeItem", [general, .null, .integer(0), .integer(1)])
+        _ = try call(runtime, program, tree, "addTreeItem", [audio, general, .integer(0), .integer(0)])
+        XCTAssertEqual(try call(runtime, program, tree, "getNumVisibleItems").integerValue, 1)
+        guard case .object(let generalReference) = general else { return XCTFail() }
+        _ = try runtime.invoke(method: "expand", on: generalReference, arguments: [], program: program)
+        XCTAssertEqual(try call(runtime, program, tree, "getNumVisibleItems").integerValue, 2)
+        XCTAssertEqual(WasabiGuiList.items(of: tree).map { $0.trimmingCharacters(in: .whitespaces) },
+                       ["▾ General", "Audio"])
+        guard case .object(let found) = try call(runtime, program, tree, "getByLabel", [general, .string("Audio")]),
+              case .object(let audioReference) = audio else { return XCTFail("getByLabel") }
+        XCTAssertEqual(found, audioReference)
+        guard case .object(let root) = try call(runtime, program, tree, "enumRootItem", [.integer(0)]) else { return XCTFail() }
+        XCTAssertEqual(root, generalReference)
+        XCTAssertEqual(try runtime.invoke(method: "getLabel", on: audioReference, arguments: [], program: program).stringValue, "Audio")
+    }
+
+    func testGammaGroupRetintsTheActiveTheme() throws {
+        let (runtime, program) = try makeRuntime(
+            definitions: #"<gammaset id="default"><gammagroup id="body" value="0,0,0"/><gammagroup id="lcd" value="0,0,0"/></gammaset>"#)
+        guard case .object(let set) = runtime.dynamicValue(role: .gammaSet(name: "default")),
+              case .object(let group) = try runtime.invoke(method: "enumGammaGroup", on: set, arguments: [.integer(1)],
+                                                           program: program) else { return XCTFail("no group") }
+        _ = try runtime.invoke(method: "setRed", on: group, arguments: [.integer(2048)], program: program)
+        XCTAssertEqual(try runtime.invoke(method: "getRed", on: group, arguments: [], program: program).integerValue, 2048)
+        XCTAssertEqual(runtime.loadedSkin.themeCoordinator.transform(group: "lcd")?.red, 0.5)
+    }
+
+    func testShowWindowOpensTheContainerHoldingAGroup() throws {
+        let (runtime, program) = try makeRuntime(
+            definitions: #"<container id="extra" default_visible="0"><layout id="normal" w="10" h="10"><group id="panel"/></layout></container>"#)
+        var shown: [String] = []
+        runtime.containerVisibilityRequested = { id, visible in if visible { shown.append(id) } }
+        _ = try system(runtime, program, "showWindow", [.string("panel"), .string(""), .integer(0)])
+        XCTAssertEqual(shown, ["extra"])
+        var components: [WinampModernComponentKind] = []
+        runtime.componentShowRequested = { components.append($0) }
+        _ = try system(runtime, program, "showWindow", [.string("guid:pl"), .string(""), .integer(0)])
+        XCTAssertEqual(components, [.playlist])
+    }
+
+    // MARK: - Helpers
+
+    private static let program = MakiProgram(
+        version: 0x0403, classes: [], methods: [], variables: [], bindings: [], instructions: [],
+        source: WalSourceLocation(path: "/Skins/Synthetic/t.maki"), ownerID: nil, parameter: nil)
+
+    private func makeRuntime(body: String = "", definitions: String = "") throws -> (WinampModernScriptRuntime, MakiProgram) {
+        let loaded = try makeWinampModernSkin(xml: """
+        <WasabiXML>\(definitions)<container id="main"><layout id="normal" w="64" h="64">\(body)</layout></container></WasabiXML>
+        """)
+        let runtime = try WinampModernScriptRuntime(loadedSkin: loaded, host: WinampModernStubHost())
+        addTeardownBlock { runtime.teardown() }
+        return (runtime, Self.program)
+    }
+
+    private func object(_ runtime: WinampModernScriptRuntime, _ id: String) throws -> WasabiObject {
+        try XCTUnwrap(runtime.loadedSkin.runtime.graph.allObjectsUnordered.first { $0.xmlID == id }, id)
+    }
+
+    private func call(_ runtime: WinampModernScriptRuntime, _ program: MakiProgram, _ object: WasabiObject,
+                      _ method: String, _ arguments: [MakiValue] = []) throws -> MakiValue {
+        try runtime.invoke(method: method, on: MakiObjectReference(.gui(object.stableID)), arguments: arguments, program: program)
+    }
+
+    private func system(_ runtime: WinampModernScriptRuntime, _ program: MakiProgram, _ method: String,
+                        _ arguments: [MakiValue] = []) throws -> MakiValue {
+        try runtime.invoke(method: method, on: MakiObjectReference(.system), arguments: arguments, program: program)
+    }
+}

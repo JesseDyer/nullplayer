@@ -489,6 +489,9 @@ extension WasabiSceneRenderer {
         // (Window dragging is unaffected: `shouldDragWindow` only ever accepts a `layer`.)
         if type == "group" || type == "layout" { return object.attributes["background"] != nil }
         if object.attributes["move"] == "1" { return true }
+        // ponytail: asks the runtime's bindings per candidate under the pointer; cache per object if
+        // hover profiling shows it.
+        if pressBindingProvider?(object) == true { return true }
         // An `animatedlayer` is a layer that moves. MMD3's rotary volume/bass/treble knobs are
         // animated layers with their own `onLeftButtonDown` handlers, and leaving the type out here
         // meant a click never reached them.

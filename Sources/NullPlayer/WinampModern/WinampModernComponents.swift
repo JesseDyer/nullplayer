@@ -423,6 +423,8 @@ struct WinampModernBrowserRequest: Equatable {
 protocol WinampModernBrowserSurface: AnyObject {
     var view: NSView { get }
     func navigate(_ request: WinampModernBrowserRequest)
+    /// `Browser.back()` / `forward()`; nothing happens at either end of the history.
+    func stepHistory(forward: Bool)
     func setVisible(_ visible: Bool)
     /// Whether the surface draws its own address/navigation bar. Off for a skin that authored one of
     /// its own over the same box — see `WinampModernMainView.suppressesHostLocationBar`.

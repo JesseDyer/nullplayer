@@ -245,6 +245,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             // Every renderer asks the one runtime for a `cfgattrib` control's state, so a switch in
             // the settings window and the control it mirrors in another window always agree.
             renderer.configStateProvider = { [weak scripts] in scripts?.configValue(of: $0) ?? false }
+            renderer.pressBindingProvider = { [weak scripts] in scripts?.hasPressBinding(for: $0) ?? false }
             renderer.configValueProvider = { [weak scripts] in scripts?.configInteger(of: $0) }
             renderer.settingStateProvider = { [weak scripts] section, key in
                 scripts?.configAttributeValue(section: section, key: key).map { $0 != "0" }
@@ -552,6 +553,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         renderer.componentHost = componentBridge
         renderer.textScale = WinampModernSkinState.textScale(in: loaded.configuration)
         renderer.configStateProvider = { [weak scripts] in scripts?.configValue(of: $0) ?? false }
+        renderer.pressBindingProvider = { [weak scripts] in scripts?.hasPressBinding(for: $0) ?? false }
         renderer.configValueProvider = { [weak scripts] in scripts?.configInteger(of: $0) }
         renderer.settingStateProvider = { [weak scripts] section, key in
             scripts?.configAttributeValue(section: section, key: key).map { $0 != "0" }
@@ -2219,6 +2221,12 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         }
         scripts.containerMoveRequested = { [weak self] container, point, pinned in
             self?.moveContainerWindow(container, to: point, pinned: pinned)
+        }
+        scripts.browserHistoryRequested = { [weak self] objectID, forward in
+            guard let self else { return }
+            for view in viewsByContainer.values where view.stepBrowserHistory(objectID: objectID, forward: forward) {
+                return
+            }
         }
         scripts.browserNavigationRequested = { [weak self] objectID, address in
             guard let self else { return }

@@ -37,6 +37,7 @@ extension WinampModernScriptRuntime {
             // handler's own frame), so `onAction` reports the neutral slot 0 rather than a fiction.
             return method == "onaction" ? .integer(0) : .null
         }
+        if let value = try invokeWidget(method: method, object: object, arguments: arguments) { return value }
         switch method {
         // A layout Winamp has not created yet does not answer. Winamp builds a container's layouts
         // on demand, so `getContainer("main").getLayout("shade")` is NULL until the window is shaded
@@ -333,7 +334,20 @@ extension WinampModernScriptRuntime {
         // windows itself and has no docking model for them, so these are deliberate no-ops — but they
         // must *exist*, because a missing method aborts the whole handler: this trio is what stopped
         // Winamp Modern's CONFIG button from ever opening its drawer.
-        case "beforeredock", "redock", "snapadjust": return .null
+        case "beforeredock", "redock": return .null
+        // The layout's snap margins: stored so `getSnapAdjust*` read them back (winampmodern566
+        // sizes its drawer from `getSnapAdjustBottom`), not obeyed, since there is no docking model.
+        case "snapadjust":
+            for (key, value) in zip(Self.snapAdjustKeys, arguments) {
+                _ = object.setAttribute(key, value: String(value.integerValue))
+            }
+            return .null
+        case "getsnapadjustleft", "getsnapadjusttop", "getsnapadjustright", "getsnapadjustbottom":
+            let key = "nullplayer.snapadjust." + method.dropFirst("getsnapadjust".count)
+            return .integer(Int32(object.attributes[key] ?? "") ?? 0)
+        // A width or height is the same in client and screen space: neither is scaled here.
+        case "clienttoscreenw", "clienttoscreenh", "screentoclientw", "screentoclienth":
+            return .integer(arguments[0].integerValue)
         case "debugstring": return .null
         // A **window's** left and top are where it sits on the desktop, not where it sits inside
         // itself. A layout resolves to the origin of its own canvas, so both answered 0 — and Big
@@ -746,6 +760,11 @@ extension WinampModernScriptRuntime {
             noteGeometryChange()
             notifyObjectDidMutate(object)
             return .null
+        case "back", "forward":
+            if WasabiSceneRenderer.isBrowserElement(object) {
+                browserHistoryRequested?(object.stableID, method == "forward")
+            }
+            return .null
         case "navigateurl":
             // A browser object may drive only its own embedded, policy-gated WebKit surface. Calls
             // on any other GUI object stay quietly inert so an untrusted skin cannot turn a generic
@@ -820,6 +839,50 @@ extension WinampModernScriptRuntime {
             try parent.insertChild(object, at: method == "bringtofront" ? parent.children.count : 0)
             notifyGraphDidMutate()
             return .null
+        // Paint order relative to a sibling: just under it, or just over it.
+        case "bringbelow", "bringabove":
+            guard case .object(let reference) = arguments[0], case .gui(let otherID) = reference.kind,
+                  let other = loadedSkin.runtime.graph.object(withID: otherID), other !== object,
+                  let parent = object.parent, other.parent === parent else { return .null }
+            // `insertChild` takes the object out first, so the index is among the others.
+            guard let index = parent.children.filter({ $0 !== object })
+                .firstIndex(where: { $0 === other }) else { return .null }
+            try parent.insertChild(object, at: method == "bringbelow" ? index : index + 1)
+            notifyGraphDidMutate()
+            return .null
+        case "islayout": return .boolean(object.typeName.caseInsensitiveCompare("layout") == .orderedSame)
+        case "getnumlayouts":
+            return .integer(Int32(object.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }.count))
+        case "enumlayout":
+            let layouts = object.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }
+            let index = Int(arguments[0].integerValue)
+            return layouts.indices.contains(index) ? objectValue(layouts[index]) : .null
+        // The window's name, as the Windows menu lists it (Anunaki renames its own).
+        case "setname":
+            _ = object.setAttribute("name", value: arguments[0].stringValue)
+            notifyGraphDidMutate()
+            return .null
+        case "setdesktopalpha":
+            _ = object.setAttribute("desktopalpha", value: arguments[0].truthy ? "1" : "0")
+            notifyObjectDidMutate(object)
+            return .null
+        case "getdesktopalpha": return .boolean(object.attributes["desktopalpha"] == "1")
+        // `Button.rightClick()` is the script pressing the button's right side: its handler runs.
+        case "rightclick":
+            _ = try dispatch(object: object, event: "onrightclick")
+            return .null
+        // `Slider.lock()` holds back the slider's own callbacks while a script moves it.
+        case "lock", "unlock":
+            _ = object.setAttribute("nullplayer.slider.locked", value: method == "lock" ? "1" : "0")
+            return .null
+        case "nextmode":
+            let mode = WasabiVisualizationMode(attribute: object.attributes["mode"]).stepped(by: 1)
+            _ = object.setAttribute("mode", value: mode.attributeValue)
+            notifyObjectDidMutate(object)
+            return .null
+        // Whether the vis or animation draws every frame; ours always does.
+        case "setrealtime": return .null
+        case "getautoreplay": return .boolean(object.attributes["autoreplay"] == "1")
         case "callme": return .null
         default:
             throw unsupported(method, program: program)
@@ -849,14 +912,36 @@ extension WinampModernScriptRuntime {
                              arguments: arguments)
             return method == "onaction" ? .integer(0) : .null
         }
+        if let value = try invokeTreeItem(method: method, id: id, arguments: arguments) { return value }
         switch method {
         // `GammaSet.apply()` — switch to the theme this object names, through the one route
         // `System.setColorTheme` already uses. A theme the skin does not ship is refused by the
         // catalog and the call is simply inert.
         case "apply":
             guard case .gammaSet(let name) = state.role else { return .null }
-            _ = themeSwitchRequested?(name)
+            // Re-applying the theme already showing is how a script shows the groups it retinted.
+            if themeSwitchRequested?(name) != true,
+               name.caseInsensitiveCompare(loadedSkin.themeCoordinator.activeTheme) == .orderedSame {
+                loadedSkin.themeCoordinator.reapply()
+            }
             return .null
+        case "enumgammagroup":
+            guard case .gammaSet(let name) = state.role,
+                  let group = loadedSkin.themeCoordinator.catalog.groupIdentifier(
+                    theme: name, index: Int(arguments[0].integerValue)) else { return .null }
+            return dynamicValue(role: .gammaGroup(theme: name, group: group))
+        case "setred", "setgreen", "setblue":
+            guard case .gammaGroup(let theme, let group) = state.role else { return .null }
+            loadedSkin.themeCoordinator.catalog.setGammaChannel(["setred": 0, "setgreen": 1, "setblue": 2][method] ?? 0,
+                                                               to: Int(arguments[0].integerValue),
+                                                               theme: theme, group: group)
+            return .null
+        // The map's own shape: every pixel at or above 1, the unreversed `loadFromMap` form.
+        case "getregion":
+            guard case .map(let bitmapID, let source) = state.role else { return .null }
+            return dynamicValue(role: .region(clip: WasabiRegionClip(
+                mapID: bitmapID, mapPath: mapLogicalPath(bitmapID: bitmapID, source: source),
+                threshold: 1, reversed: false)))
         case "loadmap":
             state.role = .map(bitmapID: arguments[0].stringValue, source: program.source)
             dynamicObjects[id] = state
@@ -956,6 +1041,10 @@ extension WinampModernScriptRuntime {
         // never loaded a page (B128).
         case "getred", "getgreen", "getblue",
              "getredwithgamma", "getgreenwithgamma", "getbluewithgamma":
+            if case .gammaGroup(let theme, let group) = state.role {
+                let channel = method.hasPrefix("getred") ? 0 : method.hasPrefix("getgreen") ? 1 : 2
+                return .integer(Int32(loadedSkin.themeCoordinator.catalog.gammaChannel(channel, theme: theme, group: group)))
+            }
             guard case .color(let red, let green, let blue) = state.role else { return .integer(0) }
             switch method {
             case "getred", "getredwithgamma": return .integer(red)
@@ -1043,6 +1132,12 @@ extension WinampModernScriptRuntime {
             return .null
         // The delay as set, unclamped — the same script compares it against its own first delay.
         case "getdelay": return .integer(state.delayMilliseconds)
+        // Ticks the timer service dropped because the main thread was late. It coalesces rather
+        // than counting, so none are reported.
+        case "getskipped": return .integer(0)
+        case "sendcommand":
+            guard case .wac = state.role else { return .null }
+            return .integer(0)
         case "start":
             if MakiInterpreter.tracesExecution {
                 print("MAKI timer start id=\(id) delay=\(state.delayMilliseconds) "
@@ -1116,6 +1211,8 @@ extension WinampModernScriptRuntime {
             case .configGroup(let section): return .string(section)
             case .gammaSet(let name): return .string(name)
             case .color(let red, let green, let blue): return .string("\(red),\(green),\(blue)")
+            case .wac(let guid): return .string(guid)
+            case .gammaGroup(_, let group): return .string(group)
             case .generic: return .string("dynamic_\(id)")
             }
         case "init", "callme": return .null
@@ -1245,6 +1342,8 @@ extension WinampModernScriptRuntime {
     /// answered **−4**, `CproTabs.m` concluded it had no room for its tabs, switched to short names and
     /// squeezed every tab to the 20px floor. The declared value stays as the fallback for an object the
     /// active scene does not contain (a hidden layout, or a runtime with no window wired at all).
+    static let snapAdjustKeys = ["left", "top", "right", "bottom"].map { "nullplayer.snapadjust." + $0 }
+
     func resolvedFrame(of object: WasabiObject) -> CGRect? {
         guard let geometry = resolvedGeometryRequested?(object) else { return nil }
         return geometry.frame.offsetBy(dx: -geometry.parent.minX, dy: -geometry.parent.minY)

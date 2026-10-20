@@ -7,6 +7,11 @@ import Foundation
 /// out of `WinampModernScriptRuntime.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/compatibility/maki-surface.md`.
 extension WinampModernScriptRuntime {
+    /// A MAKI date argument: seconds since 1970, with 0 (or less) meaning now.
+    static func makiDate(_ value: MakiValue) -> Date {
+        value.integerValue > 0 ? Date(timeIntervalSince1970: TimeInterval(value.integerValue)) : Date()
+    }
+
     private var playItemString: String { host.trackPath.isEmpty ? host.trackDisplayTitle : host.trackPath }
 
     func invokeSystem(method: String, arguments: [MakiValue], program: MakiProgram) throws -> MakiValue {
@@ -478,12 +483,73 @@ extension WinampModernScriptRuntime {
             return .integer(bound > 0 ? Int32.random(in: 0..<bound) : 0)
         // The clock fields beside `getDateYear`, from the same `getDate()` stamp (0 = now). Skin
         // clocks read them in their timer, and the miss aborted the timer and froze the clock.
-        case "getdatehour", "getdatemin", "getdatesec":
-            let date = arguments[0].integerValue > 0
-                ? Date(timeIntervalSince1970: TimeInterval(arguments[0].integerValue)) : Date()
-            let component: Calendar.Component = method == "getdatehour" ? .hour
-                : method == "getdatemin" ? .minute : .second
-            return .integer(Int32(Calendar.current.component(component, from: date)))
+        // The day fields are C's `tm` fields: a 0-based month and a 0-based weekday (Sunday 0).
+        case "getdatehour", "getdatemin", "getdatesec", "getdateday", "getdatemonth", "getdatedow":
+            let date = Self.makiDate(arguments[0])
+            switch method {
+            case "getdatehour": return .integer(Int32(Calendar.current.component(.hour, from: date)))
+            case "getdatemin": return .integer(Int32(Calendar.current.component(.minute, from: date)))
+            case "getdatesec": return .integer(Int32(Calendar.current.component(.second, from: date)))
+            case "getdateday": return .integer(Int32(Calendar.current.component(.day, from: date)))
+            case "getdatemonth": return .integer(Int32(Calendar.current.component(.month, from: date) - 1))
+            default: return .integer(Int32(Calendar.current.component(.weekday, from: date) - 1))
+            }
+        case "getdatedst":
+            return .integer(TimeZone.current.isDaylightSavingTime(for: Self.makiDate(arguments[0])) ? 1 : 0)
+        // The locale's short and long date, as Winamp's `formatDate`/`formatLongDate` print them.
+        case "formatdate", "formatlongdate":
+            let formatter = DateFormatter()
+            formatter.dateStyle = method == "formatdate" ? .short : .long
+            formatter.timeStyle = .none
+            return .string(formatter.string(from: Self.makiDate(arguments[0])))
+        // The time of day, `h:mm:ss`, the shape `integerToLongTime` prints.
+        case "datetolongtime":
+            let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: Self.makiDate(arguments[0]))
+            return .string(String(format: "%d:%02d:%02d", parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0))
+        case "sqr":
+            let x = arguments[0].doubleValue
+            return .double((x * x).isFinite ? x * x : 0)
+        case "frac":
+            let x = arguments[0].doubleValue
+            return .double(x.isFinite ? x - x.rounded(.towardZero) : 0)
+        // The monitor holding the object, answered the way `getMonitorWidth` is for the player.
+        case "getmonitorwidthfromguiobject":
+            return .integer(Self.screenDimension(monitorSizeRequested?()?.width ?? NSScreen.main?.frame.width))
+        case "getmonitorheightfromguiobject":
+            return .integer(Self.screenDimension(monitorSizeRequested?()?.height ?? NSScreen.main?.frame.height))
+        case "getmonitorleftfromguiobject", "getmonitortopfromguiobject": return .integer(0)
+        // A Winamp component by GUID. Winamp's `Wac` lets a script send the component private
+        // commands; none of NullPlayer's components takes one, so the object exists and
+        // `sendCommand` answers 0, "not handled" (Zygote's `sysfunc.m` fetches the main and playlist
+        // components at load and the miss aborted it).
+        case "getwac": return dynamicValue(role: .wac(guid: arguments[0].stringValue))
+        // The skin's own `<browser>`, the one `navigateUrlBrowser` lands in.
+        case "getmainbrowser":
+            return objectValue(loadedSkin.runtime.graph.allObjectsUnordered.first(where: WasabiSceneRenderer.isBrowserElement))
+        case "popmainbrowser":
+            guard let browser = loadedSkin.runtime.graph.allObjectsUnordered.first(where: WasabiSceneRenderer.isBrowserElement),
+                  let container = ancestor(of: browser, type: "container") else { return .null }
+            return try setVisible(container, true)
+        // `showWindow(guid or group id, preferred container, transient)`: a component GUID opens that
+        // component's window (Big Bento's "show playing track" opens the playlist with `guid:pl`); a
+        // group id shows the container that holds it. Answers the object it showed.
+        case "showwindow":
+            let name = arguments[0].stringValue
+            let graph = loadedSkin.runtime.graph
+            if let kind = WinampModernComponentRegistry.kind(for: name) {
+                componentShowRequested?(kind)
+                return objectValue(graph.allObjectsUnordered.first { WasabiSceneRenderer.componentKind(of: $0) == kind })
+            }
+            guard let object = graph.allObjectsUnordered.first(where: { $0.xmlID?.caseInsensitiveCompare(name) == .orderedSame }),
+                  let container = object.typeName.caseInsensitiveCompare("container") == .orderedSame
+                    ? object : ancestor(of: object, type: "container") else { return .null }
+            _ = try setVisible(container, true)
+            return objectValue(object)
+        case "enqueuefile":
+            if let url = skinSuppliedMediaURL(arguments[0].stringValue, method: method) {
+                componentHost?.playlistAppend(mediaAt: url, play: false)
+            }
+            return .null
         // A null check that also catches a graph object that has gone: the reference resolves the
         // way a method call on it would.
         case "isobjectvalid":
@@ -958,6 +1024,15 @@ extension WinampModernScriptRuntime {
         case "moveto":
             componentHost?.playlistMove(row: Int(arguments[0].integerValue),
                                         to: Int(arguments[1].integerValue))
+            return .null
+        case "moveup", "movedown":
+            let item = Int(arguments[0].integerValue)
+            componentHost?.playlistMove(row: item, to: item + (method == "moveup" ? -1 : 1))
+            return .null
+        // Stars, 0–5, the unit `getCurrentTrackRating` answers in.
+        case "getrating": return .integer(Int32(host.rating(ofPlaylistRow: Int(arguments[0].integerValue))))
+        case "setrating":
+            host.setRating(Int(arguments[1].integerValue), ofPlaylistRow: Int(arguments[0].integerValue))
             return .null
         case "clear":
             componentHost?.playlistClear()

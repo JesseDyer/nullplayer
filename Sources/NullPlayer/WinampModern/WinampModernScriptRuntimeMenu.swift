@@ -35,6 +35,12 @@ extension WinampModernScriptRuntime {
                 popupCommands[id]?[index].checked = arguments[1].truthy
             }
             return .null
+        case "disablecommand":
+            let commandID = arguments[0].integerValue
+            if let index = popupCommands[id]?.firstIndex(where: { $0.commandID == commandID }) {
+                popupCommands[id]?[index].disabled = arguments[1].truthy
+            }
+            return .null
         case "popatmouse": return .integer(popupPresenter?(popupItems(of: id, depth: 0), nil) ?? 0)
         case "popatxy":
             // ClassicPro positions its tab-strip and "goto" menus with

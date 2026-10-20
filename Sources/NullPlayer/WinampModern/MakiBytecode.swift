@@ -57,6 +57,8 @@ enum MakiClassGUID {
     static let system = "d6f50f6449b793fa66baf193983eaeef"
     static let vis = "ce4f97be4e1977b098d45699276cc933"
     static let wac = "00c074a049a0fea2bbfa8dbe401616db"
+    static let dropDownList = "36d59b714af803fd020595977a26dbb7"
+    static let guiTree = "d59514f745e8ed364e3f0f98d92c52a0"
 
     /// Host singletons the **runtime** binds by class, and which the parser must therefore leave
     /// alone. Deliberately a carve-out rather than an allow-list of one: a system-flagged global of

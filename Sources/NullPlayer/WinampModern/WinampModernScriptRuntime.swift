@@ -41,6 +41,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         /// A `Color` — what `ColorMgr.getColor(name)` answers with, resolved once at creation.
         /// Settled at creation for the same reason `gammaSet` is: it never comes from a bare `new`.
         case color(red: Int32, green: Int32, blue: Int32)
+        /// A `Wac` — a Winamp component by GUID (`System.getWac`). It takes no commands here.
+        case wac(guid: String)
+        /// One `<gammagroup>` of a colour theme, from `GammaSet.enumGammaGroup(n)`.
+        case gammaGroup(theme: String, group: String)
     }
 
     /// Ceiling on one `List`'s length. ClassicPro's longest is its tab order (a dozen entries); the
@@ -52,6 +56,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     let timers: MakiTimerService
     let interpreter: MakiInterpreter
     private(set) var programs: [MakiProgram] = []
+    /// The `TreeItem`s scripts made, by their dynamic id, and each `GuiTree`'s top-level items.
+    var treeNodes: [UInt64: TreeNode] = [:]
+    var treeRoots: [WasabiObjectID: [UInt64]] = [:]
     private(set) var isTornDown = false
 
     /// Names of MAKI methods the runtime was asked for but does not implement, with a call count each.
@@ -155,6 +162,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     var actionRequested: ((String, String?) -> Void)?
     /// The object form of `navigateUrl`: only the addressed `<browser>` may navigate.
     var browserNavigationRequested: ((WasabiObjectID, String) -> Void)?
+    /// `Browser.back()` (`false`) / `forward()` (`true`) on one `<browser>`.
+    var browserHistoryRequested: ((WasabiObjectID, Bool) -> Void)?
+    /// `System.showWindow("guid:pl", …)`: open a component's window, leaving an open one open.
+    var componentShowRequested: ((WinampModernComponentKind) -> Void)?
     /// The **global** form, which names no object: `System.navigateUrl` (the user's browser) and
     /// `System.navigateUrlBrowser` (the player's own). Both are routed rather than executed here —
     /// the address is skin-authored, so the window layer resolves it against
@@ -1922,10 +1933,27 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     }
 
     func hasBinding(for object: WasabiObject, event: String? = nil) -> Bool {
+        let event = event?.lowercased()
+        return hasBinding(for: object) { event == nil || $0 == event }
+    }
+
+    /// The presses that make an object a control. Wasabi gives every non-ghost GuiObject its rect, so
+    /// a `text` or `AlbumArt` a script hooks one of these on is under the pointer (B207): Ebonite's
+    /// timer opens its clock menu on a right-click. A hover-only binding is left out, so a
+    /// `onMouseMove` overlay does not swallow clicks meant for what is behind it.
+    static let pressEvents: Set<String> = ["onleftbuttondown", "onleftbuttonup", "onleftclick",
+                                           "onleftbuttondblclk", "onrightbuttondown",
+                                           "onrightbuttonup", "onrightclick"]
+
+    func hasPressBinding(for object: WasabiObject) -> Bool {
+        hasBinding(for: object) { Self.pressEvents.contains($0) }
+    }
+
+    private func hasBinding(for object: WasabiObject, event matches: (String) -> Bool) -> Bool {
         let target = MakiObjectReference(.gui(object.stableID))
         return programs.contains { program in
             program.bindings.contains { binding in
-                if let event, program.methods[binding.methodIndex].name != event.lowercased() { return false }
+                if !matches(program.methods[binding.methodIndex].name) { return false }
                 let variable = program.variables[binding.variableIndex]
                 if self.object(variable.value, equals: target) { return true }
                 return variable.classMembers.contains {
@@ -2370,6 +2398,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // Arity pinned by ClassicPro's own `extendedbuttons.m`, which ships its source beside the
         // compiled program: `PlEdit.enqueueFile(enqFile)`, one string.
         "enqueuefile": .init(argumentCount: 1, returnKind: .null),
+        "moveup": .init(argumentCount: 1, returnKind: .null),
+        "movedown": .init(argumentCount: 1, returnKind: .null),
+        "getrating": .init(argumentCount: 1, returnKind: .integer),
+        "setrating": .init(argumentCount: 2, returnKind: .null),
     ]
 
     /// `MLPlaylists`, the Media Library's saved-playlist manager. Gated by class for the same reason
@@ -2507,6 +2539,97 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "setmode": .init(argumentCount: 1, returnKind: .null),
         "getmode": .init(argumentCount: 0, returnKind: .integer),
         "getcomponentname": .init(argumentCount: 0, returnKind: .string),
+        "enumgammagroup": .init(argumentCount: 1, returnKind: .object),
+        "getregion": .init(argumentCount: 0, returnKind: .object),
+        "back": .init(argumentCount: 0, returnKind: .null),
+        "forward": .init(argumentCount: 0, returnKind: .null),
+        "getmainbrowser": .init(argumentCount: 0, returnKind: .object),
+        "popmainbrowser": .init(argumentCount: 0, returnKind: .null),
+        "showwindow": .init(argumentCount: 3, returnKind: .object),
+        "setred": .init(argumentCount: 1, returnKind: .null),
+        "setgreen": .init(argumentCount: 1, returnKind: .null),
+        "setblue": .init(argumentCount: 1, returnKind: .null),
+        // Demand-table batch (the S4 queue's tail): signatures from the corpus's own `.mi` headers.
+        "sqr": .init(argumentCount: 1, returnKind: .double),
+        "frac": .init(argumentCount: 1, returnKind: .double),
+        "getdateday": .init(argumentCount: 1, returnKind: .integer),
+        "getdatedow": .init(argumentCount: 1, returnKind: .integer),
+        "getdatedst": .init(argumentCount: 1, returnKind: .integer),
+        "getdatemonth": .init(argumentCount: 1, returnKind: .integer),
+        "formatdate": .init(argumentCount: 1, returnKind: .string),
+        "formatlongdate": .init(argumentCount: 1, returnKind: .string),
+        "datetolongtime": .init(argumentCount: 1, returnKind: .string),
+        "getmonitorleftfromguiobject": .init(argumentCount: 1, returnKind: .integer),
+        "getmonitortopfromguiobject": .init(argumentCount: 1, returnKind: .integer),
+        "getmonitorwidthfromguiobject": .init(argumentCount: 1, returnKind: .integer),
+        "getmonitorheightfromguiobject": .init(argumentCount: 1, returnKind: .integer),
+        "getwac": .init(argumentCount: 1, returnKind: .object),
+        "sendcommand": .init(argumentCount: 4, returnKind: .integer),
+        "enqueuefile": .init(argumentCount: 1, returnKind: .null),
+        "nextmode": .init(argumentCount: 0, returnKind: .null),
+        "setrealtime": .init(argumentCount: 1, returnKind: .null),
+        "getautoreplay": .init(argumentCount: 0, returnKind: .boolean),
+        "islayout": .init(argumentCount: 0, returnKind: .boolean),
+        "getnumlayouts": .init(argumentCount: 0, returnKind: .integer),
+        "enumlayout": .init(argumentCount: 1, returnKind: .object),
+        "setname": .init(argumentCount: 1, returnKind: .null),
+        "getsnapadjustleft": .init(argumentCount: 0, returnKind: .integer),
+        "getsnapadjusttop": .init(argumentCount: 0, returnKind: .integer),
+        "getsnapadjustright": .init(argumentCount: 0, returnKind: .integer),
+        "getsnapadjustbottom": .init(argumentCount: 0, returnKind: .integer),
+        "setdesktopalpha": .init(argumentCount: 1, returnKind: .null),
+        "getdesktopalpha": .init(argumentCount: 0, returnKind: .boolean),
+        "clienttoscreenw": .init(argumentCount: 1, returnKind: .integer),
+        "clienttoscreenh": .init(argumentCount: 1, returnKind: .integer),
+        "screentoclientw": .init(argumentCount: 1, returnKind: .integer),
+        "screentoclienth": .init(argumentCount: 1, returnKind: .integer),
+        "bringbelow": .init(argumentCount: 1, returnKind: .null),
+        "bringabove": .init(argumentCount: 1, returnKind: .null),
+        "rightclick": .init(argumentCount: 0, returnKind: .null),
+        "lock": .init(argumentCount: 0, returnKind: .null),
+        "unlock": .init(argumentCount: 0, returnKind: .null),
+        "getskipped": .init(argumentCount: 0, returnKind: .integer),
+        "disablecommand": .init(argumentCount: 2, returnKind: .null),
+        "cfggetint": .init(argumentCount: 0, returnKind: .integer),
+        "cfggetfloat": .init(argumentCount: 0, returnKind: .double),
+        "cfggetstring": .init(argumentCount: 0, returnKind: .string),
+        "cfggetname": .init(argumentCount: 0, returnKind: .string),
+        "cfggetguid": .init(argumentCount: 0, returnKind: .string),
+        "cfgsetint": .init(argumentCount: 1, returnKind: .null),
+        "cfgsetfloat": .init(argumentCount: 1, returnKind: .null),
+        "cfgsetstring": .init(argumentCount: 1, returnKind: .null),
+        "getselectedtext": .init(argumentCount: 0, returnKind: .string),
+        "setlistheight": .init(argumentCount: 1, returnKind: .null),
+        "getscroll": .init(argumentCount: 0, returnKind: .integer),
+        "setscroll": .init(argumentCount: 1, returnKind: .integer),
+        "setredirection": .init(argumentCount: 1, returnKind: .null),
+        "endmodal": .init(argumentCount: 1, returnKind: .null),
+        "insertitem": .init(argumentCount: 2, returnKind: .integer),
+        "deletebypos": .init(argumentCount: 1, returnKind: .integer),
+        "moveitem": .init(argumentCount: 2, returnKind: .null),
+        "getsubitemtext": .init(argumentCount: 2, returnKind: .string),
+        "deselectall": .init(argumentCount: 0, returnKind: .integer),
+        "getitemfocused": .init(argumentCount: 0, returnKind: .integer),
+        "setitemfocused": .init(argumentCount: 1, returnKind: .null),
+        "addcolumn": .init(argumentCount: 3, returnKind: .integer),
+        "setcolumnlabel": .init(argumentCount: 2, returnKind: .null),
+        "setcolumnwidth": .init(argumentCount: 2, returnKind: .null),
+        "getcolumnlabel": .init(argumentCount: 1, returnKind: .string),
+        "setautosort": .init(argumentCount: 1, returnKind: .null),
+        "setpreventmultipleselection": .init(argumentCount: 1, returnKind: .integer),
+        "setlabel": .init(argumentCount: 1, returnKind: .null),
+        "getlabel": .init(argumentCount: 0, returnKind: .string),
+        "expand": .init(argumentCount: 0, returnKind: .integer),
+        "collapse": .init(argumentCount: 0, returnKind: .integer),
+        "isexpanded": .init(argumentCount: 0, returnKind: .integer),
+        "addtreeitem": .init(argumentCount: 4, returnKind: .object),
+        "movetreeitem": .init(argumentCount: 2, returnKind: .null),
+        "enumrootitem": .init(argumentCount: 1, returnKind: .object),
+        "enumallitems": .init(argumentCount: 1, returnKind: .object),
+        "getnumvisibleitems": .init(argumentCount: 0, returnKind: .integer),
+        "getbylabel": .init(argumentCount: 2, returnKind: .object),
+        "setsorted": .init(argumentCount: 1, returnKind: .null),
+        "getsorted": .init(argumentCount: 0, returnKind: .integer),
         "play": .init(argumentCount: 0, returnKind: .null),
         "pause": .init(argumentCount: 0, returnKind: .null),
         "gotoframe": .init(argumentCount: 1, returnKind: .null),
@@ -2980,6 +3103,11 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         case MakiClassGUID.gammaSet where method.caseInsensitiveCompare("apply") == .orderedSame:
             return .init(argumentCount: 0, returnKind: .null)
         // The other arities of three events `dispatchableEventArity` keys by name (B182).
+        // `selectItem` is `(id, hover)` on a drop-down and `(item)` on a tree.
+        case MakiClassGUID.dropDownList where name == "selectitem":
+            return .init(argumentCount: 2, returnKind: .null)
+        case MakiClassGUID.guiTree where name == "selectitem":
+            return .init(argumentCount: 1, returnKind: .null)
         case MakiClassGUID.wac where name == "onnotify":
             return .init(argumentCount: 3, returnKind: .integer)
         case MakiClassGUID.system where name == "onaccelerator":
@@ -3677,6 +3805,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         actionRequested = nil
         focusRequested = nil
         browserNavigationRequested = nil
+        browserHistoryRequested = nil
+        componentShowRequested = nil
         globalNavigationRequested = nil
         themeNamesRequested = nil
         activeThemeRequested = nil

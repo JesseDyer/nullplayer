@@ -150,6 +150,8 @@ struct WasabiGammaTransform: Equatable {
 final class WasabiColorThemeCatalog {
     private let loadedSkin: WinampModernLoadedSkin
     private var sets: [String: [String: WasabiGammaTransform]] = [:]
+    /// Each set's group ids in document order — what `GammaSet.enumGammaGroup(n)` counts.
+    private var groupOrder: [String: [String]] = [:]
     private var displayNames: [String: String] = [:]
     /// Folded keys in document order — Winamp's colour-theme list order, and the source of the
     /// default theme.
@@ -168,13 +170,16 @@ final class WasabiColorThemeCatalog {
                     if displayNames[key] == nil { order.append(key) }
                     displayNames[key] = name
                     var groups: [String: WasabiGammaTransform] = [:]
+                    var ids: [String] = []
                     for child in node.children where child.name.caseInsensitiveCompare("gammagroup") == .orderedSame {
                         guard let id = child.attribute("id") else { continue }
+                        if groups[Self.fold(id)] == nil { ids.append(id) }
                         groups[Self.fold(id)] = WasabiGammaTransform(value: child.attribute("value") ?? "0,0,0",
                                                                      gray: child.attribute("gray"),
                                                                      boost: child.attribute("boost"))
                     }
                     sets[key] = groups
+                    groupOrder[key] = ids
                 }
                 collect(node.children)
             }
@@ -204,6 +209,28 @@ final class WasabiColorThemeCatalog {
     func transform(group: String?) -> WasabiGammaTransform? {
         guard let group else { return nil }
         return sets[Self.fold(activeTheme)]?[Self.fold(group)]
+    }
+
+    /// The `index`th group of a set, in document order (Ebonite's colour changer: 2 is `lcd`).
+    func groupIdentifier(theme: String, index: Int) -> String? {
+        let ids = groupOrder[Self.fold(theme)] ?? []
+        return ids.indices.contains(index) ? ids[index] : nil
+    }
+
+    /// One channel of a group, in the XML's −4096…4096. `channel` is 0 red, 1 green, 2 blue.
+    func gammaChannel(_ channel: Int, theme: String, group: String) -> Int {
+        guard let transform = sets[Self.fold(theme)]?[Self.fold(group)] else { return 0 }
+        return Int(([transform.red, transform.green, transform.blue][max(0, min(2, channel))] * 4096).rounded())
+    }
+
+    /// `GammaGroup.setRed/Green/Blue` — the skin retinting a group live; `GammaSet.apply()` shows it.
+    func setGammaChannel(_ channel: Int, to value: Int, theme: String, group: String) {
+        let setKey = Self.fold(theme), groupKey = Self.fold(group)
+        guard let old = sets[setKey]?[groupKey] else { return }
+        var amounts = [old.red, old.green, old.blue]
+        amounts[max(0, min(2, channel))] = CGFloat(max(-4096, min(4096, value))) / 4096
+        sets[setKey]?[groupKey] = WasabiGammaTransform(red: amounts[0], green: amounts[1], blue: amounts[2],
+                                                       grayscale: old.grayscale, additive: old.additive)
     }
 
     private static func fold(_ value: String) -> String {
@@ -676,6 +703,9 @@ final class WasabiSceneRenderer {
     /// Reads a `cfgattrib`-bound control's current value. Supplied by the script runtime, which owns
     /// the configuration store; nil in a renderer built without one (the pixel tests).
     var configStateProvider: ((WasabiObject) -> Bool)?
+    /// Whether a script hooks a press on the object (`WinampModernScriptRuntime.hasPressBinding`),
+    /// which makes it a hit target. Nil in a renderer built without a script runtime.
+    var pressBindingProvider: ((WasabiObject) -> Bool)?
     /// The raw integer behind a `cfgattrib` binding, in the control's own unit — what a **slider**
     /// bound to an attribute stands at. Separate from `configStateProvider` because a lamp and a
     /// number are different questions about the same binding: mmd3's crossfade slider names

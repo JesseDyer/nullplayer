@@ -686,6 +686,10 @@ final class WinampModernMainView: NSView {
             }
             NSApp.activate(ignoringOtherApps: true)
         }
+        scripts.componentShowRequested = { [weak self] kind in
+            guard let self, surfaceVisibilityQuery?(kind) != true else { return }
+            routeComponentToggle(kind)
+        }
         scripts.windowMenuRequested = { [weak self] in
             guard let menu = ContextMenuBuilder.winampModernMenuBarMenu(for: "wa5:windows") else { return }
             self?.popUpMenu(menu, from: nil, atMouse: true)
@@ -1372,6 +1376,12 @@ final class WinampModernMainView: NSView {
     /// a request for an object owned by another container returns false so the controller can ask
     /// that container's view instead.
     @discardableResult
+    func stepBrowserHistory(objectID: WasabiObjectID, forward: Bool) -> Bool {
+        guard let surface = browserSurfaces[objectID] else { return false }
+        surface.stepHistory(forward: forward)
+        return true
+    }
+
     func navigateBrowser(objectID: WasabiObjectID, address: String) -> Bool {
         guard !isTornDown,
               let object = renderer.loadedSkin.runtime.graph.object(withID: objectID),
@@ -1809,6 +1819,11 @@ final class WinampModernMainView: NSView {
         // (which is what `getFirstItemSelected` reads back), a double-click is the skin's own
         // `onDoubleClick`, which is how its search jumps to the track.
         if let list = renderer.guiList(at: point), let row = renderer.guiListRow(at: point, in: list) {
+            if WasabiGuiList.isTree(list) {
+                try? scripts.clickTreeRow(row, in: list)
+                needsDisplay = true
+                return
+            }
             WasabiGuiList.setSelection([row], on: list)
             // `onDoubleClick(item)` — one argument, the row, counted off the single store at Big
             // Bento's handler entry. It is how its search result opens the track it names.
@@ -2568,6 +2583,7 @@ final class WinampModernMainView: NSView {
     /// 48-wide map, which is 0 everywhere, so every drag seeked to zero and every knob turn set the
     /// volume to nothing.
     private func dispatch(object: WasabiObject, event: String, point: CGPoint) {
+        let object = scripts.mouseRedirectionTarget(of: object)
         let local = pointInParentSpace(of: object, canvasPoint: point)
         _ = try? scripts.dispatch(object: object, event: event,
                                   arguments: [.integer(Int32(local.x)), .integer(Int32(local.y))])
@@ -2927,13 +2943,7 @@ final class WinampModernMainView: NSView {
         menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: rect.minY), in: self)
         guard target.chosen > 0, items.indices.contains(Int(target.chosen) - 1) else { return }
         let picked = items[Int(target.chosen) - 1]
-        guard picked != current else { return }
-        _ = object.setAttribute("default", value: picked)
-        if let label = WasabiFormWidgets.dropDownLabel(of: object) {
-            _ = label.setAttribute("text", value: picked)
-            _ = try? scripts.dispatch(object: label, event: "ontextchanged",
-                                      arguments: [.string(picked)])
-        }
+        try? scripts.selectDropDownItem(picked, on: object)
         needsDisplay = true
     }
 

@@ -195,6 +195,7 @@ final class WinampModernHostedWindowMaterializer: NSObject, NSWindowDelegate {
                                                    containerID: id.containerIdentifier)
             renderer.componentHost = componentHost
             renderer.configStateProvider = { [weak scripts] in scripts?.configValue(of: $0) ?? false }
+            renderer.pressBindingProvider = { [weak scripts] in scripts?.hasPressBinding(for: $0) ?? false }
             renderer.configValueProvider = { [weak scripts] in scripts?.configInteger(of: $0) }
             renderer.settingStateProvider = { [weak scripts] section, key in
                 scripts?.configAttributeValue(section: section, key: key).map { $0 != "0" }
