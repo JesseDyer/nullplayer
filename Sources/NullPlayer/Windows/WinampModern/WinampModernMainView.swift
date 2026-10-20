@@ -673,6 +673,23 @@ final class WinampModernMainView: NSView {
             self?.componentHost?.equalizerSetPreampDB(Float(clamped) / 127 * 12)
             self?.needsDisplay = true
         }
+        scripts.equalizerEnabledSetterRequested = { [weak self] enabled in
+            self?.componentHost?.equalizerSetEnabled(enabled)
+            self?.needsDisplay = true
+        }
+        // The stock notifier's click raises a minimized player (`restoreApplication`, then
+        // `activateApplication`).
+        scripts.applicationRaiseRequested = { restore in
+            if restore {
+                NSApp.unhide(nil)
+                for window in NSApp.windows where window.isMiniaturized { window.deminiaturize(nil) }
+            }
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        scripts.windowMenuRequested = { [weak self] in
+            guard let menu = ContextMenuBuilder.winampModernMenuBarMenu(for: "wa5:windows") else { return }
+            self?.popUpMenu(menu, from: nil, atMouse: true)
+        }
         // A skin's own right-click menus (Love is War Miku's visualization presets, MMD3's display
         // menu) are built by a script and shown through `popAtMouse`. With no presenter installed
         // that call answered 0 — "the user picked nothing" — so those menus never appeared at all.

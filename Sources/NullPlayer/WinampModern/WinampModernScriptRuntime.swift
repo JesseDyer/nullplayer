@@ -226,6 +226,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// The EQ preamp, on the same MAKI −127…127 scale as a band.
     var equalizerPreampRequested: (() -> Int)?
     var equalizerPreampSetterRequested: ((Int) -> Void)?
+    /// `System.setEq(onoff)` — the absolute form of the `EQ_TOGGLE` action.
+    var equalizerEnabledSetterRequested: ((Bool) -> Void)?
+    /// `System.restoreApplication()` (`true`: bring minimized windows back too) and
+    /// `activateApplication()` (`false`): put the player in front.
+    var applicationRaiseRequested: ((Bool) -> Void)?
+    /// `System.windowMenu()` — Winamp's window list, at the pointer.
+    var windowMenuRequested: (() -> Void)?
     /// The playlist the `PlEdit` singleton addresses. Weak: the window controller owns the bridge,
     /// and a skin reload tears the runtime down first. `nil` in the headless harness, where every
     /// read falls back to `WasabiTextMetrics.componentTextProvider` and every write is a no-op.
@@ -2598,6 +2605,12 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "seteqband": .init(argumentCount: 2, returnKind: .null),
         "geteqpreamp": .init(argumentCount: 0, returnKind: .integer),
         "seteqpreamp": .init(argumentCount: 1, returnKind: .null),
+        "seteq": .init(argumentCount: 1, returnKind: .null),
+        "eject": .init(argumentCount: 0, returnKind: .null),
+        "minimizeapplication": .init(argumentCount: 0, returnKind: .null),
+        "restoreapplication": .init(argumentCount: 0, returnKind: .null),
+        "activateapplication": .init(argumentCount: 0, returnKind: .null),
+        "windowmenu": .init(argumentCount: 0, returnKind: .null),
         "settargetx": .init(argumentCount: 1, returnKind: .null),
         "settargety": .init(argumentCount: 1, returnKind: .null),
         "settargetw": .init(argumentCount: 1, returnKind: .null),
@@ -2928,6 +2941,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         case MakiClassGUID.colorManager where method.caseInsensitiveCompare("getcolor") == .orderedSame:
             return .init(argumentCount: 1, returnKind: .object)
         case MakiClassGUID.gammaSet where method.caseInsensitiveCompare("apply") == .orderedSame:
+            return .init(argumentCount: 0, returnKind: .null)
+        // `Application.shutdown()`; gated for the same reason, a short verb another class could declare.
+        case MakiClassGUID.application where method.caseInsensitiveCompare("shutdown") == .orderedSame:
             return .init(argumentCount: 0, returnKind: .null)
         default:
             break

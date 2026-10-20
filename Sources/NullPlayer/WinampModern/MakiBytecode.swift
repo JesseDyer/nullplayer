@@ -49,6 +49,10 @@ enum MakiClassGUID {
     /// "feature requires WA 5.51+" entry, so a **null** here is a supported state and not a defect.
     static let playlistManager = "61a7abad41f67d7980e1d0b1f4a40386"
 
+    /// Winamp 5's `Application` — `{B8E867B0-2715-4da7-A5BA-53DBA1FCFEAC}`. A system-flagged global
+    /// that keeps the System object, so its `shutdown()` reaches `invokeSystem`.
+    static let application = "b8e867b04da72715db53baa5acfefca1"
+
     /// Host singletons the **runtime** binds by class, and which the parser must therefore leave
     /// alone. Deliberately a carve-out rather than an allow-list of one: a system-flagged global of
     /// any other class keeps the System object it has always been given, so nothing that worked

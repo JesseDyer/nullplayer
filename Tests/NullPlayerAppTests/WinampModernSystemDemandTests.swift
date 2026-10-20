@@ -1,7 +1,8 @@
 import XCTest
 @testable import NullPlayer
 
-/// `System` methods the S4 demand queue ranked (B188, B191, B196, B200). Each was a call that aborted
+/// `System` methods the S4 demand queue ranked (B183, B186, B187, B188, B191, B194, B196, B197,
+/// B199, B200). Each was a call that aborted
 /// the whole handler it sat in.
 final class WinampModernSystemDemandTests: XCTestCase {
 
@@ -46,6 +47,35 @@ final class WinampModernSystemDemandTests: XCTestCase {
         XCTAssertEqual(try system(runtime, program, "isObjectValid", [gone]).truthy, false)
     }
 
+    /// B183, B186, B187, B194, B197, B199: the host-action methods reach the host, each the way the
+    /// matching skin action or menu does.
+    func testHostActionMethodsReachTheHost() throws {
+        let host = TransportHost()
+        let (runtime, program) = try makeRuntime(host: host)
+        var requests: [String] = []
+        runtime.actionRequested = { action, _ in requests.append(action) }
+        runtime.applicationRaiseRequested = { requests.append($0 ? "restore" : "activate") }
+        runtime.windowMenuRequested = { requests.append("windowmenu") }
+        runtime.equalizerEnabledSetterRequested = { requests.append("eq \($0)") }
+        for method in ["eject", "minimizeApplication", "shutdown", "restoreApplication",
+                       "activateApplication", "windowMenu"] {
+            _ = try system(runtime, program, method)
+        }
+        _ = try system(runtime, program, "setEq", [.integer(1)])
+        _ = try system(runtime, program, "setEq", [.integer(0)])
+        XCTAssertEqual(host.calls, ["openFiles"])
+        XCTAssertEqual(requests, ["MINIMIZE", "CLOSE", "restore", "activate", "windowmenu", "eq true", "eq false"])
+    }
+
+    /// `shutdown` has an arity only on `Application`, so another class declaring the verb is not given it.
+    func testShutdownIsGatedToApplication() throws {
+        let (runtime, _) = try makeRuntime()
+        // The interpreter passes the GUID in bytecode word order; `canonical` is its own inverse.
+        let bytecodeGUID = MakiClassGUID.canonical(MakiClassGUID.application)
+        XCTAssertNotNil(runtime.signature(for: "Shutdown", classGUID: bytecodeGUID))
+        XCTAssertNil(runtime.signature(for: "shutdown", classGUID: nil))
+    }
+
     // MARK: - Helpers
 
     private static let syntheticProgram = MakiProgram(
@@ -85,7 +115,7 @@ final class WinampModernSystemDemandTests: XCTestCase {
         func previous() { calls.append("previous") }
         func next() { calls.append("next") }
         func seek(to seconds: TimeInterval) {}
-        func openFiles() {}
+        func openFiles() { calls.append("openFiles") }
         func beginVisualizationConsumption() {}
         func endVisualizationConsumption() {}
     }

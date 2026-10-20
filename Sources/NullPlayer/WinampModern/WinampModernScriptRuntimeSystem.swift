@@ -55,6 +55,15 @@ extension WinampModernScriptRuntime {
         case "stop": host.stop(); return .null
         case "previous": host.previous(); return .null
         case "next": host.next(); return .null
+        // Winamp's eject is the open-file dialog, as the `EJECT` button action is.
+        case "eject": host.openFiles(); return .null
+        // The player's own window commands: minimize takes the whole skin down together, and
+        // closing the player quits (`Application.shutdown()`).
+        case "minimizeapplication": actionRequested?("MINIMIZE", nil); return .null
+        case "shutdown": actionRequested?("CLOSE", nil); return .null
+        case "restoreapplication": applicationRaiseRequested?(true); return .null
+        case "activateapplication": applicationRaiseRequested?(false); return .null
+        case "windowmenu": windowMenuRequested?(); return .null
         // Milliseconds, like `getPosition` and `getPlayItemLength` — see `getposition`.
         case "seekto":
             host.seek(to: TimeInterval(arguments[0].integerValue) / 1000)
@@ -261,6 +270,7 @@ extension WinampModernScriptRuntime {
             equalizerPreampSetterRequested?(Int(arguments[0].integerValue))
             refreshEqualizerState()
             return .null
+        case "seteq": equalizerEnabledSetterRequested?(arguments[0].truthy); return .null
         case "getruntimeversion": return .integer(5)
         case "getskinname": return .string(preferenceNamespace)
         // The player's own settings directory. Winamp answers its install/profile folder and skins
