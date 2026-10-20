@@ -10,7 +10,21 @@ final class WinampModernConfiguration {
     init(namespace: String, defaults: UserDefaults = .standard) {
         self.namespace = Self.safeComponent(namespace)
         self.defaults = defaults
+        if defaults === UserDefaults.standard { Self.startTestProcessClean }
     }
+
+    /// An `xctest` process — the corpus harnesses and the unit tests — starts with no stored skin
+    /// settings. They share the test tool's one defaults domain, so what a skin's scripts stored in
+    /// one run (the opensource notifier saves its checkboxes at `onScriptUnloading`) was the next
+    /// run's starting state, and two sweeps of one tree differed (B211). The app's own domain is
+    /// never this one.
+    private static let startTestProcessClean: Void = {
+        guard Bundle.main.bundleIdentifier == "com.apple.dt.xctest.tool" else { return }
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(keyPrefix) {
+            defaults.removeObject(forKey: key)
+        }
+    }()
 
     func integer(section: String, key: String, default defaultValue: Int32 = 0) -> Int32 {
         let name = storageKey(section: section, key: key)
@@ -50,8 +64,10 @@ final class WinampModernConfiguration {
         }
     }
 
+    static let keyPrefix = "winampModern.config."
+
     private func sectionPrefix(_ section: String) -> String {
-        "winampModern.config.\(namespace).\(Self.safeComponent(section))."
+        "\(Self.keyPrefix)\(namespace).\(Self.safeComponent(section))."
     }
 
     private func storageKey(section: String, key: String) -> String {
