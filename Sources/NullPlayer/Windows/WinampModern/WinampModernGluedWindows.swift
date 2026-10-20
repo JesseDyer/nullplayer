@@ -10,18 +10,15 @@ final class WinampModernGluedWindows {
     /// `WINAMP_MODERN_DRAG_GLUE=0` turns off carrying a glued frame with its window during a drag.
     static let carriesInDrag = ProcessInfo.processInfo.environment["WINAMP_MODERN_DRAG_GLUE"] != "0"
 
-    /// The pairs the skin's scripts have glued, by container, leader first.
-    private let pairIDs: () -> [(leader: WasabiObjectID, follower: WasabiObjectID)]
-    /// The window a container is shown in, if it has one.
-    private let window: (WasabiObjectID) -> NSWindow?
+    /// The pairs the skin's scripts have glued, by container, leader first. Set by the owner.
+    var pairIDs: () -> [(leader: WasabiObjectID, follower: WasabiObjectID)] = { [] }
+    /// The window a container is shown in, if it has one. Set by the owner.
+    var window: (WasabiObjectID) -> NSWindow? = { _ in nil }
     private var dragObservers: [NSObjectProtocol] = []
     /// The (leader, follower) pairs `attachForDrag` linked, undone when the drag ends.
     private var dragAttached: [(leader: NSWindow, follower: NSWindow)] = []
 
-    init(pairIDs: @escaping () -> [(leader: WasabiObjectID, follower: WasabiObjectID)],
-         window: @escaping (WasabiObjectID) -> NSWindow?) {
-        self.pairIDs = pairIDs
-        self.window = window
+    init() {
         dragObservers = [
             NotificationCenter.default.addObserver(forName: .windowDragDidBegin, object: nil,
                                                    queue: .main) { [weak self] notification in

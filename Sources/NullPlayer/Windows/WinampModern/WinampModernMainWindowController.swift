@@ -18,11 +18,9 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
     private var playbackOptionsObserver: NSObjectProtocol?
     private var trackLoadFailureObserver: NSObjectProtocol?
     /// The skin's script-glued window pairs: moved, stacked and dragged as one (B162).
-    private(set) lazy var glue = WinampModernGluedWindows(
-        pairIDs: { [weak self] in
-            self?.skinView?.scripts.windowsGluedOver.map { (leader: $0.key, follower: $0.value) } ?? []
-        },
-        window: { [weak self] id in self?.viewsByContainer[id]?.window })
+    /// Not lazy: `tearDownSkin` runs from `deinit`, where creating it would form a weak reference to
+    /// an object being deallocated. Its sources are wired in `init`.
+    let glue = WinampModernGluedWindows()
     private var loadedSkin: WinampModernLoadedSkin?
     private var skinView: WinampModernMainView?
     private var host: WinampModernAudioEngineHost?
@@ -85,6 +83,10 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         let window = WinampModernSkinWindow(contentRect: NSRect(origin: .zero, size: defaultSize),
                                             styleMask: [.borderless], backing: .buffered, defer: false)
         self.init(window: window)
+        glue.pairIDs = { [weak self] in
+            self?.skinView?.scripts.windowsGluedOver.map { (leader: $0.key, follower: $0.value) } ?? []
+        }
+        glue.window = { [weak self] id in self?.viewsByContainer[id]?.window }
         setupWindow()
         // A transparent layer-backed window can lose its cached backing store while the display is
         // asleep. AppKit normally reports the window becoming unoccluded afterwards, but a display
