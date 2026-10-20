@@ -3,6 +3,43 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B184, B185, B190, B195, B201, B206 — object and viewport methods — closed 2026-10-19
+
+| B184 | **`System.getAlbumArt(playitem)`.** Album-art scripts open their right-click menu only when `getAlbumArt(getPlayItemString()) > 0` (`AlbumArt.onRightButtonDown` in BLAKK, Ebonite and krazyPlayer), so the menu never opens. Answer from the same art lookup `AlbumArtLayer` draws from. S4: 117 × control-dead 3 × off-rest 2 ÷ S 1 = 702. Done when `wal_demand.sh` does not list it and Ebonite's album-art right-click opens its menu | `maki-call '^d6f50f64[0-9a-f]*[.]getalbumart$'`: gold 18/56, silver 11/54, bronze 88/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B185 | **`ConfigAttribute.getAttributeName`.** Skin-options code matches attribute names to find the toggle or menu entry it owns: `SkinOptionsMenuToggle`, `vis_mode_attrib.onDataChanged`, and Symplicipod's `AttrToggle`/`AttrText`/`AttrSlider`. Each of those handlers aborts, so the controls never show the attribute's state. Return the name. `maki-surface.md` says it "has no corpus call site", which was true of the cPro-Bento measurement only. S4: 97 × control-dead 3 × off-rest 2 ÷ S 1 = 582. Done when `wal_demand.sh` does not list it and Symplicipod's attribute toggles show their state | `maki-call '^24dec283[0-9a-f]*[.]getattributename$'`: gold 10/56, silver 10/54, bronze 77/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B190 | **`Vis.getMode()`.** Styx reads the visualizer mode in `System.onScriptLoaded` (`scripts/vis.m`) and the load handler aborts. Answer the mode `setMode` and the vis click already keep. S4: 23 × control-dead 3 × main window 3 ÷ S 1 = 207. Done when `wal_demand.sh` does not list it and Styx's vis script finishes loading | `maki-call '^ce4f97be[0-9a-f]*[.]getmode$'`: gold 2/56, silver 1/54, bronze 20/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B195 | **`System.getViewport{Left,Top,Width,Height}FromPoint(x, y)`.** The stock `tooltips.m` places its tip inside the display under the pointer with these (`tipText.onTextChanged` in Shield_Amp, Study Skinning, Nullsoft Winamp 2000), so the handler aborts and no tooltip appears. `getViewportWidth` without a point is implemented; answer for the screen holding the point. S4: 25 × 2 × main window 3 ÷ S 1 = 150. Done when `wal_demand.sh` lists none of the four and Shield_Amp shows a tooltip | `maki-call '^d6f50f64[0-9a-f]*[.]getviewportwidthfrompoint$'`: gold 13/56, silver 3/54, bronze 9/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B201 | **`Layout.center()`.** Standard-frame windows centre themselves when opened (1010 Fullscreen's `standardframe.m`), and whatever follows the call in that handler is lost. Centre the layout's window on its screen. S4: 10 × control-dead 3 × off-rest 2 ÷ S 1 = 60. Done when `wal_demand.sh` does not list it and 1010 Fullscreen's frame windows open centred | `maki-call '^60906d4e[0-9a-f]*[.]center$'`: gold 4/56, silver 3/54, bronze 3/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B206 | **`GuiObject.isMouseOver(x, y)`.** Only `isMouseOverRect` is implemented. Core-X5 (gold) asks `isMouseOver` in every main-window button's handler, so the interaction sweep (B205) found **all 18** of its main-window gestures blocked on it. The demand index ranks it near the bottom on one skin per class GUID (`GuiObject`, `Button`, `Slider`, `ToggleButton`); one method on the GuiObject surface answers them all. Answer whether the point, in the object's parent space, is inside its frame and region. S4: 5 × control-dead 3 × main window 3 ÷ S 1 = 45, but surface-dead for Core-X5. Done when `wal_demand.sh` lists no `ismouseover` and `wal_interaction_sweep.sh` reports no Core-X5 gesture blocked on it | `maki-call '[.]ismouseover$'`: gold 1/56, silver 1/54, bronze 3/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+
+**Closed 2026-10-19** (commit `08671e78`). Every call is gone from `wal_demand.sh` (index rev
+`08671e78`), from these skin counts (all tiers): `getAlbumArt` 123, `getAttributeName` 104,
+`getViewport{Left,Top,Width,Height}FromPoint` 29 each, `Vis.getMode` 24 (summed over the class
+GUIDs that call it), `Layout.center` 12 and `isMouseOver` 7, all → 0. The demand table went from
+114 calls to 102. Per row:
+
+- **B206:** `wal_interaction_sweep.sh` over Core-X5 alone reads **works 18/18, blocked by
+  nothing**, where B205's run had all 18 blocked on `isMouseOver`. The point is in parent space, the
+  space our pointer events carry, and is tested against `resolvedFrame`. The object's region is not
+  tested (a `ponytail:` comment says so).
+- **B190:** Styx's `player-normal.xml` script no longer reports `getmode`. NMP10's player script
+  reads `getMode` and then lays out its panes. It used to abort there, so the title strip ran over
+  the playlist column. In the render sweep it now finishes: the info pane is 196 px, the playlist
+  222 px and the EQ drawer bar is shown. The answer is `WasabiVisualizationMode`'s value, 1 when
+  nothing has been written.
+- **B185:** Symplicipod's `Config-Normal.xml` loses ten `getattributename` failures.
+- **B195:** the display under the point is converted to Winamp's top-left space against the
+  primary display. A point on no display answers the main one.
+- **B201:** `center` acts on layouts only and writes `x`/`y` through the same route as `resize`. It
+  centres on the main display, which is the display the other viewport methods answer for.
+- **B184:** answers 1 only for the playing item (`getPlayItemString`'s value) while the host has
+  its art, and 0 for any other item.
+
+Regression gate: `wal_render_sweep.sh --shards 10`, gold+silver, `05e2bad1` against `08671e78`.
+Apart from the known nondeterministic pair, NMP10 `main-normal` changed (B190, above) and Symplicipod
+`main-normal` changed by alpha level 1 over 390 px as its config scripts ran further. The in-app
+checks for B184, B185, B195 and B201 are under *Awaiting manual QA*. B190 and B206 have none left.
+
 ## B182 — events called as methods — closed 2026-10-19
 
 | B182 | **Let a script call a pointer or notify event as a method.** Scripts call their own handlers to reuse them: Bio-Nid's playlist editor runs `poppler.onMouseMove(x, y)` while it resizes, and NMP10's `about` script runs `Next.onLeftButtonDown(0, 0)`. Thirteen event names called this way have no arity, and `dispatchableEventArity` is keyed by name, so one entry each covers every class: `onLeftButtonDown`/`Up`, `onRightButtonDown`/`Up`, `onMouseMove`, `onNotify`, `onEqChanged`, `onInfoChange`, `onSwitchToLayout`, `onPlay`, `onStop`, `onAccelerator`, `onFrame`. Each call aborts the handler that made it. Layer's `onLeftButtonDown` (101 skins) and `onMouseMove` (78) carry most of it. S4: 255 × control-dead 3 × off-rest 2 ÷ S 1 = 1,530. Done when `wal_demand.sh` lists none of the thirteen and Bio-Nid's playlist resize follows the pointer | `maki-call '^5ab9fa15[0-9a-f]*[.]onleftbuttondown$'`: gold 10/56, silver 13/54, bronze 78/827, quarantine 0/54 (manifest 9e68ffe0); all thirteen: gold 17/56, silver 21/54, bronze 217/827 | S | 2 |
