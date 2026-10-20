@@ -3,6 +3,44 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B189, B192, B198 — form widget methods — closed 2026-10-19
+
+| B189 | **`Edit.setAutoEnter` / `onIdleEditUpdate` / `enter`.** Config pages set up their path and value fields in `System.onScriptLoaded` (1010 Fullscreen's cover page calls `setAutoEnter` first), so the page's script dies at load. S4: 55 × surface-dead 4 × config 1 ÷ S 1 = 220. Done when `wal_demand.sh` lists none of the three and 1010 Fullscreen's cover config page fills its fields | `maki-call '^64e4bbfa[0-9a-f]*[.]setautoenter$'`: gold 0/56, silver 7/54, bronze 24/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B192 | **`CheckBox.setChecked` / `isChecked`.** Fifty skins call `setChecked` in `System.onScriptLoaded`, so their options page or notifier never initialises. B64's archive entry measured it on Anexa: "`onScriptLoaded` still aborts on `setChecked`, so the notifier never initialises at all". `isChecked` is read in `onScriptUnloading` and toggle handlers. Back both with the checkbox's own state. S4: 50 × surface-dead 4 × off-rest 2 ÷ M 2 = 200. Done when `wal_demand.sh` lists neither and Styx's options checkboxes show their saved state | `maki-call '^c7ed3199[0-9a-f]*[.]setchecked$'`: gold 4/56, silver 6/54, bronze 40/827, quarantine 0/54 (manifest 9e68ffe0) | M | 2 |
+| B198 | **`TabSheet.getCurPage` / `setCurPage`.** The Bio-Nid lineage (Bio-Nid, Rika, T800) switches its playlist sidecar's tab from script (`toggleSearchLine` in `playlisteditor.m`), and the handler aborts. Expose the tabsheet's selected page. S4: 31 × control-dead 3 × off-rest 2 ÷ M 2 = 93. Done when `wal_demand.sh` lists neither and Bio-Nid's search toggle switches the sidecar page | `maki-call '^b5baa535[0-9a-f]*[.]setcurpage$'`: gold 3/56, silver 4/54, bronze 24/827, quarantine 0/54 (manifest 9e68ffe0) | M | 2 |
+
+**Closed 2026-10-19** (commit `b3d4a676`). All seven calls are gone from `wal_demand.sh`. Before,
+counting all tiers: `CheckBox.setChecked` 56 skins, `isChecked` 48, `TabSheet.getCurPage` and
+`setCurPage` 33 each, `Edit.setAutoEnter` 31, `onIdleEditUpdate` 27 and `enter` 7. The demand
+table went from 102 calls to 94.
+
+- A `<Wasabi:CheckBox>` is already a togglebutton, so `setChecked`/`isChecked` are
+  `setActivated`/`getActivated`: `onToggle` on a change, and the `cfgattrib` value when one is
+  bound.
+- `get`/`setCurPage` read and drive `WasabiTabSheet`'s selected page.
+- `setAutoEnter` stores a flag that makes each edit change an `onEnter`. `enter()` dispatches
+  `onEnter`. `onIdleEditUpdate` has its arity and fires on each keystroke beside `onEditUpdate`; a
+  `ponytail:` comment notes there is no idle pause.
+
+Regression gate: `wal_render_sweep.sh --shards 10`, gold+silver, `08671e78` against `b3d4a676`.
+Apart from Anexa, 11 images changed, all scripts that used to abort at their first `setChecked`
+and now initialise:
+
+- **Styx's Config** shows its saved radio choices. This is the row's own check, so B192 has no
+  in-app check left.
+- The opensource notifier's prefs page (EPS, Itemskin, Shield_Amp) shows its effect, checkboxes
+  and duration labels.
+- EPS's and Itemskin's notifier windows are hidden at rest, because the script's `Notifier.hide()`
+  is now reached. Shield_Amp's notifier lays its text out beside the cover.
+- machina's SkinConfig shows its two checked options. Its main window drops from 135 to 112 nodes
+  and changes by at most 5 levels.
+- krazyPlayer's AVS window greys its `RND` button.
+- Itemskin's playlist header now prints "0:0-2" and "-0.03 MB". This is a harness artefact: the
+  script parses a hidden `display="PE_Info"` text, which the app fills from the playlist and the
+  headless harness leaves empty.
+
+The in-app checks for B189 and B198 are under *Awaiting manual QA*.
+
 ## B184, B185, B190, B195, B201, B206 — object and viewport methods — closed 2026-10-19
 
 | B184 | **`System.getAlbumArt(playitem)`.** Album-art scripts open their right-click menu only when `getAlbumArt(getPlayItemString()) > 0` (`AlbumArt.onRightButtonDown` in BLAKK, Ebonite and krazyPlayer), so the menu never opens. Answer from the same art lookup `AlbumArtLayer` draws from. S4: 117 × control-dead 3 × off-rest 2 ÷ S 1 = 702. Done when `wal_demand.sh` does not list it and Ebonite's album-art right-click opens its menu | `maki-call '^d6f50f64[0-9a-f]*[.]getalbumart$'`: gold 18/56, silver 11/54, bronze 88/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
