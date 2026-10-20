@@ -1,7 +1,9 @@
+import AppKit
 import XCTest
 @testable import NullPlayer
 
-/// `System` methods the S4 demand queue ranked, and events called as methods (B182, B183, B186, B187, B188, B191, B194, B196, B197,
+/// MAKI methods the S4 demand queue ranked, and events called as methods (B182, B183, B184, B185,
+/// B190, B195, B201, B206, B186, B187, B188, B191, B194, B196, B197,
 /// B199, B200). Each was a call that aborted
 /// the whole handler it sat in.
 final class WinampModernSystemDemandTests: XCTestCase {
@@ -93,6 +95,74 @@ final class WinampModernSystemDemandTests: XCTestCase {
         XCTAssertEqual(runtime.signature(for: "onFrame", classGUID: bytecode(MakiClassGUID.vis))?.argumentCount, 0)
     }
 
+    /// B190: `getMode` reads back what `setMode` wrote, and the analyzer when nothing has.
+    func testVisGetModeReadsTheMode() throws {
+        let (runtime, program) = try makeRuntime(body: #"<vis id="v" w="8" h="8"/>"#)
+        let vis = try XCTUnwrap(runtime.loadedSkin.runtime.graph.allObjectsUnordered.first { $0.xmlID == "v" })
+        let reference = MakiObjectReference(.gui(vis.stableID))
+        XCTAssertEqual(try runtime.invoke(method: "getMode", on: reference, arguments: [], program: program).integerValue, 1)
+        _ = try runtime.invoke(method: "setMode", on: reference, arguments: [.integer(2)], program: program)
+        XCTAssertEqual(try runtime.invoke(method: "getMode", on: reference, arguments: [], program: program).integerValue, 2)
+    }
+
+    /// B206: the point is in the object's parent space; B201: `center` moves the layout's window.
+    func testIsMouseOverAndCenterUseTheResolvedFrame() throws {
+        let (runtime, program) = try makeRuntime()
+        let layout = try XCTUnwrap(runtime.loadedSkin.runtime.graph.roots.first?.children.first)
+        let reference = MakiObjectReference(.gui(layout.stableID))
+        runtime.resolvedGeometryRequested = { _ in
+            (frame: CGRect(x: 15, y: 15, width: 20, height: 10), parent: CGRect(x: 5, y: 5, width: 100, height: 100))
+        }
+        func over(_ x: Int32, _ y: Int32) throws -> Bool {
+            try runtime.invoke(method: "isMouseOver", on: reference, arguments: [.integer(x), .integer(y)],
+                               program: program).truthy
+        }
+        XCTAssertTrue(try over(10, 10))
+        XCTAssertFalse(try over(31, 10))
+
+        var moved: CGPoint?
+        runtime.containerMoveRequested = { _, point, _ in moved = point }
+        _ = try runtime.invoke(method: "center", on: reference, arguments: [], program: program)
+        let screen = NSScreen.main?.frame.size ?? .zero
+        XCTAssertEqual(moved, CGPoint(x: Int(Int32(screen.width) - 20) / 2, y: Int(Int32(screen.height) - 10) / 2))
+    }
+
+    /// B185: a config attribute answers the name it was registered under.
+    func testConfigAttributeAnswersItsName() throws {
+        let (runtime, program) = try makeRuntime()
+        let item = try system(runtime, program, "newItem", [.string("Options"), .string("{guid}")])
+        guard case .object(let itemReference) = item else { return XCTFail("no config item") }
+        let attribute = try runtime.invoke(method: "newAttribute", on: itemReference,
+                                           arguments: [.string("Show clock"), .string("1")], program: program)
+        guard case .object(let attributeReference) = attribute else { return XCTFail("no attribute") }
+        XCTAssertEqual(try runtime.invoke(method: "getAttributeName", on: attributeReference, arguments: [],
+                                          program: program).stringValue, "Show clock")
+    }
+
+    /// B195: the display under a point, in Winamp's top-left screen space.
+    func testViewportFromPointAnswersTheDisplayUnderIt() throws {
+        let primary = try XCTUnwrap(NSScreen.screens.first, "no display").frame
+        let (runtime, program) = try makeRuntime()
+        let point: [MakiValue] = [.integer(10), .integer(10)]
+        XCTAssertEqual(try system(runtime, program, "getViewportLeftFromPoint", point).integerValue, 0)
+        XCTAssertEqual(try system(runtime, program, "getViewportTopFromPoint", point).integerValue, 0)
+        XCTAssertEqual(try system(runtime, program, "getViewportWidthFromPoint", point).integerValue, Int32(primary.width))
+        XCTAssertEqual(try system(runtime, program, "getViewportHeightFromPoint", point).integerValue, Int32(primary.height))
+    }
+
+    /// B184: positive only for the playing item, and only when the host has its art.
+    func testGetAlbumArtAnswersForThePlayingItem() throws {
+        let host = TransportHost()
+        host.trackPath = "/music/a.mp3"
+        let (runtime, program) = try makeRuntime(host: host)
+        XCTAssertEqual(try system(runtime, program, "getAlbumArt", [.string("/music/a.mp3")]).integerValue, 0)
+        host.albumArtwork = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
+        XCTAssertEqual(try system(runtime, program, "getAlbumArt", [.string("/music/a.mp3")]).integerValue, 1)
+        XCTAssertEqual(try system(runtime, program, "getAlbumArt", [.string("/music/b.mp3")]).integerValue, 0)
+    }
+
     // MARK: - Helpers
 
     private static let syntheticProgram = MakiProgram(
@@ -104,10 +174,10 @@ final class WinampModernSystemDemandTests: XCTestCase {
         try runtime.invoke(method: method, on: MakiObjectReference(.system), arguments: arguments, program: program)
     }
 
-    private func makeRuntime(host: WinampModernHost = WinampModernStubHost()) throws
+    private func makeRuntime(host: WinampModernHost = WinampModernStubHost(), body: String = "") throws
         -> (WinampModernScriptRuntime, MakiProgram) {
         let loaded = try makeWinampModernSkin(xml: """
-        <WasabiXML><container id="main"><layout id="normal" w="16" h="16"/></container></WasabiXML>
+        <WasabiXML><container id="main"><layout id="normal" w="16" h="16">\(body)</layout></container></WasabiXML>
         """)
         let runtime = try WinampModernScriptRuntime(loadedSkin: loaded, host: host)
         addTeardownBlock { runtime.teardown() }
@@ -124,6 +194,8 @@ final class WinampModernSystemDemandTests: XCTestCase {
         var trackTitle = ""
         var trackInfo = ""
         var spectrumLevels: [Float] = []
+        var trackPath = ""
+        var albumArtwork: CGImage?
         var calls: [String] = []
 
         func play() {}

@@ -373,6 +373,24 @@ extension WinampModernScriptRuntime {
             guard let point = mousePositionInObjectSpaceRequested?(object),
                   let frame = resolvedGeometryRequested?(object)?.frame else { return .boolean(false) }
             return .boolean(frame.contains(point))
+        // The point arrives in the object's parent space, the space its pointer events carry
+        // (Core-X5 asks this in every main-window button's handler, B206).
+        // ponytail: the frame only, not the object's region; add the region test when a skin needs it.
+        case "ismouseover":
+            let point = CGPoint(x: Int(arguments[0].integerValue), y: Int(arguments[1].integerValue))
+            return .boolean(resolvedFrame(of: object)?.contains(point) ?? false)
+        // `Layout.center()` — the window centred on the display the viewport methods answer for
+        // (1010 Fullscreen's frame windows, B201), through the same write as `resize`.
+        case "center" where object.typeName.caseInsensitiveCompare("layout") == .orderedSame:
+            let screen = NSScreen.main?.frame.size ?? .zero
+            let width = dimension(resolvedFrame(of: object)?.width, declared: object.geometry.width ?? 0)
+            let height = dimension(resolvedFrame(of: object)?.height, declared: object.geometry.height ?? 0)
+            writeGeometry([("x", String((Int32(screen.width) - width) / 2)),
+                           ("y", String((Int32(screen.height) - height) / 2))], on: object, borrowed: nil)
+            return .null
+        // `Vis.getMode()`: what `setMode` and a click on the vis last wrote (Styx's `vis.m`, B190).
+        case "getmode":
+            return .integer(Int32(WasabiVisualizationMode(attribute: object.attributes["mode"]).attributeValue) ?? 1)
         case "refresh":
             notifyObjectDidMutate(object)
             return .null
@@ -1029,6 +1047,10 @@ extension WinampModernScriptRuntime {
                 recordRegisteredSetting(section: section, name: key, defaultValue: defaultValue)
             }
             return dynamicValue(role: .configAttribute(section: section, key: key))
+        // Skin-options code finds the toggle it owns by the attribute's name (B185).
+        case "getattributename":
+            guard case .configAttribute(_, let key) = state.role else { return .string("") }
+            return .string(key)
         case "getdata":
             guard case .configAttribute(let section, let key) = state.role else { return .string("") }
             let data = loadedSkin.configuration.string(

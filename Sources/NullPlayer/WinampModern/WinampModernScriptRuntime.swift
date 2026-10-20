@@ -2496,6 +2496,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "scrolltopercent": .init(argumentCount: 1, returnKind: .null),
         "setregionfrommap": .init(argumentCount: 3, returnKind: .null),
         "setmode": .init(argumentCount: 1, returnKind: .null),
+        "getmode": .init(argumentCount: 0, returnKind: .integer),
         "play": .init(argumentCount: 0, returnKind: .null),
         "pause": .init(argumentCount: 0, returnKind: .null),
         "gotoframe": .init(argumentCount: 1, returnKind: .null),
@@ -2617,6 +2618,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // from a drag that left the control. Defix's every SUI tab does exactly that, so without
         // it the handler aborted at the first tab and the whole tab strip was inert.
         "ismouseoverrect": .init(argumentCount: 0, returnKind: .boolean),
+        "ismouseover": .init(argumentCount: 2, returnKind: .boolean),
+        "center": .init(argumentCount: 0, returnKind: .null),
         "atan": .init(argumentCount: 1, returnKind: .float),
         "geteq": .init(argumentCount: 0, returnKind: .integer),
         "geteqband": .init(argumentCount: 1, returnKind: .integer),
@@ -2727,6 +2730,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "newattribute": .init(argumentCount: 2, returnKind: .object),
         "getattribute": .init(argumentCount: 1, returnKind: .object),
         "getdata": .init(argumentCount: 0, returnKind: .string),
+        "getattributename": .init(argumentCount: 0, returnKind: .string),
         "setdata": .init(argumentCount: 1, returnKind: .null),
         "ondatachanged": .init(argumentCount: 0, returnKind: .null),
         "setdelay": .init(argumentCount: 1, returnKind: .null),
@@ -2751,6 +2755,11 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "getviewporttop": .init(argumentCount: 0, returnKind: .integer),
         "getviewportwidthfromguiobject": .init(argumentCount: 1, returnKind: .integer),
         "getviewportheightfromguiobject": .init(argumentCount: 1, returnKind: .integer),
+        "getviewportleftfrompoint": .init(argumentCount: 2, returnKind: .integer),
+        "getviewporttopfrompoint": .init(argumentCount: 2, returnKind: .integer),
+        "getviewportwidthfrompoint": .init(argumentCount: 2, returnKind: .integer),
+        "getviewportheightfrompoint": .init(argumentCount: 2, returnKind: .integer),
+        "getalbumart": .init(argumentCount: 1, returnKind: .integer),
         "getviewportleftfromguiobject": .init(argumentCount: 1, returnKind: .integer),
         "getviewporttopfromguiobject": .init(argumentCount: 1, returnKind: .integer),
         // The **monitor** family, which is the viewport's whole-screen twin: Winamp's viewport is

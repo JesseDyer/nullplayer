@@ -7,6 +7,8 @@ import Foundation
 /// out of `WinampModernScriptRuntime.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/compatibility/maki-surface.md`.
 extension WinampModernScriptRuntime {
+    private var playItemString: String { host.trackPath.isEmpty ? host.trackDisplayTitle : host.trackPath }
+
     func invokeSystem(method: String, arguments: [MakiValue], program: MakiProgram) throws -> MakiValue {
         // A script may call a *system* event handler as a method to reuse it, exactly as it may an
         // object's (`System.onEqFreqChanged(freqmode)` in ClassicPro's `eq.m`).
@@ -211,6 +213,22 @@ extension WinampModernScriptRuntime {
         case "getviewportleft", "getviewporttop", "getviewportleftfromguiobject", "getviewporttopfromguiobject":
             return .integer(0)
         case "getviewportwidthfromguiobject": return .integer(Int32(NSScreen.main?.frame.width ?? 0))
+        // The display holding the point, in Winamp's top-left screen space. The stock `tooltips.m`
+        // keeps its tip on that display (B195); a point on no display answers the main one.
+        case "getviewportleftfrompoint", "getviewporttopfrompoint",
+             "getviewportwidthfrompoint", "getviewportheightfrompoint":
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+            let point = CGPoint(x: Int(arguments[0].integerValue),
+                                y: Int(primaryHeight) - Int(arguments[1].integerValue))
+            let frame = (NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main)?.frame ?? .zero
+            let value: CGFloat
+            switch method {
+            case "getviewportleftfrompoint": value = frame.minX
+            case "getviewporttopfrompoint": value = primaryHeight - frame.maxY
+            case "getviewportwidthfrompoint": value = frame.width
+            default: value = frame.height
+            }
+            return .integer(Int32(value))
         case "getviewportheightfromguiobject": return .integer(Int32(NSScreen.main?.frame.height ?? 0))
         // The monitor is the whole display containing the skin's player window. Do not derive this
         // from `NSScreen.main`: that is the primary display, not necessarily the one the skin is on.
@@ -313,8 +331,11 @@ extension WinampModernScriptRuntime {
         // sites hand it straight to `getExtension`, and ONYX V2's File Type readout printed the
         // title's tail ("sh - NullPlayer 20-minute sweep") while this answered the display title.
         // The title stays as the fallback for an item with no path, so `!= ""` still means playing.
-        case "getplayitemstring":
-            return .string(host.trackPath.isEmpty ? host.trackDisplayTitle : host.trackPath)
+        // Album-art scripts open their menu only when this is positive (BLAKK, Ebonite, B184). The
+        // host holds the playing track's art only, so another item answers 0.
+        case "getalbumart":
+            return .integer(arguments[0].stringValue == playItemString && host.albumArtwork != nil ? 1 : 0)
+        case "getplayitemstring": return .string(playItemString)
         // The whole key table lives on the host (`playItemMetadata(forKey:)`) rather than here: a
         // file-info panel asks for eighteen different fields and hides the line for every key that
         // comes back empty, and the harness has to answer them the same way the live host does.
