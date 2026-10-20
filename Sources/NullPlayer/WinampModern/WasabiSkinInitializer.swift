@@ -594,6 +594,9 @@ final class WasabiSkinInitializer {
     /// Findings raised while creating objects. The registries carry their own; this one belongs to
     /// the initializer.
     private var containerDiagnostics: [WalDiagnostic] = []
+    /// Objects whose tag resolved to a definition the skin wrote, which therefore builds its own
+    /// body: `buildHostedWidgetBody` leaves their tab pages to the skin.
+    private var skinClaimedObjects: Set<WasabiObjectID> = []
 
     private enum ContainerRootIdentity {
         /// The first container to claim this id.
@@ -1433,6 +1436,7 @@ final class WasabiSkinInitializer {
             /// own artwork-less shells. A widget whose body a skin supplies is that skin's, and this
             /// is what keeps a hosted `<Wasabi:TabSheet>` from being drawn over a replacement.
             var claimedBySkin = false
+            var replacesHostedWidget = false
             /// The skin's own `wasabi.standardframe.*` body, when this node expanded to one. Both
             /// spellings land here: the `<Wasabi:StandardFrame:*>` XUI tag (TRON Legacy) and a plain
             /// `<group id="wasabi.standardframe.statusbar">` (Sony Walkman) resolve to the same
@@ -1465,6 +1469,9 @@ final class WasabiSkinInitializer {
                 embeddedXUITag = resolved.embeddedXUITag
                 nextDefinitionStack.append(key)
                 claimedBySkin = definition.source.path != Self.wasabiStandardLibrarySource.path
+                // `<groupdef id="wasabi.tabsheet">` restyles Winamp's own tab sheet, which still
+                // builds its pages (Mac OS X Panther); only a skin's own `xuitag` replaces it.
+                replacesHostedWidget = claimedBySkin && key != WasabiTabSheet.groupIdentifier
                 if claimedBySkin,
                    WasabiStandardFrames.isStandardFrameIdentifier(definition.identifier) {
                     claimedStandardFrame = resolved
@@ -1536,6 +1543,7 @@ final class WasabiSkinInitializer {
             }
             let object = graph.makeObject(typeName: typeName, attributes: attributes, source: node.location)
             if let parent { try parent.appendChild(object) } else { graph.appendRoot(object) }
+            if replacesHostedWidget { skinClaimedObjects.insert(object.stableID) }
             // A top-level container's *declared* visibility, snapshotted before anything can write
             // over it. `visible` is one attribute serving two questions — "is this an SUI-collapsed
             // stub the skin never means to show" (markup) and "is this window open right now"
@@ -1564,7 +1572,7 @@ final class WasabiSkinInitializer {
                                       createdCount: &createdCount,
                                       documentOrder: documentOrder, enclosingOrder: nodeOrder)
                 }
-                if WasabiTabSheet.isTabSheet(widget) {
+                if WasabiTabSheet.isTabSheet(widget), !skinClaimedObjects.contains(widget.stableID) {
                     let pages = WasabiTabSheet.pageNodes(for: widget, location: location)
                     if !pages.isEmpty {
                         _ = widget.setAttribute(WasabiTabSheet.hostedAttribute, value: "1")
@@ -1648,7 +1656,7 @@ final class WasabiSkinInitializer {
                         forwardedStructure = true
                     }
                 }
-                if forwardedStructure, embeddedParent.children.isEmpty {
+                if forwardedStructure {
                     try buildHostedWidgetBody(of: embeddedParent, location: node.location)
                 }
             }
@@ -1737,10 +1745,7 @@ final class WasabiSkinInitializer {
                                   createdCount: &createdCount,
                                   documentOrder: documentOrder, enclosingOrder: nodeOrder)
             }
-            // A skin's own `<Wasabi:TabSheet>` definition builds its own pages.
-            if !(claimedBySkin && WasabiTabSheet.isTabSheet(object)) {
-                try buildHostedWidgetBody(of: object, location: node.location)
-            }
+            try buildHostedWidgetBody(of: object, location: node.location)
             // Winamp's drop-down carries a label object inside itself, and a skin's script reaches
             // for it by name: Styx's and Shield_Amp's `customdropdownlist.maki` are the same script,
             // and both do `findObject("dropdownlist.text")` then persist the pick from that object's

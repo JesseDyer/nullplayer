@@ -58,6 +58,22 @@ final class WinampModernLoaderGapTests: XCTestCase {
         XCTAssertTrue(ids.isSuperset(of: ["page.leaf", "tab.leaf"]), "\(ids)")
     }
 
+    /// A skin's `<groupdef id="wasabi.tabsheet">` restyles Winamp's tab sheet, which still builds the
+    /// pages it is given (Mac OS X Panther, Anunaki); it does not replace the widget.
+    func testARestyledTabSheetStillBuildsItsPages() throws {
+        let loaded = try makeWinampModernSkin(xml: """
+        <WasabiXML>
+          <groupdef id="wasabi.tabsheet"><layer id="restyle"/></groupdef>
+          <groupdef id="tab.one"><layer id="tab.leaf"/></groupdef>
+          <container id="main"><layout id="normal" w="20" h="10">
+            <Wasabi:TabSheet children="tab.one"/>
+          </layout></container>
+        </WasabiXML>
+        """)
+        let ids = Set(loaded.runtime.graph.allObjectsUnordered.compactMap(\.xmlID))
+        XCTAssertTrue(ids.isSuperset(of: ["restyle", "tab.leaf"]), "\(ids)")
+    }
+
     /// B179: the installed ClassicPro engine lacks `miniexes.xml`, which three cPro skins include.
     /// A missing include inside a mounted engine is skipped; an uninstalled engine still fails (B92).
     func testAMissingIncludeInsideAnInstalledEngineIsSkipped() throws {
