@@ -3,6 +3,43 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B183, B186–B188, B191, B194, B196, B197, B199, B200 — System host methods — closed 2026-10-19
+
+| B183 | **`System.restoreApplication` / `activateApplication`.** The stock notifier script (`notifier.m`) calls both last in `notifier_layout.onLeftButtonDown`. The popup closes first, then the handler aborts, so clicking a notification never raises a minimized player. Deminiaturize and activate the app. S4: 179 × 2 (the click half works) × off-rest 2 ÷ S 1 = 716. Done when `wal_demand.sh` lists neither and a click on jvc.tape's notifier raises a minimized player | `maki-call '^d6f50f64[0-9a-f]*[.]restoreapplication$'`: gold 25/56, silver 25/54, bronze 129/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B186 | **`System.windowMenu()`.** The Winamp 3 lineage (Winamp 3.0 Default, micro, PaddPreview) opens Winamp's window menu from the Thinger's right-click, and nothing opens. Pop the Skin Windows menu (`WinampModernContainerTopology.isListedInWindowMenu`) at the mouse. S4: 95 × control-dead 3 × off-rest 2 ÷ S 1 = 570. Done when `wal_demand.sh` does not list it and Winamp 3.0 Default's Thinger right-click opens the window list | `maki-call '^d6f50f64[0-9a-f]*[.]windowmenu$'`: gold 3/56, silver 3/54, bronze 89/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B187 | **`Application.shutdown()`.** The `Application` singleton's quit, called from a system-menu double-click (`sysMenu.onLeftButtonDblClk` in cPro2 minimal's `player-kai.m`). Nothing happens. Quit the app the way the main menu does. S4: 92 × control-dead 3 × off-rest 2 ÷ S 1 = 552. Done when `wal_demand.sh` does not list it and that double-click quits | `maki-call '^b8e867b0[0-9a-f]*[.]shutdown$'`: gold 10/56, silver 6/54, bronze 76/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B188 | *Implemented 2026-10-19 (gone from `wal_demand.sh`); only the in-app check is left.* **`System.next()` / `previous()`.** `System.play` and `stop` are implemented and these two are not, so a skin's own scripted transport buttons (Nitrous Audio CTI 2 Glass's `maincore.m`, JRS's next-on-stop, 1010 Fullscreen's playback page) do nothing. Route to the host's next and previous. S4: 39 × control-dead 3 × main window 3 ÷ S 1 = 351. Done when `wal_demand.sh` lists neither and Nitrous Audio's next button skips | `maki-call '^d6f50f64[0-9a-f]*[.]next$'`: gold 0/56, silver 9/54, bronze 29/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B191 | *Implemented 2026-10-19 (gone from `wal_demand.sh`); only the in-app check is left.* **`System.chr(code)`.** Scripts build path separators and character ranges with it: Shield_Amp's notifier cover does `mediaPath + chr(92) + file`, and Nitrous Audio's playlist search compares `chr(232)`. Big Bento Modern calls it too. S4: 34 × control-dead 3 × off-rest 2 ÷ S 1 = 204. Done when `wal_demand.sh` does not list it | `maki-call '^d6f50f64[0-9a-f]*[.]chr$'`: gold 7/56, silver 5/54, bronze 22/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B194 | **`System.setEq(onoff)`.** `getEq` is implemented and `setEq` is not, so mmd3's bass/treble code (`volumebasstreble.m`, which turns the EQ on before moving bands) abort; Big Bento Modern calls it too. Route to the host EQ's enable. S4: 27 × control-dead 3 × off-rest 2 ÷ S 1 = 162. Done when `wal_demand.sh` does not list it and mmd3's bass knob turns the EQ on | `maki-call '^d6f50f64[0-9a-f]*[.]seteq$'`: gold 5/56, silver 5/54, bronze 17/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B196 | *Implemented 2026-10-19 (gone from `wal_demand.sh`); only the in-app check is left.* **`System.getDateHour` / `getDateMin`.** `getDate` is implemented and its field readers are not, so skin clocks die in their timer: Ebonite's `clockTmr.onTimer`, Symplicipod's time-of-day mode, Nitrous Audio's `maincore.m`. S4: 11 × control-dead 3 × main window 3 ÷ S 1 = 99. Done when `wal_demand.sh` lists neither and Ebonite's clock shows the time | `maki-call '^d6f50f64[0-9a-f]*[.]getdatehour$'`: gold 1/56, silver 4/54, bronze 6/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B197 | **`System.eject()`.** Winamp's eject is the open-file dialog; eleven bronze skins script it on their eject button. Route to the host's open-files action. S4: 11 × control-dead 3 × main window 3 ÷ S 1 = 99. Done when `wal_demand.sh` does not list it and `_Scythe`'s eject opens the file dialog | `maki-call '^d6f50f64[0-9a-f]*[.]eject$'`: gold 0/56, silver 0/54, bronze 11/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B199 | **`System.minimizeApplication()`.** A skin's scripted minimize does nothing; Big Bento Modern and its variants call it. Miniaturize the player's windows. S4: 9 × control-dead 3 × main window 3 ÷ S 1 = 81. Done when `wal_demand.sh` does not list it and Big Bento Modern's scripted minimize minimizes the player | `maki-call '^d6f50f64[0-9a-f]*[.]minimizeapplication$'`: gold 4/56, silver 2/54, bronze 3/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+| B200 | *Implemented 2026-10-19 (gone from `wal_demand.sh`); only the in-app check is left.* **`System.isObjectValid(obj)`.** A null check: Dreliction's winshade menu ticks its entries with `if (isObjectValid(normal)) …`, and its `skins/dreliction.md` letter grades it C for this alone. Return whether the reference is non-null and still alive. S4: 10 × control-dead 3 × off-rest 2 ÷ S 1 = 60. Done when `wal_demand.sh` does not list it and Dreliction's winshade menu ticks the current layout | `maki-call '^d6f50f64[0-9a-f]*[.]isobjectvalid$'`: gold 5/56, silver 2/54, bronze 3/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
+
+**Closed 2026-10-19.** Implemented in two batches: `8a83027c` (B188, B191, B196, B200) and
+`8c0386a5` (the rest). Every call is gone from `wal_demand.sh` (manifest 9e68ffe0, index rev
+`2f5cba32`), from these skin counts (all tiers): `restoreApplication` 187 and `activateApplication`
+185 → 0, `windowMenu` 99 → 0, `Application.shutdown` 98 → 0, `setEq` 27 → 0, `eject` 11 → 0,
+`minimizeApplication` 10 → 0. B188, B191, B196 and B200 went from their reach columns above to 0 in
+the first batch. Each method routes to what already answers the same request:
+
+- `eject` is `host.openFiles()`, as the `EJECT` action is.
+- `minimizeApplication` and `Application.shutdown` are the player's own `MINIMIZE` and `CLOSE`
+  actions, so the whole skin minimizes together and closing the player quits.
+- `windowMenu` pops the `WA5:Windows` menu at the pointer. Its skin-window section is the
+  `isListedInWindowMenu` list.
+- `setEq` is the absolute form of `EQ_TOGGLE`.
+- `restoreApplication` unhides the app and deminiaturizes its windows. `activateApplication`
+  brings the app to the front.
+
+`shutdown` gets an arity only on the `Application` class (`MakiClassGUID.application`). A probe of
+cPro2 minimal's `player-kai.maki` confirmed its `Application` global is system-flagged and holds the
+System object, so the call reaches `invokeSystem`. Regression gate: `wal_render_sweep.sh --shards
+10`, gold+silver, `2f5cba32` against `8c0386a5`: 968 of 969 images identical; the one image diff is
+Anexa's `main-shade` and the invariant diffs are S7Reflex's `MLibrary` minimum, the known
+nondeterministic pair. None of the in-app checks in the rows has been run. Each is listed under
+*Awaiting manual QA* (B191 had none).
+
 ## B175–B181 — the quarantine's loader gaps — closed 2026-10-19
 
 | B175 | **Accept animation strips longer than 8,192 px on a side.** The image guard rejects any side past 8,192 even when the image is far under its 32,000,000-pixel budget, and a long animation strip is exactly that shape: `vu-meter_smooth.png` 98×17018 (three skins), `orb.anim.png` 15360×46, `waterstrip.png` 10320×344. The whole skin fails to load. Keep the pixel budget; decide what the per-side cap protects (a texture limit?) and slice or downscale the strip there instead of refusing the skin. Done when the 18 load with their strips animating, and a crafted image over the pixel budget is still refused | skin-dead: census `FAILED [imageDimensionsExceeded]`, quarantine 18/54 (list in B173's archive entry) | M | 2 |
