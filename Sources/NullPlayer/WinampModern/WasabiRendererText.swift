@@ -231,16 +231,18 @@ extension WasabiSceneRenderer {
                 drawCachedLine(text, font: font, color: color, x: x, baseline: baseline, context: context)
             }
         } else if let clock {
-            // The run keeps a pixel or two of clearance from the edge it is aligned against — a skin
-            // that puts a separator beside a readout counts on it, and centring needs none because
-            // both edges are already free.
-            // Aligned by the room the clock holds, then drawn from that room's left edge — so the
-            // digits stay in their columns rather than shuffling when the value gains one.
-            let room = clock.layoutWidth
+            // An edge-aligned run keeps a pixel or two of clearance from its edge — a skin that puts a
+            // separator beside a readout counts on it — and is placed by the room the clock holds,
+            // then drawn from that room's left edge, so the digits stay in their columns rather than
+            // shuffling when the value gains one.
+            //
+            // A centred run is centred on what it draws. The room's spare digit is all on one side,
+            // so centring by it pushed Cell's `1:13` half a field off its brackets (#581).
             var origin: CGFloat
             switch alignment {
-            case .right: origin = drawFrame.maxX - WasabiTextMetrics.ClockRun.edgeInset - room
-            case .center: origin = drawFrame.minX + (drawFrame.width - room) / 2
+            case .right:
+                origin = drawFrame.maxX - WasabiTextMetrics.ClockRun.edgeInset - clock.layoutWidth
+            case .center: origin = drawFrame.minX + (drawFrame.width - clock.width) / 2
             default: origin = drawFrame.minX + WasabiTextMetrics.ClockRun.edgeInset
             }
             // Each cell places its own field, so the object's alignment must not apply a second time
@@ -406,29 +408,11 @@ extension WasabiSceneRenderer {
                                 colonWidth: CGFloat? = nil,
                                 ticker: WasabiObject?, context: CGContext) {
         guard let sheet = resources.fontSheet(for: definition) else { return }
-        let charWidth = max(1, Int(Double(definition.attributes["charwidth"] ?? "1") ?? 1))
-        let charHeight = max(1, Int(Double(definition.attributes["charheight"] ?? "1") ?? 1))
-        let spacing = Int(Double(definition.attributes["hspacing"] ?? "0") ?? 0)
-        let advance = max(1, charWidth + spacing)
+        let run = WasabiTextMetrics.BitmapRun(definition: definition, colonWidth: colonWidth)
+        let charWidth = run.charWidth
+        let charHeight = run.charHeight
         let positions = Self.bitmapGlyphPositions
-        // `timecolonwidth` is the colon's own **cell**, and on a fixed-pitch atlas the colon is the
-        // only glyph that gets one. A sheet inks its colon into the left few columns of a
-        // full-width cell, so advancing the whole cell leaves the rest of it as a gap before the
-        // seconds: ClassicPro's `numfont.png` is 15px per glyph with a 6px colon and its engine
-        // declares `timecolonwidth="6"` for exactly that reason — without it every cPro clock reads
-        // `1:03: 16` (B-cPro colon gap). Enkera, TRON Legacy and impulse are the corpus's other
-        // bitmap-font clocks and all of them declare a cell *narrower* than the atlas advance, so
-        // the glyph is cropped to its cell rather than centred in it — which is also what the Core
-        // Text path's per-cell clip does with a `timecolonwidth` narrower than the glyph.
-        let colonAdvance = colonWidth.map { max(1, $0.rounded()) }
-        let colonCrop = colonAdvance.map { min(CGFloat(charWidth), $0) }
-        func cellWidth(of character: Character) -> CGFloat {
-            character == ":" ? (colonCrop ?? CGFloat(charWidth)) : CGFloat(charWidth)
-        }
-        func advanceWidth(of character: Character) -> CGFloat {
-            character == ":" ? (colonAdvance ?? CGFloat(advance)) : CGFloat(advance)
-        }
-        let width = text.reduce(CGFloat(0)) { $0 + advanceWidth(of: $1) }
+        let width = run.width(of: text)
         var startX: CGFloat
         switch alignment {
         case .center: startX = frame.midX - width / 2
@@ -460,18 +444,18 @@ extension WasabiSceneRenderer {
             var x = startX + origin
             for character in text.lowercased() {
                 let (column, row) = positions[character] ?? positions[" "] ?? (0, 0)
-                let cell = cellWidth(of: character)
+                let cell = run.cellWidth(of: character)
                 // Top-left origin: `cropping(to:)` indexes pixel rows directly (see `bitmap(identifier:)`).
                 let cropRect = CGRect(x: CGFloat(column * charWidth), y: CGFloat(row * charHeight),
                                       width: cell, height: CGFloat(charHeight))
-                if x + advanceWidth(of: character) >= frame.minX, x <= frame.maxX,
+                if x + run.advanceWidth(of: character) >= frame.minX, x <= frame.maxX,
                    cropRect.maxY <= CGFloat(sheet.height), cropRect.maxX <= CGFloat(sheet.width),
                    let glyph = cropped(sheet.image, to: cropRect) {
                     drawImage(glyph, in: CGRect(x: x, y: top,
                                                 width: cell, height: CGFloat(charHeight)),
                               context: context)
                 }
-                x += advanceWidth(of: character)
+                x += run.advanceWidth(of: character)
             }
         }
         context.restoreGState()
@@ -496,9 +480,7 @@ extension WasabiSceneRenderer {
     /// one font and drawn in another is a tab whose label runs past its own edge.
     func surfaceTextWidth(_ text: String, pointSize: CGFloat) -> CGFloat {
         if let definition = surfaceFont, definition.kind == "bitmapfont" {
-            let charWidth = max(1, Int(Double(definition.attributes["charwidth"] ?? "1") ?? 1))
-            let spacing = Int(Double(definition.attributes["hspacing"] ?? "0") ?? 0)
-            return CGFloat(text.count * max(1, charWidth + spacing))
+            return WasabiTextMetrics.BitmapRun(definition: definition, colonWidth: nil).width(of: text)
         }
         let font = surfaceTextFont(pointSize: pointSize)
         return resources.textWidth(of: text, font: font)

@@ -249,9 +249,13 @@ final class WasabiTextMetrics {
     ///
     /// GDI fits a face's whole cell — its OS/2 `usWinAscent + usWinDescent` — into the height it is
     /// handed, so a face with a tall cell draws a smaller em. `pixelHeightToPointSize` was measured
-    /// on Arial (a 1.117 em cell); every other face is scaled by its cell against Arial's. Impact's
-    /// cell is 1.22 em, and TOX Milla's `fontsize="24"` timer draws 14px digits in its own
-    /// screenshot — a 17.6 em, not 19.2 — where the unscaled face overflowed its 15px box.
+    /// on Arial (a 1.117 em cell); a face with a **taller** cell is scaled down by its cell against
+    /// Arial's. Impact's cell is 1.22 em, and TOX Milla's `fontsize="24"` timer draws 14px digits in
+    /// its own screenshot — a 17.6 em, not 19.2 — where the unscaled face overflowed its 15px box.
+    ///
+    /// **Never up.** A face whose cell is *shorter* than Arial's is a pixel font, and Winamp does not
+    /// grow it: Cell's Visitor TT2 has a 0.7 em cell, and scaled by it the timer's digits drew 10px
+    /// tall against the 6–7 its own `sc.png` shows, overfilling the brackets drawn for them (#581).
     static func gdiSized(_ font: NSFont) -> NSFont {
         // Windows has no Helvetica — GDI's FontSubstitutes draws Arial for it, and here it is MS Sans
         // Serif's stand-in — so its cell is Arial's, not its own.
@@ -268,7 +272,7 @@ final class WasabiTextMetrics {
         } else {
             cell = (font.ascender - font.descender) / font.pointSize
         }
-        guard cell > 0.5, cell < 3, abs(cell - arialCellPerEm) > 0.01 else { return font }
+        guard cell > arialCellPerEm + 0.01, cell < 3 else { return font }
         // Bridged through `NSFont?` for the same reason as `resolvedFont`'s constructor: a CoreText
         // constructor imported as non-optional can still hand back null.
         let sized: NSFont? = CTFontCreateCopyWithAttributes(
@@ -512,6 +516,55 @@ final class WasabiTextMetrics {
               let declared = object.attributes["timecolonwidth"].flatMap({ Double($0) }),
               declared > 0 else { return nil }
         return CGFloat(declared)
+    }
+
+    /// The geometry of a string set in a **bitmap font**: the sheet's cells, how far each glyph
+    /// advances, and how wide the run is. One answer for drawing it, for sizing a host box around it,
+    /// and for a script's `getTextWidth()` — a skin lays out everything beside a readout from the
+    /// measurement, so the three must never disagree.
+    struct BitmapRun {
+        let charWidth: Int
+        let charHeight: Int
+        private let advance: CGFloat
+        // `timecolonwidth` is the colon's own **cell**, and on a fixed-pitch atlas the colon is the
+        // only glyph that gets one. A sheet inks its colon into the left few columns of a full-width
+        // cell, so advancing the whole cell leaves the rest of it as a gap before the seconds:
+        // ClassicPro's `numfont.png` is 15px per glyph with a 6px colon and its engine declares
+        // `timecolonwidth="6"` for exactly that reason — without it every cPro clock reads `1:03: 16`
+        // (B-cPro colon gap). Enkera, TRON Legacy and impulse are the corpus's other bitmap-font clocks
+        // and all of them declare a cell *narrower* than the atlas advance, so the glyph is cropped to
+        // its cell rather than centred in it — which is also what the Core Text path's per-cell clip
+        // does with a `timecolonwidth` narrower than the glyph.
+        private let colonAdvance: CGFloat?
+        private let colonCrop: CGFloat?
+
+        init(definition: WalResourceDefinition, colonWidth: CGFloat?) {
+            let cell = max(1, Int(Double(definition.attributes["charwidth"] ?? "1") ?? 1))
+            let spacing = Int(Double(definition.attributes["hspacing"] ?? "0") ?? 0)
+            let colon = colonWidth.map { max(1, $0.rounded()) }
+            charWidth = cell
+            charHeight = max(1, Int(Double(definition.attributes["charheight"] ?? "1") ?? 1))
+            advance = CGFloat(max(1, cell + spacing))
+            colonAdvance = colon
+            colonCrop = colon.map { min(CGFloat(cell), $0) }
+        }
+
+        /// The atlas cell a glyph is cropped to.
+        func cellWidth(of character: Character) -> CGFloat {
+            character == ":" ? (colonCrop ?? CGFloat(charWidth)) : CGFloat(charWidth)
+        }
+
+        func advanceWidth(of character: Character) -> CGFloat {
+            character == ":" ? (colonAdvance ?? advance) : advance
+        }
+
+        /// The run ends where its last cell does, not one advance past its start: under a negative
+        /// `hspacing` the cells overlap, and Cell's ticker font (13px cells advancing 6) measured 7px
+        /// short, so a centred "VOLUME: 50%" sat 3.5px right of its box (#581).
+        func width(of text: String) -> CGFloat {
+            text.reduce(0) { $0 + advanceWidth(of: $1) }
+                + (text.last.map { max(0, cellWidth(of: $0) - advanceWidth(of: $0)) } ?? 0)
+        }
     }
 
     /// The cell a digit needs: the widest of them, so any digit fits any column.
@@ -838,15 +891,8 @@ final class WasabiTextMetrics {
         if let fontID = object.attributes["font"],
            let definition = loadedSkin.runtime.resources.resolvedDefinition(identifier: fontID),
            definition.kind == "bitmapfont" {
-            let charWidth = max(1, Int(Double(definition.attributes["charwidth"] ?? "1") ?? 1))
-            let spacing = Int(Double(definition.attributes["hspacing"] ?? "0") ?? 0)
-            let advance = CGFloat(max(1, charWidth + spacing))
-            // The colon's cell, on the one atlas glyph that has one — the same rule the bitmap draw
-            // path applies, because a skin lays out everything beside a clock from this measurement.
-            guard let colon = Self.bitmapColonWidth(of: object) else {
-                return CGFloat(text.count) * advance + padding
-            }
-            return text.reduce(padding) { $0 + ($1 == ":" ? max(1, colon.rounded()) : advance) }
+            return BitmapRun(definition: definition, colonWidth: Self.bitmapColonWidth(of: object))
+                .width(of: text) + padding
         }
         let size = Self.pointSize(of: object)
         let font = font(identifier: object.attributes["font"], size: size,
