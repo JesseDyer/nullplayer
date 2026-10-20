@@ -109,14 +109,13 @@ extension WinampModernScriptRuntime {
         // every option on it lives in a `…part1` / `…part2` groupdef the script expands here. That
         // is why the whole family reported `unsupported` although it drew.
         case "instantiate":
-            guard let instantiate = loadedSkin.runtime.instantiateGroup else { return .null }
             let identifier = arguments[0].stringValue
             // The count is skin input, so it is bounded here as well as by the shared object budget
             // `instantiateGroupAtRuntime` counts against. Nothing measured asks for more than one.
             let count = min(max(Int(arguments[1].integerValue), 0), Self.maximumGroupListInstances)
             var instantiated: WasabiObject?
             for _ in 0..<count {
-                let child = try instantiate(identifier, object)
+                guard let child = try instantiateOrNull(identifier, object, program: program) else { break }
                 stackInGroupList(child, list: object)
                 // Started **now**, not queued behind the dispatch like `newGroup`'s. The queue exists
                 // for Wasabi's two-step create-then-`init(parent)` dance, where a script must not look

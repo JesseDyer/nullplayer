@@ -12,6 +12,22 @@ extension WinampModernScriptRuntime {
         value.integerValue > 0 ? Date(timeIntervalSince1970: TimeInterval(value.integerValue)) : Date()
     }
 
+    /// `newGroup`, `newGroupAsLayout` and `GroupList.instantiate` for a group the skin never defined:
+    /// Winamp answers NULL and the script carries on. 19 skins ask for one (machina's frames name a
+    /// `component.content.group` it dropped), and a throw aborted the rest of each handler.
+    func instantiateOrNull(_ identifier: String, _ parent: WasabiObject, program: MakiProgram) throws -> WasabiObject? {
+        guard let instantiate = loadedSkin.runtime.instantiateGroup else { return nil }
+        do {
+            return try instantiate(identifier, parent)
+        } catch let failure as WalFailure
+            where failure.diagnostics.allSatisfy({ $0.code == .missingGroupDefinition }) {
+            report(WalDiagnostic(.missingGroupDefinition,
+                                 "Script requested unknown group '\(identifier)'; it answered null.",
+                                 severity: .warning, location: program.source))
+            return nil
+        }
+    }
+
     private var playItemString: String { host.trackPath.isEmpty ? host.trackDisplayTitle : host.trackPath }
 
     func invokeSystem(method: String, arguments: [MakiValue], program: MakiProgram) throws -> MakiValue {
@@ -418,9 +434,10 @@ extension WinampModernScriptRuntime {
             // Wasabi creates the group as a child of the calling script's own group; the script then
             // positions it with `setXmlParam`. This is how Winamp Modern fills a window frame's
             // client area (`content=` → `newGroup` → the whole player UI).
-            guard let owner = program.ownerID.flatMap(loadedSkin.runtime.graph.object(withID:)),
-                  let instantiate = loadedSkin.runtime.instantiateGroup else { return .null }
-            let created = try instantiate(arguments[0].stringValue, owner)
+            guard let owner = program.ownerID.flatMap(loadedSkin.runtime.graph.object(withID:)) else { return .null }
+            guard let created = try instantiateOrNull(arguments[0].stringValue, owner, program: program) else {
+                return .null
+            }
             // The subtree's scripts start on **attachment**, not here: `newGroup` is only the first half
             // of Wasabi's two-step, and a script that runs before its group has been `init`'d into place
             // reads the wrong parent. See `pendingRuntimeGroups`.
@@ -440,11 +457,12 @@ extension WinampModernScriptRuntime {
         // The created object keeps its **group** type. Typing it `layout` would send the `resize`
         // above through `layoutResizeRequested` and resize the *window* to 164×78.
         case "newgroupaslayout":
-            guard let instantiate = loadedSkin.runtime.instantiateGroup,
-                  let parent = ownerLayout(forGroupDefinition: arguments[0].stringValue, program: program)
+            guard let parent = ownerLayout(forGroupDefinition: arguments[0].stringValue, program: program)
             else { return .null }
             // Appended last, so it draws over the drawer background it sits on rather than under it.
-            let floated = try instantiate(arguments[0].stringValue, parent)
+            guard let floated = try instantiateOrNull(arguments[0].stringValue, parent, program: program) else {
+                return .null
+            }
             pendingRuntimeGroups.append(floated)
             notifyGraphDidMutate()
             return objectValue(floated)

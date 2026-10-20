@@ -199,6 +199,21 @@ final class WinampModernDemandTailTests: XCTestCase {
         XCTAssertEqual(try call(runtime, program, dropDown, "getNumItems").integerValue, 0)
     }
 
+    /// `newGroup` of a group the skin never defined answers null, as in Winamp, instead of aborting.
+    func testNewGroupOfAnUnknownGroupAnswersNull() throws {
+        let (runtime, _) = try makeRuntime()
+        let layout = try object(runtime, "normal")
+        let owned = MakiProgram(version: 0x0403, classes: [], methods: [], variables: [], bindings: [], instructions: [],
+                                source: WalSourceLocation(path: "/Skins/Synthetic/t.maki"), ownerID: layout.stableID,
+                                parameter: nil)
+        let result = try runtime.invoke(method: "newGroup", on: MakiObjectReference(.system),
+                                        arguments: [.string("component.content.group")], program: owned)
+        guard case .null = result else { return XCTFail("expected null, got \(result)") }
+        XCTAssertTrue(runtime.loadedSkin.runtime.diagnostics.contains {
+            $0.code == .missingGroupDefinition && $0.severity == .warning
+        })
+    }
+
     // MARK: - Helpers
 
     private static let program = MakiProgram(
