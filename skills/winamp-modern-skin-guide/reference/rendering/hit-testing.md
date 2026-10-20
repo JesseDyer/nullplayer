@@ -200,6 +200,11 @@ sitting at its minimum then walks across the desktop while the pointer keeps pus
 Before this the only affordance was AppKit's own borderless edge band, about a pixel of it, which is
 what a live report on Shield_Amp's playlist window described as impossible to grab.
 
+That band is still there on a window whose layout has a range and **no** handle, the only
+affordance such a window has. A layout that declares a handle drops `.resizable`
+(`declaresResizeHandles`, matched on attach and on every layout switch): AppKit's band takes the press
+before the view does and moves one edge only, even at a corner the skin's grip covers (B161).
+
 #### `sysregion` is signed, and it shapes the window (Phase 34, B76)
 
 A layer can contribute its bitmap to the **window region** instead of to the picture. The attribute

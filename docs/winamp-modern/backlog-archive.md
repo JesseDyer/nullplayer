@@ -3,6 +3,18 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B161 — AppKit's edge band over a skin's resize handles — closed 2026-10-20
+
+| B161 | **A press in the outer few points of a resizable `.wal` window is AppKit's, and it moves one edge even at a corner.** The skin's auxiliary windows are `[.borderless, .resizable]`, so AppKit's own edge band takes the press before `WinampModernMainView.mouseDown` and the skin's `resize="bottomright"` layer never sees it. Measured 2026-09-30 with `WINAMP_MODERN_RESIZE_TRACE=1` on Itemskin: a press 8pt in from the playlist frame's bottom-right corner, dragged +60,+30, logged `live=true handle=false` and changed the width only; 13pt in on the PeppyMeter frame, dragged +30,+60, changed the height only. 20pt in, the same drags logged `handle=clear.bottom.right` and moved both axes. Decide whether the band should defer to a skin handle under the pointer, or the windows should drop `.resizable` where the layout declares handles. Found during B160; not changed by it | `xml-attr '@resize$'` (a skin resize handle, an upper bound — the index does not say which window): gold 43/56, silver 46/54, bronze 743/827, quarantine 44/54 (manifest 9e68ffe0) | S | 2 |
+
+**Closed 2026-10-20** (commit `3f4eb19c`). Decided for the skin: a window whose active layout declares
+a `resize=` handle drops `.resizable`, so its own handles are the only resize affordance, as in
+Winamp; a layout with a range and no handle keeps AppKit's band. The view matches the mask on attach
+and on every layout switch (`declaresResizeHandles`). In the app on Itemskin with
+`WINAMP_MODERN_RESIZE_TRACE=1`: the playlist frame pressed 8pt in from its bottom-right corner and
+dragged +60,+30 grew 330x137 → 390x167 and logged `handle=true live=false`, where the row measured
+`live=true handle=false` and the width alone. `swift test` passes and the render sweep is unchanged.
+
 ## B214 — Deimos Preferences windows draw empty — closed 2026-10-20
 
 | B214 | **1010 Fullscreen's Preferences window draws empty.** Its `Wasabi:StandardFrame:Static` builds `wasabi.preferences.group` from script (`newGroup` + `init`), the configsystem script fills the `Deimos:ConfigTree` and opens the About `Deimos:ConfigSheet`, and `RENDER_GEOMETRY` puts the tree at (24,54,130,272) and the sheet at (162,57,388,266), yet the window shows only its frame and black ground, headless and in the app. Found running B189's in-app check, which this blocks: the cover config page is a tree entry in that window. Find what the tree and sheet draw (`RENDER_PROBE=config/normal` lists them) and why it is nothing. The same skin opens a "Please install Modern Skin PlusPack" window at launch, because its check for that Winamp add-on fails; note it, there is nothing to install | `xml-tag '^deimos:config(page\|tree\|sheet)$'`: gold 0/56, silver 4/54, bronze 0/827, quarantine 0/54 (manifest 9e68ffe0) | M | 2 |
