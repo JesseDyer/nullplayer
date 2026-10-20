@@ -2429,14 +2429,6 @@ class AudioEngine {
                 alignShufflePlaybackPositionForSelectedTrack(currentIndex)
             }
             loadTrack(at: currentIndex)
-            if currentTrack == nil,
-               currentIndex >= 0,
-               currentIndex < playlist.count,
-               playlist[currentIndex].isStreamingPlaceholder {
-                currentTrack = playlist[currentIndex]
-                resolvePlaceholderTrackAndOptionallyPlay(at: currentIndex, autoPlayOnSuccess: true)
-                return
-            }
         }
 
         if let track = currentTrack {
@@ -4566,9 +4558,14 @@ class AudioEngine {
 
         let route = track.playbackRoute
 
-        // Skip about:blank placeholder tracks — streaming URL not yet resolved via async fetch
+        // An about:blank placeholder still waits on its async URL fetch. It becomes current, with
+        // the outgoing track stopped, so the caller's `play()` resolves it; left out, `play()`
+        // resumed the outgoing track while the playlist highlight moved on (#583).
         if route == .unresolved {
-            NSLog("loadTrack: skipping placeholder track '%@' — waiting for async URL fetch", track.title)
+            NSLog("loadTrack: placeholder track '%@' — current, awaiting async URL fetch", track.title)
+            stopLocalOnly()
+            currentTrack = track
+            currentIndex = index
             return nil
         }
 
@@ -6673,10 +6670,7 @@ class AudioEngine {
         let track = playlist[index]
 
         if track.isStreamingPlaceholder {
-            currentTrack = track
-            _currentTime = 0
-            lastReportedTime = 0
-            state = .stopped
+            loadTrack(at: index)
             resolvePlaceholderTrackAndOptionallyPlay(at: index, autoPlayOnSuccess: true)
             return
         }
@@ -7134,6 +7128,11 @@ extension AudioEngine: StreamingAudioPlayerDelegate {
                 if self.state == .stopped {
                     NSLog("AudioEngine: Auto-advancing after streaming error")
                     self.next()
+                    // The error left `.stopped`, so `next()` only loads. A resolved stream starts
+                    // on load; a placeholder or local file waits for `play()`.
+                    if self.currentTrack != nil, self.state != .playing {
+                        self.play()
+                    }
                 }
             }
         }
