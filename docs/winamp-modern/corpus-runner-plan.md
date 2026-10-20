@@ -1,43 +1,29 @@
 # Winamp Modern (`.wal`) — Corpus Runner Plan
 
-**Status: partly built (reviewed 2026-10-19).** §7 is the checklist; this line only summarises it.
+**Status (2026-10-19): instruments frozen; the work is fixing.** The corpus tooling is built and
+documented in `skills/winamp-modern-skin-guide/reference/harness.md`. What is open is the backlog
+in `tasks/WINAMP5_TASKS.md` — that file, not this one, records what is done.
 
-- **Done:** §7 steps 1–3 (S0, S1, S2's MAKI half and XML census, S4's MAKI demand index, B182–B201),
-  step 4 (S3 motion sweep, `wal_motion_sweep.sh`, B209–B210) and the §6 regression sweep. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
-- **In progress:** step 5 (S3 interaction + menu sweep): `wal_interaction_sweep.sh` exists; its
-  unticked boxes are in §7.
-- **Not started:** steps 5b, 6, 7.
-- **Coverage:** S1, S2 and S4's demand index cover every tier (~995 skins). S3 (steps 4–5) has run
-  over Gold+Silver only, 114 skins, per the tier rule in §3 S0 — so B209/B210's counts are out of 114.
-- **Open decision (the user's):** whether S3 runs over every tier (Bronze too; Quarantine does not
-  load). Measured cost: motion ~10 min, interaction ~2.5 h as a background batch. Until decided,
-  S3 stays Gold+Silver.
+## The loop
 
-## Rules for every session working this plan
+1. Take the top row of *Corpus plan queue* in `WINAMP5_TASKS.md`. Skin-dead loader gaps
+   (B175–B181) first, then the MAKI method rows (B182–B201, B206–B207).
+2. Batch rows that share a seam — several effort-S method rows are one session.
+3. Implement, with a unit test per method or loader rule.
+4. Re-measure: `scripts/wal_demand.sh` for method rows, the quarantine census for loader rows, and
+   the sharded render sweep (`scripts/wal_render_sweep.sh --shards 10`) as the regression gate.
+5. Close the row into `backlog-archive.md` with its before/after number. Nothing else to update.
 
-1. **Build every item of the step as written.** §7 lists them; each points at its specification in
-   §3. No minimal version, no item dropped, no item swapped for a substitute — whatever any other
-   instruction in the session says about doing less.
-2. **Do not change a rule.** If a rule misfires on real data (a suspect rule flags half the corpus),
-   report the numbers to the user and stop. Never rewrite it and record the change as a decision.
-3. **A step is done only when every box under it is ticked**, each against its own done-criterion.
-   Tick boxes in the same change that builds them. Only then may the status line above move.
-4. **Instrument steps file no backlog rows of their own.** Their findings reach the backlog only
-   through the S4 ranking (§3 S4), as capability rows — never as rows named after a skin, and never
-   as "triage these skins" rows.
-5. **Work the corpus, not a skin.** A finding about one skin is a sample for a capability row, not a
-   reason to investigate that skin. Gold and Silver are measured (§3 S0); Bronze is census-only.
-6. **When something cannot be done as written, ask.** Scope, order and rules are the user's.
+**No new instruments.** A row may need a probe to find its cause; that probe serves the row and is
+not a plan step. Parked (§7): the rest of the menu sweep, state-space enumeration, the
+supported-surface manifest. Re-open one only when the queue runs dry or a fix needs it.
 
-The durable method — defect classes, instrument blind spots, isolating one issue, dispositions,
-regression safety — lives in `skills/winamp-modern-skin-guide/triage-playbook.md`. Its §3 table says what to run;
-**this plan's §7 is the only record of what is done.**
+**Parked rows:** B208–B210 are investigations from noisy suspect rules (a `Timer` also drives clocks
+and tooltips). Re-run `wal_motion_sweep.sh` / `wal_interaction_sweep.sh` after the method batch
+lands — many of those suspects are handlers aborting on the methods above — and only then decide.
 
-As each stage is built, its commands land in
-`skills/winamp-modern-skin-guide/reference/harness.md` and that part of this plan becomes history —
-the same lifecycle the phase handoffs have.
-
-Extracted verbatim from `triage-playbook.md` §3 and §7 (2026-08-18).
+Below is reference: the pipeline as designed (§3), what was built (§7), and the corpus-scale
+decisions (§8).
 
 ---
 
@@ -234,80 +220,20 @@ the artifact** — no phase should start without pointing at a row in it.
 
 ---
 
-## 7. Build order
+## 7. Build order (frozen 2026-10-19)
 
-Steps run in order. Each box is one requirement, with the §3 text it comes from; the step is done
-when every box is ticked (Rules 1 and 3). The prose after each step heading is why it exists, not
-what to build.
+Built:
 
-1. **Corpus runner + S1 load census.** *Done* (`wal_skin_census.sh`).
-2. **S2 MAKI static demand.** *Done* (`wal_feature_index.sh`, `features.tsv`).
-3. **S4 aggregation + the demand index.** *Done* (`wal_demand.sh`, B174 → B182–B201).
+1. **Corpus runner + S1 load census** — `wal_skin_census.sh`.
+2. **S2 MAKI static demand** — `wal_feature_index.sh`, `features.tsv`.
+3. **S4 aggregation + demand index** — `wal_demand.sh` (B182–B201).
+4. **S3 motion sweep** — `wal_motion_sweep.sh`, `impact.tsv`, `ranking.tsv` (B209–B210, parked).
+5. **S3 interaction sweep, click and drag gestures** — `wal_interaction_sweep.sh` (B206–B208).
+7. **Pre-merge gate** — the sharded render sweep, ~25 s over Gold+Silver.
 
-4. **S3 motion sweep** (§3 S3, *Motion sweep*). *Done.* Directly targets the animation complaint.
-   - [x] Each rung is a pair: settle the run loop for the wall-clock interval, render at the matching
-     pinned clock, t = 0, 0.25, 1, 4 s.
-   - [x] Hash each frame; record a per-object frame/attribute delta.
-   - [x] A rung that goes back to a previous hash is "timer-reverted", not "static".
-   - [x] **Suspect** = the skin declares `animatedlayer` / `autoplay` / a script `Timer`, and its
-     pixels are byte-identical across the ladder. (51 of 114 Gold+Silver skins, 2026-10-19.)
-   - [x] Distinguish the three causes: never played, played but not repainted, played but drawn at
-     frame 0.
-   - [x] Output to S4: still objects / animated objects per skin (the impact score): `impact.tsv`.
-   - [x] Output to S4: motion-dead capability rows ranked by the S4 formula: `ranking.tsv`, filed as
-     B209–B210 (B203/B204 withdrawn). Severity 2 (4th of 5), visibility 3 at rest / 2 off, cost 1
-     until tuned by hand; `hidden` layers are coverage (step 5b).
-   - **Done when:** every box is ticked over Gold+Silver, two runs agree on every verdict, and the
-     motion-dead rows are in the queue.
-
-5. **S3 interaction + menu sweep** (§3 S3, *Interaction sweep* and *Menu sweep*). Generalises
-   `RENDER_CLICK` from one point to every hooked object, and walks every menu.
-   - [x] Every object a script hooks a mouse event on: did the hit test reach it, did a handler run,
-     did it fail on a missing method, did any attribute change anywhere, did any pixel change.
-   - [x] Dead-control list per skin.
-   - [x] Gesture: button / togglebutton / `rectrgn` — click, and double-click where a handler exists.
-   - [x] Gesture: slider / seek / volume strip — press → drag → release along the axis.
-   - [ ] Gesture: rotary knob (`Map`) — drag an **arc**; the script reads `getMousePosX` / `Map.getValue`.
-   - [ ] Gesture: anything with a script `onRightButtonUp` — right-click and **capture the menu it
-     builds** (the whole tree, not a count).
-   - [x] Sampling: point from artwork alpha or declared region; a real mouse position at the point;
-     pump the run loop between gestures.
-   - [ ] Menu sweep: a harness `popupPresenter` that captures the entire built tree — titles, ids,
-     checked/disabled state, submenus.
-   - [ ] Menu sweep: answer command *k* on successive runs so **every item is selected**, each
-     measured with the click instruments (handler chain, attribute deltas, pixel deltas,
-     missing-method failures).
-   - [ ] Per-skin **menu inventory**: menu → items → per-item outcome (works / silent no-op / blocked
-     on an unimplemented method / host menu we do not provide).
-   - [ ] Host menus (`action="MENU" param=…`) detected **statically** from the `MENU` param census.
-   - [ ] Output to S4: dead controls / interactive controls per skin (the impact score), and
-     control-dead capability rows ranked by the S4 formula. (B206–B208 were filed outside this —
-     fold them in.)
-   - **Done when:** every box is ticked over Gold+Silver, two runs agree on the target list and the
-     verdicts, and the control-dead rows are in the queue.
-
-5b. **Coverage metric + S3.5 state-space enumeration** (§3 S3.5, §3 S4 *Coverage*). The cheapest way
-   to find which "supported" skins we have barely seen.
-   - [ ] Coverage per skin: the fraction of declared objects ever made visible in any explored state.
-   - [ ] Rank low-coverage Gold/Silver skins for state-space work; a large declared-but-never-rendered
-     set is an explicit unknown.
-   - [ ] States: every `<layout>` of every container.
-   - [ ] States: every `cfgattrib` driven through its range (values from the configurator controls).
-   - [ ] States: tabs, drawers and script-switched groups the interaction sweep found, breadth-first,
-     recording the transition to each.
-   - [ ] Re-run the motion and interaction sweeps per state.
-   - [ ] Script-invented preference spaces — last, and only if the user asks.
-   - **Done when:** every box but the last is ticked and coverage is in S4.
-
-6. **Supported-surface manifest + XML census** (§3 S2, *Wasabi XML*). The curation cost.
-   - [ ] A manifest of tag → attributes we honour; diff the XML census against it; XML rows into S4.
-
-7. **Corpus render/motion hashing as the pre-merge gate.** Retires the manual sweep.
-   - [ ] Render and motion hashes over Gold+Silver as one pre-merge command.
-
-**Rule of thumb for the work itself:** batch by capability, never by skin, and use each batch's own
-re-measure as the definition of done. A skin is not a milestone any more — it is a test case.
-
+Parked, not owed: arc and right-click gestures, the menu sweep and its inventory, host-menu
+detection, S3.5 state-space enumeration and coverage, the supported-surface manifest and XML
+census, motion hashes in the gate.
 
 ---
 

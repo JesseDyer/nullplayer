@@ -2835,6 +2835,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "random": .init(argumentCount: 1, returnKind: .integer),
         "getdatedoy": .init(argumentCount: 1, returnKind: .integer),
         "getdateyear": .init(argumentCount: 1, returnKind: .integer),
+        "getdatehour": .init(argumentCount: 1, returnKind: .integer),
+        "getdatemin": .init(argumentCount: 1, returnKind: .integer),
+        "getdatesec": .init(argumentCount: 1, returnKind: .integer),
+        "isobjectvalid": .init(argumentCount: 1, returnKind: .boolean),
+        "chr": .init(argumentCount: 1, returnKind: .string),
+        "next": .init(argumentCount: 0, returnKind: .null),
+        "previous": .init(argumentCount: 0, returnKind: .null),
         // ClassicPro `ClassicProFile` shell service (the entire native surface, P0B §1).
         // `XmlDoc`: load an optional config document. Bounded — see `DynamicRole.xmlDocument`.
         "load": .init(argumentCount: 1, returnKind: .null),

@@ -53,6 +53,8 @@ extension WinampModernScriptRuntime {
         case "play": host.play(); return .null
         case "pause": host.pause(); return .null
         case "stop": host.stop(); return .null
+        case "previous": host.previous(); return .null
+        case "next": host.next(); return .null
         // Milliseconds, like `getPosition` and `getPlayItemLength` — see `getposition`.
         case "seekto":
             host.seek(to: TimeInterval(arguments[0].integerValue) / 1000)
@@ -107,6 +109,11 @@ extension WinampModernScriptRuntime {
         case "string": return .string(arguments[0].stringValue)
         case "boolean": return .boolean(arguments[0].truthy)
         case "strlen": return .integer(Int32(clamping: arguments[0].stringValue.count))
+        // A code point to a one-character string. Skins spell path separators (`chr(92)`) and
+        // accented ranges with it; a value that is not a scalar answers empty rather than trapping.
+        case "chr":
+            return .string(Unicode.Scalar(UInt32(truncatingIfNeeded: arguments[0].integerValue))
+                .map { String(Character($0)) } ?? "")
         case "strlower": return .string(arguments[0].stringValue.lowercased())
         case "strupper": return .string(arguments[0].stringValue.uppercased())
         // RFC 3986 unreserved set, everything else escaped. Deliberately stricter than
@@ -438,6 +445,23 @@ extension WinampModernScriptRuntime {
         case "random":
             let bound = arguments[0].integerValue
             return .integer(bound > 0 ? Int32.random(in: 0..<bound) : 0)
+        // The clock fields beside `getDateYear`, from the same `getDate()` stamp (0 = now). Skin
+        // clocks read them in their timer, and the miss aborted the timer and froze the clock.
+        case "getdatehour", "getdatemin", "getdatesec":
+            let date = arguments[0].integerValue > 0
+                ? Date(timeIntervalSince1970: TimeInterval(arguments[0].integerValue)) : Date()
+            let component: Calendar.Component = method == "getdatehour" ? .hour
+                : method == "getdatemin" ? .minute : .second
+            return .integer(Int32(Calendar.current.component(component, from: date)))
+        // A null check that also catches a graph object that has gone: the reference resolves the
+        // way a method call on it would.
+        case "isobjectvalid":
+            guard case .object(let reference) = arguments[0] else { return .boolean(false) }
+            if case .gui(let objectID) = reference.kind {
+                return .boolean(loadedSkin.runtime.graph.object(withID: objectID) != nil)
+            }
+            if case .dynamic(let id) = reference.kind { return .boolean(dynamicObjects[id] != nil) }
+            return .boolean(true)
         case "getdatedoy":
             return .integer(Int32(Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0))
         case "playfile":
