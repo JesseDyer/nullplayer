@@ -260,7 +260,7 @@ All engine code is in `Sources/NullPlayer/WinampModern/`; all UI/controller code
 | Sprites, text, colour, hit testing, Layer FX | `WasabiRendererSprites.swift`, `…Text.swift`, `…Colour.swift`, `…HitTesting.swift`, `…LayerFX.swift` |
 | MAKI parser + interpreter | `MakiBytecode.swift` |
 | Script runtime + method dispatch | `WinampModernScriptRuntime.swift` — the VM loop, the event surface, object lifecycle |
-| MAKI receivers, by class | `WinampModernScriptRuntimeSystem.swift` (System, PlEdit, ColorMgr), `…Object.swift` (GuiObject, dynamic objects), `…Menu.swift` (PopupMenu), `…Timer.swift` (`target*`), `…Text.swift` |
+| MAKI receivers, by class | `WinampModernScriptRuntimeSystem.swift` (System, PlEdit, ColorMgr), `…Desktop.swift` (System's clock, screen and window lookups), `…Object.swift` (GuiObject), `…Window.swift` (GuiObject's window, stacking and snapping methods), `…Dynamic.swift` (objects a script makes with `new`), `…Menu.swift` (PopupMenu), `…Timer.swift` (`target*`), `…Text.swift` |
 | Skin-facing host API | `WinampModernHost.swift` |
 | Component model + host protocol | `WinampModernComponents.swift` |
 | Component bucket (thinger): icon set, box layout, strip state | `WinampModernComponentBucket.swift`, `WasabiRenderer.swift` |

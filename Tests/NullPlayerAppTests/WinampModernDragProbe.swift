@@ -32,7 +32,7 @@ final class WinampModernDragProbe: XCTestCase {
             renderersByContainer[info.id] = renderer
         }
         let all = Array(renderersByContainer.values)
-        runtime.resolvedGeometryRequested = { object in
+        runtime.hooks.resolvedGeometryRequested = { object in
             for renderer in all { if let g = renderer.resolvedGeometry(of: object) { return g } }
             return nil
         }

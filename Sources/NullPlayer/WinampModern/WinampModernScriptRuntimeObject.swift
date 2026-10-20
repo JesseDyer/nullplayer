@@ -2,41 +2,16 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// The MAKI object receivers: the `GuiObject` surface every Group, Layer and Layout
-/// answers, and the runtime-instantiated objects a script makes for itself. Split out of
-/// `WinampModernScriptRuntime.swift`; see
+/// The MAKI `GuiObject` receiver: the surface every Group, Layer and Layout answers. The
+/// window-level methods are in `…RuntimeWindow.swift` and the objects a script makes for itself
+/// with `new` in `…RuntimeDynamic.swift`. Split out of `WinampModernScriptRuntime.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/compatibility/maki-surface.md`.
 extension WinampModernScriptRuntime {
-    struct DynamicObjectState {
-        var role: DynamicRole = .generic
-        /// The element a `new Text`/`new Layer`… becomes on `init(parent)`; nil for a non-GUI class.
-        var guiType: String?
-        /// What a script wrote with `setXmlParam` before `init`; the element is created with it.
-        /// 1010 Fullscreen's analyzer sets a layer's id, image and box this way, then `init`s it.
-        var pendingAttributes: [String: String] = [:]
-        /// Any other call made before `init` (1010's analyzer: `setRegionFromMap`), replayed in order
-        /// on the element once it exists. Bounded, since nothing runs it until then.
-        var pendingCalls: [(method: String, arguments: [MakiValue])] = []
-        var delayMilliseconds: Int32 = 5_000
-        /// Backing store for a MAKI `List`. Kept on every dynamic object rather than in the role: a
-        /// `List` is created by the same `new` as a `Timer` or a `Map` and only its first list call
-        /// would distinguish it, and nothing else ever touches these items.
-        var items: [MakiValue] = []
-        /// Element paths an `XmlDoc` has registered with `parser_addCallback`, in the order the
-        /// script added them. Kept beside `items` for the same reason: the role is settled by the
-        /// first call that only an `XmlDoc` accepts, and these arrive before `parser_start`.
-        var parserCallbacks: [String] = []
-        /// A script-owned string object's contents — `new`, `setText(…)`, `getText()`. Kept here for
-        /// the same reason as `items`: `new` says nothing about the class, and this is the first call
-        /// that would distinguish one.
-        var text: String = ""
-    }
-
     func invokeGUI(method: String, object: WasabiObject, arguments: [MakiValue],
                            program: MakiProgram) throws -> MakiValue {
         if method == "showcurrentlyplayingentry" {
             let index = playlistSnapshot.currentIndex
-            if index >= 0 { playlistRevealRowRequested?(index) }
+            if index >= 0 { hooks.playlistRevealRowRequested?(index) }
             return .null
         }
         if Self.dispatchableEventArity[method] != nil {
@@ -93,7 +68,7 @@ extension WinampModernScriptRuntime {
                   }) else { return .null }
             activeLayoutByContainer[object.stableID] = next.stableID
             realizedLayouts.insert(next.stableID)
-            _ = layoutSwitchRequested?(object.stableID, arguments[0].stringValue)
+            _ = hooks.layoutSwitchRequested?(object.stableID, arguments[0].stringValue)
             _ = try dispatch(object: object, event: "onswitchtolayout", arguments: [objectValue(next)])
             return .null
         // `<script>` never enters the graph, so `children` is exactly the group's GUI objects in
@@ -323,42 +298,6 @@ extension WinampModernScriptRuntime {
             notifyGraphDidMutate()
             requestWindow(for: object, visible: false)
             return .null
-        // Client ↔ screen conversion, relative to the receiver's **parent** client area — the space
-        // `getLeft()`/`getTop()` already answer in, which is what every measured call site converts:
-        // `b.clientToScreenX(b.getLeft())`, receiver and coordinate the same object. Reading it as the
-        // receiver's *own* box instead double-counts that idiom, and reading it as pure identity loses
-        // the parent chain, which is what put ClassicPro's tab menu at the window's left edge instead
-        // of under its tab.
-        //
-        // "Screen" is this window's client space: a `.wal` window is borderless and positioned by us,
-        // so the window origin is a constant that cancels in the round trip every caller makes, and
-        // the popup presenter places `popAtXY` in the same window the point came from. Winamp Modern's
-        // titlebar centres its title with `layout.clientToScreenX((w − titleW) / 2)`, converts back
-        // through the titlebar group and subtracts that group's own `getLeft()`; both objects hang off
-        // the layout, so the round trip returns the input and the correction lands.
-        case "clienttoscreenx", "clienttoscreeny", "screentoclientx", "screentoclienty":
-            let origin = resolvedGeometryRequested?(object)?.parent.origin ?? .zero
-            let offset = method.hasSuffix("x") ? origin.x : origin.y
-            let signed = method.hasPrefix("client") ? offset : -offset
-            return .integer(Int32(clamping: Int(Double(arguments[0].integerValue) + Double(signed))))
-        // Docking/snapping notifications a layout sends while resizing itself. NullPlayer places `.wal`
-        // windows itself and has no docking model for them, so these are deliberate no-ops — but they
-        // must *exist*, because a missing method aborts the whole handler: this trio is what stopped
-        // Winamp Modern's CONFIG button from ever opening its drawer.
-        case "beforeredock", "redock": return .null
-        // The layout's snap margins: stored so `getSnapAdjust*` read them back (winampmodern566
-        // sizes its drawer from `getSnapAdjustBottom`), not obeyed, since there is no docking model.
-        case "snapadjust":
-            for (key, value) in zip(Self.snapAdjustKeys, arguments) {
-                _ = object.setAttribute(key, value: String(value.integerValue))
-            }
-            return .null
-        case "getsnapadjustleft", "getsnapadjusttop", "getsnapadjustright", "getsnapadjustbottom":
-            let key = "nullplayer.snapadjust." + method.dropFirst("getsnapadjust".count)
-            return .integer(Int32(object.attributes[key] ?? "") ?? 0)
-        // A width or height is the same in client and screen space: neither is scaled here.
-        case "clienttoscreenw", "clienttoscreenh", "screentoclientw", "screentoclienth":
-            return .integer(arguments[0].integerValue)
         case "debugstring": return .null
         // A **window's** left and top are where it sits on the desktop, not where it sits inside
         // itself. A layout resolves to the origin of its own canvas, so both answered 0 — and Big
@@ -407,8 +346,8 @@ extension WinampModernScriptRuntime {
         // With no window — the headless harness — the honest answer is "no", which still lets the
         // handler run to the end instead of aborting it.
         case "ismouseoverrect":
-            guard let point = mousePositionInObjectSpaceRequested?(object),
-                  let frame = resolvedGeometryRequested?(object)?.frame else { return .boolean(false) }
+            guard let point = hooks.mousePositionInObjectSpaceRequested?(object),
+                  let frame = hooks.resolvedGeometryRequested?(object)?.frame else { return .boolean(false) }
             return .boolean(frame.contains(point))
         // The point arrives in the object's parent space, the space its pointer events carry
         // (Core-X5 asks this in every main-window button's handler, B206).
@@ -416,38 +355,6 @@ extension WinampModernScriptRuntime {
         case "ismouseover":
             let point = CGPoint(x: Int(arguments[0].integerValue), y: Int(arguments[1].integerValue))
             return .boolean(resolvedFrame(of: object)?.contains(point) ?? false)
-        // `Layout.center()` — the window centred on the display the viewport methods answer for
-        // (1010 Fullscreen's frame windows, B201), through the same write as `resize`.
-        case "center" where object.typeName.caseInsensitiveCompare("layout") == .orderedSame:
-            let screen = NSScreen.main?.frame.size ?? .zero
-            let width = dimension(resolvedFrame(of: object)?.width, declared: declaredFrame(of: object).width)
-            let height = dimension(resolvedFrame(of: object)?.height, declared: declaredFrame(of: object).height)
-            writeGeometry([("x", String((Int32(screen.width) - width) / 2)),
-                           ("y", String((Int32(screen.height) - height) / 2))], on: object, borrowed: nil)
-            return .null
-        // The hosted surface's name, as the thinger titles it. cPro labels its drawer tab with it
-        // from a timer that aborted on every tick (`refreshAIOTab`, `checkVisName`, B193).
-        case "getcomponentname":
-            let kind = WasabiSceneRenderer.componentKind(of: object)
-            return .string(WinampModernComponentBucketCatalog.icons.first { $0.kind == kind }?.title ?? "")
-        // The Bio-Nid lineage switches its playlist sidecar's page from script (B198).
-        case "getcurpage" where WasabiTabSheet.isTabSheet(object):
-            return .integer(Int32(WasabiTabSheet.selectedIndex(of: object)))
-        case "setcurpage" where WasabiTabSheet.isTabSheet(object):
-            if WasabiTabSheet.select(index: Int(arguments[0].integerValue), on: object) { notifyGraphDidMutate() }
-            return .null
-        // `Edit`: auto-enter makes every change an enter (the view reads the flag), and `enter()`
-        // is the script pressing Return (B189).
-        case "setautoenter":
-            _ = object.setAttribute("autoenter", value: arguments[0].truthy ? "1" : "0")
-            return .null
-        case "getautoenter": return .integer(object.attributes["autoenter"] == "1" ? 1 : 0)
-        case "enter":
-            _ = try dispatch(object: object, event: "onenter")
-            return .null
-        // `Vis.getMode()`: what `setMode` and a click on the vis last wrote (Styx's `vis.m`, B190).
-        case "getmode":
-            return .integer(Int32(WasabiVisualizationMode(attribute: object.attributes["mode"]).attributeValue) ?? 1)
         case "refresh":
             notifyObjectDidMutate(object)
             return .null
@@ -656,7 +563,7 @@ extension WinampModernScriptRuntime {
             // The view owns the focus, because the keyboard is a window's property rather than the
             // graph's. It resolves the object to the `<edit>` it is or contains — a skin focuses the
             // wrapper (`Wasabi:EditBox2`) as often as the control.
-            focusRequested?(embeddedControl(of: object) ?? object)
+            hooks.focusRequested?(embeddedControl(of: object) ?? object)
             return .null
         case "setfontsize":
             // The same pixel height the XML attribute carries, so it goes through the one
@@ -684,7 +591,7 @@ extension WinampModernScriptRuntime {
             _ = try dispatch(object: object, event: "onleftclick")
             _ = toggleActivation(of: object)
             let action = object.attributes["action"]
-            actionRequested?(action ?? "", object.attributes["param"])
+            hooks.actionRequested?(action ?? "", object.attributes["param"])
             if action == nil { _ = toggleConfigAttribute(of: object) }
             return .null
         case "settargetx": return setTarget("targetx", object: object, value: arguments[0])
@@ -733,11 +640,11 @@ extension WinampModernScriptRuntime {
             // second time, with a URL the skin did not choose. They reach the host only when no
             // script took them, which is the skin that sends one and ships no reader.
             if handled == 0 || !Self.scriptOwnedBrowserActions.contains(arguments[0].stringValue.lowercased()) {
-                actionRequested?(arguments[0].stringValue, arguments[1].stringValue)
+                hooks.actionRequested?(arguments[0].stringValue, arguments[1].stringValue)
             }
             return .null
         case "triggeraction":
-            actionRequested?(arguments[0].stringValue, arguments[1].stringValue)
+            hooks.actionRequested?(arguments[0].stringValue, arguments[1].stringValue)
             return .null
         case "isinvalid":
             return .boolean(isInvalid(object))
@@ -759,7 +666,7 @@ extension WinampModernScriptRuntime {
                 // the request to one of its own levels anyway, and a garbage value should not reach
                 // it as one. Winamp's own range is 1…3.
                 if factor.isFinite, factor > 0 {
-                    uiScaleRequested?(CGFloat(min(max(factor, 0.25), 4)))
+                    hooks.uiScaleRequested?(CGFloat(min(max(factor, 0.25), 4)))
                 }
             }
             return .null
@@ -787,7 +694,7 @@ extension WinampModernScriptRuntime {
             return .null
         case "back", "forward":
             if WasabiSceneRenderer.isBrowserElement(object) {
-                browserHistoryRequested?(object.stableID, method == "forward")
+                hooks.browserHistoryRequested?(object.stableID, method == "forward")
             }
             return .null
         case "navigateurl":
@@ -795,7 +702,7 @@ extension WinampModernScriptRuntime {
             // on any other GUI object stay quietly inert so an untrusted skin cannot turn a generic
             // object reference into a network primitive.
             if WasabiSceneRenderer.isBrowserElement(object) {
-                browserNavigationRequested?(object.stableID, arguments[0].stringValue)
+                hooks.browserNavigationRequested?(object.stableID, arguments[0].stringValue)
             }
             return .null
         case let name where name.hasPrefix("fx_"):
@@ -857,437 +764,12 @@ extension WinampModernScriptRuntime {
             // Attachment is also when the new subtree's own scripts start — see `pendingRuntimeGroups`.
             try startPendingScripts(for: object)
             return .null
-        // Paint order is sibling order (the renderer walks `children` front to back), so raising an
-        // object is moving it to the end of its parent's list.
-        case "bringtofront", "bringtoback":
-            guard let parent = object.parent, parent.children.count > 1 else { return .null }
-            try parent.insertChild(object, at: method == "bringtofront" ? parent.children.count : 0)
-            notifyGraphDidMutate()
-            return .null
-        // Paint order relative to a sibling: just under it, or just over it.
-        case "bringbelow", "bringabove":
-            guard case .object(let reference) = arguments[0], case .gui(let otherID) = reference.kind,
-                  let other = loadedSkin.runtime.graph.object(withID: otherID), other !== object,
-                  let parent = object.parent, other.parent === parent else { return .null }
-            // `insertChild` takes the object out first, so the index is among the others.
-            guard let index = parent.children.filter({ $0 !== object })
-                .firstIndex(where: { $0 === other }) else { return .null }
-            try parent.insertChild(object, at: method == "bringbelow" ? index : index + 1)
-            notifyGraphDidMutate()
-            return .null
-        case "islayout": return .boolean(object.typeName.caseInsensitiveCompare("layout") == .orderedSame)
-        case "getnumlayouts":
-            return .integer(Int32(object.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }.count))
-        case "enumlayout":
-            let layouts = object.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }
-            let index = Int(arguments[0].integerValue)
-            return layouts.indices.contains(index) ? objectValue(layouts[index]) : .null
-        // The window's name, as the Windows menu lists it (Anunaki renames its own).
-        case "setname":
-            _ = object.setAttribute("name", value: arguments[0].stringValue)
-            notifyGraphDidMutate()
-            return .null
-        case "setdesktopalpha":
-            _ = object.setAttribute("desktopalpha", value: arguments[0].truthy ? "1" : "0")
-            notifyObjectDidMutate(object)
-            return .null
-        case "getdesktopalpha": return .boolean(object.attributes["desktopalpha"] == "1")
-        // `Button.rightClick()` is the script pressing the button's right side: its handler runs.
-        case "rightclick":
-            _ = try dispatch(object: object, event: "onrightclick")
-            return .null
-        // `Slider.lock()` holds back the slider's own callbacks while a script moves it.
-        case "lock", "unlock":
-            _ = object.setAttribute("nullplayer.slider.locked", value: method == "lock" ? "1" : "0")
-            return .null
-        case "nextmode":
-            let mode = WasabiVisualizationMode(attribute: object.attributes["mode"]).stepped(by: 1)
-            _ = object.setAttribute("mode", value: mode.attributeValue)
-            notifyObjectDidMutate(object)
-            return .null
-        // Whether the vis or animation draws every frame; ours always does.
-        case "setrealtime": return .null
         case "getautoreplay": return .boolean(object.attributes["autoreplay"] == "1")
         case "callme": return .null
         default:
-            throw unsupported(method, program: program)
-        }
-    }
-
-    /// Arms (or re-arms) a script `Timer` to fire `onTimer` every `delayMilliseconds`.
-    private func scheduleTimer(id: UInt64, delayMilliseconds: Int32) throws {
-        let reference = MakiObjectReference(.dynamic(id))
-        _ = try timers.schedule(id: id, period: TimeInterval(max(8, delayMilliseconds)) / 1_000) { [weak self] in
-            guard let self else { return }
-            _ = try? self.dispatch(target: reference, event: "ontimer", arguments: [])
-        }
-    }
-
-    func invokeDynamic(method: String, id: UInt64, arguments: [MakiValue],
-                               program: MakiProgram) throws -> MakiValue {
-        guard var state = dynamicObjects[id] else { return .null }
-        // A script may call one of *this* object's event handlers as a method, exactly as it may a
-        // GUI object's or `System`'s (the two routes above). For a `Timer` that is the "run the
-        // timer's body now, don't wait for the next tick" idiom: Big Bento Modern's songticker
-        // answers `sendAction("cancelinfo")` — which `seek.maki` posts on every mouse-up and on
-        // `onSetFinalPosition` — with `timer.onTimer()`, and without this the whole `onAction`
-        // handler aborted there, leaving the ticker stuck on its `Seek: 1:13/4:05 (30%)` preview.
-        if Self.dispatchableEventArity[method] != nil {
-            _ = try dispatch(target: MakiObjectReference(.dynamic(id)), event: method,
-                             arguments: arguments)
-            return method == "onaction" ? .integer(0) : .null
-        }
-        if let value = try invokeTreeItem(method: method, id: id, arguments: arguments) { return value }
-        if state.guiType != nil, method == "setxmlparam" {
-            state.pendingAttributes[arguments[0].stringValue.lowercased()] = arguments[1].stringValue
-            dynamicObjects[id] = state
-            return .null
-        }
-        if state.guiType != nil, method == "getxmlparam" {
-            return .string(state.pendingAttributes[arguments[0].stringValue.lowercased()] ?? "")
-        }
-        if state.guiType != nil, method != "init", signature(for: method, classGUID: nil) != nil,
-           state.pendingCalls.count < Self.maximumPendingCalls {
-            state.pendingCalls.append((method, arguments))
-            dynamicObjects[id] = state
-            return .null
-        }
-        switch method {
-        // `GammaSet.apply()` — switch to the theme this object names, through the one route
-        // `System.setColorTheme` already uses. A theme the skin does not ship is refused by the
-        // catalog and the call is simply inert.
-        case "apply":
-            guard case .gammaSet(let name) = state.role else { return .null }
-            // Re-applying the theme already showing is how a script shows the groups it retinted.
-            if themeSwitchRequested?(name) != true,
-               name.caseInsensitiveCompare(loadedSkin.themeCoordinator.activeTheme) == .orderedSame {
-                loadedSkin.themeCoordinator.reapply()
+            if let value = try invokeWindowGUI(method: method, object: object, arguments: arguments) {
+                return value
             }
-            return .null
-        case "enumgammagroup":
-            guard case .gammaSet(let name) = state.role,
-                  let group = loadedSkin.themeCoordinator.catalog.groupIdentifier(
-                    theme: name, index: Int(arguments[0].integerValue)) else { return .null }
-            return dynamicValue(role: .gammaGroup(theme: name, group: group))
-        case "setred", "setgreen", "setblue":
-            guard case .gammaGroup(let theme, let group) = state.role else { return .null }
-            loadedSkin.themeCoordinator.catalog.setGammaChannel(["setred": 0, "setgreen": 1, "setblue": 2][method] ?? 0,
-                                                               to: Int(arguments[0].integerValue),
-                                                               theme: theme, group: group)
-            return .null
-        // The map's own shape: every pixel at or above 1, the unreversed `loadFromMap` form.
-        case "getregion":
-            guard case .map(let bitmapID, let source) = state.role else { return .null }
-            return dynamicValue(role: .region(clip: WasabiRegionClip(
-                mapID: bitmapID, mapPath: mapLogicalPath(bitmapID: bitmapID, source: source),
-                threshold: 1, reversed: false)))
-        case "loadmap":
-            noteCoverRequest(arguments[0].stringValue, by: program)
-            state.role = .map(bitmapID: arguments[0].stringValue, source: program.source)
-            dynamicObjects[id] = state
-            return .null
-        case "loadfrommap":
-            // Argument 0 is the `Map` object itself, so the region borrows the bitmap that map
-            // already resolved — including the path form, which has no `<bitmap>` definition and so
-            // has to be handed to the renderer as an already-resolved logical path.
-            guard case .object(let reference) = arguments[0],
-                  case .dynamic(let mapID) = reference.kind,
-                  let mapState = dynamicObjects[mapID],
-                  case .map(let bitmapID, let source) = mapState.role else { return .null }
-            state.role = .region(clip: WasabiRegionClip(mapID: bitmapID,
-                                                        mapPath: mapLogicalPath(bitmapID: bitmapID, source: source),
-                                                        threshold: Int(arguments[1].integerValue),
-                                                        reversed: arguments[2].truthy))
-            dynamicObjects[id] = state
-            return .null
-        case "loadfrombitmap":
-            // A bitmap region is its artwork's silhouette: every pixel the image actually paints is
-            // inside, every transparent one is outside. `regionMask` already drops a pixel whose
-            // alpha is zero, so a threshold of 0 taken forward — which admits every value — is
-            // exactly that rule and nothing more.
-            let bitmapID = arguments[0].stringValue
-            state.role = .region(clip: WasabiRegionClip(
-                mapID: bitmapID, mapPath: mapLogicalPath(bitmapID: bitmapID, source: program.source),
-                threshold: 0, reversed: false))
-            dynamicObjects[id] = state
-            return .null
-        case "offset":
-            guard case .region(let clip) = state.role else { return .null }
-            state.role = .region(clip: WasabiRegionClip(mapID: clip.mapID, mapPath: clip.mapPath,
-                                                        threshold: clip.threshold, reversed: clip.reversed,
-                                                        offsetX: clip.offsetX + Int(arguments[0].integerValue),
-                                                        offsetY: clip.offsetY + Int(arguments[1].integerValue)))
-            dynamicObjects[id] = state
-            return .null
-        case "load":
-            state.role = .xmlDocument(logicalPath: xmlDocumentPath(arguments[0].stringValue,
-                                                                   program: program))
-            state.parserCallbacks = []
-            dynamicObjects[id] = state
-            return .null
-        case "exists":
-            guard case .xmlDocument(let path) = state.role else { return .boolean(false) }
-            return .boolean(path != nil)
-        case "parser_addcallback":
-            guard case .xmlDocument = state.role,
-                  state.parserCallbacks.count < Self.maximumParserCallbacks else { return .null }
-            state.parserCallbacks.append(arguments[0].stringValue)
-            dynamicObjects[id] = state
-            return .null
-        case "parser_start":
-            guard case .xmlDocument(let path) = state.role, let path else { return .null }
-            parserStart(documentAt: path, callbacks: state.parserCallbacks, id: id, program: program)
-            return .null
-        case "parser_destroy":
-            guard case .xmlDocument = state.role else { return .null }
-            state.parserCallbacks = []
-            dynamicObjects[id] = state
-            return .null
-        case "inregion", "getvalue":
-            guard case .map(let bitmapID, let source) = state.role else {
-                return method == "inregion" ? .boolean(false) : .integer(0)
-            }
-            let sample = mapPixel(bitmapID: bitmapID, source: source,
-                                  x: Int(arguments[0].integerValue), y: Int(arguments[1].integerValue))
-            if method == "inregion" {
-                // A map with an alpha channel masks its region; MMD3's are opaque grayscale, where
-                // being inside the bitmap *is* being in the region.
-                return .boolean(sample.inBounds && sample.alpha > 0)
-            }
-            // `getValue(0,0) > 0` is how most cover scripts ask "did the file load?", and a cover
-            // whose corner pixel is pure black would answer no. For a cover the question is only
-            // ever that one, so a loaded cover reads at least 1.
-            if sample.inBounds, host.isTrackFolderImage(bitmapID) {
-                return .integer(Int32(max(1, sample.red)))
-            }
-            return .integer(Int32(sample.red))
-        case "getargbvalue":
-            // One channel of one pixel. The channel index is BGRA — pinned by `player.maki`, which
-            // builds a `colorbandpeak="r,g,b"` attribute from channels 2, 1, 0 in that order.
-            guard case .map(let bitmapID, let source) = state.role else { return .integer(0) }
-            let sample = mapPixel(bitmapID: bitmapID, source: source,
-                                  x: Int(arguments[0].integerValue), y: Int(arguments[1].integerValue))
-            switch arguments[2].integerValue {
-            case 0: return .integer(Int32(sample.blue))
-            case 1: return .integer(Int32(sample.green))
-            case 2: return .integer(Int32(sample.red))
-            case 3: return .integer(Int32(sample.alpha))
-            default: return .integer(0)
-            }
-        // `Color.getRed/getGreen/getBlue` — the channels `ColorMgr.getColor` resolved.
-        //
-        // The `…WithGamma` spellings answer the *same* numbers, and that is the correct reading
-        // rather than a stub: Winamp's plain getters hand back the colour as the skin declared it and
-        // the gamma ones hand it back after the active `<gammaset>` has been applied, while
-        // `ColorMgr.getColor` here resolves through `WasabiSceneRenderer.resolvedColor`, which
-        // already follows references *and* applies the gammagroup and the live colour theme. There is
-        // no un-gamma'd form left to distinguish. ClassicPro's Web Reader is what needs them: every
-        // provider URL carrying a `%COLOR:LBG%` token goes through `getColorHex()`, which reads all
-        // three, so the miss aborted `surfSelected()` before its `navigateUrl` and the reader tab
-        // never loaded a page (B128).
-        case "getred", "getgreen", "getblue",
-             "getredwithgamma", "getgreenwithgamma", "getbluewithgamma":
-            if case .gammaGroup(let theme, let group) = state.role {
-                let channel = method.hasPrefix("getred") ? 0 : method.hasPrefix("getgreen") ? 1 : 2
-                return .integer(Int32(loadedSkin.themeCoordinator.catalog.gammaChannel(channel, theme: theme, group: group)))
-            }
-            guard case .color(let red, let green, let blue) = state.role else { return .integer(0) }
-            switch method {
-            case "getred", "getredwithgamma": return .integer(red)
-            case "getgreen", "getgreenwithgamma": return .integer(green)
-            default: return .integer(blue)
-            }
-        case "getwidth", "getheight":
-            // The map's own size, which for a sliced `<bitmap>` is the slice's, not the sheet's —
-            // same reason as `mapCrop`. The path form has no definition and stays the whole file,
-            // which is what ClassicPro's two width probes (`read.suiframe.png`, `installed.png`) ask.
-            guard case .map(let bitmapID, let source) = state.role else { return .integer(0) }
-            // A map whose bitmap does not load is Wasabi's missing-bitmap placeholder, which is
-            // 64x64 — the corpus's cover scripts test for exactly that (`getWidth() != 64`,
-            // `getWidth()==64 && getHeight()==64` = "not found"). Skin Consortium's `SC:Cover` relies
-            // on it the other way: it sizes its `<AlbumArt>` holders by `ArtW/ArtH` from a map of a
-            // file name that is still empty, so 0x0 made the ratio 0/0 and the holders vanished,
-            // where Winamp's 64/64 filled the frame. Its pixels still read 0 (`getValue`, above).
-            guard let image = mapImage(bitmapID: bitmapID, source: source) else {
-                return .integer(Self.missingMapSide)
-            }
-            let crop = mapCrop(bitmapID: bitmapID, image: image)
-            return .integer(Int32(clamping: method == "getwidth" ? crop.width : crop.height))
-        case "additem":
-            guard state.items.count < Self.maximumListItems else { return .integer(-1) }
-            state.items.append(arguments[0])
-            dynamicObjects[id] = state
-            return .integer(Int32(state.items.count - 1))
-        case "enumitem":
-            let index = Int(arguments[0].integerValue)
-            guard state.items.indices.contains(index) else { return .null }
-            return state.items[index]
-        case "getnumitems", "getsize": return .integer(Int32(clamping: state.items.count))
-        case "setsize":
-            // `BitList` — same backing store as `List`, holding booleans. ClassicPro sizes one to the
-            // widget count and ticks off the widgets it has already initialised.
-            let size = max(0, min(Self.maximumListItems, Int(arguments[0].integerValue)))
-            state.items = (0..<size).map { index in
-                index < state.items.count ? state.items[index] : .boolean(false)
-            }
-            dynamicObjects[id] = state
-            return .null
-        case "getitem":
-            let index = Int(arguments[0].integerValue)
-            guard state.items.indices.contains(index) else { return .boolean(false) }
-            return .boolean(state.items[index].truthy)
-        case "setitem":
-            let index = Int(arguments[0].integerValue)
-            guard state.items.indices.contains(index) else { return .null }
-            state.items[index] = .boolean(arguments[1].truthy)
-            dynamicObjects[id] = state
-            return .null
-        case "removeitem":
-            let index = Int(arguments[0].integerValue)
-            guard state.items.indices.contains(index) else { return .null }
-            state.items.remove(at: index)
-            dynamicObjects[id] = state
-            return .null
-        case "removeall":
-            state.items.removeAll()
-            dynamicObjects[id] = state
-            return .null
-        case "finditem":
-            // `Any` items: an object matches by identity, everything else by its string form, which is
-            // how the engine searches its string lists.
-            let index = state.items.firstIndex { item in
-                if case .object(let reference) = arguments[0] { return object(item, equals: reference) }
-                if case .object = item { return false }
-                return item.stringValue == arguments[0].stringValue
-            }
-            return .integer(Int32(index ?? -1))
-        case "getint", "getbool", "getstring":
-            guard case .configGroup(let section) = state.role else {
-                return method == "getstring" ? .string("") : .integer(0)
-            }
-            let key = arguments[0].stringValue
-            // An unset item reads 0. That is also the right answer for the one item ClassicPro asks
-            // about — `"frequencies"`, where 0 means Winamp's classic EQ frequencies, which is what
-            // NullPlayer's `EQConfiguration.classic10` uses.
-            let value = loadedSkin.configuration.integer(section: section, key: key, default: 0)
-            switch method {
-            case "getbool": return .boolean(value != 0)
-            case "getstring": return .string(loadedSkin.configuration.string(section: section, key: key))
-            default: return .integer(value)
-            }
-        // Wasabi's `STimer::setDelay` re-arms a started timer at the new delay, and skins rely on it
-        // from inside their own `onTimer`: Shield_Amp's `OneDirectionText` starts its ticker on a
-        // 1000 ms first delay, then drops to the 60 ms step on the first tick. Storing the value
-        // without re-arming left the ticker stepping once a second (B148).
-        case "setdelay":
-            state.delayMilliseconds = arguments[0].integerValue
-            dynamicObjects[id] = state
-            if timers.contains(id: id) { try scheduleTimer(id: id, delayMilliseconds: state.delayMilliseconds) }
-            return .null
-        // The delay as set, unclamped — the same script compares it against its own first delay.
-        case "getdelay": return .integer(state.delayMilliseconds)
-        // Ticks the timer service dropped because the main thread was late. It coalesces rather
-        // than counting, so none are reported.
-        case "getskipped": return .integer(0)
-        case "sendcommand":
-            guard case .wac = state.role else { return .null }
-            return .integer(0)
-        case "start":
-            if MakiInterpreter.tracesExecution {
-                print("MAKI timer start id=\(id) delay=\(state.delayMilliseconds) "
-                      + "by=\(MakiInterpreter.traceStack.last ?? "-")")
-            }
-            try scheduleTimer(id: id, delayMilliseconds: state.delayMilliseconds)
-            return .boolean(true)
-        case "stop":
-            if MakiInterpreter.tracesExecution {
-                print("MAKI timer stop id=\(id) running=\(timers.contains(id: id)) "
-                      + "by=\(MakiInterpreter.traceStack.last ?? "-")")
-            }
-            timers.cancel(id: id)
-            return .null
-        case "isrunning": return .boolean(timers.contains(id: id))
-        case "newattribute", "getattribute":
-            guard case .configItem(let section) = state.role else { return .null }
-            let key = arguments[0].stringValue
-            if method == "newattribute" {
-                let defaultValue = arguments[1].stringValue
-                let existing = loadedSkin.configuration.string(section: section, key: key,
-                                                                 default: defaultValue)
-                loadedSkin.configuration.setString(existing, section: section, key: key)
-                recordRegisteredSetting(section: section, name: key, defaultValue: defaultValue)
-            }
-            return dynamicValue(role: .configAttribute(section: section, key: key))
-        // Skin-options code finds the toggle it owns by the attribute's name (B185).
-        case "getattributename":
-            guard case .configAttribute(_, let key) = state.role else { return .string("") }
-            return .string(key)
-        case "getdata":
-            guard case .configAttribute(let section, let key) = state.role else { return .string("") }
-            let data = loadedSkin.configuration.string(
-                section: section, key: key,
-                default: WinampModernConfigBridge.hostDefault(section: section, key: key) ?? "")
-            if Self.tracesEveryCall {
-                print("CALL-TRACE getdata[\(section);\(key)] -> \(data)")
-            }
-            return .string(data)
-        case "setdata":
-            guard case .configAttribute(let section, let key) = state.role else { return .null }
-            // Through the shared write route, not this object alone. A skin's configurator writes an
-            // attribute from one script and every *other* script that registered the same attribute
-            // applies it from its own `onDataChanged` — Defix changes its background that way, one
-            // `setData` in the configurator against a `STANDARDFRAME` script per window. Dispatching
-            // only to the caller left the write visible in exactly the window that made it.
-            setConfigAttribute(section: section, key: key, value: arguments[0].stringValue)
-            return .null
-        // A script-owned string object: `setText` stores, `getText` reads back **with Wasabi's path
-        // variables expanded**, which is the whole reason a skin makes one. Big Bento Modern's Web
-        // Reader builds the path behind its `%CUSTOMSOURCE%` token that way —
-        // `s.setText("@SKINSPATH@"); s.getText() + "/Big Bento Modern/scripts/reader/source/"` — and
-        // a string with no `@…@` in it is handed back untouched, because canonicalising ordinary text
-        // as a path would turn it into one.
-        case "settext":
-            state.text = arguments[0].stringValue
-            dynamicObjects[id] = state
-            return .null
-        case "gettext":
-            guard state.text.contains("@") else { return .string(state.text) }
-            let expanded = try? loadedSkin.vfs.resolve(state.text, relativeTo: program.source.path,
-                                                       location: program.source, mustExist: false)
-            return .string(expanded?.logicalPath ?? state.text)
-        case "getid":
-            switch state.role {
-            case .configItem(let section): return .string(section)
-            case .configAttribute(_, let key): return .string(key)
-            case .map(let bitmapID, _): return .string(bitmapID)
-            case .region(let clip): return .string(clip.mapID)
-            case .xmlDocument(let path): return .string(path ?? "")
-            case .configGroup(let section): return .string(section)
-            case .gammaSet(let name): return .string(name)
-            case .color(let red, let green, let blue): return .string("\(red),\(green),\(blue)")
-            case .wac(let guid): return .string(guid)
-            case .gammaGroup(_, let group): return .string(group)
-            case .generic: return .string("dynamic_\(id)")
-            }
-        // A GUI object the script made with `new`: it enters the graph beneath its parent here, and
-        // from then on the reference answers as that object (`dynamicGUIObjects`).
-        case "init":
-            guard let type = state.guiType, case .object(let reference) = arguments.first,
-                  case .gui(let parentID) = reference.kind,
-                  let parent = loadedSkin.runtime.graph.object(withID: parentID),
-                  let created = try loadedSkin.runtime.instantiateElement?(type, state.pendingAttributes, parent)
-            else { return .null }
-            dynamicGUIObjects[id] = created.stableID
-            for call in state.pendingCalls {
-                _ = try invokeGUI(method: call.method, object: created, arguments: call.arguments, program: program)
-            }
-            dynamicObjects[id]?.pendingCalls = []
-            noteGeometryChange()
-            notifyGraphDidMutate()
-            return .null
-        case "callme": return .null
-        default:
-            if let value = classicProFileMethod(method, arguments: arguments) { return value }
             throw unsupported(method, program: program)
         }
     }
@@ -1404,21 +886,16 @@ extension WinampModernScriptRuntime {
         return nil
     }
 
-    /// An object's box in its **parent's** coordinates — the space Wasabi's `getGuiX`/`getGuiY` and
-    /// `getLeft`/`getTop` report in — or `nil` when no scene can place it.
-    ///
-    /// Reading the raw `x`/`y`/`w`/`h` attributes instead is only right for absolute geometry, and
-    /// Bento-style skins barely use any: cPro's tab strip is `w="-4" relatw="1"`, so `getWidth()`
-    /// answered **−4**, `CproTabs.m` concluded it had no room for its tabs, switched to short names and
-    /// squeezed every tab to the 20px floor. The declared value stays as the fallback for an object the
-    /// active scene does not contain (a hidden layout, or a runtime with no window wired at all).
     static let maximumPendingCalls = 256
-    static let snapAdjustKeys = ["left", "top", "right", "bottom"].map { "nullplayer.snapadjust." + $0 }
+    static let snapAdjustEdges = ["left", "top", "right", "bottom"]
+
+    /// Where a script's `snapAdjust()` stores a layout's snap margin on `edge`.
+    static func snapAdjustKey(_ edge: some StringProtocol) -> String { "nullplayer.snapadjust." + edge }
 
     /// A layout's snap margin on `edge` (`left`/`top`/`right`/`bottom`): what a script's
     /// `snapAdjust()` stored, else the markup's `snapadjust<edge>`.
     static func snapAdjust(_ edge: String, of layout: WasabiObject) -> Double {
-        Double(layout.attributes["nullplayer.snapadjust." + edge] ?? layout.attributes["snapadjust" + edge] ?? "") ?? 0
+        Double(layout.attributes[snapAdjustKey(edge)] ?? layout.attributes["snapadjust" + edge] ?? "") ?? 0
     }
 
     /// `getGui*` on an axis the markup made relative: the markup's own value, or nil for an absolute
@@ -1429,8 +906,16 @@ extension WinampModernScriptRuntime {
         return Int32(clamping: Int(raw))
     }
 
+    /// An object's box in its **parent's** coordinates — the space Wasabi's `getGuiX`/`getGuiY` and
+    /// `getLeft`/`getTop` report in — or `nil` when no scene can place it.
+    ///
+    /// Reading the raw `x`/`y`/`w`/`h` attributes instead is only right for absolute geometry, and
+    /// Bento-style skins barely use any: cPro's tab strip is `w="-4" relatw="1"`, so `getWidth()`
+    /// answered **−4**, `CproTabs.m` concluded it had no room for its tabs, switched to short names and
+    /// squeezed every tab to the 20px floor. The declared value stays as the fallback for an object the
+    /// active scene does not contain (a hidden layout, or a runtime with no window wired at all).
     func resolvedFrame(of object: WasabiObject) -> CGRect? {
-        guard let geometry = resolvedGeometryRequested?(object) else { return nil }
+        guard let geometry = hooks.resolvedGeometryRequested?(object) else { return nil }
         return geometry.frame.offsetBy(dx: -geometry.parent.minX, dy: -geometry.parent.minY)
     }
 

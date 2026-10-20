@@ -77,7 +77,7 @@ final class WinampModernInteractionSweepTests: XCTestCase {
             }
             self.renderers = renderers
             let all = Array(renderers.values)
-            runtime.resolvedGeometryRequested = { object in
+            runtime.hooks.resolvedGeometryRequested = { object in
                 all.lazy.compactMap { $0.resolvedGeometry(of: object) }.first
             }
             try runtime.start()
@@ -202,14 +202,14 @@ final class WinampModernInteractionSweepTests: XCTestCase {
             }
         }
         var effects: [String] = []
-        runtime.actionRequested = { action, parameter in effects.append("action:\(action)\(parameter.map { ";\($0)" } ?? "")") }
-        runtime.containerVisibilityRequested = { id, visible in effects.append("window:\(id)=\(visible ? 1 : 0)") }
+        runtime.hooks.actionRequested = { action, parameter in effects.append("action:\(action)\(parameter.map { ";\($0)" } ?? "")") }
+        runtime.hooks.containerVisibilityRequested = { id, visible in effects.append("window:\(id)=\(visible ? 1 : 0)") }
         runtime.popupPresenter = { items, _ in
             effects.append("menu:\(items.filter { !$0.isSeparator }.count)")
             return 0
         }
         var pointer = point
-        runtime.mousePositionInObjectSpaceRequested = { _ in pointer }
+        runtime.hooks.mousePositionInObjectSpaceRequested = { _ in pointer }
         func send(_ event: String, at canvas: CGPoint? = nil) {
             if let canvas {
                 pointer = canvas

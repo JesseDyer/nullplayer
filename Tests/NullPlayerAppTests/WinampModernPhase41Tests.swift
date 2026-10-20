@@ -197,13 +197,13 @@ final class WinampModernPhase41Tests: XCTestCase {
         let runtime = try WinampModernScriptRuntime(loadedSkin: loaded, host: Host())
         addTeardownBlock { runtime.teardown() }
         let equalizer = Equalizer()
-        runtime.equalizerBandRequested = { equalizer.bands.indices.contains($0) ? equalizer.bands[$0] : 0 }
-        runtime.equalizerBandSetterRequested = { band, value in
+        runtime.hooks.equalizerBandRequested = { equalizer.bands.indices.contains($0) ? equalizer.bands[$0] : 0 }
+        runtime.hooks.equalizerBandSetterRequested = { band, value in
             guard equalizer.bands.indices.contains(band) else { return }
             equalizer.bands[band] = value
         }
-        runtime.equalizerPreampRequested = { equalizer.preamp }
-        runtime.equalizerPreampSetterRequested = { equalizer.preamp = $0 }
+        runtime.hooks.equalizerPreampRequested = { equalizer.preamp }
+        runtime.hooks.equalizerPreampSetterRequested = { equalizer.preamp = $0 }
         let program = MakiProgram(version: 0x0403, classes: [], methods: [], variables: [], bindings: [],
                                   instructions: [], source: WalSourceLocation(path: "/Skins/Synthetic/t.maki"),
                                   ownerID: nil, parameter: nil)

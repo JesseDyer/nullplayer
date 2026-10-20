@@ -175,7 +175,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
             playlistHost = host
             runtime.componentHost = host
             WasabiTextMetrics.componentTextProvider = { [weak host] in host?.playlistSnapshot() }
-            runtime.playlistRevealRowRequested = { print("PLAYLIST reveal row=\($0)") }
+            runtime.hooks.playlistRevealRowRequested = { print("PLAYLIST reveal row=\($0)") }
             print("PLAYLIST before: \(host.describe())")
         }
 
@@ -184,7 +184,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
         // before `start()` because the five scripts that carry it call it from `onScriptLoaded`, and
         // it names the level the app would snap to so a button that asks for 250% is not confused
         // with one that asks for 200%.
-        runtime.uiScaleRequested = { factor in
+        runtime.hooks.uiScaleRequested = { factor in
             print(String(format: "SCALE request %.3f -> %@%%", Double(factor),
                          UIScaleLevel.nearest(toScaleFactor: factor).rawValue))
         }
@@ -217,7 +217,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
                   + "active=\(loaded.themeCoordinator.catalog.activeTheme)")
         }
         let allRenderers = Array(renderersByContainer.values)
-        runtime.resolvedGeometryRequested = { object in
+        runtime.hooks.resolvedGeometryRequested = { object in
             for renderer in allRenderers {
                 if let geometry = renderer.resolvedGeometry(of: object) { return geometry }
             }
@@ -268,7 +268,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
             if visible { openContainers.insert(id.lowercased()) }
             else { openContainers.remove(id.lowercased()) }
         }
-        runtime.containerVisibilityRequested = { noteContainerVisibility($0, $1) }
+        runtime.hooks.containerVisibilityRequested = { noteContainerVisibility($0, $1) }
 
         try runtime.start()
 
@@ -318,13 +318,13 @@ final class WinampModernRenderDumpTests: XCTestCase {
         if let spec = env["WINAMP_MODERN_RENDER_EQ"] {
             var bands = Array(repeating: 0, count: WinampModernEQAction.bandCount)
             var preamp = 0
-            runtime.equalizerBandRequested = { bands.indices.contains($0) ? bands[$0] : 0 }
-            runtime.equalizerBandSetterRequested = { band, value in
+            runtime.hooks.equalizerBandRequested = { bands.indices.contains($0) ? bands[$0] : 0 }
+            runtime.hooks.equalizerBandSetterRequested = { band, value in
                 guard bands.indices.contains(band) else { return }
                 bands[band] = value
             }
-            runtime.equalizerPreampRequested = { preamp }
-            runtime.equalizerPreampSetterRequested = { preamp = $0 }
+            runtime.hooks.equalizerPreampRequested = { preamp }
+            runtime.hooks.equalizerPreampSetterRequested = { preamp = $0 }
             // Seed silently: the opening state is announced once, and what this probe is asking about
             // is the *change* the skin is told about afterwards.
             runtime.refreshEqualizerState()
@@ -1093,7 +1093,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
                         // `onLeftButtonUp` gets "no" and takes its drag-cancelled path — so the probe
                         // would report a dead control that works perfectly under a real mouse. The
                         // pointer is placed where the click is, which is where it is in the app.
-                        runtime.mousePositionInObjectSpaceRequested = { _ in point }
+                        runtime.hooks.mousePositionInObjectSpaceRequested = { _ in point }
                         print("CLICK at \(point) hits "
                               + "\(target?.typeName ?? "-")#\(target?.xmlID ?? "-") "
                               + "bindings=\(target.map { runtime.hasBinding(for: $0) } ?? false)"
@@ -1108,22 +1108,22 @@ final class WinampModernRenderDumpTests: XCTestCase {
                         // resulting action — so with nothing wired here the probe reported "nothing
                         // changed" for a button that works, and could not tell that apart from one
                         // that asks for an action the view does not implement.
-                        runtime.actionRequested = { action, parameter in
+                        runtime.hooks.actionRequested = { action, parameter in
                             print("CLICK action: \(action.isEmpty ? "-" : action) param=\(parameter ?? "-")")
                         }
-                        defer { runtime.actionRequested = nil }
+                        defer { runtime.hooks.actionRequested = nil }
                         // The other half of "what did this click ask the host for": a skin that opens
                         // one of its own windows does it with `getContainer(id).show()`, which is a
                         // window request, not an action. There are no windows in the harness, so this
                         // is the only place it can be seen.
-                        runtime.containerVisibilityRequested = { id, visible in
+                        runtime.hooks.containerVisibilityRequested = { id, visible in
                             print("CLICK window: \(id) visible=\(visible)")
                             noteContainerVisibility(id, visible)
                         }
                         // Back to the model, not to `nil`: a click that opens a window is the reason
                         // the *next* `isVisible()` in the run answers differently.
                         defer {
-                            runtime.containerVisibilityRequested = { noteContainerVisibility($0, $1) }
+                            runtime.hooks.containerVisibilityRequested = { noteContainerVisibility($0, $1) }
                         }
                         var chain: [String] = []
                         runtime.dispatchObserver = { event, program, failure in

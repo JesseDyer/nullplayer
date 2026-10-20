@@ -222,19 +222,16 @@ final class WinampModernB114Tests: XCTestCase {
         let playlist = #"component="guid:{45F3F7C1-A6F3-4ee6-A15E-125E92FC3F8D}""#
         let status = #"<LayoutStatus id="status" x="0" y="-15" relaty="1" w="0" relatw="1" h="15"/>"#
         let bare = try makeScene(layoutAttributes: "", containerAttributes: playlist, markup: status)
-        let bar = bare.objects(withIDPrefix: WasabiStandardFrames.commandBarIDPrefix)
-        XCTAssertEqual(bar.compactMap { $0.attributes["action"] },
+        XCTAssertEqual(bare.children(ofID: "status").compactMap { $0.attributes["action"] },
                        ["PE_Add", "PE_Rem", "PE_Sel", "PE_Misc", "PE_List"])
-        XCTAssertTrue(bar.allSatisfy { $0.attributes["visible"] != "0" })
 
         let ownButtons = try makeScene(
             layoutAttributes: "", containerAttributes: playlist,
             markup: status + #"<button id="add" action="PE_Add" x="0" y="0" w="10" h="10"/>"#)
-        XCTAssertTrue(ownButtons.objects(withIDPrefix: WasabiStandardFrames.commandBarIDPrefix)
-            .allSatisfy { $0.attributes["visible"] == "0" })
+        XCTAssertTrue(ownButtons.children(ofID: "status").isEmpty)
 
         let notAPlaylist = try makeScene(layoutAttributes: "", markup: status)
-        XCTAssertTrue(notAPlaylist.objects(withIDPrefix: WasabiStandardFrames.commandBarIDPrefix).isEmpty)
+        XCTAssertTrue(notAPlaylist.children(ofID: "status").isEmpty)
     }
 
     /// Deimos's `cover.maki` (57 corpus skins) asks for `cover.jpg`, `folder.jpg`… beside the playing
@@ -313,10 +310,10 @@ final class WinampModernB114Tests: XCTestCase {
         let renderer: WasabiSceneRenderer
         let graph: WasabiObjectGraph
 
-        func objects(withIDPrefix prefix: String) -> [WasabiObject] {
+        func children(ofID id: String) -> [WasabiObject] {
             var found: [WasabiObject] = []
             func walk(_ object: WasabiObject) {
-                if object.xmlID?.hasPrefix(prefix) == true { found.append(object) }
+                if object.xmlID == id { found = object.children }
                 object.children.forEach(walk)
             }
             graph.roots.forEach(walk)

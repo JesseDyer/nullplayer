@@ -7,11 +7,6 @@ import Foundation
 /// out of `WinampModernScriptRuntime.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/compatibility/maki-surface.md`.
 extension WinampModernScriptRuntime {
-    /// A MAKI date argument: seconds since 1970, with 0 (or less) meaning now.
-    static func makiDate(_ value: MakiValue) -> Date {
-        value.integerValue > 0 ? Date(timeIntervalSince1970: TimeInterval(value.integerValue)) : Date()
-    }
-
     /// `newGroup`, `newGroupAsLayout` and `GroupList.instantiate` for a group the skin never defined:
     /// Winamp answers NULL and the script carries on. 19 skins ask for one (machina's frames name a
     /// `component.content.group` it dropped), and a throw aborted the rest of each handler.
@@ -82,11 +77,11 @@ extension WinampModernScriptRuntime {
         case "eject": host.openFiles(); return .null
         // The player's own window commands: minimize takes the whole skin down together, and
         // closing the player quits (`Application.shutdown()`).
-        case "minimizeapplication": actionRequested?("MINIMIZE", nil); return .null
-        case "shutdown": actionRequested?("CLOSE", nil); return .null
-        case "restoreapplication": applicationRaiseRequested?(true); return .null
-        case "activateapplication": applicationRaiseRequested?(false); return .null
-        case "windowmenu": windowMenuRequested?(); return .null
+        case "minimizeapplication": hooks.actionRequested?("MINIMIZE", nil); return .null
+        case "shutdown": hooks.actionRequested?("CLOSE", nil); return .null
+        case "restoreapplication": hooks.applicationRaiseRequested?(true); return .null
+        case "activateapplication": hooks.applicationRaiseRequested?(false); return .null
+        case "windowmenu": hooks.windowMenuRequested?(); return .null
         // Milliseconds, like `getPosition` and `getPlayItemLength` — see `getposition`.
         case "seekto":
             host.seek(to: TimeInterval(arguments[0].integerValue) / 1000)
@@ -229,51 +224,6 @@ extension WinampModernScriptRuntime {
         // A skin's trace output. Deliberately dropped rather than logged: it is per-frame in some
         // skins, and nothing in NullPlayer consumes it.
         case "debugstring": return .null
-        // The viewport is Winamp's *work area* — the screen minus its taskbars — so here the visible
-        // frame, below the menu bar and clear of the Dock. 1010_Fullscreen sizes its window to it:
-        // answered with the whole display, it asked for a 1169-tall window at y=0 on a 1130-tall
-        // work area, and the (0, 0) it wrote read as a round trip (B61), so it never moved either.
-        case "getviewportwidth", "getviewportwidthfromguiobject":
-            return .integer(Int32(Self.workArea(of: NSScreen.main).width))
-        case "getviewportheight", "getviewportheightfromguiobject":
-            return .integer(Int32(Self.workArea(of: NSScreen.main).height))
-        case "getviewportleft", "getviewportleftfromguiobject":
-            return .integer(Int32(Self.workArea(of: NSScreen.main).minX))
-        case "getviewporttop", "getviewporttopfromguiobject":
-            return .integer(Int32(Self.workArea(of: NSScreen.main).minY))
-        // The display holding the point, in Winamp's top-left screen space. The stock `tooltips.m`
-        // keeps its tip on that display (B195); a point on no display answers the main one.
-        case "getviewportleftfrompoint", "getviewporttopfrompoint",
-             "getviewportwidthfrompoint", "getviewportheightfrompoint":
-            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-            let point = CGPoint(x: Int(arguments[0].integerValue),
-                                y: Int(primaryHeight) - Int(arguments[1].integerValue))
-            let area = Self.workArea(of: NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main)
-            let value: CGFloat
-            switch method {
-            case "getviewportleftfrompoint": value = area.minX
-            case "getviewporttopfrompoint": value = area.minY
-            case "getviewportwidthfrompoint": value = area.width
-            default: value = area.height
-            }
-            return .integer(Int32(value))
-        // The monitor is the whole display containing the skin's player window. Do not derive this
-        // from `NSScreen.main`: that is the primary display, not necessarily the one the skin is on.
-        // The controller answers in logical screen points so Retina backing pixels never enter MAKI
-        // geometry. The direct AppKit lookup is only the headless/unwired fallback.
-        case "getmonitorwidth":
-            return .integer(Self.screenDimension(monitorSizeRequested?()?.width
-                                                  ?? NSScreen.main?.frame.width))
-        case "getmonitorheight":
-            return .integer(Self.screenDimension(monitorSizeRequested?()?.height
-                                                  ?? NSScreen.main?.frame.height))
-        case "getmonitorleft", "getmonitortop": return .integer(0)
-        case "getcurappleft": return .integer(Self.appFrameDimension(playerWindowFrame?.minX))
-        case "getcurapptop": return .integer(Self.appFrameDimension(playerWindowFrame?.minY))
-        case "getcurappwidth": return .integer(Self.appFrameDimension(playerWindowFrame?.width))
-        case "getcurappheight": return .integer(Self.appFrameDimension(playerWindowFrame?.height))
-        case "getmouseposx": return .integer(Int32(clamping: Int((mousePositionRequested?().x ?? 0).rounded())))
-        case "getmouseposy": return .integer(Int32(clamping: Int((mousePositionRequested?().y ?? 0).rounded())))
         case "atan": return .float(atan(arguments[0].doubleValue))
         // The rest of MAKI's math library. Every result is guarded against a domain error: a script
         // that asks for `sqrt(-1)` gets 0 rather than a NaN that would then travel into a coordinate
@@ -297,11 +247,11 @@ extension WinampModernScriptRuntime {
             default: result = abs(x)
             }
             return .double(result.isFinite ? result : 0)
-        case "geteq": return .integer((equalizerEnabledRequested?() ?? false) ? 1 : 0)
+        case "geteq": return .integer((hooks.equalizerEnabledRequested?() ?? false) ? 1 : 0)
         case "geteqband":
-            return .integer(Int32(clamping: equalizerBandRequested?(Int(arguments[0].integerValue)) ?? 0))
+            return .integer(Int32(clamping: hooks.equalizerBandRequested?(Int(arguments[0].integerValue)) ?? 0))
         case "seteqband":
-            equalizerBandSetterRequested?(Int(arguments[0].integerValue), Int(arguments[1].integerValue))
+            hooks.equalizerBandSetterRequested?(Int(arguments[0].integerValue), Int(arguments[1].integerValue))
             // The change is what a skin listens for, exactly as `setVolume` announces itself. The
             // funnel dispatches only on a real change, so a handler that writes the band it was just
             // told about stops there rather than recursing.
@@ -310,12 +260,12 @@ extension WinampModernScriptRuntime {
         // The preamp is the band before band 0, on the same −127…127 scale. Rika's `eq.xml` reads it
         // while wiring its own equalizer window, and the miss aborted that whole script.
         case "geteqpreamp":
-            return .integer(Int32(clamping: equalizerPreampRequested?() ?? 0))
+            return .integer(Int32(clamping: hooks.equalizerPreampRequested?() ?? 0))
         case "seteqpreamp":
-            equalizerPreampSetterRequested?(Int(arguments[0].integerValue))
+            hooks.equalizerPreampSetterRequested?(Int(arguments[0].integerValue))
             refreshEqualizerState()
             return .null
-        case "seteq": equalizerEnabledSetterRequested?(arguments[0].truthy); return .null
+        case "seteq": hooks.equalizerEnabledSetterRequested?(arguments[0].truthy); return .null
         case "getruntimeversion": return .integer(5)
         case "getskinname": return .string(preferenceNamespace)
         // The player's own settings directory. Winamp answers its install/profile folder and skins
@@ -343,20 +293,15 @@ extension WinampModernScriptRuntime {
         // `@WINAMPPATH@` a skin writes in its own markup. Probes for Winamp's `/Lang` packs still
         // find nothing and still take their "not installed" branch.
         case "getapplicationpath": return .string(loadedSkin.vfs.winampRoot)
-        case "getcolortheme": return .string(activeThemeRequested?() ?? "Default")
+        case "getcolortheme": return .string(hooks.activeThemeRequested?() ?? "Default")
         case "setcolortheme":
-            _ = themeSwitchRequested?(arguments[0].stringValue)
+            _ = hooks.themeSwitchRequested?(arguments[0].stringValue)
             return .null
-        case "getnumcolorthemes": return .integer(Int32(clamping: themeNamesRequested?().count ?? 0))
+        case "getnumcolorthemes": return .integer(Int32(clamping: hooks.themeNamesRequested?().count ?? 0))
         case "enumcolorthemes":
-            let themes = themeNamesRequested?() ?? []
+            let themes = hooks.themeNamesRequested?() ?? []
             let index = Int(arguments[0].integerValue)
             return .string(themes.indices.contains(index) ? themes[index] : "")
-        // Milliseconds since local midnight: cPro2 shows it as its stopped clock through
-        // `integerToLongTime`, and the epoch count read as 415 hours.
-        case "gettimeofday":
-            let now = Date()
-            return .integer(Int32(now.timeIntervalSince(Calendar.current.startOfDay(for: now)) * 1000))
         case "getplayitemdisplaytitle": return .string(host.trackDisplayTitle)
         // Winamp's play item string is the entry's filename or URL, not its title: 61 corpus call
         // sites hand it straight to `getExtension`, and ONYX V2's File Type readout printed the
@@ -382,7 +327,7 @@ extension WinampModernScriptRuntime {
         // The argument names an item, but every call site in the corpus passes the *current* one, and
         // the host only knows what it is decoding now — so the answer is about the playing track.
         case "getdecodername": return .string(host.decoderName)
-        case "isminimized": return .boolean(applicationMinimizedRequested?() ?? false)
+        case "isminimized": return .boolean(hooks.applicationMinimizedRequested?() ?? false)
         case "isvideo", "isvideofullscreen", "iskeydown":
             return .boolean(false)
         // A *component's* window, addressed by GUID. Winamp answers for the plugin windows it has
@@ -427,10 +372,10 @@ extension WinampModernScriptRuntime {
         // which resolves it through `WinampModernWebNavigationPolicy` (HTTP/HTTPS with a real host,
         // nothing else) and asks the user before the external one leaves the app (B40).
         case "navigateurl":
-            globalNavigationRequested?(.defaultBrowser, arguments[0].stringValue)
+            hooks.globalNavigationRequested?(.defaultBrowser, arguments[0].stringValue)
             return .null
         case "navigateurlbrowser":
-            globalNavigationRequested?(.internalBrowser, arguments[0].stringValue)
+            hooks.globalNavigationRequested?(.internalBrowser, arguments[0].stringValue)
             return .null
         // The skin's own copy commands — Defix's playlist "Copy … to clipboard" items, the
         // ClassicPro engine's file-info and album-art menus. The string is whatever the script
@@ -502,7 +447,6 @@ extension WinampModernScriptRuntime {
             loadedSkin.configuration.setInteger(arguments[1].integerValue,
                                                 section: "@public", key: arguments[0].stringValue)
             return .null
-        case "getdate": return .integer(Int32(truncatingIfNeeded: Int64(Date().timeIntervalSince1970)))
         // Winamp's `random(max)` answers 0…max-1. A non-positive bound has no range to draw from and
         // answers 0 rather than trapping — this is called from animation timers, where a crash would
         // take the skin down. Without it the stock skin's About page aborted at its first statement
@@ -510,70 +454,12 @@ extension WinampModernScriptRuntime {
         case "random":
             let bound = arguments[0].integerValue
             return .integer(bound > 0 ? Int32.random(in: 0..<bound) : 0)
-        // The clock fields beside `getDateYear`, from the same `getDate()` stamp (0 = now). Skin
-        // clocks read them in their timer, and the miss aborted the timer and froze the clock.
-        // The day fields are C's `tm` fields: a 0-based month and a 0-based weekday (Sunday 0).
-        case "getdatehour", "getdatemin", "getdatesec", "getdateday", "getdatemonth", "getdatedow":
-            let date = Self.makiDate(arguments[0])
-            switch method {
-            case "getdatehour": return .integer(Int32(Calendar.current.component(.hour, from: date)))
-            case "getdatemin": return .integer(Int32(Calendar.current.component(.minute, from: date)))
-            case "getdatesec": return .integer(Int32(Calendar.current.component(.second, from: date)))
-            case "getdateday": return .integer(Int32(Calendar.current.component(.day, from: date)))
-            case "getdatemonth": return .integer(Int32(Calendar.current.component(.month, from: date) - 1))
-            default: return .integer(Int32(Calendar.current.component(.weekday, from: date) - 1))
-            }
-        case "getdatedst":
-            return .integer(TimeZone.current.isDaylightSavingTime(for: Self.makiDate(arguments[0])) ? 1 : 0)
-        // The locale's short and long date, as Winamp's `formatDate`/`formatLongDate` print them.
-        case "formatdate", "formatlongdate":
-            let formatter = DateFormatter()
-            formatter.dateStyle = method == "formatdate" ? .short : .long
-            formatter.timeStyle = .none
-            return .string(formatter.string(from: Self.makiDate(arguments[0])))
-        // The time of day, `h:mm:ss`, the shape `integerToLongTime` prints.
-        case "datetolongtime":
-            let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: Self.makiDate(arguments[0]))
-            return .string(String(format: "%d:%02d:%02d", parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0))
         case "sqr":
             let x = arguments[0].doubleValue
             return .double((x * x).isFinite ? x * x : 0)
         case "frac":
             let x = arguments[0].doubleValue
             return .double(x.isFinite ? x - x.rounded(.towardZero) : 0)
-        // The monitor holding the object, answered the way `getMonitorWidth` is for the player.
-        case "getmonitorwidthfromguiobject":
-            return .integer(Self.screenDimension(monitorSizeRequested?()?.width ?? NSScreen.main?.frame.width))
-        case "getmonitorheightfromguiobject":
-            return .integer(Self.screenDimension(monitorSizeRequested?()?.height ?? NSScreen.main?.frame.height))
-        case "getmonitorleftfromguiobject", "getmonitortopfromguiobject": return .integer(0)
-        // A Winamp component by GUID. Winamp's `Wac` lets a script send the component private
-        // commands; none of NullPlayer's components takes one, so the object exists and
-        // `sendCommand` answers 0, "not handled" (Zygote's `sysfunc.m` fetches the main and playlist
-        // components at load and the miss aborted it).
-        case "getwac": return dynamicValue(role: .wac(guid: arguments[0].stringValue))
-        // The skin's own `<browser>`, the one `navigateUrlBrowser` lands in.
-        case "getmainbrowser":
-            return objectValue(loadedSkin.runtime.graph.allObjectsUnordered.first(where: WasabiSceneRenderer.isBrowserElement))
-        case "popmainbrowser":
-            guard let browser = loadedSkin.runtime.graph.allObjectsUnordered.first(where: WasabiSceneRenderer.isBrowserElement),
-                  let container = ancestor(of: browser, type: "container") else { return .null }
-            return try setVisible(container, true)
-        // `showWindow(guid or group id, preferred container, transient)`: a component GUID opens that
-        // component's window (Big Bento's "show playing track" opens the playlist with `guid:pl`); a
-        // group id shows the container that holds it. Answers the object it showed.
-        case "showwindow":
-            let name = arguments[0].stringValue
-            let graph = loadedSkin.runtime.graph
-            if let kind = WinampModernComponentRegistry.kind(for: name) {
-                componentShowRequested?(kind)
-                return objectValue(graph.allObjectsUnordered.first { WasabiSceneRenderer.componentKind(of: $0) == kind })
-            }
-            guard let object = graph.allObjectsUnordered.first(where: { $0.xmlID?.caseInsensitiveCompare(name) == .orderedSame }),
-                  let container = object.typeName.caseInsensitiveCompare("container") == .orderedSame
-                    ? object : ancestor(of: object, type: "container") else { return .null }
-            _ = try setVisible(container, true)
-            return objectValue(object)
         case "enqueuefile":
             if let url = skinSuppliedMediaURL(arguments[0].stringValue, method: method) {
                 componentHost?.playlistAppend(mediaAt: url, play: false)
@@ -588,8 +474,6 @@ extension WinampModernScriptRuntime {
             }
             if case .dynamic(let id) = reference.kind { return .boolean(dynamicObjects[id] != nil) }
             return .boolean(true)
-        case "getdatedoy":
-            return .integer(Int32(Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0))
         case "playfile":
             if let url = skinSuppliedMediaURL(arguments[0].stringValue, method: method) {
                 componentHost?.playlistAppend(mediaAt: url, play: true)
@@ -613,15 +497,13 @@ extension WinampModernScriptRuntime {
         case "setcurrenttrackrating":
             host.currentTrackRating = Int(arguments[0].integerValue)
             return .null
-        case "getdateyear":
-            // Years since 1900, as C's `tm_year`. Pinned by the engine's own use of it: `cproabout.m`
-            // computes an age as `1899 + getDateYear(...) - birthYear` (+1 once the birthday has
-            // passed) and leap-year-tests it with `% 4`, both of which are only correct on that scale.
-            let date = arguments[0].integerValue > 0
-                ? Date(timeIntervalSince1970: TimeInterval(arguments[0].integerValue)) : Date()
-            return .integer(Int32(Calendar.current.component(.year, from: date) - 1900))
         default:
             if let value = classicProFileMethod(method, arguments: arguments) { return value }
+            if let value = systemClockValue(method, arguments: arguments)
+                ?? systemScreenValue(method, arguments: arguments) {
+                return value
+            }
+            if let value = try systemWindowValue(method, arguments: arguments) { return value }
             throw unsupported(method, program: program)
         }
     }
@@ -1072,11 +954,11 @@ extension WinampModernScriptRuntime {
             }
             return .null
         case "showtrack":
-            playlistRevealRowRequested?(Int(arguments[0].integerValue))
+            hooks.playlistRevealRowRequested?(Int(arguments[0].integerValue))
             return .null
         case "showcurrentlyplayingtrack":
             guard snapshot.currentIndex >= 0 else { return .null }
-            playlistRevealRowRequested?(snapshot.currentIndex)
+            hooks.playlistRevealRowRequested?(snapshot.currentIndex)
             return .null
         default:
             // Unreachable while `playlistEditorSignatures` and this switch stay in step; recorded
@@ -1087,14 +969,3 @@ extension WinampModernScriptRuntime {
     }
 }
 
-extension WinampModernScriptRuntime {
-    /// A screen's work area in Winamp's space: top-left origin on the primary display, the menu bar
-    /// and the Dock taken out. What MAKI's `getViewport*` answer.
-    static func workArea(of screen: NSScreen?) -> CGRect {
-        guard let screen else { return .zero }
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-        let visible = screen.visibleFrame
-        return CGRect(x: visible.minX, y: primaryHeight - visible.maxY,
-                      width: visible.width, height: visible.height)
-    }
-}

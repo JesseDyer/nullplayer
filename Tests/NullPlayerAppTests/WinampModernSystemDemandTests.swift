@@ -55,10 +55,10 @@ final class WinampModernSystemDemandTests: XCTestCase {
         let host = TransportHost()
         let (runtime, program) = try makeRuntime(host: host)
         var requests: [String] = []
-        runtime.actionRequested = { action, _ in requests.append(action) }
-        runtime.applicationRaiseRequested = { requests.append($0 ? "restore" : "activate") }
-        runtime.windowMenuRequested = { requests.append("windowmenu") }
-        runtime.equalizerEnabledSetterRequested = { requests.append("eq \($0)") }
+        runtime.hooks.actionRequested = { action, _ in requests.append(action) }
+        runtime.hooks.applicationRaiseRequested = { requests.append($0 ? "restore" : "activate") }
+        runtime.hooks.windowMenuRequested = { requests.append("windowmenu") }
+        runtime.hooks.equalizerEnabledSetterRequested = { requests.append("eq \($0)") }
         for method in ["eject", "minimizeApplication", "shutdown", "restoreApplication",
                        "activateApplication", "windowMenu"] {
             _ = try system(runtime, program, method)
@@ -73,7 +73,7 @@ final class WinampModernSystemDemandTests: XCTestCase {
     func testIsMinimizedAsksTheHost() throws {
         let (runtime, program) = try makeRuntime()
         XCTAssertEqual(try system(runtime, program, "isMinimized").integerValue, 0)
-        runtime.applicationMinimizedRequested = { true }
+        runtime.hooks.applicationMinimizedRequested = { true }
         XCTAssertEqual(try system(runtime, program, "isMinimized").integerValue, 1)
     }
 
@@ -118,7 +118,7 @@ final class WinampModernSystemDemandTests: XCTestCase {
         let (runtime, program) = try makeRuntime()
         let layout = try XCTUnwrap(runtime.loadedSkin.runtime.graph.roots.first?.children.first)
         let reference = MakiObjectReference(.gui(layout.stableID))
-        runtime.resolvedGeometryRequested = { _ in
+        runtime.hooks.resolvedGeometryRequested = { _ in
             (frame: CGRect(x: 15, y: 15, width: 20, height: 10), parent: CGRect(x: 5, y: 5, width: 100, height: 100))
         }
         func over(_ x: Int32, _ y: Int32) throws -> Bool {
@@ -129,7 +129,7 @@ final class WinampModernSystemDemandTests: XCTestCase {
         XCTAssertFalse(try over(31, 10))
 
         var moved: CGPoint?
-        runtime.containerMoveRequested = { _, point, _ in moved = point }
+        runtime.hooks.containerMoveRequested = { _, point, _ in moved = point }
         _ = try runtime.invoke(method: "center", on: reference, arguments: [], program: program)
         let screen = NSScreen.main?.frame.size ?? .zero
         XCTAssertEqual(moved, CGPoint(x: Int(Int32(screen.width) - 20) / 2, y: Int(Int32(screen.height) - 10) / 2))

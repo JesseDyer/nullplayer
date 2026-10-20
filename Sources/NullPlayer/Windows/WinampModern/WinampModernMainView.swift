@@ -66,12 +66,6 @@ final class WinampModernMainView: NSView {
     }
 
     private var pressedObject: WasabiObject?
-    /// Set while a click is released on an object whose script also handles its double-click. The
-    /// main menu's tracking loop would swallow the second click, so the menu waits out the
-    /// double-click interval and a second press cancels it: cPro2 minimal's system button opens the
-    /// menu on one click (`onLeftClick` → a hidden SYSMENU button's `leftClick()`) and calls
-    /// `Application.shutdown()` on two (B187).
-    private var holdsMenuForDoubleClick = false
     private var pendingMainMenu: DispatchWorkItem?
     private var rightPressedObject: WasabiObject?
     private var pressedEQHolder: WasabiObject?
@@ -641,67 +635,67 @@ final class WinampModernMainView: NSView {
             self?.scheduleGraphSettle([.animationClock, .shadowOutline])
         }
         // The light path a warped layer takes 30 times a second: repaint, nothing else.
-        scripts.repaintRequested = { [weak self] in self?.needsDisplay = true }
+        scripts.hooks.repaintRequested = { [weak self] in self?.needsDisplay = true }
         // Lighter still when the runtime can name what moved — only that rect is repainted.
         // Scoped like the auxiliary sink: an object in another container has no geometry in this
         // scene, and `setNeedsDisplay(for:)` would answer that with a whole-window repaint.
-        scripts.objectRepaintRequested = { [weak self] object in
+        scripts.hooks.objectRepaintRequested = { [weak self] object in
             guard let self, self.owns(object) else { return }
             self.setNeedsDisplay(for: object)
         }
-        scripts.actionRequested = { [weak self] action, parameter in
+        scripts.hooks.actionRequested = { [weak self] action, parameter in
             self?.performAction(action: action, parameter: parameter)
         }
-        scripts.focusRequested = { [weak self] object in self?.focusEdit(object) }
-        scripts.themeNamesRequested = { [weak renderer] in renderer?.themes.themeNames ?? [] }
-        scripts.activeThemeRequested = { [weak renderer] in renderer?.themes.activeTheme ?? "Default" }
-        scripts.mousePositionRequested = { [weak self] in
+        scripts.hooks.focusRequested = { [weak self] object in self?.focusEdit(object) }
+        scripts.hooks.themeNamesRequested = { [weak renderer] in renderer?.themes.themeNames ?? [] }
+        scripts.hooks.activeThemeRequested = { [weak renderer] in renderer?.themes.activeTheme ?? "Default" }
+        scripts.hooks.mousePositionRequested = { [weak self] in
             self?.currentMousePositionInSkinPixels() ?? .zero
         }
-        scripts.equalizerEnabledRequested = { [weak self] in
+        scripts.hooks.equalizerEnabledRequested = { [weak self] in
             self?.componentHost?.equalizerSnapshot().enabled ?? false
         }
         // MAKI's EQ scale is −127…127; the engine's is ±12 dB.
-        scripts.equalizerBandRequested = { [weak self] band in
+        scripts.hooks.equalizerBandRequested = { [weak self] band in
             guard let gains = self?.componentHost?.equalizerSnapshot().bandGainsDB,
                   gains.indices.contains(band) else { return 0 }
             return Int((gains[band] / 12 * 127).rounded())
         }
-        scripts.equalizerBandSetterRequested = { [weak self] band, value in
+        scripts.hooks.equalizerBandSetterRequested = { [weak self] band, value in
             let clamped = max(-127, min(127, value))
             self?.componentHost?.equalizerSetBandGainDB(band, gainDB: Float(clamped) / 127 * 12)
             self?.needsDisplay = true
         }
-        scripts.equalizerPreampRequested = { [weak self] in
+        scripts.hooks.equalizerPreampRequested = { [weak self] in
             guard let preamp = self?.componentHost?.equalizerSnapshot().preampDB else { return 0 }
             return Int((preamp / 12 * 127).rounded())
         }
-        scripts.equalizerPreampSetterRequested = { [weak self] value in
+        scripts.hooks.equalizerPreampSetterRequested = { [weak self] value in
             let clamped = max(-127, min(127, value))
             self?.componentHost?.equalizerSetPreampDB(Float(clamped) / 127 * 12)
             self?.needsDisplay = true
         }
-        scripts.equalizerEnabledSetterRequested = { [weak self] enabled in
+        scripts.hooks.equalizerEnabledSetterRequested = { [weak self] enabled in
             self?.componentHost?.equalizerSetEnabled(enabled)
             self?.needsDisplay = true
         }
         // The stock notifier's click raises a minimized player (`restoreApplication`, then
         // `activateApplication`).
-        scripts.applicationRaiseRequested = { restore in
+        scripts.hooks.applicationRaiseRequested = { restore in
             if restore {
                 NSApp.unhide(nil)
                 for window in NSApp.windows where window.isMiniaturized { window.deminiaturize(nil) }
             }
             NSApp.activate(ignoringOtherApps: true)
         }
-        scripts.applicationMinimizedRequested = {
+        scripts.hooks.applicationMinimizedRequested = {
             NSApp.isHidden || NSApp.windows.contains { $0.isMiniaturized }
         }
-        scripts.componentShowRequested = { [weak self] kind in
+        scripts.hooks.componentShowRequested = { [weak self] kind in
             guard let self, surfaceVisibilityQuery?(kind) != true else { return }
             routeComponentToggle(kind)
         }
-        scripts.windowMenuRequested = { [weak self] in
+        scripts.hooks.windowMenuRequested = { [weak self] in
             guard let menu = ContextMenuBuilder.winampModernMenuBarMenu(for: "wa5:windows") else { return }
             self?.popUpMenu(menu, from: nil, atMouse: true)
         }
@@ -711,7 +705,7 @@ final class WinampModernMainView: NSView {
         scripts.popupPresenter = { [weak self] items, point in
             self?.presentScriptPopup(items, at: point) ?? 0
         }
-        scripts.themeSwitchRequested = { [weak self] name in
+        scripts.hooks.themeSwitchRequested = { [weak self] name in
             guard let self else { return false }
             let changed = self.renderer.activateTheme(name)
             if changed { self.needsDisplay = true }
@@ -2096,11 +2090,8 @@ final class WinampModernMainView: NSView {
         if let pressedObject, !moved {
             dispatch(object: pressedObject, event: "onleftbuttonup", point: point)
             if releasedOver === pressedObject {
-                holdsMenuForDoubleClick = event.clickCount < 2
-                    && scripts.hasBinding(for: pressedObject, event: "onleftbuttondblclk")
                 _ = try? scripts.dispatch(object: pressedObject, event: "onleftclick")
                 performAction(for: pressedObject)
-                holdsMenuForDoubleClick = false
                 // The *second* click carries its own command in Wasabi, and for most objects that
                 // carry one it is the only command they have: a titlebar mousetrap's
                 // `dblclickaction="SWITCH;shade"`, a song title's `TRACKINFO`. It runs after the
@@ -3155,10 +3146,22 @@ final class WinampModernMainView: NSView {
         }
     }
 
+    /// Whether the click being released is the first on an object whose script also handles its
+    /// double-click. The main menu's tracking loop would swallow the second click, so the menu waits
+    /// out the double-click interval and a second press cancels it: cPro2 minimal's system button
+    /// opens the menu on one click (`onLeftClick` → a hidden SYSMENU button's `leftClick()`) and
+    /// calls `Application.shutdown()` on two (B187). Read from the event in flight, because the
+    /// script's `leftClick()` reaches the menu through `actionRequested`, which carries no click.
+    private var menuWaitsForDoubleClick: Bool {
+        guard let event = NSApp.currentEvent, event.type == .leftMouseUp, event.clickCount < 2,
+              let pressedObject else { return false }
+        return scripts.hasBinding(for: pressedObject, event: "onleftbuttondblclk")
+    }
+
     /// The host's context menu, dropped under the button that asked for it (the mouse if that button
     /// has no resolved frame — a script can raise this from anywhere).
     private func showMainMenu(from object: WasabiObject?) {
-        if holdsMenuForDoubleClick {
+        if menuWaitsForDoubleClick {
             let item = DispatchWorkItem { [weak self] in self?.showMainMenu(from: object) }
             pendingMainMenu = item
             DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: item)

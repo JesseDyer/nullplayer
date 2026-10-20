@@ -1059,7 +1059,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // than from markup. Defix's four round buttons reach their targets only this way, and the
         // request is idempotent on purpose: the skin also calls `show()` from timers, and acting on
         // one that asks for the state the window is already in would re-front it 30 times a second.
-        scripts.containerVisibilityRequested = { [weak self] id, visible in
+        scripts.hooks.containerVisibilityRequested = { [weak self] id, visible in
             guard let self else { return }
             if let hostedID = Self.matchingHostedWindowID(id),
                hostedWindowMaterializer?.nativeWindow(ifMaterialized: hostedID) != nil {
@@ -1124,7 +1124,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         }
         // The other half of `getCurAppWidth`/`getCurAppHeight`. The origin above needs a coordinate
         // flip and the size does not, which is why the two are separate queries rather than one frame.
-        scripts.playerWindowSizeRequested = { [weak self] in self?.skinView?.window?.frame.size }
+        scripts.hooks.playerWindowSizeRequested = { [weak self] in self?.skinView?.window?.frame.size }
     }
 
     /// The window backing a container id, resolved the way `containerActiveQuery` resolves it: the
@@ -2128,7 +2128,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // stayed off screen for the rest of the session. Restricted to instances so a skin calling
         // `show()` from `onScriptLoaded` on one of its *own* windows is still ignored at load, exactly
         // as it is today.
-        scripts.containerVisibilityRequested = { [weak self] id, visible in
+        scripts.hooks.containerVisibilityRequested = { [weak self] id, visible in
             guard let self,
                   let container = auxiliaryContainers.first(where: { $0.containerID == id }),
                   isDynamicWindow(container), container.window.isVisible != visible else { return }
@@ -2139,17 +2139,17 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         scripts.componentHost = componentBridge
         // `showTrack` reaches whichever container actually embeds the playlist: a skin that puts it
         // in its own `pledit` window is the common case, and the main view holds no holder for it.
-        scripts.playlistRevealRowRequested = { [weak self] row in
+        scripts.hooks.playlistRevealRowRequested = { [weak self] row in
             self?.viewsByContainer.values.forEach { $0.revealPlaylistRow(row) }
         }
-        scripts.layoutSwitchRequested = { [weak self] container, layoutID in
+        scripts.hooks.layoutSwitchRequested = { [weak self] container, layoutID in
             guard let view = self?.viewsByContainer[container] else { return false }
             let switched = view.activateLayout(id: layoutID)
             // A different layout is a different set of component holders.
             if switched { view.needsLayout = true }
             return switched
         }
-        scripts.layoutResizeRequested = { [weak self] container, size in
+        scripts.hooks.layoutResizeRequested = { [weak self] container, size in
             self?.viewsByContainer[container]?.applyCanvasResize(size)
         }
         scripts.hostedChromeLiftApplied = { [weak self] container, lift in
@@ -2160,16 +2160,16 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             let canvas = view.renderer.canvasSize
             view.applyCanvasResize(CGSize(width: canvas.width, height: canvas.height - lift))
         }
-        scripts.containerMoveRequested = { [weak self] container, point, pinned in
+        scripts.hooks.containerMoveRequested = { [weak self] container, point, pinned in
             self?.moveContainerWindow(container, to: point, pinned: pinned)
         }
-        scripts.browserHistoryRequested = { [weak self] objectID, forward in
+        scripts.hooks.browserHistoryRequested = { [weak self] objectID, forward in
             guard let self else { return }
             for view in viewsByContainer.values where view.stepBrowserHistory(objectID: objectID, forward: forward) {
                 return
             }
         }
-        scripts.browserNavigationRequested = { [weak self] objectID, address in
+        scripts.hooks.browserNavigationRequested = { [weak self] objectID, address in
             guard let self else { return }
             for view in viewsByContainer.values where view.navigateBrowser(objectID: objectID,
                                                                             address: address) {
@@ -2180,7 +2180,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // browser) and `System.navigateUrlBrowser` (the skin's own). The same route answers the
         // `browser_search` / `browser_navigate` actions a skin's reader is driven with, so the
         // internal and external halves of a skin's web feature set cannot resolve differently.
-        scripts.globalNavigationRequested = { [weak self] target, address in
+        scripts.hooks.globalNavigationRequested = { [weak self] target, address in
             self?.routeWebNavigation(target, address: address)
         }
         let webNavigation: (WinampModernWebNavigationTarget, String) -> Void = { [weak self] target, address in
@@ -2193,7 +2193,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // that would be a rival for the same pixels. Defix's seven configurator buttons store a
         // percentage and then call this on each window's layout with the same factor, so the request
         // arrives repeatedly with one value — setting the level it is already at is a no-op.
-        scripts.uiScaleRequested = { [weak self] factor in
+        scripts.hooks.uiScaleRequested = { [weak self] factor in
             self?.applyUIScaleRequest(factor)
         }
         // `System.getMonitorWidth/Height()` describe the display the skin is actually occupying,
@@ -2202,7 +2202,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // Retina backing scale or MAKI would mix physical pixels with its desktop coordinates.
         // The menu bar is not part of it: no window can draw there, so a skin that covers its monitor
         // (Nitrous Audio's monitor mode) lost its title bar under it, and its transport off the bottom.
-        scripts.monitorSizeRequested = { [weak self] in
+        scripts.hooks.monitorSizeRequested = { [weak self] in
             (self?.window?.screen ?? NSScreen.main).map {
                 CGSize(width: $0.frame.width, height: $0.visibleFrame.maxY - $0.frame.minY)
             }
@@ -2214,7 +2214,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         }
         // Only a scene knows where an object landed, and an object belongs to exactly one container —
         // so ask each container's renderer in turn and take the first that can place it.
-        scripts.resolvedGeometryRequested = { [weak self] object in
+        scripts.hooks.resolvedGeometryRequested = { [weak self] object in
             guard let self else { return nil }
             for view in viewsByContainer.values where !view.isTornDown {
                 if let geometry = view.renderer.resolvedGeometry(of: object) { return geometry }
@@ -2231,7 +2231,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         }
         // Same ownership question, answered for the cursor: the window that can place the object is
         // the window whose pixel space its rect is in, so that is the one asked where the mouse is.
-        scripts.mousePositionInObjectSpaceRequested = { [weak self] object in
+        scripts.hooks.mousePositionInObjectSpaceRequested = { [weak self] object in
             guard let self else { return nil }
             for view in viewsByContainer.values where !view.isTornDown {
                 guard view.renderer.resolvedGeometry(of: object) != nil else { continue }

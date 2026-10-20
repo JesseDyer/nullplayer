@@ -38,8 +38,14 @@ extension WinampModernScriptRuntime {
         return .null
     }
 
-    private func targetTimerID(for objectID: WasabiObjectID) -> UInt64 {
-        objectID.rawValue | 0x8000_0000_0000_0000
+    /// The timer service's ids are one space shared by every owner. A MAKI `Timer` uses its own
+    /// dynamic-object id; the timers the runtime runs on a GUI object's behalf set a high bit over
+    /// that object's id, one bit per job, so no two owners can collide.
+    enum TimerNamespace: UInt64 {
+        case frameEvents = 0x4000_0000_0000_0000
+        case targetAnimation = 0x8000_0000_0000_0000
+
+        func id(for objectID: WasabiObjectID) -> UInt64 { objectID.rawValue | rawValue }
     }
 
     private func targetAttr(_ object: WasabiObject, _ key: String, fallback: String) -> Double {
@@ -104,16 +110,16 @@ extension WinampModernScriptRuntime {
                   let height = Double(object.attributes["h"] ?? "") else { return }
             noteScriptSize(of: object, collapsed: width <= 0 && height <= 0)
             guard width > 0, height > 0 else { return }
-            layoutResizeRequested?(target.stableID, CGSize(width: width, height: height))
+            hooks.layoutResizeRequested?(target.stableID, CGSize(width: width, height: height))
         }
         switch borrowed {
         case .desktop(let pin):
             if Self.deliversResizeAsWasabiDoes {
-                containerMoveRequested?(target.stableID, pin, true)
+                hooks.containerMoveRequested?(target.stableID, pin, true)
                 applySize()
             } else {
                 applySize()
-                containerMoveRequested?(target.stableID, pin, true)
+                hooks.containerMoveRequested?(target.stableID, pin, true)
             }
         case .offScreen:
             applySize()
@@ -134,7 +140,7 @@ extension WinampModernScriptRuntime {
             let unmoved = reportedOrigin.map {
                 Int(x.rounded()) == Int($0.x.rounded()) && Int(y.rounded()) == Int($0.y.rounded())
             } ?? false
-            if !unmoved { containerMoveRequested?(target.stableID, CGPoint(x: x, y: y), false) }
+            if !unmoved { hooks.containerMoveRequested?(target.stableID, CGPoint(x: x, y: y), false) }
         }
     }
 
@@ -219,7 +225,7 @@ extension WinampModernScriptRuntime {
         _ = object.setAttribute("goingtotarget", value: "1")
         activeTargetAnimations[id] = state
 
-        let timerID = targetTimerID(for: id)
+        let timerID = TimerNamespace.targetAnimation.id(for: id)
         _ = try? timers.schedule(id: timerID, period: 1.0 / 60.0) { [weak self] in
             self?.tickTargetAnimation(objectID: id)
         }
@@ -269,7 +275,7 @@ extension WinampModernScriptRuntime {
             if state.hasTargetH { _ = object.setAttribute("h", value: String(Int(state.targetH))) }
             if state.hasTargetA { _ = object.setAttribute("alpha", value: String(Int(state.targetAlpha))) }
             activeTargetAnimations.removeValue(forKey: objectID)
-            timers.cancel(id: targetTimerID(for: objectID))
+            timers.cancel(id: TimerNamespace.targetAnimation.id(for: objectID))
             _ = object.setAttribute("goingtotarget", value: "0")
             applyContainerGeometry(object)
             notifyGraphDidMutate()
@@ -301,7 +307,7 @@ extension WinampModernScriptRuntime {
         guard hasBinding(for: object, event: "onframe") || hasBinding(for: object, event: "onstop") else { return }
         let id = object.stableID
         var last = animationFrame(of: object)
-        _ = try? timers.schedule(id: frameEventsTimerID(for: id), period: 1.0 / 60.0) { [weak self] in
+        _ = try? timers.schedule(id: TimerNamespace.frameEvents.id(for: id), period: 1.0 / 60.0) { [weak self] in
             guard let self, let object = loadedSkin.runtime.graph.object(withID: id) else { return }
             let state = WasabiAnimation.state(of: object, frameCount: animationFrameCount(of: object))
             if state.frame != last {
@@ -314,19 +320,15 @@ extension WinampModernScriptRuntime {
 
     /// Ends `startFrameEvents` with the layer's `onStop()`, if it was running.
     func stopFrameEvents(for object: WasabiObject) {
-        let timerID = frameEventsTimerID(for: object.stableID)
+        let timerID = TimerNamespace.frameEvents.id(for: object.stableID)
         guard timers.contains(id: timerID) else { return }
         timers.cancel(id: timerID)
         _ = try? dispatch(object: object, event: "onstop")
     }
 
-    private func frameEventsTimerID(for objectID: WasabiObjectID) -> UInt64 {
-        objectID.rawValue | 0x4000_0000_0000_0000
-    }
-
     func cancelTargetAnimation(objectID: WasabiObjectID) {
         activeTargetAnimations.removeValue(forKey: objectID)
-        timers.cancel(id: targetTimerID(for: objectID))
+        timers.cancel(id: TimerNamespace.targetAnimation.id(for: objectID))
     }
 
     func reverseTargetAnimation(object: WasabiObject) {

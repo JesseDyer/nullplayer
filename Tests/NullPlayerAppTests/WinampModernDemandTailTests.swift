@@ -134,11 +134,11 @@ final class WinampModernDemandTailTests: XCTestCase {
         let (runtime, program) = try makeRuntime(
             definitions: #"<container id="extra" default_visible="0"><layout id="normal" w="10" h="10"><group id="panel"/></layout></container>"#)
         var shown: [String] = []
-        runtime.containerVisibilityRequested = { id, visible in if visible { shown.append(id) } }
+        runtime.hooks.containerVisibilityRequested = { id, visible in if visible { shown.append(id) } }
         _ = try system(runtime, program, "showWindow", [.string("panel"), .string(""), .integer(0)])
         XCTAssertEqual(shown, ["extra"])
         var components: [WinampModernComponentKind] = []
-        runtime.componentShowRequested = { components.append($0) }
+        runtime.hooks.componentShowRequested = { components.append($0) }
         _ = try system(runtime, program, "showWindow", [.string("guid:pl"), .string(""), .integer(0)])
         XCTAssertEqual(components, [.playlist])
     }

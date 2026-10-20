@@ -604,9 +604,6 @@ final class WasabiSkinInitializer {
     /// Findings raised while creating objects. The registries carry their own; this one belongs to
     /// the initializer.
     private var containerDiagnostics: [WalDiagnostic] = []
-    /// Objects whose tag resolved to a definition the skin wrote, which therefore builds its own
-    /// body: `buildHostedWidgetBody` leaves their tab pages to the skin.
-    private var skinClaimedObjects: Set<WasabiObjectID> = []
 
     private enum ContainerRootIdentity {
         /// The first container to claim this id.
@@ -687,7 +684,9 @@ final class WasabiSkinInitializer {
                           definitionStack: [], createdCount: &createdCount,
                           documentOrder: documentOrder, enclosingOrder: nil)
         applyMetaCommands(pendingMetaCommands)
-        WasabiStandardFrames.hidePlaylistCommandBarsBesideSkinButtons(in: graph)
+        try addPlaylistCommandBars(beneath: graph.roots, graph: graph, types: types,
+                                   pendingScripts: &pendingScripts,
+                                   pendingMetaCommands: &pendingMetaCommands, createdCount: &createdCount)
         // Buckets are filled *before* scripts are bound, so a `<groupdef>` a bucket brings in has its
         // own `<script>` collected into the same `pendingScripts` batch as the rest of the skin and
         // comes up at load, not later. Anything else would leave a widget's script unbound.
@@ -758,6 +757,23 @@ final class WasabiSkinInitializer {
                                                      documentOrder: documentOrder)
         }
         return runtime
+    }
+
+    /// Build the host's playlist command bar into each slot that wants one; see
+    /// `WasabiStandardFrames.playlistCommandBarSlots(beneath:)`.
+    private func addPlaylistCommandBars(beneath roots: [WasabiObject], graph: WasabiObjectGraph,
+                                        types: WasabiTypeRegistry,
+                                        pendingScripts: inout [PendingScript],
+                                        pendingMetaCommands: inout [PendingMetaCommand],
+                                        createdCount: inout Int) throws {
+        for slot in WasabiStandardFrames.playlistCommandBarSlots(beneath: roots) {
+            try createObjects(from: WasabiStandardFrames.playlistCommandBar(location: slot.source),
+                              parent: slot, graph: graph, types: types,
+                              pendingScripts: &pendingScripts,
+                              pendingMetaCommands: &pendingMetaCommands,
+                              definitionStack: [], createdCount: &createdCount,
+                              documentOrder: [:], enclosingOrder: nil)
+        }
     }
 
     /// Instantiate each `<componentbucket wndtype="X">`'s members: every groupdef declaring
@@ -856,7 +872,6 @@ final class WasabiSkinInitializer {
                               definitionStack: [], createdCount: &createdCount,
                               documentOrder: documentOrder, enclosingOrder: nil)
             applyMetaCommands(pendingMetaCommands)
-            try bindScripts(pendingScripts)
             guard let root = graph.roots.first(where: {
                 !rootsBefore.contains($0.stableID) && $0.xmlID == attributes["id"]
             }) else {
@@ -864,6 +879,10 @@ final class WasabiSkinInitializer {
                                                "Dynamic container '\(declaredID)' created no container.",
                                                location: node.location))
             }
+            try addPlaylistCommandBars(beneath: [root], graph: graph, types: types,
+                                       pendingScripts: &pendingScripts,
+                                       pendingMetaCommands: &pendingMetaCommands, createdCount: &createdCount)
+            try bindScripts(pendingScripts)
             return root
         } catch {
             for root in graph.roots where !rootsBefore.contains(root.stableID) {
@@ -1555,7 +1574,9 @@ final class WasabiSkinInitializer {
             let object = graph.makeObject(typeName: typeName, attributes: attributes, source: node.location,
                                           attributeOrder: node.attributeOrder)
             if let parent { try parent.appendChild(object) } else { graph.appendRoot(object) }
-            if replacesHostedWidget { skinClaimedObjects.insert(object.stableID) }
+            if replacesHostedWidget, WasabiTabSheet.isTabSheet(object) {
+                _ = object.setAttribute(Self.skinTabSheetAttribute, value: "1")
+            }
             // A top-level container's *declared* visibility, snapshotted before anything can write
             // over it. `visible` is one attribute serving two questions — "is this an SUI-collapsed
             // stub the skin never means to show" (markup) and "is this window open right now"
@@ -1566,147 +1587,19 @@ final class WasabiSkinInitializer {
                 _ = object.setAttribute(WinampModernContainerTopology.declaredVisibleAttribute,
                                         value: object.attributes["visible"] ?? "1")
             }
-            // A `<Wasabi:TitleBox>` names its body by group id the way a standard frame does, and
-            // the object that would instantiate it lives in Winamp rather than in the skin. Without
-            // this the body never enters the graph at all: Bio-Nid's `dtabox.content` — the one
-            // control its only settings window exists to show — was simply absent.
-            // A `<Wasabi:TabSheet>` names its pages by group id the same way, and the object that
-            // shows one of them at a time lives in Winamp rather than in the skin. Without this not
-            // one page enters the graph: Shield_Amp's Configuration is a single tab sheet over three
-            // groups whose form widgets are all implemented, and it drew as an empty slab (B14).
-            func buildHostedWidgetBody(of widget: WasabiObject, location: WalSourceLocation) throws {
-                if WasabiTitleBox.isTitleBox(widget),
-                   let content = WasabiTitleBox.contentGroupNode(for: widget, location: location) {
-                    try createObjects(from: [content], parent: widget, graph: graph, types: types,
-                                      pendingScripts: &pendingScripts,
-                                      pendingMetaCommands: &pendingMetaCommands,
-                                      definitionStack: definitionStack,
-                                      createdCount: &createdCount,
-                                      documentOrder: documentOrder, enclosingOrder: nodeOrder)
-                }
-                if WasabiTabSheet.isTabSheet(widget), !skinClaimedObjects.contains(widget.stableID) {
-                    let pages = WasabiTabSheet.pageNodes(for: widget, location: location)
-                    if !pages.isEmpty {
-                        _ = widget.setAttribute(WasabiTabSheet.hostedAttribute, value: "1")
-                        // A skin's `wasabi.tabsheet` restyle is the **content** background: Winamp
-                        // draws its buttons in the strip above it. Laid over the whole sheet, Mac OS
-                        // X Panther's grid painted out the strip and its tabs.
-                        let restyle = widget.children
-                        if !restyle.isEmpty {
-                            let background = graph.makeObject(
-                                typeName: "group",
-                                attributes: ["x": "0", "y": String(Int(WasabiTabSheet.stripHeight)),
-                                             "w": "0", "h": String(-Int(WasabiTabSheet.stripHeight)),
-                                             "relatw": "1", "relath": "1"],
-                                source: location)
-                            for child in restyle { try background.appendChild(child) }
-                            try widget.insertChild(background, at: 0)
-                        }
-                        try createObjects(from: pages, parent: widget, graph: graph, types: types,
-                                          pendingScripts: &pendingScripts,
-                                          pendingMetaCommands: &pendingMetaCommands,
-                                          definitionStack: definitionStack,
-                                          createdCount: &createdCount,
-                                          documentOrder: documentOrder, enclosingOrder: nodeOrder)
-                        WasabiTabSheet.select(index: WasabiTabSheet.selectedIndex(of: widget), on: widget)
-                    }
-                }
-            }
             try createObjects(from: templateChildren, parent: object, graph: graph, types: types,
                               pendingScripts: &pendingScripts, pendingMetaCommands: &pendingMetaCommands,
                               definitionStack: nextDefinitionStack,
                               createdCount: &createdCount,
                               documentOrder: documentOrder, enclosingOrder: nodeOrder)
             let embeddedParent = embeddedXUITag.flatMap { findObject(xmlID: $0, beneath: object) } ?? object
-            // `embed_xui` does not only say where the instance's children go — it says which object
-            // *is* the XUI, so the group answers for the embedded control's mouse events. Defix's
-            // `bento.tabbutton` embeds its `mousetrap` button and the core script hooks `onLeftClick`
-            // on the **group** (`switch.ml`); with nothing carrying the click across, the tab lit up
-            // under the pointer and the SUI body never changed. Recorded on the group so the runtime
-            // can find it from the child at dispatch time; `id` is not unique, but the pair
-            // (this group, that id) is what the lookup above already resolved.
-            if embeddedParent !== object, let tag = embeddedXUITag {
-                _ = object.setAttribute("nullplayer.embedxui", value: tag.lowercased())
-                // Geometry and identity never cross: they belong to the wrapper, and forwarding them
-                // would move the control inside its own group. What crosses is what the embedded
-                // object itself acts on — its range, its commands, a text's or button's label
-                // styling, a widget's structure — and only onto attributes it does not state.
-                @discardableResult
-                func inherit(_ keys: [String]) -> Bool {
-                    var forwarded = false
-                    for key in keys where embeddedParent.attributes[key] == nil {
-                        if let value = attributes[key] {
-                            _ = embeddedParent.setAttribute(key, value: value)
-                            forwarded = true
-                        }
-                    }
-                    return forwarded
-                }
-                // The wrapper *is* the control, so the range it declares is the **embedded** object's
-                // range — a `<SC:VScrollBar low="0" high="100">` wrapping a bare `<slider>` means that
-                // slider counts 0…100, not Winamp's default 0…255.
-                //
-                // Measured, from a live trace of Big Bento Modern's settings scrollbar: its up button
-                // does `slider.setPosition(slider.getPosition() + 5)` on the **inner** slider, and the
-                // page computes `scrollToPercent(99 - position)`. On the 0…255 default the positions
-                // ran 113 → 118 → 123 → 128, so the percentage was *negative every time* and the page
-                // clamped back to the top on every press: the bar moved, and nothing scrolled (BB19).
-                inherit(["low", "high"])
-                // The **commands** the instance declares, for the same reason: the wrapper is a
-                // `<group>`, which has no click behaviour of its own, and the object the pointer
-                // actually lands on is the embedded one. Enkera's whole transport is `<button:glow …
-                // action="play">` over a bare `<button id="but" fitparent="1"/>`, and Defix's two
-                // button bars are `<Defix:Bottom.bar.button action="PE_Add">` over a `mousetrap`: in
-                // both the artwork drew, the press animated, and the command reached nothing, because
-                // it stayed on a group that cannot run it.
-                inherit(["action", "param", "dblclickaction", "dbclickaction", "rightclickaction", "tooltip"])
-                // A wrapped **text** draws with the typography its wrapper declares, because the
-                // wrapper draws no text of its own. Tristania's `<Deimos:TickerText font="ttf"
-                // fontsize="20" color="color.Display" valign="top">` wraps a bare `<text>`, and left
-                // with none of it the song ticker drew small, in the default font, across the
-                // display's EQ/PL/ML buttons. Styling only: `display`/`text` stay put, since Big
-                // Bento fills its wrapped lines from script and a bound value would show through the
-                // ones it leaves empty.
-                if (embeddedParent.typeName.lowercased().components(separatedBy: ":").last ?? "") == "text" {
-                    inherit(["font", "fontsize", "color", "align", "valign", "bold", "italic", "antialias",
-                             "shadowcolor", "shadowx", "shadowy", "forceuppercase", "forcelowercase",
-                             "timecolonwidth", "timeroffstyle", "timerhours", "wrap"])
-                }
-                // A wrapped **button** takes its label the same way, centred unless the skin says
-                // otherwise (Azenis²'s own `Wasabi:Button`, a grid under a bare `<button>`).
-                let embeddedType = embeddedParent.typeName.lowercased()
-                if embeddedType == "button" || embeddedType == "togglebutton",
-                   embeddedParent.attributes["text"] == nil, !(attributes["text"] ?? "").isEmpty {
-                    inherit(["text", "font", "fontsize", "color", "bold"])
-                    if embeddedParent.attributes["align"] == nil {
-                        _ = embeddedParent.setAttribute("align", value: attributes["align"] ?? "center")
-                    }
-                }
-                // A **vertical** slider starts at the top of its travel, which is `high` — not at the
-                // zero a missing value would otherwise read as. Only one that drives nothing itself
-                // (no `action`, so no host value to take) and states a range is seeded; a seek or
-                // volume slider is told its position by the host and must not be pre-empted.
-                //
-                // Measured: each of Big Bento Modern's settings pages opens by reading its
-                // scrollbar's position and calling `scrollToPercent(99 - position)`. Read as 0 that
-                // is *99% — the bottom*, and seven of the skin's nine pages launched scrolled to the
-                // end of themselves. Seeding the attribute rather than special-casing the getter
-                // keeps the thumb, the hit test and the script's arithmetic on one number.
-                if embeddedParent.typeName.caseInsensitiveCompare("slider") == .orderedSame,
-                   WasabiSceneRenderer.isVerticalOrientation(embeddedParent),
-                   embeddedParent.attributes["action"] == nil,
-                   embeddedParent.attributes["value"] == nil,
-                   let high = embeddedParent.attributes["high"] {
-                    _ = embeddedParent.setAttribute("value", value: high)
-                }
-                // The **structure** a host-built widget is told to show: 1010 Fullscreen's
-                // `<Deimos:ConfigPage content=… title=…>` wraps a `<Wasabi:TitleBox>`, and its
-                // `<Deimos:ConfigSheet children=…>` a `<Wasabi:TabSheet>`. The widget was created
-                // with the template, before these reached it, so its body is built here; without it
-                // every page of that skin's Preferences window was an empty box (B214).
-                if inherit(["content", "title", "children"]) {
-                    try buildHostedWidgetBody(of: embeddedParent, location: node.location)
-                }
+            if embeddedParent !== object, let tag = embeddedXUITag,
+               WasabiEmbeddedXUI.forward(attributes, from: object, tag: tag, onto: embeddedParent) {
+                try buildHostedWidgetBody(of: embeddedParent, location: node.location, graph: graph, types: types,
+                                          pendingScripts: &pendingScripts,
+                                          pendingMetaCommands: &pendingMetaCommands,
+                                          definitionStack: definitionStack, createdCount: &createdCount,
+                                          documentOrder: documentOrder, enclosingOrder: nodeOrder)
             }
             try createObjects(from: instanceChildren, parent: embeddedParent, graph: graph, types: types,
                               pendingScripts: &pendingScripts, pendingMetaCommands: &pendingMetaCommands,
@@ -1793,7 +1686,11 @@ final class WasabiSkinInitializer {
                                   createdCount: &createdCount,
                                   documentOrder: documentOrder, enclosingOrder: nodeOrder)
             }
-            try buildHostedWidgetBody(of: object, location: node.location)
+            try buildHostedWidgetBody(of: object, location: node.location, graph: graph, types: types,
+                                      pendingScripts: &pendingScripts,
+                                      pendingMetaCommands: &pendingMetaCommands,
+                                      definitionStack: definitionStack, createdCount: &createdCount,
+                                      documentOrder: documentOrder, enclosingOrder: nodeOrder)
             // Winamp's drop-down carries a label object inside itself, and a skin's script reaches
             // for it by name: Styx's and Shield_Amp's `customdropdownlist.maki` are the same script,
             // and both do `findObject("dropdownlist.text")` then persist the pick from that object's
@@ -1810,17 +1707,65 @@ final class WasabiSkinInitializer {
                                   createdCount: &createdCount,
                                   documentOrder: documentOrder, enclosingOrder: nodeOrder)
             }
-            if WasabiStandardFrames.hostsPlaylistCommandBar(node: node, object: object) {
-                try createObjects(from: WasabiStandardFrames.playlistCommandBar(location: node.location),
-                                  parent: object, graph: graph, types: types,
+        }
+    }
+
+    /// A `<Wasabi:TitleBox>` names its body by group id the way a standard frame does, and
+    /// the object that would instantiate it lives in Winamp rather than in the skin. Without
+    /// this the body never enters the graph at all: Bio-Nid's `dtabox.content` — the one
+    /// control its only settings window exists to show — was simply absent.
+    /// A `<Wasabi:TabSheet>` names its pages by group id the same way, and the object that
+    /// shows one of them at a time lives in Winamp rather than in the skin. Without this not
+    /// one page enters the graph: Shield_Amp's Configuration is a single tab sheet over three
+    /// groups whose form widgets are all implemented, and it drew as an empty slab (B14).
+    private func buildHostedWidgetBody(of widget: WasabiObject, location: WalSourceLocation,
+                                       graph: WasabiObjectGraph, types: WasabiTypeRegistry,
+                                       pendingScripts: inout [PendingScript],
+                                       pendingMetaCommands: inout [PendingMetaCommand],
+                                       definitionStack: [String], createdCount: inout Int,
+                                       documentOrder: [ObjectIdentifier: Int], enclosingOrder: Int?) throws {
+        if WasabiTitleBox.isTitleBox(widget),
+           let content = WasabiTitleBox.contentGroupNode(for: widget, location: location) {
+            try createObjects(from: [content], parent: widget, graph: graph, types: types,
+                              pendingScripts: &pendingScripts,
+                              pendingMetaCommands: &pendingMetaCommands,
+                              definitionStack: definitionStack,
+                              createdCount: &createdCount,
+                              documentOrder: documentOrder, enclosingOrder: enclosingOrder)
+        }
+        if WasabiTabSheet.isTabSheet(widget), widget.attributes[Self.skinTabSheetAttribute] == nil {
+            let pages = WasabiTabSheet.pageNodes(for: widget, location: location)
+            if !pages.isEmpty {
+                _ = widget.setAttribute(WasabiTabSheet.hostedAttribute, value: "1")
+                // A skin's `wasabi.tabsheet` restyle is the **content** background: Winamp
+                // draws its buttons in the strip above it. Laid over the whole sheet, Mac OS
+                // X Panther's grid painted out the strip and its tabs.
+                let restyle = widget.children
+                if !restyle.isEmpty {
+                    let background = graph.makeObject(
+                        typeName: "group",
+                        attributes: ["x": "0", "y": String(Int(WasabiTabSheet.stripHeight)),
+                                     "w": "0", "h": String(-Int(WasabiTabSheet.stripHeight)),
+                                     "relatw": "1", "relath": "1"],
+                        source: location)
+                    for child in restyle { try background.appendChild(child) }
+                    try widget.insertChild(background, at: 0)
+                }
+                try createObjects(from: pages, parent: widget, graph: graph, types: types,
                                   pendingScripts: &pendingScripts,
                                   pendingMetaCommands: &pendingMetaCommands,
-                                  definitionStack: nextDefinitionStack,
+                                  definitionStack: definitionStack,
                                   createdCount: &createdCount,
-                                  documentOrder: documentOrder, enclosingOrder: nodeOrder)
+                                  documentOrder: documentOrder, enclosingOrder: enclosingOrder)
+                WasabiTabSheet.select(index: WasabiTabSheet.selectedIndex(of: widget), on: widget)
             }
         }
     }
+
+    /// Set on a tab sheet whose tag resolved to a definition the skin wrote, which therefore builds
+    /// its own pages: `buildHostedWidgetBody` leaves them to the skin. Host-private, so no script
+    /// hears it as an XUI param.
+    static let skinTabSheetAttribute = "nullplayer.skintabsheet"
 
     private func applyMetaCommands(_ commands: [PendingMetaCommand]) {
         for command in commands {

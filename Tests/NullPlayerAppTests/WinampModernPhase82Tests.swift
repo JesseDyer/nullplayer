@@ -69,7 +69,7 @@ final class WinampModernPhase82Tests: XCTestCase {
                 ? CGPoint(x: 1309, y: 318) : CGPoint(x: 616, y: 663)
         }
         var moves: [(WasabiObjectID, CGPoint, Bool)] = []
-        runtime.containerMoveRequested = { moves.append(($0, $1, $2)) }
+        runtime.hooks.containerMoveRequested = { moves.append(($0, $1, $2)) }
 
         let content = try XCTUnwrap(object(runtime, type: "layout", id: "contentNormal"))
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
@@ -92,7 +92,7 @@ final class WinampModernPhase82Tests: XCTestCase {
                 ? CGPoint(x: 1309, y: 318) : CGPoint(x: 1159, y: 418)
         }
         var moved: CGPoint?
-        runtime.containerMoveRequested = { _, point, _ in moved = point }
+        runtime.hooks.containerMoveRequested = { _, point, _ in moved = point }
 
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
         let content = try XCTUnwrap(object(runtime, type: "layout", id: "contentNormal"))
@@ -109,7 +109,7 @@ final class WinampModernPhase82Tests: XCTestCase {
         let (runtime, program) = try makeRuntime()
         runtime.containerOriginQuery = { _ in CGPoint(x: 1309, y: 318) }
         var moved = false
-        runtime.containerMoveRequested = { _, _, _ in moved = true }
+        runtime.hooks.containerMoveRequested = { _, _, _ in moved = true }
 
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
         let read = try readOrigin(runtime, program, of: chrome)
@@ -124,7 +124,7 @@ final class WinampModernPhase82Tests: XCTestCase {
     func testWritingBackAFractionalPositionItReadIsStillNotAMove() throws {
         let (runtime, program) = try makeRuntime()
         var moved = false
-        runtime.containerMoveRequested = { _, _, _ in moved = true }
+        runtime.hooks.containerMoveRequested = { _, _, _ in moved = true }
 
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
         _ = chrome.setAttribute("x", value: "12.7")
@@ -143,7 +143,7 @@ final class WinampModernPhase82Tests: XCTestCase {
         let (runtime, program) = try makeRuntime()
         runtime.containerOriginQuery = { _ in CGPoint(x: 1309, y: 318) }
         var moves: [(WasabiObjectID, CGPoint, Bool)] = []
-        runtime.containerMoveRequested = { moves.append(($0, $1, $2)) }
+        runtime.hooks.containerMoveRequested = { moves.append(($0, $1, $2)) }
 
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
         try resize(runtime, program, chrome, to: CGRect(x: 40, y: 90, width: 330, height: 137))
@@ -162,7 +162,7 @@ final class WinampModernPhase82Tests: XCTestCase {
                 ? CGPoint(x: 1309, y: 318) : CGPoint(x: 616, y: 663)
         }
         var moves: [(WasabiObjectID, CGPoint, Bool)] = []
-        runtime.containerMoveRequested = { moves.append(($0, $1, $2)) }
+        runtime.hooks.containerMoveRequested = { moves.append(($0, $1, $2)) }
 
         let content = try XCTUnwrap(object(runtime, type: "layout", id: "contentNormal"))
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
@@ -185,7 +185,7 @@ final class WinampModernPhase82Tests: XCTestCase {
         let (runtime, program) = try makeRuntime()
         runtime.containerOriginQuery = { _ in CGPoint(x: 1309, y: 318) }
         var moved = false
-        runtime.containerMoveRequested = { _, _, _ in moved = true }
+        runtime.hooks.containerMoveRequested = { _, _, _ in moved = true }
 
         let text = try XCTUnwrap(object(runtime, type: "text", id: "title"))
         _ = try readOrigin(runtime, program, of: text)
@@ -208,9 +208,9 @@ final class WinampModernPhase82Tests: XCTestCase {
         }
         runtime.containerVisibilityQuery = { id in id.caseInsensitiveCompare("content") == .orderedSame }
         var moved = false
-        runtime.containerMoveRequested = { _, _, _ in moved = true }
+        runtime.hooks.containerMoveRequested = { _, _, _ in moved = true }
         var sizes: [CGSize] = []
-        runtime.layoutResizeRequested = { sizes.append($1) }
+        runtime.hooks.layoutResizeRequested = { sizes.append($1) }
 
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
         let content = try XCTUnwrap(object(runtime, type: "layout", id: "contentNormal"))
@@ -231,7 +231,7 @@ final class WinampModernPhase82Tests: XCTestCase {
         }
         runtime.containerVisibilityQuery = { id in id.caseInsensitiveCompare("content") == .orderedSame }
         var moves: [(WasabiObjectID, CGPoint, Bool)] = []
-        runtime.containerMoveRequested = { moves.append(($0, $1, $2)) }
+        runtime.hooks.containerMoveRequested = { moves.append(($0, $1, $2)) }
 
         let content = try XCTUnwrap(object(runtime, type: "layout", id: "contentNormal"))
         let chrome = try XCTUnwrap(object(runtime, type: "layout", id: "normal"))
@@ -254,10 +254,10 @@ final class WinampModernPhase82Tests: XCTestCase {
                 ? CGPoint(x: 1309, y: 318) : CGPoint(x: 1159, y: 418)
         }
         var requests: [String] = []
-        runtime.containerMoveRequested = { _, point, pinned in
+        runtime.hooks.containerMoveRequested = { _, point, pinned in
             requests.append("move \(Int(point.x)),\(Int(point.y)) pinned=\(pinned)")
         }
-        runtime.layoutResizeRequested = { _, size in
+        runtime.hooks.layoutResizeRequested = { _, size in
             requests.append("size \(Int(size.width))x\(Int(size.height))")
         }
 

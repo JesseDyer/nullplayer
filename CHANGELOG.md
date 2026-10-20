@@ -58,6 +58,9 @@
   playing file now show the track's cover, for local files and for Plex, Jellyfin, Emby and Subsonic
   streams, and change with the track. A cover that arrives a moment after the track starts still
   appears. Nothing on disk is read; the cover is the one NullPlayer already shows.
+- **Modern skins: playlist buttons where a skin's frame expects Winamp's** — Mac OS X Panther's
+  Playlist Editor now has its Add, Rem, Sel, Misc and List buttons in its status bar, as JRS's
+  already did; it had none, so its playlist could not be edited from the window.
 
 ## 0.33.0
 

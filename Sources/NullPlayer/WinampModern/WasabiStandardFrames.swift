@@ -275,11 +275,11 @@ extension WasabiStandardFrames {
 
     /// Whether this `<LayoutStatus>` is a playlist window's, the one slot Winamp fills with the
     /// playlist's command bar when the component is hosted `noshowcmdbar="1"`.
-    static func hostsPlaylistCommandBar(node: WalXMLNode, object: WasabiObject) -> Bool {
+    private static func hostsPlaylistCommandBar(_ object: WasabiObject) -> Bool {
         // `includeonly="{system}"` is the other kind of slot — Zygote's 14x9 title-bar box that
         // holds the system menu and nothing else; the command bar goes in the one that excludes it.
-        guard node.name.caseInsensitiveCompare("LayoutStatus") == .orderedSame,
-              node.attribute("includeonly") == nil else { return false }
+        guard object.typeName.caseInsensitiveCompare("LayoutStatus") == .orderedSame,
+              object.attributes["includeonly"] == nil else { return false }
         var ancestor = object.parent
         while let current = ancestor {
             if current.typeName.caseInsensitiveCompare("container") == .orderedSame {
@@ -289,6 +289,41 @@ extension WasabiStandardFrames {
             ancestor = current.parent
         }
         return false
+    }
+
+    /// The playlist `<LayoutStatus>` slots beneath `roots` that get the host's command bar. A
+    /// layout that already carries the skin's own `PE_Add` button gets none: 89 corpus skins draw
+    /// their playlist buttons themselves, and most also inherit a status frame, so the bar would be
+    /// a second Add/Rem/Sel/Misc row under their own. Asked once the graph is built, because the
+    /// skin's buttons can come after the frame in document order.
+    static func playlistCommandBarSlots(beneath roots: [WasabiObject]) -> [WasabiObject] {
+        func walk(_ object: WasabiObject, visit: (WasabiObject) -> Void) {
+            visit(object)
+            object.children.forEach { walk($0, visit: visit) }
+        }
+        func addsOwnEntries(_ layout: WasabiObject) -> Bool {
+            var found = false
+            walk(layout) { object in
+                if object.attributes["action"]?.caseInsensitiveCompare("PE_Add") == .orderedSame {
+                    found = true
+                }
+            }
+            return found
+        }
+        var slots: [WasabiObject] = []
+        for root in roots {
+            walk(root) { object in
+                guard hostsPlaylistCommandBar(object) else { return }
+                var ancestor = object.parent
+                while let current = ancestor {
+                    if current.typeName.caseInsensitiveCompare("layout") == .orderedSame,
+                       addsOwnEntries(current) { return }
+                    ancestor = current.parent
+                }
+                slots.append(object)
+            }
+        }
+        return slots
     }
 
     /// The playlist's command bar, drawn **into the frame's `<LayoutStatus>`**. JRS's playlist
@@ -301,38 +336,9 @@ extension WasabiStandardFrames {
                        ("Misc", "PE_Misc"), ("List", "PE_List")]
         return buttons.enumerated().map { index, button in
             WalXMLNode(name: "Wasabi:Button", attributes: [
-                "id": commandBarIDPrefix + button.0.lowercased(), "text": button.0,
-                "action": button.1, "x": String(index * 34), "y": "0",
+                "text": button.0, "action": button.1, "x": String(index * 34), "y": "0",
                 "w": "32", "h": "0", "relath": "1",
             ], location: location)
-        }
-    }
-
-    static let commandBarIDPrefix = "nullplayer.pe."
-
-    /// A layout that already carries the skin's own `PE_Add` button keeps only those: 89 corpus
-    /// skins draw their playlist buttons themselves, and most also inherit a status frame, so the
-    /// bar would be a second Add/Rem/Sel/Misc row under their own. Run once the graph is built,
-    /// because the skin's buttons can come after the frame in document order.
-    static func hidePlaylistCommandBarsBesideSkinButtons(in graph: WasabiObjectGraph) {
-        func walk(_ object: WasabiObject, visit: (WasabiObject) -> Void) {
-            visit(object)
-            object.children.forEach { walk($0, visit: visit) }
-        }
-        for root in graph.roots {
-            walk(root) { layout in
-                guard layout.typeName.caseInsensitiveCompare("layout") == .orderedSame else { return }
-                var bar: [WasabiObject] = []
-                var skinAdds = false
-                walk(layout) { object in
-                    if object.xmlID?.hasPrefix(commandBarIDPrefix) == true {
-                        bar.append(object)
-                    } else if object.attributes["action"]?.caseInsensitiveCompare("PE_Add") == .orderedSame {
-                        skinAdds = true
-                    }
-                }
-                if skinAdds { bar.forEach { _ = $0.setAttribute("visible", value: "0") } }
-            }
         }
     }
 }

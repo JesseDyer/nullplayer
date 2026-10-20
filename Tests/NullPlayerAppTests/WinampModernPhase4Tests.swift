@@ -36,7 +36,7 @@ final class WinampModernPhase4Tests: XCTestCase {
         let renderer = try WasabiSceneRenderer(loadedSkin: loaded, host: host)
         let scripts = try WinampModernScriptRuntime(loadedSkin: loaded, host: host)
         // Phase 13.3: the callback is addressed to a container; this harness hosts only the main one.
-        scripts.layoutSwitchRequested = { container, id in
+        scripts.hooks.layoutSwitchRequested = { container, id in
             guard container == renderer.container.stableID else { return false }
             return (try? renderer.activateLayout(id: id)) != nil
         }

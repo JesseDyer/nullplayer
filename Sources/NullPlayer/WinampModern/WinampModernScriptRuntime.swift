@@ -14,6 +14,13 @@ struct WinampModernPopupMenuItem {
 final class WinampModernScriptRuntime: MakiMethodDispatching {
     enum DynamicRole {
         case generic
+        /// A `new Text`/`new Layer`… before `init(parent)`: the element it becomes, what the script
+        /// wrote with `setXmlParam` (it is created with those — 1010 Fullscreen's analyzer sets a
+        /// layer's id, image and box this way, then `init`s it), and any other call, replayed in
+        /// order once it exists (1010's `setRegionFromMap`). The calls are bounded, since nothing
+        /// runs them until then.
+        case pendingGUI(type: String, attributes: [String: String],
+                        calls: [(method: String, arguments: [MakiValue])])
         case configItem(section: String)
         case configAttribute(section: String, key: String)
         /// A `Map` that has been given its bitmap. `new Map` and `new Timer` are indistinguishable at
@@ -113,77 +120,17 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     }
 
     var graphDidMutate: (() -> Void)?
-    /// A repaint, and nothing more — no re-layout, no surface reconciliation. Layer FX drives this
-    /// 30 times a second per warped layer, and `graphDidMutate` is far too heavy for that path (it
-    /// re-runs component-holder reconciliation, since a script may have built one). Falls back to
-    /// `graphDidMutate` when a window has not supplied it.
-    var repaintRequested: (() -> Void)?
-    /// The same, for a repaint that is confined to **one object's rect**. A warped meter changes a
-    /// few hundred pixels 30 times a second, and repainting the whole window for it costs three
-    /// times as much per frame as repainting what moved (measured on Defix at Retina scale: 19.3 ms
-    /// against 6.9 ms), which is the difference between a smooth reel and a rough one.
-    var objectRepaintRequested: ((WasabiObject) -> Void)?
+    /// What the window layer answers for the scripts; see `WinampModernScriptHooks`.
+    var hooks = WinampModernScriptHooks()
     /// Show a script-built popup menu and answer the command the user picked, or 0. The runtime
     /// resolves the submenu tree before calling, so the presenter only builds UI.
     ///
     /// A `nil` point is `popAtMouse`. A point is `popAtXY`, in **window-client space** — the space
     /// `clientToScreenX/Y` answer in, which is what every measured caller computes the point with.
     var popupPresenter: (([WinampModernPopupMenuItem], CGPoint?) -> Int32)?
-    /// A layout switch or resize, addressed to the *container* whose script asked for it. A `.wal`
-    /// skin has one script runtime and several windows; without the container id every playlist
-    /// script that resized itself at startup resized the player instead.
-    var layoutSwitchRequested: ((WasabiObjectID, String) -> Bool)?
-    var layoutResizeRequested: ((WasabiObjectID, CGSize) -> Void)?
     /// A hosted window's borrowed chrome dropped a strip after the window was built — Itemskin
     /// creates its chrome when the window is shown — so the window is this many points shorter.
     var hostedChromeLiftApplied: ((WasabiObjectID, CGFloat) -> Void)?
-    /// A script moving its own *window*, in Winamp's screen coordinates (top-left origin, the space
-    /// `getViewportWidth`/`getViewportHeight` answer in). A container's `x`/`y` are the window's
-    /// position on the desktop, not a box inside a scene, so unlike every other geometry write these
-    /// two reach nothing the renderer draws — Big Bento's notifier parks itself at the bottom-right
-    /// corner with `resize()` and a `setTargetX/Y` animation, and with this unwired the toast stayed
-    /// wherever the host had first placed it (BB27).
-    ///
-    /// The third argument says the point is **pinned** to another window rather than chosen: it is
-    /// the desktop origin of a window the script just read, so it must be honoured as-is. Placing a
-    /// window is clamped to the visible frame; mirroring one is not, or a pair that the host has
-    /// already let sit partly off-screen comes apart at the edge (B69).
-    var containerMoveRequested: ((WasabiObjectID, CGPoint, Bool) -> Void)?
-    /// `layout.setScale(f)` — the skin asking for the **whole UI** at a different size. Defix's
-    /// configurator offers seven of them (100–300%) and every one of its five window scripts calls
-    /// this on its own layout from the same stored `SCALING`, so it is one global request repeated,
-    /// not five per-window scales. NullPlayer answers it with its own **UI Size**: a `.wal` scene is
-    /// always laid out on the skin's pixel grid and the view scales at the drawing and input
-    /// boundaries (Phase 10), so a second, layout-local scale would be a rival to that one and the
-    /// two would fight over every window's size. `nil` in the harness, and while a skin is still
-    /// loading the host defers the request rather than resizing windows that do not exist yet.
-    var uiScaleRequested: ((CGFloat) -> Void)?
-    /// The whole display containing the skin's player window, in logical screen points. MAKI's
-    /// monitor methods are global (there is no GUI-object receiver from which to find a window), so
-    /// the window layer supplies the screen explicitly. AppKit points are intentional: converting
-    /// through `backingScaleFactor` would leak Retina pixels into script geometry, while every other
-    /// desktop coordinate the runtime exchanges with the window layer is expressed in points.
-    var monitorSizeRequested: (() -> CGSize?)?
-    var actionRequested: ((String, String?) -> Void)?
-    /// The object form of `navigateUrl`: only the addressed `<browser>` may navigate.
-    var browserNavigationRequested: ((WasabiObjectID, String) -> Void)?
-    /// `Browser.back()` (`false`) / `forward()` (`true`) on one `<browser>`.
-    var browserHistoryRequested: ((WasabiObjectID, Bool) -> Void)?
-    /// `System.showWindow("guid:pl", …)`: open a component's window, leaving an open one open.
-    var componentShowRequested: ((WinampModernComponentKind) -> Void)?
-    /// The **global** form, which names no object: `System.navigateUrl` (the user's browser) and
-    /// `System.navigateUrlBrowser` (the player's own). Both are routed rather than executed here —
-    /// the address is skin-authored, so the window layer resolves it against
-    /// `WinampModernWebNavigationPolicy` and the external route is confirmation-gated (B40).
-    var globalNavigationRequested: ((WinampModernWebNavigationTarget, String) -> Void)?
-    /// A script showing or hiding a **container** is asking for its *window*, not just for an
-    /// attribute on the graph. Defix's SUI is reachable only this way: its four round PL/EQ/ML/VD
-    /// buttons send the skin's own `opentab` action, and `skin.xml`'s `onAction` answers it with
-    /// `getContainer("SUI").show()` — there is no host action and no markup `TOGGLE` for the host to
-    /// see, so without this the attribute flipped and no window ever appeared. Fired on every call,
-    /// not only on a change, because the window can be closed while the attribute still says visible;
-    /// the host is the one that knows, and ignores a request that asks for the state it is already in.
-    var containerVisibilityRequested: ((String, Bool) -> Void)?
     /// A second live copy of a `dynamic="1"` container has just been grafted into the graph and needs
     /// a window of its own before the script that asked for it shows it (B110). See
     /// `dynamicContainer(named:for:)`.
@@ -212,53 +159,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// unchanged leaves the window where it is. `nil` (the headless harness, an id no window backs)
     /// falls back to the graph attribute.
     var containerOriginQuery: ((String) -> CGPoint?)?
-    var themeNamesRequested: (() -> [String])?
-    var activeThemeRequested: (() -> String)?
-    var themeSwitchRequested: ((String) -> Bool)?
-    /// Cursor position in the *skin's own pixel space* (the window's canvas), in skin pixels.
-    ///
-    /// **Not** the space a mouse event's x/y are in — those are relative to the receiver's parent
-    /// (see `WinampModernMainView.dispatch`). A rotary-knob script combines the two in one
-    /// expression precisely because they differ: mmd3's `getMousePosX() - x + knob.getLeft()` is the
-    /// parent's origin plus the knob's own offset, i.e. the knob in cursor space.
-    var mousePositionRequested: (() -> CGPoint)?
-    /// `setFocus()` on an object: the view gives the keyboard to the `<edit>` it resolves to.
-    var focusRequested: ((WasabiObject) -> Void)?
-    /// The same cursor position, but in the pixel space of the window that renders `object` — which is
-    /// a *different* window from the one `mousePositionRequested` answers for whenever the receiver
-    /// lives in an auxiliary container. `System.getMousePos*` has no receiver and cannot ask this;
-    /// `isMouseOverRect` does, and Defix's SUI tabs are in the SUI window while the mouse hook is
-    /// installed by the main view, so comparing against the main window's space put every tab's
-    /// hit somewhere else entirely. `nil` when no window renders the object (the headless harness).
-    var mousePositionInObjectSpaceRequested: ((WasabiObject) -> CGPoint?)?
     /// A container's alpha changed via `container.setAlpha(v)`. The host maps this to window alpha
     /// so notifier fade animations are visible.
     var containerAlphaChanged: ((String, CGFloat) -> Void)?
-    /// Whether the equalizer is on, for `System.getEQ()`.
-    var equalizerEnabledRequested: (() -> Bool)?
-    /// One EQ band, on MAKI's −127…127 scale (MMD3's bass/treble knobs read and write the bands).
-    var equalizerBandRequested: ((Int) -> Int)?
-    var equalizerBandSetterRequested: ((Int, Int) -> Void)?
-    /// The EQ preamp, on the same MAKI −127…127 scale as a band.
-    var equalizerPreampRequested: (() -> Int)?
-    var equalizerPreampSetterRequested: ((Int) -> Void)?
-    /// `System.setEq(onoff)` — the absolute form of the `EQ_TOGGLE` action.
-    var equalizerEnabledSetterRequested: ((Bool) -> Void)?
-    /// `System.restoreApplication()` (`true`: bring minimized windows back too) and
-    /// `activateApplication()` (`false`): put the player in front.
-    var applicationRaiseRequested: ((Bool) -> Void)?
-    /// `System.isMinimized()` — the notifier's "only when minimized" modes gate on it.
-    var applicationMinimizedRequested: (() -> Bool)?
-    /// `System.windowMenu()` — Winamp's window list, at the pointer.
-    var windowMenuRequested: (() -> Void)?
     /// The playlist the `PlEdit` singleton addresses. Weak: the window controller owns the bridge,
     /// and a skin reload tears the runtime down first. `nil` in the headless harness, where every
     /// read falls back to `WasabiTextMetrics.componentTextProvider` and every write is a no-op.
     weak var componentHost: WinampModernComponentHost?
-    /// `PlEdit.showTrack(n)` and `showCurrentlyPlayingTrack()` — scroll the drawn playlist so a row
-    /// is on screen. The scroll offset lives in the renderer, which the runtime does not own, so the
-    /// window supplies this the way it supplies the equalizer's setters.
-    var playlistRevealRowRequested: ((Int) -> Void)?
     /// Diagnostic tap on every handler that actually ran, with the failure that aborted it or `nil`.
     ///
     /// Nil in the app. The render harness installs one because "did this script's `onScriptLoaded`
@@ -266,10 +173,6 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// which is why `WINAMP_MODERN_RENDER_XUI`'s `onscriptloaded=false` was mistaken for a dead script
     /// in TASKS §15.6 — it says nothing about execution.
     var dispatchObserver: ((_ event: String, _ program: MakiProgram, _ failure: WalFailure?) -> Void)?
-    /// One object's resolved rect and the box it resolved against, in skin pixels — supplied by the
-    /// window that renders the object's container, since only a scene knows where anything landed.
-    /// `nil` before any window is wired, and for an object outside the active layout.
-    var resolvedGeometryRequested: ((WasabiObject) -> (frame: CGRect, parent: CGRect)?)?
     /// A script has finished an event that moved something, so resolved geometry may have changed and
     /// `onResize` is owed to whatever moved. Called once per outermost event, never mid-event.
     ///
@@ -713,6 +616,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// use for them and forwarding them to the text inside is the whole point of the tag.
     static func isConsumedBeforeXUIParams(_ name: String) -> Bool {
         WasabiGeometrySpec.geometryAttributes.contains(name.lowercased())
+            || name == WasabiSkinInitializer.skinTabSheetAttribute
     }
 
     /// What a plain `<group>` answers itself, so its scripts never hear it as an XUI param.
@@ -1236,9 +1140,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// its own write twice, and a poll costs eleven integer compares.
     func refreshEqualizerState() {
         guard !isTornDown else { return }
-        guard let bandValue = equalizerBandRequested else { return }
+        guard let bandValue = hooks.equalizerBandRequested else { return }
         let bands = (0..<WinampModernEQAction.bandCount).map { bandValue($0) }
-        let preamp = equalizerPreampRequested?() ?? 0
+        let preamp = hooks.equalizerPreampRequested?() ?? 0
         let previousBands = lastDispatchedEQBands
         let previousPreamp = lastDispatchedEQPreamp
         guard previousBands != bands || previousPreamp != preamp else { return }
@@ -1341,7 +1245,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // with the search itself demonstrably running (BB31).
         guard let target = Self.windowTarget(of: object), let id = target.xmlID, !id.isEmpty else { return }
         // A show of a layout a script sized to nothing is answered as a hide: see `noteScriptSize`.
-        containerVisibilityRequested?(id, visible && !isCollapsed(showing: object, in: target))
+        hooks.containerVisibilityRequested?(id, visible && !isCollapsed(showing: object, in: target))
     }
 
     /// Whether this object *is* a window — a `<container>` or one of its `<layout>`s. Both carry a
@@ -2274,8 +2178,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
 
     func requestRepaint(for object: WasabiObject? = nil) {
         guard !isEvaluatingLayerFX else { return }
-        if let object, let objectRepaintRequested { objectRepaintRequested(object) }
-        else if let repaintRequested { repaintRequested() }
+        if let object, let objectRepaintRequested = hooks.objectRepaintRequested { objectRepaintRequested(object) }
+        else if let repaintRequested = hooks.repaintRequested { repaintRequested() }
         else { graphDidMutate?() }
         notifyAuxiliaryViews(of: object)
     }
@@ -3312,8 +3216,11 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
             popupCommands[id] = []
             return MakiObjectReference(.popupMenu(id))
         }
-        dynamicObjects[id] = DynamicObjectState(
-            guiType: MakiClassGUID.scriptCreatableElements[Self.canonicalGUID(classGUID)])
+        var state = DynamicObjectState()
+        if let type = MakiClassGUID.scriptCreatableElements[Self.canonicalGUID(classGUID)] {
+            state.role = .pendingGUI(type: type, attributes: [:], calls: [])
+        }
+        dynamicObjects[id] = state
         return MakiObjectReference(.dynamic(id))
     }
 
@@ -3718,16 +3625,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// is the only caller, and nothing ran it.
     var playerWindowFrame: CGRect? {
         guard let origin = containerOriginQuery?(Self.playerContainerID),
-              let size = playerWindowSizeRequested?() else { return nil }
+              let size = hooks.playerWindowSizeRequested?() else { return nil }
         return CGRect(origin: origin, size: size)
     }
 
     /// The id Winamp gives the player's own container. The same literal the topology keys `isMainPlayer` on.
     private static let playerContainerID = "main"
 
-    /// The player window's size in logical points. Paired with `containerOriginQuery` rather than
-    /// folded into it, because the origin needs a coordinate flip and the size does not.
-    var playerWindowSizeRequested: (() -> CGSize?)?
 
     /// One edge of that frame as MAKI sees it: clamped, and 0 when there is no window to measure.
     static func appFrameDimension(_ value: CGFloat?) -> Int32 {
@@ -3876,24 +3780,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // bytecode from inside a deallocation is not something to attempt for a no-op.
         if !isDeinitializing { _ = try? dispatchSystem(event: "onscriptunloading") }
         graphDidMutate = nil
+        hooks = WinampModernScriptHooks()
         popupPresenter = nil
-        layoutSwitchRequested = nil
-        playerWindowSizeRequested = nil
-        layoutResizeRequested = nil
-        uiScaleRequested = nil
-        monitorSizeRequested = nil
-        actionRequested = nil
-        focusRequested = nil
-        browserNavigationRequested = nil
-        browserHistoryRequested = nil
-        componentShowRequested = nil
-        globalNavigationRequested = nil
-        themeNamesRequested = nil
-        activeThemeRequested = nil
-        themeSwitchRequested = nil
         dispatchObserver = nil
-        resolvedGeometryRequested = nil
-        mousePositionInObjectSpaceRequested = nil
         geometryDidSettle = nil
         activeTargetAnimations.removeAll()
         timers.teardown()

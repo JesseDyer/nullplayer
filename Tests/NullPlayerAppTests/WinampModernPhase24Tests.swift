@@ -426,7 +426,7 @@ final class WinampModernPhase24Tests: XCTestCase {
     func testOnlyAWindowsGeometryWriteReadsItsOriginFirst() throws {
         let (runtime, _) = try makeRuntimeWithObject()
         var resolves = 0
-        runtime.resolvedGeometryRequested = { _ in resolves += 1; return nil }
+        runtime.hooks.resolvedGeometryRequested = { _ in resolves += 1; return nil }
         let holder = try XCTUnwrap(runtime.loadedSkin.runtime.graph.objects(xmlID: "holder").first)
         // Declares no `x`/`y`, so its origin is only known by resolving the layout.
         let layout = try XCTUnwrap(runtime.loadedSkin.runtime.graph.objects(xmlID: "normal").first)
@@ -643,7 +643,7 @@ final class WinampModernPhase24Tests: XCTestCase {
         let graph = renderer.loadedSkin.runtime.graph
         let runtime = try WinampModernScriptRuntime(loadedSkin: renderer.loadedSkin, host: Host())
         addTeardownBlock { runtime.teardown() }
-        runtime.resolvedGeometryRequested = { [weak renderer] in renderer?.resolvedGeometry(of: $0) }
+        runtime.hooks.resolvedGeometryRequested = { [weak renderer] in renderer?.resolvedGeometry(of: $0) }
         let child = try XCTUnwrap(graph.objects(xmlID: "child").first)
         let holder = try XCTUnwrap(graph.objects(xmlID: "holder").first)
         func call(_ method: String, on target: WasabiObject, _ value: Int32) throws -> Int32 {

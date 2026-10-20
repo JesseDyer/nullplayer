@@ -31,7 +31,7 @@ extension WinampModernScriptRuntime {
             _ = layout.setAttribute("w", value: String(Int(target)))
         }
         let height = CGFloat(Int32(layouts.first?.attributes["h"] ?? "80") ?? 80)
-        layoutResizeRequested?(container.stableID, CGSize(width: width, height: height))
+        hooks.layoutResizeRequested?(container.stableID, CGSize(width: width, height: height))
         noteGeometryChange()
         notifyGraphDidMutate()
     }

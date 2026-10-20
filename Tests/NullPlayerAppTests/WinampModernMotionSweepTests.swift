@@ -69,7 +69,7 @@ final class WinampModernMotionSweepTests: XCTestCase {
         }
         defer { renderers.forEach { $0.renderer.teardown() } }
         let all = renderers.map(\.renderer)
-        runtime.resolvedGeometryRequested = { object in
+        runtime.hooks.resolvedGeometryRequested = { object in
             all.lazy.compactMap { $0.resolvedGeometry(of: object) }.first
         }
 

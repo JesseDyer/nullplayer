@@ -102,7 +102,8 @@ on press and release agreeing on the target. Only `action` flips a togglebutton 
 `cfgattrib` binding; the other two are plain commands.
 
 When the released object's script also handles `onLeftButtonDblClk`, the host main menu that click
-asks for waits out the double-click interval, and a second press cancels it (`holdsMenuForDoubleClick`).
+asks for waits out the double-click interval, and a second press cancels it (`menuWaitsForDoubleClick`,
+read from the event in flight because the request can come from the script by way of `actionRequested`).
 The menu's tracking loop would otherwise take the second press: cPro2 minimal opens the menu on one
 click and quits on two (B187). Script `popAtMouse` menus are not held; they return their pick.
 

@@ -651,11 +651,11 @@ final class WinampModernPhase13Tests: XCTestCase {
         ]
         let scripts = try WinampModernScriptRuntime(loadedSkin: loaded, host: host)
         addTeardownBlock { scripts.teardown() }
-        scripts.layoutSwitchRequested = { container, id in
+        scripts.hooks.layoutSwitchRequested = { container, id in
             guard let renderer = renderers[container] else { return false }
             return (try? renderer.activateLayout(id: id)) != nil
         }
-        scripts.layoutResizeRequested = { container, size in
+        scripts.hooks.layoutResizeRequested = { container, size in
             _ = renderers[container]?.resize(to: size)
         }
 

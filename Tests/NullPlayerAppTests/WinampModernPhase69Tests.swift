@@ -94,8 +94,8 @@ final class WinampModernPhase69Tests: XCTestCase {
         let (runtime, program) = try makeRuntime()
         var size: CGSize?
         var origin: CGPoint?
-        runtime.layoutResizeRequested = { _, requested in size = requested }
-        runtime.containerMoveRequested = { _, point, _ in origin = point }
+        runtime.hooks.layoutResizeRequested = { _, requested in size = requested }
+        runtime.hooks.containerMoveRequested = { _, point, _ in origin = point }
 
         let container = try XCTUnwrap(object(runtime, type: "container", id: "main"))
         _ = try runtime.invoke(method: "resize", on: MakiObjectReference(.gui(container.stableID)),
@@ -114,8 +114,8 @@ final class WinampModernPhase69Tests: XCTestCase {
         let (runtime, program) = try makeRuntime()
         var size: CGSize?
         var origin: CGPoint?
-        runtime.layoutResizeRequested = { _, requested in size = requested }
-        runtime.containerMoveRequested = { _, point, _ in origin = point }
+        runtime.hooks.layoutResizeRequested = { _, requested in size = requested }
+        runtime.hooks.containerMoveRequested = { _, point, _ in origin = point }
 
         let container = try XCTUnwrap(object(runtime, type: "container", id: "main"))
         let target = MakiObjectReference(.gui(container.stableID))
@@ -137,7 +137,7 @@ final class WinampModernPhase69Tests: XCTestCase {
     func testAnObjectInsideALayoutIsNotAWindow() throws {
         let (runtime, program) = try makeRuntime()
         var moved = false
-        runtime.containerMoveRequested = { _, _, _ in moved = true }
+        runtime.hooks.containerMoveRequested = { _, _, _ in moved = true }
         let text = try XCTUnwrap(object(runtime, type: "text", id: "title"))
         _ = try runtime.invoke(method: "resize", on: MakiObjectReference(.gui(text.stableID)),
                                arguments: [.integer(0), .integer(0), .integer(10), .integer(10)],
@@ -155,7 +155,7 @@ final class WinampModernPhase69Tests: XCTestCase {
         for (declared, expected) in [(128, 350), (350, 350), (540, 540)] {
             let runtime = try makeNotifierRuntime(layoutWidth: declared)
             var size: CGSize?
-            runtime.layoutResizeRequested = { _, requested in size = requested }
+            runtime.hooks.layoutResizeRequested = { _, requested in size = requested }
             runtime.setNotifierText(title: "Song", artist: "Artist", album: "Album")
             XCTAssertEqual(size?.width, CGFloat(expected),
                            "a notifier declaring \(declared) must end up \(expected) wide")

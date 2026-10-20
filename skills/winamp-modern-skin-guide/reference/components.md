@@ -234,10 +234,12 @@ Winamp draws a component's command bar into the standard frame's `<LayoutStatus>
 that `exclude="{system}"`s; an `includeonly="{system}"` slot holds only the system menu). For the
 playlist that is Add / Rem / Sel / Misc / List, and a skin that hosts it `noshowcmdbar="1"` draws
 none of its own: JRS's playlist could not be edited at all. `WasabiStandardFrames.playlistCommandBar`
-creates five labelled `<Wasabi:Button>`s sending the `PE_*` actions into a `LayoutStatus` whose
-container declares the playlist GUID, and `hidePlaylistCommandBarsBesideSkinButtons` hides them in
-any layout that already has a skin `PE_Add` — 89 corpus skins draw their own and most also inherit a
-status frame. ~220 skins gain the bar, NullPlayer's own playlist window among them where it borrows
+creates five labelled `<Wasabi:Button>`s sending the `PE_*` actions, and the initializer builds them,
+once the graph exists, into each `LayoutStatus` that `playlistCommandBarSlots(beneath:)` names: one
+whose container declares the playlist GUID, in a layout with no skin `PE_Add` of its own. 89 corpus
+skins draw their own buttons and most also inherit a status frame. The check runs before the bar
+exists, because the bar's own `Wasabi:Button` forwards its `PE_Add` onto the `<button>` it embeds:
+the old build-then-hide pass found that copy and hid Mac OS X Panther's only buttons (B222). ~220 skins gain the bar, NullPlayer's own playlist window among them where it borrows
 the skin's frame. Only the playlist: the video and library components fill their own slots
 differently and none of those is wired.
 
