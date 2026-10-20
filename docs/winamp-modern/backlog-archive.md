@@ -3,6 +3,24 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B219 — A renderer wired to its script runtime in one call — closed 2026-10-20
+
+| B219 | **Wire a renderer to the script runtime in one call.** The same six provider closures (`configStateProvider`, `pressBindingProvider`, `configValueProvider`, `settingStateProvider`, `layerFXProvider`, …) are pasted at `WinampModernMainWindowController` (player and auxiliary containers) and `WinampModernHostedWindowMaterializer`, and every new provider is pasted three times. Replace them with one `renderer.attach(scripts:)`, or a weakly held protocol the runtime conforms to, which deletes the closure properties. Done when one place connects a renderer to its runtime and `swift test` passes | code health; no corpus demand | S | 3 |
+
+**Closed 2026-10-20**. No behaviour change. `WasabiSceneRenderer.attach(scripts:)` sets the five runtime-backed providers, and the player, auxiliary-container and hosted-window paths call it instead of pasting the closures. The closure properties stay rather than going as the row proposed: the render-dump, motion and interaction harnesses wire their own subsets (the render dump sets no `settingStateProvider`), and unit tests stub single providers, so replacing them would change sweep output. `swift test` passes.
+
+## B224 — One MAKI dialect enum — closed 2026-10-20
+
+| B224 | **One MAKI dialect enum instead of `classTablePresent` plus `VariableRecord`.** `.shortObject` is exactly "no class table", so the two parameters encode three states between them, and `parse` tries them through a `do`/`catch` with a nested `try?`. Collapse them into one `Dialect` (`v5`, `shortGlobal`, `pre50`) and try each in order in a loop, reporting the `pre50` failure as now. Done when the parser tests pass and the corpus parse counts are unchanged | code health; no corpus demand | S | 3 |
+
+**Closed 2026-10-20**. No behaviour change. `MakiBytecodeParser.Dialect` (`v5`, `shortGlobal`, `pre50`) replaces `classTablePresent` plus `VariableRecord`; `pre50` is the one without a class table. `parse` tries each dialect in turn, and when all fail it reports the last one's error, as before. The nested `do`/`catch` with a `try?` was equivalent, since the inner parser throws only `ParseError`, so the corpus parse counts cannot move. `swift test` passes.
+
+## B227 — Each hosted window's surface factory written once — closed 2026-10-20
+
+| B227 | **Write each hosted window's surface factory once.** `WinampModernHostedWindowID.definition` repeats `id: .x` inside each `case .x` and the same three-line `makeSurface` body ten times. Pass `self` for the id, and put `configureForHostedSurface(context:)` and a frame initializer on a protocol so one generic helper builds every surface. Done when each case states only its title, sizes, stack policy and view type, and `swift test` passes | code health; no corpus demand | S | 3 |
+
+**Closed 2026-10-20**. No behaviour change. `WinampModernHostedWindowID.definition` builds every window through one `hosted(...)` helper that takes the title, sizes, stack placement and the view, which it builds, then configures for hosting, when a skin mounts it. `configureForHostedSurface(context:)` is now a `WinampModernHostedSurface` requirement, and the ten views already implemented it; the test stub got a no-op. Each case states its own view frame, because Sonos and Art build theirs at a size other than the window default. `swift test` passes (Winamp Modern, MAKI and hosted-window suites: 1,603 tests).
+
 ## B161 — AppKit's edge band over a skin's resize handles — closed 2026-10-20
 
 | B161 | **A press in the outer few points of a resizable `.wal` window is AppKit's, and it moves one edge even at a corner.** The skin's auxiliary windows are `[.borderless, .resizable]`, so AppKit's own edge band takes the press before `WinampModernMainView.mouseDown` and the skin's `resize="bottomright"` layer never sees it. Measured 2026-09-30 with `WINAMP_MODERN_RESIZE_TRACE=1` on Itemskin: a press 8pt in from the playlist frame's bottom-right corner, dragged +60,+30, logged `live=true handle=false` and changed the width only; 13pt in on the PeppyMeter frame, dragged +30,+60, changed the height only. 20pt in, the same drags logged `handle=clear.bottom.right` and moved both axes. Decide whether the band should defer to a skin handle under the pointer, or the windows should drop `.resizable` where the layout declares handles. Found during B160; not changed by it | `xml-attr '@resize$'` (a skin resize handle, an upper bound — the index does not say which window): gold 43/56, silver 46/54, bronze 743/827, quarantine 44/54 (manifest 9e68ffe0) | S | 2 |

@@ -108,37 +108,15 @@ enum WinampModernHostedWindowRegistry {
 extension WinampModernHostedWindowID {
     /// Exhaustive, so a new hosted id does not compile without its window (B163).
     var definition: WinampModernHostedWindowDefinition {
+        let spectrum = SkinElements.SpectrumWindow.self
         switch self {
         case .sonos:
-            return WinampModernHostedWindowDefinition(
-                id: .sonos, title: "Sonos Rooms",
-                defaultSize: CGSize(width: 275, height: 250),
-                minimumSize: CGSize(width: 250, height: 160), maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(participatesInCenterStack: true,
-                                                           preferredHeightMultiplier: 2),
-                makeSurface: { context in
-                    let view = SonosWindowView(frame: NSRect(x: 0, y: 0, width: 275, height: 250))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Sonos Rooms", size: CGSize(width: 275, height: 250),
+                          minimum: CGSize(width: 250, height: 160), heightMultiplier: 2,
+                          SonosWindowView(frame: NSRect(x: 0, y: 0, width: 275, height: 250)))
         case .spectrum:
-            return WinampModernHostedWindowDefinition(
-                id: .spectrum,
-                title: "Spectrum Analyzer",
-                defaultSize: SkinElements.SpectrumWindow.windowSize,
-                minimumSize: SkinElements.SpectrumWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = SpectrumView(frame: NSRect(origin: .zero, size: SkinElements.SpectrumWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Spectrum Analyzer", size: spectrum.windowSize, minimum: spectrum.minSize,
+                          SpectrumView(frame: NSRect(origin: .zero, size: spectrum.windowSize)))
         // The equalizer a `.wal` skin declares none of. It is a real Winamp component kind, so it is
         // routed by the surface coordinator first and only reaches this table once every skin-owned
         // step has declined — see `reference/components.md`, *Synthesizing a missing window*. What it
@@ -146,165 +124,58 @@ extension WinampModernHostedWindowID {
         // `<component guid:eq>` holder would resolve to, which is why this window earns its place
         // where load-time synthesis deliberately does not.
         case .equalizer:
-            return WinampModernHostedWindowDefinition(
-                id: .equalizer,
-                title: "Equalizer",
-                defaultSize: Skin.baseEQSize,
-                minimumSize: Skin.baseEQSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = EQView(frame: NSRect(origin: .zero, size: Skin.baseEQSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Equalizer", size: Skin.baseEQSize, minimum: Skin.baseEQSize,
+                          EQView(frame: NSRect(origin: .zero, size: Skin.baseEQSize)))
         case .cava:
-            return WinampModernHostedWindowDefinition(
-                id: .cava,
-                title: "Cava",
-                defaultSize: SkinElements.SpectrumWindow.windowSize,
-                minimumSize: SkinElements.SpectrumWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = CavaView(frame: NSRect(origin: .zero, size: SkinElements.SpectrumWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Cava", size: spectrum.windowSize, minimum: spectrum.minSize,
+                          CavaView(frame: NSRect(origin: .zero, size: spectrum.windowSize)))
         case .flow:
-            return WinampModernHostedWindowDefinition(
-                id: .flow,
-                title: "Flow",
-                defaultSize: SkinElements.SpectrumWindow.windowSize,
-                minimumSize: SkinElements.SpectrumWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = NetworkMonitorView(frame: NSRect(origin: .zero,
-                                                                size: SkinElements.SpectrumWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Flow", size: spectrum.windowSize, minimum: spectrum.minSize,
+                          NetworkMonitorView(frame: NSRect(origin: .zero, size: spectrum.windowSize)))
         case .peppyMeter:
-            return WinampModernHostedWindowDefinition(
-                id: .peppyMeter,
-                title: "PeppyMeter",
-                defaultSize: SkinElements.PeppyMeterWindow.windowSize,
-                minimumSize: SkinElements.PeppyMeterWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1.75
-                ),
-                makeSurface: { context in
-                    let view = PeppyMeterView(frame: NSRect(origin: .zero,
-                                                           size: SkinElements.PeppyMeterWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            let peppy = SkinElements.PeppyMeterWindow.self
+            return hosted("PeppyMeter", size: peppy.windowSize, minimum: peppy.minSize, heightMultiplier: 1.75,
+                          PeppyMeterView(frame: NSRect(origin: .zero, size: peppy.windowSize)))
         case .audioAnalysis:
-            return WinampModernHostedWindowDefinition(
-                id: .audioAnalysis,
-                title: "Audio Analyzer",
-                defaultSize: SkinElements.SpectrumWindow.windowSize,
-                minimumSize: SkinElements.SpectrumWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = AudioAnalysisView(frame: NSRect(origin: .zero,
-                                                              size: SkinElements.SpectrumWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Audio Analyzer", size: spectrum.windowSize, minimum: spectrum.minSize,
+                          AudioAnalysisView(frame: NSRect(origin: .zero, size: spectrum.windowSize)))
         case .waveform:
-            return WinampModernHostedWindowDefinition(
-                id: .waveform,
-                title: "Waveform",
-                defaultSize: SkinElements.WaveformWindow.windowSize,
-                minimumSize: SkinElements.WaveformWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = WaveformView(frame: NSRect(origin: .zero, size: SkinElements.WaveformWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            let waveform = SkinElements.WaveformWindow.self
+            return hosted("Waveform", size: waveform.windowSize, minimum: waveform.minSize,
+                          WaveformView(frame: NSRect(origin: .zero, size: waveform.windowSize)))
         case .projectM:
-            return WinampModernHostedWindowDefinition(
-                id: .projectM,
-                title: "Visualizations",
-                defaultSize: SkinElements.ProjectM.defaultSize,
-                minimumSize: SkinElements.ProjectM.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: false,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = ModernProjectMView(frame: NSRect(origin: .zero, size: SkinElements.ProjectM.defaultSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Visualizations", size: SkinElements.ProjectM.defaultSize,
+                          minimum: SkinElements.ProjectM.minSize, centerStack: false,
+                          ModernProjectMView(frame: NSRect(origin: .zero, size: SkinElements.ProjectM.defaultSize)))
         case .art:
-            return WinampModernHostedWindowDefinition(
-                id: .art,
-                title: "Art",
-                defaultSize: CGSize(width: SkinElements.SpectrumWindow.windowSize.width,
-                                    height: SkinElements.SpectrumWindow.windowSize.width),
-                minimumSize: SkinElements.SpectrumWindow.minSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: true,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = ArtWindowView(frame: NSRect(origin: .zero, size: SkinElements.SpectrumWindow.windowSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("Art", size: CGSize(width: spectrum.windowSize.width, height: spectrum.windowSize.width),
+                          minimum: spectrum.minSize,
+                          ArtWindowView(frame: NSRect(origin: .zero, size: spectrum.windowSize)))
         // Floats free like ProjectM. The view draws the one `EqualizerStudioSession`, so the edit
         // carries across skins and families.
         case .equalizerStudio:
-            return WinampModernHostedWindowDefinition(
-                id: .equalizerStudio,
-                title: "EQ Studio",
-                defaultSize: EqualizerStudioView.designSize,
-                minimumSize: EqualizerStudioView.designSize,
-                maximumSize: nil,
-                stackPolicy: WinampModernHostedStackPolicy(
-                    participatesInCenterStack: false,
-                    preferredHeightMultiplier: 1
-                ),
-                makeSurface: { context in
-                    let view = EqualizerStudioView(frame: NSRect(origin: .zero, size: EqualizerStudioView.designSize))
-                    view.configureForHostedSurface(context: context)
-                    return view
-                }
-            )
+            return hosted("EQ Studio", size: EqualizerStudioView.designSize,
+                          minimum: EqualizerStudioView.designSize, centerStack: false,
+                          EqualizerStudioView(frame: NSRect(origin: .zero, size: EqualizerStudioView.designSize)))
         }
+    }
+
+    /// One hosted window: its sizes, its place in the centre stack, and the view built, then configured
+    /// for hosting, each time a skin mounts it.
+    private func hosted(_ title: String, size: CGSize, minimum: CGSize, centerStack: Bool = true,
+                        heightMultiplier: CGFloat = 1,
+                        _ view: @escaping @autoclosure () -> NSView & WinampModernHostedSurface)
+        -> WinampModernHostedWindowDefinition {
+        WinampModernHostedWindowDefinition(
+            id: self, title: title, defaultSize: size, minimumSize: minimum, maximumSize: nil,
+            stackPolicy: WinampModernHostedStackPolicy(participatesInCenterStack: centerStack,
+                                                       preferredHeightMultiplier: heightMultiplier),
+            makeSurface: { context in
+                let surface = view()
+                surface.configureForHostedSurface(context: context)
+                return surface
+            }
+        )
     }
 }
 

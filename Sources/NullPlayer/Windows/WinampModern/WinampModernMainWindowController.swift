@@ -240,15 +240,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
                 _ = try? scripts?.dispatchSystem(event: "oncurrenttrackrated",
                                                  arguments: [.integer(Int32(clamping: stars))])
             }
-            // Every renderer asks the one runtime for a `cfgattrib` control's state, so a switch in
-            // the settings window and the control it mirrors in another window always agree.
-            renderer.configStateProvider = { [weak scripts] in scripts?.configValue(of: $0) ?? false }
-            renderer.pressBindingProvider = { [weak scripts] in scripts?.hasPressBinding(for: $0) ?? false }
-            renderer.configValueProvider = { [weak scripts] in scripts?.configInteger(of: $0) }
-            renderer.settingStateProvider = { [weak scripts] section, key in
-                scripts?.configAttributeValue(section: section, key: key).map { $0 != "0" }
-            }
-            renderer.layerFXProvider = { [weak scripts] in scripts?.layerFXMesh(for: $0) }
+            renderer.attach(scripts: scripts)
             let view = WinampModernMainView(renderer: renderer, scripts: scripts, host: host,
                                             componentHost: componentBridge)
 
@@ -550,13 +542,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         }
         renderer.componentHost = componentBridge
         renderer.textScale = WinampModernSkinState.textScale(in: loaded.configuration)
-        renderer.configStateProvider = { [weak scripts] in scripts?.configValue(of: $0) ?? false }
-        renderer.pressBindingProvider = { [weak scripts] in scripts?.hasPressBinding(for: $0) ?? false }
-        renderer.configValueProvider = { [weak scripts] in scripts?.configInteger(of: $0) }
-        renderer.settingStateProvider = { [weak scripts] section, key in
-            scripts?.configAttributeValue(section: section, key: key).map { $0 != "0" }
-        }
-        renderer.layerFXProvider = { [weak scripts] in scripts?.layerFXMesh(for: $0) }
+        renderer.attach(scripts: scripts)
         let view = WinampModernMainView(renderer: renderer, scripts: scripts, host: host,
                                         componentHost: componentBridge, drivesScripts: false)
         view.skinScale = skinScale

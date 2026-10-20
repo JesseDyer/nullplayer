@@ -739,6 +739,20 @@ final class WasabiSceneRenderer {
         /// The Layer FX warp for one object, or nil when it has none. Supplied by the script runtime,
     /// which owns the FX state and runs the skin's `fx_onGetPixel*` callbacks (Phase 28).
     var layerFXProvider: ((WasabiObject) -> WasabiLayerFXMesh?)?
+
+    /// Answer every provider above that the script runtime owns from `scripts`, held weakly. The one
+    /// place a window connects a renderer to its runtime; every renderer asks the same runtime, so a
+    /// switch in the settings window and the control it mirrors in another window always agree.
+    func attach(scripts: WinampModernScriptRuntime) {
+        configStateProvider = { [weak scripts] in scripts?.configValue(of: $0) ?? false }
+        pressBindingProvider = { [weak scripts] in scripts?.hasPressBinding(for: $0) ?? false }
+        configValueProvider = { [weak scripts] in scripts?.configInteger(of: $0) }
+        settingStateProvider = { [weak scripts] section, key in
+            scripts?.configAttributeValue(section: section, key: key).map { $0 != "0" }
+        }
+        layerFXProvider = { [weak scripts] in scripts?.layerFXMesh(for: $0) }
+    }
+
     let resources: WasabiResourceCache
     let themeCoordinator: WinampModernThemeCoordinator
     let themes: WasabiColorThemeCatalog

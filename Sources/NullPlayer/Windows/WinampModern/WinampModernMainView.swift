@@ -1397,16 +1397,18 @@ final class WinampModernMainView: NSView {
         for id in deleted { browserSurfaces[id] = nil }
     }
 
-    /// Route object-scoped MAKI navigation to this scene. A request before first layout is buffered;
-    /// a request for an object owned by another container returns false so the controller can ask
-    /// that container's view instead.
-    @discardableResult
+    /// `Browser.back()`/`forward()` on this scene's surface; false when another container owns the
+    /// object, so the controller can ask that container's view instead.
     func stepBrowserHistory(objectID: WasabiObjectID, forward: Bool) -> Bool {
         guard let surface = browserSurfaces[objectID] else { return false }
         surface.stepHistory(forward: forward)
         return true
     }
 
+    /// Route object-scoped MAKI navigation to this scene. A request before first layout is buffered;
+    /// a request for an object owned by another container returns false so the controller can ask
+    /// that container's view instead.
+    @discardableResult
     func navigateBrowser(objectID: WasabiObjectID, address: String) -> Bool {
         guard !isTornDown,
               let object = renderer.loadedSkin.runtime.graph.object(withID: objectID),

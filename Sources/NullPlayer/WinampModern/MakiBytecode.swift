@@ -391,10 +391,26 @@ struct MakiBytecodeParser {
         case none, variable, method, type, instruction, valueKind
     }
 
-    /// The variable record's tail, which three compiler generations wrote differently: the 5.x
-    /// `global`/`system` pair; the pre-5.0 single byte holding `object`; and the `0x16` single byte
-    /// holding `global` (the record's own `object` byte stands, and `System` is variable 0).
-    private enum VariableRecord { case full, shortObject, shortGlobal }
+    /// The three shapes `mc.exe` wrote under the same version word (0x0403), so a file's shape cannot
+    /// be told from its header — only by trying each, in this order.
+    ///
+    /// * `v5` — the class GUID table, and a variable record ending in the `global`/`system` pair.
+    /// * `shortGlobal` — the class table **and** a short variable record whose one trailing byte is
+    ///   `global` (the record's own `object` byte stands, and `System` is variable 0). Its header word
+    ///   after the version is `0x16` where `v5` says `0x17` (Apill's `volume.maki`/`seek.maki`,
+    ///   Lounge, HARMONIA, The Duk Side: ten bronze skins whose scripts all failed to parse).
+    /// * `pre50` — a pre-5.0 compiler's. `Overdrive_2`'s `scripts/seek.maki` (2001) is the measured
+    ///   case, and it sits beside four siblings in the `v5` form, which is why this is a retry and not
+    ///   a branch. No class GUID table at all: the class code in a method record indexes a table the
+    ///   runtime supplied, so a call dispatches on its *name* alone (which is what the interpreter
+    ///   already does for an out-of-range class index). And a **13-byte** variable record: the
+    ///   trailing pair is one byte holding `object` instead; `System` is the first variable a MAKI
+    ///   program declares, so index 0 is the system object.
+    private enum Dialect: CaseIterable {
+        case v5, shortGlobal, pre50
+
+        var hasClassTable: Bool { self != .pre50 }
+    }
 
     private struct Reader {
         let data: Data
@@ -469,42 +485,20 @@ struct MakiBytecodeParser {
 
     func parse(_ data: Data, source: WalSourceLocation, ownerID: WasabiObjectID? = nil,
                parameter: String? = nil) throws -> MakiProgram {
-        do {
+        // Failing every reading, the last one's error is the one reported.
+        var failure = ParseError("MAKI file matches no known dialect.")
+        for dialect in Dialect.allCases {
             do {
-                return try parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                 classTablePresent: true, variableRecord: .full)
-            } catch is ParseError {
-                // A third shape sits between the two: the class table **and** the short variable
-                // record. Its header word after the version is `0x16` where the ordinary form says
-                // `0x17` (Apill's `volume.maki`/`seek.maki`, Lounge, HARMONIA, The Duk Side: ten
-                // bronze skins whose scripts all failed to parse).
-                if let program = try? parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                            classTablePresent: true, variableRecord: .shortGlobal) {
-                    return program
-                }
-                // A pre-5.0 `mc.exe` wrote a different shape under the *same* version word (0x0403),
-                // so the variant cannot be told apart by the header — only by trying it.
-                // `Overdrive_2`'s `scripts/seek.maki` (2001) is the measured case, and it sits beside
-                // four siblings in the ordinary form, which is why this is a retry and not a branch.
-                // Two differences, both decoded from that file:
-                //   * no class GUID table at all — the class code in a method record indexes a table
-                //     the runtime supplied, so a call here dispatches on its *name* alone (which is
-                //     what the interpreter already does for an out-of-range class index), and
-                //   * a **13-byte** variable record: the trailing `global`/`system` pair is one byte
-                //     holding `object` instead. `System` is the first variable a MAKI program
-                //     declares, so index 0 is the system object.
-                // Failing this reading too, its own error is the one reported.
-                return try parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                 classTablePresent: false, variableRecord: .shortObject)
+                return try parse(data, source: source, ownerID: ownerID, parameter: parameter, dialect: dialect)
+            } catch let error as ParseError {
+                failure = error
             }
-        } catch let error as ParseError {
-            throw WalFailure(WalDiagnostic(.invalidScript, error.message, location: source))
         }
+        throw WalFailure(WalDiagnostic(.invalidScript, failure.message, location: source))
     }
 
     private func parse(_ data: Data, source: WalSourceLocation, ownerID: WasabiObjectID?,
-                       parameter: String?, classTablePresent: Bool,
-                       variableRecord: VariableRecord) throws -> MakiProgram {
+                       parameter: String?, dialect: Dialect) throws -> MakiProgram {
         do {
             var reader = Reader(data: data)
             guard try reader.readData(count: 2) == Data([0x46, 0x47]) else {
@@ -514,7 +508,7 @@ struct MakiBytecodeParser {
             _ = try reader.readUInt32()
 
             var classes: [String] = []
-            if classTablePresent {
+            if dialect.hasClassTable {
                 let classCount = try boundedCount(try reader.readUInt32(), section: "class")
                 classes.reserveCapacity(classCount)
                 for _ in 0..<classCount {
@@ -549,11 +543,11 @@ struct MakiBytecodeParser {
                 _ = try reader.readUInt16()
                 var global = false
                 var system = false
-                switch variableRecord {
-                case .full:
+                switch dialect {
+                case .v5:
                     global = try reader.readUInt8() != 0
                     system = try reader.readUInt8() != 0
-                case .shortObject:
+                case .pre50:
                     object = try reader.readUInt8() != 0
                     system = object && index == 0
                     global = system
