@@ -3,6 +3,61 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B175–B181 — the quarantine's loader gaps — closed 2026-10-19
+
+| B175 | **Accept animation strips longer than 8,192 px on a side.** The image guard rejects any side past 8,192 even when the image is far under its 32,000,000-pixel budget, and a long animation strip is exactly that shape: `vu-meter_smooth.png` 98×17018 (three skins), `orb.anim.png` 15360×46, `waterstrip.png` 10320×344. The whole skin fails to load. Keep the pixel budget; decide what the per-side cap protects (a texture limit?) and slice or downscale the strip there instead of refusing the skin. Done when the 18 load with their strips animating, and a crafted image over the pixel budget is still refused | skin-dead: census `FAILED [imageDimensionsExceeded]`, quarantine 18/54 (list in B173's archive entry) | M | 2 |
+| B176 | **Tolerate the XML mistakes Winamp's parser forgives.** An unterminated `<!--` at end of file (Assmosis, PioNner3, RayPlayer, SleekyXtra) and a stray closing tag (`</elements>`, `</groupdef>`, `</gammaset>`, `</WinampAbstractionLayer>`) fail the whole skin; these are published skins, so Winamp loaded them. Recover the way Winamp's parser did (close a dangling comment at EOF, drop an unmatched close tag), with a warning finding. Done when the 13 load and every recovery reports a finding | skin-dead: census `FAILED [malformedXML]`, quarantine 13/54 | M | 2 |
+| B177 | **Find the skin root the way Winamp does.** Root detection refuses an archive with two `skin.xml` (a root one plus `player/skin.xml` or an old `2004/skin.xml`: 8 skins), a stray file beside the single wrapper (AniTransformers' `.avs`), and a `skin.xml` under more than one wrapper (MalteseXp, four deep). Take the shallowest `skin.xml` as the root, ignore files outside it, and keep the VFS bounded to it. Done when the 10 load and the root is reported in the census | skin-dead: census `FAILED [invalidRoot]`, quarantine 10/54 | S | 2 |
+| B178 | **A skin group that overrides a `wasabi.*` system group by inheriting its own id.** `_Mercury`, `Bubble_Tea`, `Official_Coldplay` (`wasabi.titlebox`) and both `Graviton`s (`wasabi.tabsheet`) define a group with the system group's id that inherits that same id, meaning "the previous definition". We report a cycle and fail the skin. Resolve the inherit against the definition being overridden. Done when the 5 load and a true cycle still fails | skin-dead: census `FAILED [groupInheritanceCycle]`, quarantine 5/54 | M | 2 |
+| B179 | **cPro skins that need the engine's `miniexes.xml`.** `cPro_SC`, `Cpro_Tokio` and `CPro_Winamp3000` include `/Plugins/classicPro/engine/miniexes.xml`, which the imported ClassicPro engine does not provide, perhaps because it is a different engine version. Find which version ships it and whether a missing include can degrade instead of failing. Done when the 3 load or are recorded as needing an engine we cannot ship | skin-dead: census `FAILED [resourceMissing]` on the cPro engine, quarantine 3/54 | S | 2 |
+| B180 | **One bad resource reference fails the whole skin.** VANDREAD and VISION point an image at the author's own `c:/…/pic1.jpg`; Slim names `scripts/TimeDisplay.maki ` with a trailing space. Keep refusing host paths, but degrade (a missing-bitmap finding) instead of failing the skin, and trim attribute whitespace from file references the way Winamp did. Done when the 3 load, the host path still never reaches the file system, and each degraded reference is a finding | skin-dead: census `FAILED [resourceEscapesVFS]` / `[resourceMissing]`, quarantine 3/54 | S | 2 |
+| B181 | **Skins that require the stock Big Bento.** Braun CC 50 and Nokia 5800 XpressMusic require the skin 'Big Bento' mounted, which is Winamp's own skin, and we can neither ship it nor find it in the corpus (gold holds *Big Bento Modern*, a different skin). Decide: fail with a user-readable message, or load what does not depend on it. Done when the decision is made and the 2 behave as decided | skin-dead: census `FAILED [missingRequiredMount]`, quarantine 2/54 | S | 3 |
+
+**Closed 2026-10-19** (commit `2f5cba32`). All 54 quarantined skins load: `load '^failed$'` went
+from quarantine 54/54 to **0/54** (gold, silver and bronze 0 before and after), and the rebuilt
+index reports "0 did not load" over 995 archives. Each skin's own diagnostic from B173 is gone, and
+each recovery is a warning finding. Per row:
+
+- **B175** (18): no per-side cap. Images are drawn by CoreGraphics on the CPU, so 8,192 px guarded
+  no texture limit, only memory, which the 32,000,000-pixel budget already bounds. The budget stays
+  fatal (`testOversizedImageResourceStillFailsTheLoad`, now on pixels). A motion sweep over the
+  quarantine tier (rev `2f5cba32`) has 10 of the 18 moving at rest. In the other 8 (Alfa Romeo,
+  the three AS-FxS, Chicken Little, Orbis, Stargate, Slither), the strip layers are `never-played`:
+  they are volume, seek and VU meters that need playback, or B210's autoplay class. That is not a
+  loader matter.
+- **B176** (13): an unterminated comment runs to the end of the file. A stray close tag is dropped.
+  A close tag for a deeper open tag also closes the tags left open inside it: cPro_Relax,
+  cPro_smpldrk and iNTELLI_design write `<color …>` without its `/` inside `<elements>`. Each is a
+  `malformedXML` warning.
+- **B177** (10): the root is the shallowest `skin.xml`. Only a tie at that depth is ambiguous.
+  Entries outside the root are ignored, and an `invalidRoot` warning names the root and how many
+  entries were dropped (AniTransformers: one `.avs`).
+- **B178** (5): a groupdef that inherits its own id extends the version it replaces, and the
+  inheritance cycle check is keyed by version (Official_Coldplay). Graviton and _Mercury were a
+  different shape that hit the same check: a tab page or title-box body holding a second
+  TabSheet/TitleBox. Panes, pages and title-box bodies are groups named by id, so they now recurse
+  on their own key and not the widget's. A group whose page is itself still fails.
+- **B179** (3): a missing include inside a *mounted* tree is skipped, so a lone missing file in
+  the engine we import is now treated like one in the skin. An uninstalled engine still fails by
+  name (B92's test). Which engine version ships `miniexes.xml` was not found. The three load
+  without it.
+- **B180** (3): bitmap host paths get their own code, `hostPath`. It is still refused before any
+  file access, and the bitmap degrades as a missing one. Skin file references are trimmed. The
+  render sweep found the same trailing space in gold: BLAKK's `remote-toggles-ml-text-off.png `,
+  whose ML button now draws.
+- **B181** (2): decided to load what does not depend on the absent skin. A bitmap or script that
+  reaches an uninstalled sibling skin degrades with a `missingRequiredMount` warning that names it.
+  An XML include from one still fails with the "requires the skin" message, so an overlay skin
+  still says what to install. Braun loses its nibbles easter egg and Nokia its mute script.
+
+Regression gate: `wal_render_sweep.sh --shards 10`, gold+silver, base `8a83027c` against
+`2f5cba32`. 966 of 969 images are identical. Anexa `main-shade` and S7Reflex's `MLibrary` min are
+the known nondeterministic pair. BLAKK `main-remote` gains its ML button (above). JRS `config-normal`
+was a blank frame and now shows its tab pages: its config window had been failing on B178's
+tab-in-tab, and its scripts now run far enough to report `setautoenter` (B189). `wal_demand.sh`
+lists the same calls, with the newly loading skins' demand added (e.g. `restoreapplication` 179
+→ 187).
+
 ## B203, B204 — withdrawn 2026-10-19
 
 | B203 | **An `animatedlayer` with a relative or negative `w` resolves to one frame.** `animationFrameCount` takes the frame width from `framewidth`, else the raw `w`, so Big Bento Modern's reader busy bars (`w="-168" relatw="1" frameheight="2"`, a 57-frame strip, `autoplay="1"`) count 1 frame and never animate. Take the frame width from the sheet when `w` is not a positive absolute width, as `frameheight` alone already implies a vertical strip. Found by the motion sweep (B202): `one-frame` on all four Big Bento Modern variants. S4: 7 × motion-dead 2 × off-rest 2 ÷ S 1 = 28. Done when `wal_motion_sweep.sh` reports no `one-frame` layer on Big Bento Modern | `xml-attr '^animatedlayer@relatw$'`: gold 2/56, silver 1/54, bronze 3/827, quarantine 1/54 (manifest 9e68ffe0) | S | 2 |
