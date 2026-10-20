@@ -383,10 +383,10 @@ extension WinampModernScriptRuntime {
             return .integer(Int32(clamping: Int(scriptReadsOrigin(of: object).y)))
         case "getwidth", "getguiw":
             return .integer(dimension(resolvedFrame(of: object)?.width,
-                                      declared: object.geometry.width ?? 0))
+                                      declared: declaredFrame(of: object).width))
         case "getheight", "getguih":
             return .integer(dimension(resolvedFrame(of: object)?.height,
-                                      declared: object.geometry.height ?? 0))
+                                      declared: declaredFrame(of: object).height))
         // Both sides of this comparison must be in the *same* window's space, so the point comes from
         // the window that renders this object rather than from the global mouse hook, and the rect is
         // the object's resolved frame in that window (not the parent-relative one `getLeft` answers).
@@ -406,8 +406,8 @@ extension WinampModernScriptRuntime {
         // (1010 Fullscreen's frame windows, B201), through the same write as `resize`.
         case "center" where object.typeName.caseInsensitiveCompare("layout") == .orderedSame:
             let screen = NSScreen.main?.frame.size ?? .zero
-            let width = dimension(resolvedFrame(of: object)?.width, declared: object.geometry.width ?? 0)
-            let height = dimension(resolvedFrame(of: object)?.height, declared: object.geometry.height ?? 0)
+            let width = dimension(resolvedFrame(of: object)?.width, declared: declaredFrame(of: object).width)
+            let height = dimension(resolvedFrame(of: object)?.height, declared: declaredFrame(of: object).height)
             writeGeometry([("x", String((Int32(screen.width) - width) / 2)),
                            ("y", String((Int32(screen.height) - height) / 2))], on: object, borrowed: nil)
             return .null
@@ -1422,6 +1422,23 @@ extension WinampModernScriptRuntime {
     }
 
     /// A resolved coordinate when the scene could supply one, and the markup's own value otherwise.
+    /// Where an object sits by its declared geometry alone, for one no window has laid out — a layout
+    /// that is not showing. Its relative sizes resolve against its parents up to the layout, which
+    /// is sized by `w`, `default_w` or `minimum_w`. Answering the raw attribute instead gave
+    /// NEO_CLASSIC's shrunk layout a title bar `-32` wide (`w="-32" relatw="1"`), and its title
+    /// script centred the title on that.
+    func declaredFrame(of object: WasabiObject, depth: Int = 0) -> WasabiRect {
+        if Self.isWindowObject(object) || depth > 64 {
+            func size(_ keys: [String]) -> Double {
+                keys.lazy.compactMap { object.attributes[$0].flatMap(Double.init) }.first { $0 > 0 } ?? 0
+            }
+            return WasabiRect(x: 0, y: 0, width: size(["w", "default_w", "minimum_w"]),
+                              height: size(["h", "default_h", "minimum_h"]))
+        }
+        guard let parent = object.parent else { return object.geometry.resolve(in: .zero) }
+        return object.geometry.resolve(in: declaredFrame(of: parent, depth: depth + 1))
+    }
+
     func dimension(_ resolved: CGFloat?, declared: Double) -> Int32 {
         Int32(clamping: Int(resolved.map(Double.init) ?? declared))
     }
