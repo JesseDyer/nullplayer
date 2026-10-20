@@ -11,6 +11,9 @@ extension WinampModernScriptRuntime {
         var role: DynamicRole = .generic
         /// The element a `new Text`/`new Layer`… becomes on `init(parent)`; nil for a non-GUI class.
         var guiType: String?
+        /// What a script wrote with `setXmlParam` before `init`; the element is created with it.
+        /// 1010 Fullscreen's analyzer sets a layer's id, image and box this way, then `init`s it.
+        var pendingAttributes: [String: String] = [:]
         var delayMilliseconds: Int32 = 5_000
         /// Backing store for a MAKI `List`. Kept on every dynamic object rather than in the role: a
         /// `List` is created by the same `new` as a `Timer` or a `Map` and only its first list call
@@ -915,6 +918,14 @@ extension WinampModernScriptRuntime {
             return method == "onaction" ? .integer(0) : .null
         }
         if let value = try invokeTreeItem(method: method, id: id, arguments: arguments) { return value }
+        if state.guiType != nil, method == "setxmlparam" {
+            state.pendingAttributes[arguments[0].stringValue.lowercased()] = arguments[1].stringValue
+            dynamicObjects[id] = state
+            return .null
+        }
+        if state.guiType != nil, method == "getxmlparam" {
+            return .string(state.pendingAttributes[arguments[0].stringValue.lowercased()] ?? "")
+        }
         switch method {
         // `GammaSet.apply()` — switch to the theme this object names, through the one route
         // `System.setColorTheme` already uses. A theme the skin does not ship is refused by the
@@ -1223,7 +1234,8 @@ extension WinampModernScriptRuntime {
             guard let type = state.guiType, case .object(let reference) = arguments.first,
                   case .gui(let parentID) = reference.kind,
                   let parent = loadedSkin.runtime.graph.object(withID: parentID),
-                  let created = try loadedSkin.runtime.instantiateElement?(type, parent) else { return .null }
+                  let created = try loadedSkin.runtime.instantiateElement?(type, state.pendingAttributes, parent)
+            else { return .null }
             dynamicGUIObjects[id] = created.stableID
             noteGeometryChange()
             notifyGraphDidMutate()

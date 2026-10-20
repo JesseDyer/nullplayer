@@ -2601,6 +2601,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         "cfgsetfloat": .init(argumentCount: 1, returnKind: .null),
         "cfgsetstring": .init(argumentCount: 1, returnKind: .null),
         "getselectedtext": .init(argumentCount: 0, returnKind: .string),
+        "getitemtext": .init(argumentCount: 1, returnKind: .string),
+        "setitems": .init(argumentCount: 1, returnKind: .null),
+        "delitem": .init(argumentCount: 1, returnKind: .null),
+        "getselected": .init(argumentCount: 0, returnKind: .integer),
         "setlistheight": .init(argumentCount: 1, returnKind: .null),
         "getscroll": .init(argumentCount: 0, returnKind: .integer),
         "setscroll": .init(argumentCount: 1, returnKind: .integer),
@@ -3108,6 +3112,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // `selectItem` is `(id, hover)` on a drop-down and `(item)` on a tree.
         case MakiClassGUID.dropDownList where name == "selectitem":
             return .init(argumentCount: 2, returnKind: .null)
+        // `GuiList.getItemSelected(pos)` takes a row; the drop-down's takes nothing.
+        case MakiClassGUID.dropDownList where name == "getitemselected":
+            return .init(argumentCount: 0, returnKind: .string)
         case MakiClassGUID.guiTree where name == "selectitem":
             return .init(argumentCount: 1, returnKind: .null)
         case MakiClassGUID.wac where name == "onnotify":

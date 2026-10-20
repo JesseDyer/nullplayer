@@ -165,6 +165,38 @@ final class WinampModernDemandTailTests: XCTestCase {
         XCTAssertNil(runtime.loadedSkin.runtime.graph.allObjectsUnordered.first { $0.xmlID == "line0" })
     }
 
+    /// Params a script sets before `init` are the element's own (1010 Fullscreen's analyzer).
+    func testParamsSetBeforeInitAreTheElementsOwn() throws {
+        let (runtime, program) = try makeRuntime()
+        let layout = try object(runtime, "normal")
+        let layer = try runtime.makeObject(classGUID: MakiClassGUID.canonical("5ab9fa1545579a7d5765c8aba97cc6a6"),
+                                           program: program)
+        _ = try runtime.invoke(method: "setXmlParam", on: layer, arguments: [.string("id"), .string("pixel_0")], program: program)
+        _ = try runtime.invoke(method: "setXmlParam", on: layer, arguments: [.string("w"), .string("7")], program: program)
+        _ = try runtime.invoke(method: "init", on: layer, arguments: [runtime.objectValue(layout)], program: program)
+        XCTAssertEqual(try object(runtime, "pixel_0").attributes["w"], "7")
+    }
+
+    func testGroupListAndDropDownItems() throws {
+        let (runtime, program) = try makeRuntime(
+            body: #"<grouplist id="gl"/><Wasabi:DropDownList id="d" items="a;b"/>"#,
+            definitions: #"<groupdef id="row"><layer id="cell"/></groupdef>"#)
+        let list = try object(runtime, "gl")
+        _ = try call(runtime, program, list, "instantiate", [.string("row"), .integer(2)])
+        XCTAssertEqual(try call(runtime, program, list, "getNumItems").integerValue, 2)
+        guard case .object = try call(runtime, program, list, "enumItem", [.integer(1)]) else { return XCTFail() }
+        _ = try call(runtime, program, list, "removeAll")
+        XCTAssertEqual(try call(runtime, program, list, "getNumItems").integerValue, 0)
+
+        let dropDown = try object(runtime, "d")
+        XCTAssertEqual(try call(runtime, program, dropDown, "addItem", [.string("c")]).integerValue, 2)
+        XCTAssertEqual(try call(runtime, program, dropDown, "findItem", [.string("b")]).integerValue, 1)
+        _ = try call(runtime, program, dropDown, "delItem", [.integer(0)])
+        XCTAssertEqual(try call(runtime, program, dropDown, "getItemText", [.integer(0)]).stringValue, "b")
+        _ = try call(runtime, program, dropDown, "deleteAllItems")
+        XCTAssertEqual(try call(runtime, program, dropDown, "getNumItems").integerValue, 0)
+    }
+
     // MARK: - Helpers
 
     private static let program = MakiProgram(

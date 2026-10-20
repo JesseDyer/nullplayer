@@ -504,7 +504,7 @@ final class WasabiSkinRuntime {
     var instantiateGroup: ((_ identifier: String, _ parent: WasabiObject) throws -> WasabiObject)?
     /// One bare element (`text`, `layer`, `button`…) beneath `parent`, for a script's
     /// `new Text; t.init(parent)`. Same budget and machinery as `instantiateGroup`.
-    var instantiateElement: ((_ name: String, _ parent: WasabiObject) throws -> WasabiObject)?
+    var instantiateElement: ((_ name: String, _ attributes: [String: String], _ parent: WasabiObject) throws -> WasabiObject)?
 
     /// Trusted, host-only request-time window growth. Unlike `instantiateGroup`, this closure is not
     /// reachable from MAKI and accepts only the typed NullPlayer hosted-window description.
@@ -715,8 +715,8 @@ final class WasabiSkinInitializer {
             try instantiateGroupAtRuntime(identifier: identifier, parent: parent,
                                           graph: graph, types: types, createdCount: &createdCount)
         }
-        runtime.instantiateElement = { [self] name, parent in
-            let node = WalXMLNode(name: name, attributes: [:], location: parent.source)
+        runtime.instantiateElement = { [self] name, attributes, parent in
+            let node = WalXMLNode(name: name, attributes: attributes, location: parent.source)
             let existingChildren = parent.children.count
             var pendingScripts: [PendingScript] = []
             var pendingMetaCommands: [PendingMetaCommand] = []

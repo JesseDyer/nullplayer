@@ -24,7 +24,23 @@ extension WinampModernScriptRuntime {
         if WasabiGuiList.isList(object), let value = invokeListEdit(method: method, list: object, arguments: arguments) {
             return value
         }
+        if WasabiFormWidgets.kind(of: object) == .dropDownList,
+           let value = invokeDropDownItems(method: method, object: object, arguments: arguments) {
+            return value
+        }
         switch method {
+        // `GroupList`: the groups `instantiate` stacked into it. ClassicPro's Widgets Manager reads its
+        // rows back with `enumItem` to place each widget.
+        case "enumitem" where Self.isGroupList(object):
+            let index = Int(arguments[0].integerValue)
+            return object.children.indices.contains(index) ? objectValue(object.children[index]) : .null
+        case "getnumitems" where Self.isGroupList(object):
+            return .integer(Int32(object.children.count))
+        case "removeall" where Self.isGroupList(object):
+            for child in object.children { loadedSkin.runtime.graph.discardSubtree(child) }
+            noteGeometryChange()
+            notifyGraphDidMutate()
+            return .null
         // `CfgGroup`: a group bound to one configuration attribute, which its script reads and writes
         // (Wasabi's own preference pages, which 21 skins ship in `system/Scripts/cfg*.m`).
         case "cfggetint", "cfggetfloat", "cfggetstring", "cfggetname", "cfggetguid":
@@ -85,7 +101,50 @@ extension WinampModernScriptRuntime {
         }
     }
 
+    /// The drop-down's item list, which lives in its `items` attribute (`;`-separated, as the markup
+    /// writes it). Ids are 0-based positions. WinampAzenis2's SC-CD panel refills its list this way.
+    private func invokeDropDownItems(method: String, object: WasabiObject, arguments: [MakiValue]) -> MakiValue? {
+        var items = WasabiFormWidgets.items(of: object)
+        func store() {
+            _ = object.setAttribute("items", value: items.joined(separator: ";"))
+            notifyObjectDidMutate(object)
+        }
+        switch method {
+        case "additem":
+            guard items.count < WasabiGuiList.maximumItems else { return .integer(-1) }
+            items.append(arguments[0].stringValue)
+            store()
+            return .integer(Int32(items.count - 1))
+        case "deleteallitems":
+            items = []
+            store()
+            return .null
+        case "finditem": return .integer(Int32(items.firstIndex(of: arguments[0].stringValue) ?? -1))
+        case "getnumitems": return .integer(Int32(items.count))
+        case "getitemtext":
+            let index = Int(arguments[0].integerValue)
+            return .string(items.indices.contains(index) ? items[index] : "")
+        case "setitems":
+            items = arguments[0].stringValue.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            store()
+            return .null
+        case "delitem":
+            let index = Int(arguments[0].integerValue)
+            if items.indices.contains(index) { items.remove(at: index); store() }
+            return .null
+        case "getselected":
+            return .integer(Int32(items.firstIndex(of: WasabiFormWidgets.selection(of: object)) ?? -1))
+        case "getitemselected": return .string(WasabiFormWidgets.selection(of: object))
+        default: return nil
+        }
+    }
+
     static let mouseRedirectionKey = "nullplayer.mouseredir"
+
+    static func isGroupList(_ object: WasabiObject) -> Bool {
+        object.typeName.caseInsensitiveCompare("grouplist") == .orderedSame
+    }
 
     /// Where a press on `object` goes: its `setRedirection` target, or itself.
     func mouseRedirectionTarget(of object: WasabiObject) -> WasabiObject {
