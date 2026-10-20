@@ -149,17 +149,37 @@ extension WasabiSceneRenderer {
     /// slab across the full width at the top and white slabs along the bottom, on top of the real
     /// title strips: "layered full backgrounds in different colours" and "multiple top menubars".
     ///
-    /// Only the sign matters. `0`, a positive value (Ujola's own console art is `sysregion="1"` on
-    /// real bitmaps) and the non-numeric forms a skin writes (`"AND"`, which Anexa uses 15 times)
-    /// all paint exactly as before. `sysregion="-2"` appears in 11 of the 18 installed skins.
+    /// Only the sign of `windowRegionValue` matters. `0`, a positive value (Ujola's own console art is
+    /// `sysregion="1"` on real bitmaps) and the non-numeric forms a skin writes (`"AND"`, which Anexa
+    /// uses 15 times) all paint exactly as before. `sysregion="-2"` appears in 11 of the 18 installed
+    /// skins.
     static func isRegionOnly(_ object: WasabiObject, type: String) -> Bool {
-        guard type == "layer" || type == "animatedlayer",
-              let raw = object.attributes["sysregion"], let value = Int(raw.trimmingCharacters(in: .whitespaces))
+        guard type == "layer" || type == "animatedlayer", let value = windowRegionValue(of: object)
         else { return false }
         return value < 0
     }
 
-    /// One `sysregion` object's contribution to the window shape, and the key the cache turns on.
+    /// This object's signed contribution to the **window region**: its `sysregion`, or else a
+    /// negative `regionop`. Nil when it declares neither, or a form that is not a number.
+    ///
+    /// `regionop` combines an object into its *group's* region rather than the window's, but every
+    /// negative one in the corpus (37 skins) is the same idiom: four corner silhouettes cut out of a
+    /// standard frame whose group is the whole window, so the group's region is the window's.
+    /// Alpine9243's `frame-cut.png` is opaque magenta exactly where the corner goes; drawn as a
+    /// layer it put a pink triangle in every framed window's corner (#582). A positive `regionop`
+    /// adds to a region the rect already covers, so it is left out rather than read as `sysregion`.
+    static func windowRegionValue(of object: WasabiObject) -> Int? {
+        if let raw = object.attributes["sysregion"] {
+            return Int(raw.trimmingCharacters(in: .whitespaces))
+        }
+        guard let raw = object.attributes["regionop"],
+              let value = Int(raw.trimmingCharacters(in: .whitespaces)), value < 0
+        else { return nil }
+        return value
+    }
+
+    /// One region object's contribution to the window shape (`windowRegionValue`), and the key the
+    /// cache turns on.
     ///
     /// Rebuilding the shape is a canvas-sized allocation and a pass over every pixel, and the graph's
     /// mutation counter moves for anything a script writes — so keying on that alone would rebuild a
@@ -170,7 +190,7 @@ extension WasabiSceneRenderer {
         let frame: CGRect
         let clip: CGRect
         let bitmapID: String?
-        /// A positive `sysregion` adds this object to the window; a negative one takes it away.
+        /// A positive value adds this object to the window; a negative one takes it away.
         let additive: Bool
         /// For a positive, artwork-less group whose descendants declare their own region: the boxes
         /// of what it holds — its visible leaves, and any group inside that paints a `background`.
@@ -194,16 +214,16 @@ extension WasabiSceneRenderer {
     /// model that merely subtracted every negative layer cut away the left third of the window
     /// (measured: 31,289 px, 16.6% of `main/normal`).
     ///
-    /// Only the sign is read, as everywhere `sysregion` is consulted: both negative magnitudes in
-    /// the corpus are cut-aways — `-2` on the corner and edge silhouettes of 28 skins, `-1` on
-    /// winampmodern566's and S7Reflex's config drawer — and the non-numeric forms a skin writes
-    /// (`"AND"`, which Anexa uses 15 times) shape nothing, as they have never painted.
+    /// Only the sign of `windowRegionValue` is read: every negative magnitude in the corpus is a
+    /// cut-away — `sysregion="-2"` on the corner and edge silhouettes of 28 skins, `-1` on
+    /// winampmodern566's and S7Reflex's config drawer, `regionop="-2"` on the frame corners of 37 —
+    /// and the non-numeric forms a skin writes (`"AND"`, which Anexa uses 15 times) shape nothing,
+    /// as they have never painted. A negative `regionop` is a cut for the same-group rule below too,
+    /// so a positive `sysregion` beside one in its group is not restored; no corpus skin has both.
     private func regionCuts() -> [WasabiRegionCut] {
         let nodes = sceneNodes()
         let declared: [(node: WasabiSceneNode, additive: Bool)] = nodes.compactMap { node in
-            guard let raw = node.object.attributes["sysregion"],
-                  let value = Int(raw.trimmingCharacters(in: .whitespaces)), value != 0
-            else { return nil }
+            guard let value = Self.windowRegionValue(of: node.object), value != 0 else { return nil }
             return (node, value > 0)
         }
         // **A group's own cut-out is not undone from inside it.** A restore that crosses groups is a
