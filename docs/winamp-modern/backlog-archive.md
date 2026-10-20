@@ -3,6 +3,25 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B214 — Deimos Preferences windows draw empty — closed 2026-10-20
+
+| B214 | **1010 Fullscreen's Preferences window draws empty.** Its `Wasabi:StandardFrame:Static` builds `wasabi.preferences.group` from script (`newGroup` + `init`), the configsystem script fills the `Deimos:ConfigTree` and opens the About `Deimos:ConfigSheet`, and `RENDER_GEOMETRY` puts the tree at (24,54,130,272) and the sheet at (162,57,388,266), yet the window shows only its frame and black ground, headless and in the app. Found running B189's in-app check, which this blocks: the cover config page is a tree entry in that window. Find what the tree and sheet draw (`RENDER_PROBE=config/normal` lists them) and why it is nothing. The same skin opens a "Please install Modern Skin PlusPack" window at launch, because its check for that Winamp add-on fails; note it, there is nothing to install | `xml-tag '^deimos:config(page\|tree\|sheet)$'`: gold 0/56, silver 4/54, bronze 0/827, quarantine 0/54 (manifest 9e68ffe0) | M | 2 |
+
+**Closed 2026-10-20** (commits `7998d778`, `d83b3abb`). Three defects stood behind the empty
+window. A `<tree>` was never painted: the draw chain matched `list` only, so the model the tree
+methods kept had no pixels. `GuiTree.getByLabel` searched one level, so the script's
+`getByLabel(null, "Cover Search")` missed a second-level page and hung its sub-pages at the root.
+And an `embed_xui` wrapper never passed `content=`/`title=`/`children=` to the `TitleBox` or
+`TabSheet` it embeds, which were built from the template before them; both now forward and build.
+A skin's `<groupdef id="wasabi.tabsheet">` is a restyle of Winamp's widget and no longer stops it
+building its pages. Render sweep: the Preferences windows of 1010 Fullscreen, Vortex, Mac OS X
+Panther and Official Tristania draw their tree and About sheet, and Anunaki's Config Panel draws its
+five-tab page instead of an empty slab; nothing else changed beyond the known pair and the two live
+clocks. In the app, 1010 Fullscreen's Cover Search page opens from the tree with its fields set
+(`setAutoEnter` runs on `edit#filename`; Image Quality reads "Large"), which is B189's check.
+Panther's restyled tab buttons (`wasabi.tabsheet.button.*.group`) are not used yet: its tab strip is
+blank.
+
 ## B162 — the script-glue type — closed 2026-10-20
 
 | B162 | *Implemented 2026-10-20 (`WinampModernGluedWindows`, commits `fb59760b`, `a9bb62f0`; `swift test` passes, render sweep unchanged); only the live drag check under `WINAMP_MODERN_GLUE_TRACE=1` is left, blocked with B212 by the locked screen.* **Move the script-glue code out of `WinampModernMainWindowController.swift`.** The file is ~2,900 lines, and the glued-window code sits in two places ~800 lines apart. One part is `moveCarryingGluedWindow`, `gluedPartner(of:)`, `gluedWindow(over:)` and `gluedWindowPairs`. The other is `restackGluedWindows`, `attachGluedWindowsForDrag`/`detachGluedWindowsAfterDrag`, their `dragObservers` and `dragAttachedGluedWindows`, and the `tracesGlue`/`carriesGluedWindowsInDrag` switches. An extension file cannot carry the stored state and cannot reach the controller's private `skinView`/`viewsByContainer`. So give the glue its own small type that owns the drag observers and linked pairs and gets the pairs from the controller, leaving one property on the controller. No behaviour change. Done when `swift test` passes and a drag of Pure Inspired's docked playlist under `WINAMP_MODERN_GLUE_TRACE=1` still prints `drag carries` and `restacked` lines. Deferred from PR #468 to keep that diff a behaviour fix | none on screen; the glue-pair skins (Ebonite, Itemskin, Pure Inspired, K-jr, MoonLight) exercise it | M | 3 |
@@ -53,7 +72,7 @@ changed only the known pair and the two live clocks).
   "415:22". It is milliseconds since local midnight.
 
 **Filed.** B195 → B213: no tooltip shows at all in Winamp Modern mode. B189 → B214: 1010
-Fullscreen's Preferences window draws empty, so the cover page cannot be reached. B182, B198 → B215:
+Fullscreen's Preferences window drew empty; fixed the same day (above), and B189's check then passed. B182, B198 → B215:
 the skin's `pledit.main.group` (with `pledit.poppler` and the sidecar) is never built, because the
 playlist component is the host's list; Bio-Nid also takes the group from `@DEFAULTSKINPATH@`.
 

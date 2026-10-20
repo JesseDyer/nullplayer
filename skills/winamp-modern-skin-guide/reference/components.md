@@ -1255,6 +1255,9 @@ is the host's, exactly as the playlist panel is.
   wrote. `deleteAllItems` / `addItem` / `getNumItems` / `getItemLabel(item, column)` /
   `getFirstItemSelected` / `getNextItemSelected(after)` / `scrollToItem`, plus wheel scrolling, click
   to select and `onDoubleClick(item)` — one argument, the row.
+- **`<tree>`**: the runtime keeps the `TreeItem` model and writes its visible rows, indented, onto the
+  object, so the same list renderer paints it and a click selects or folds a row (`clickTreeRow`).
+  `getByLabel(item, label)` searches depth-first under `item`, or the whole tree from null.
 **The accessor set is complete against the corpus (re-measured 2026-08-29).** Every list accessor any
 installed skin calls is implemented: `getItemLabel` (7 program symbols) and `setSubItem` (2) across
 Big Bento Modern, its Windows 10 edition and Defix Hi-END 200 — which is the whole of [M12]'s "9

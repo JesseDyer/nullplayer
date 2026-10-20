@@ -329,6 +329,13 @@ Group semantics worth knowing:
   pointer events it receives are forwarded to the embedding group. Defix's `bento.tabbutton` embeds a
   `mousetrap` button while the core script hooks `onLeftClick` on the group (`switch.ml`) — without
   the forwarding every tab lit up under the pointer and switched nothing.
+  The instance's `content=`, `title=` and `children=` pass to the embedded object too, which then
+  builds the body they name (`buildHostedWidgetBody`). 1010 Fullscreen's `Deimos:ConfigPage` wraps a
+  `Wasabi:TitleBox` and its `Deimos:ConfigSheet` a `Wasabi:TabSheet`; the widget was already built
+  from the template when these reached it, so every Preferences page was an empty box (B214).
+- A skin's `<groupdef id="wasabi.tabsheet">` **restyles** Winamp's tab sheet, which still builds the
+  pages it is given (Mac OS X Panther, Anunaki). Only a skin's own `xuitag="Wasabi:TabSheet"`
+  groupdef under another id replaces the widget and leaves its pages to the skin.
 - `xuitag` registers a custom XML tag name for group instantiation.
 - A duplicate definition does **not** replace the earlier one wholesale: every version is kept, and a
   `<group>` expands the version in force *where that group is written*. Winamp's parser is streaming,
