@@ -391,6 +391,11 @@ struct MakiBytecodeParser {
         case none, variable, method, type, instruction, valueKind
     }
 
+    /// The variable record's tail, which three compiler generations wrote differently: the 5.x
+    /// `global`/`system` pair; the pre-5.0 single byte holding `object`; and the `0x16` single byte
+    /// holding `global` (the record's own `object` byte stands, and `System` is variable 0).
+    private enum VariableRecord { case full, shortObject, shortGlobal }
+
     private struct Reader {
         let data: Data
         var offset = 0
@@ -467,14 +472,14 @@ struct MakiBytecodeParser {
         do {
             do {
                 return try parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                 classTablePresent: true, shortVariableRecords: false)
+                                 classTablePresent: true, variableRecord: .full)
             } catch is ParseError {
                 // A third shape sits between the two: the class table **and** the short variable
                 // record. Its header word after the version is `0x16` where the ordinary form says
                 // `0x17` (Apill's `volume.maki`/`seek.maki`, Lounge, HARMONIA, The Duk Side: ten
                 // bronze skins whose scripts all failed to parse).
                 if let program = try? parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                            classTablePresent: true, shortVariableRecords: true) {
+                                            classTablePresent: true, variableRecord: .shortGlobal) {
                     return program
                 }
                 // A pre-5.0 `mc.exe` wrote a different shape under the *same* version word (0x0403),
@@ -490,7 +495,7 @@ struct MakiBytecodeParser {
                 //     declares, so index 0 is the system object.
                 // Failing this reading too, its own error is the one reported.
                 return try parse(data, source: source, ownerID: ownerID, parameter: parameter,
-                                 classTablePresent: false, shortVariableRecords: true)
+                                 classTablePresent: false, variableRecord: .shortObject)
             }
         } catch let error as ParseError {
             throw WalFailure(WalDiagnostic(.invalidScript, error.message, location: source))
@@ -499,7 +504,7 @@ struct MakiBytecodeParser {
 
     private func parse(_ data: Data, source: WalSourceLocation, ownerID: WasabiObjectID?,
                        parameter: String?, classTablePresent: Bool,
-                       shortVariableRecords: Bool) throws -> MakiProgram {
+                       variableRecord: VariableRecord) throws -> MakiProgram {
         do {
             var reader = Reader(data: data)
             guard try reader.readData(count: 2) == Data([0x46, 0x47]) else {
@@ -544,13 +549,17 @@ struct MakiBytecodeParser {
                 _ = try reader.readUInt16()
                 var global = false
                 var system = false
-                if !shortVariableRecords {
+                switch variableRecord {
+                case .full:
                     global = try reader.readUInt8() != 0
                     system = try reader.readUInt8() != 0
-                } else {
+                case .shortObject:
                     object = try reader.readUInt8() != 0
                     system = object && index == 0
                     global = system
+                case .shortGlobal:
+                    global = try reader.readUInt8() != 0
+                    system = object && index == 0
                 }
 
                 if subclass {

@@ -12,6 +12,7 @@ final class WinampModernMakiLayoutTests: XCTestCase {
         XCTAssertEqual(program.classes.count, 1)
         XCTAssertEqual(program.variables.count, 2)
         XCTAssertTrue(program.variables[0].isSystem, "variable 0 is System in the short record")
+        XCTAssertTrue(program.variables[1].isGlobal, "the short record's byte is `global`")
     }
 
     func testAnANSIStringIsReadAsWindows1252() throws {
@@ -39,7 +40,7 @@ final class WinampModernMakiLayoutTests: XCTestCase {
             data.append(index == 0 ? 0 : MakiValueKind.integer.rawValue)
             data.append(object ? 1 : 0)
             for _ in 0..<5 { append16(0, &data) }             // subclass, two initials, two unused
-            if shortVariables { data.append(object ? 1 : 0) }  // the one `object` byte
+            if shortVariables { data.append(1) }                 // the one `global` byte
             else { data.append(object ? 1 : 0); data.append(object ? 1 : 0) } // global, system
         }
         append32(0, &data)                                      // constants
