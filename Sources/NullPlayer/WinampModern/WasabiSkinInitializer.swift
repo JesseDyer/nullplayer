@@ -2,8 +2,9 @@ import Foundation
 import ImageIO
 
 struct WasabiResourceLimits: Equatable {
-    var maximumImageWidth = 8_192
-    var maximumImageHeight = 8_192
+    /// The bound on a decoded image's memory. There is no per-side cap: images are drawn by
+    /// CoreGraphics on the CPU, which has no texture limit, and a long animation strip
+    /// (`vu-meter_smooth.png` 98×17018) is exactly the shape a side cap refused (B175).
     var maximumImagePixels = 32_000_000
     var maximumFontPointSize = 512.0
     var maximumScriptSize = 4 * 1_024 * 1_024
@@ -339,8 +340,9 @@ final class WasabiTypeRegistry {
         guard stack.count < maximumInheritanceDepth else {
             throw WalFailure(WalDiagnostic(.groupInheritanceDepthExceeded, "Group inheritance exceeds \(maximumInheritanceDepth) levels.", location: definition.source))
         }
-        guard !stack.contains(key) else {
-            let chain = (stack + [key]).joined(separator: " -> ")
+        // Keyed by version, not id: a definition may extend the one it replaces (below).
+        guard !stack.contains(cacheKey) else {
+            let chain = (stack + [cacheKey]).joined(separator: " -> ")
             throw WalFailure(WalDiagnostic(.groupInheritanceCycle, "Group inheritance cycle detected: \(chain).", location: definition.source))
         }
 
@@ -350,11 +352,16 @@ final class WasabiTypeRegistry {
         if let parentReference = definition.inheritedGroup {
             let parentID = identifierByXUITag[Self.fold(parentReference)] ?? parentReference
             do {
-                guard let base = self.definition(identifier: parentID, documentOrder: definition.documentOrder) else {
+                // `<groupdef id="wasabi.titlebox" inherit_group="wasabi.titlebox">` overrides a system
+                // group by extending the definition it replaces (Official_Coldplay, B178).
+                let base = Self.fold(parentID) == key
+                    ? versionsByIdentifier[key]?.last { $0.documentOrder < definition.documentOrder }
+                    : self.definition(identifier: parentID, documentOrder: definition.documentOrder)
+                guard let base else {
                     throw WalFailure(WalDiagnostic(.missingGroupDefinition,
                                                    "Group definition '\(parentID)' does not exist."))
                 }
-                let parent = try resolve(definition: base, stack: stack + [key])
+                let parent = try resolve(definition: base, stack: stack + [cacheKey])
                 attributes.merge(parent.defaultAttributes) { _, new in new }
                 children = parent.templateChildren
             } catch let failure as WalFailure
@@ -674,7 +681,6 @@ final class WasabiSkinInitializer {
         passes.append(.objectCreation)
 
         let bindings = try bindScripts(pendingScripts)
-        for (pending, binding) in zip(pendingScripts, bindings) { pending.owner?.addScriptBinding(binding) }
         passes.append(.scriptBinding)
 
         // A resting `alpha` the markup should have declared and did not, written onto the object
@@ -818,10 +824,7 @@ final class WasabiSkinInitializer {
                               definitionStack: [], createdCount: &createdCount,
                               documentOrder: documentOrder, enclosingOrder: nil)
             applyMetaCommands(pendingMetaCommands)
-            let bindings = try bindScripts(pendingScripts)
-            for (pending, binding) in zip(pendingScripts, bindings) {
-                pending.owner?.addScriptBinding(binding)
-            }
+            try bindScripts(pendingScripts)
             guard let root = graph.roots.first(where: {
                 !rootsBefore.contains($0.stableID) && $0.xmlID == attributes["id"]
             }) else {
@@ -902,10 +905,7 @@ final class WasabiSkinInitializer {
                               definitionStack: [], createdCount: &createdCount,
                               documentOrder: [:], enclosingOrder: nil)
             applyMetaCommands(pendingMetaCommands)
-            let bindings = try bindScripts(pendingScripts)
-            for (pending, binding) in zip(pendingScripts, bindings) {
-                pending.owner?.addScriptBinding(binding)
-            }
+            try bindScripts(pendingScripts)
             guard let root = graph.roots.first(where: {
                 !rootsBefore.contains($0.stableID) && $0.xmlID == id.containerIdentifier
             }) else {
@@ -941,8 +941,7 @@ final class WasabiSkinInitializer {
                           definitionStack: [], createdCount: &createdCount,
                           documentOrder: [:], enclosingOrder: nil)
         applyMetaCommands(pendingMetaCommands)
-        let bindings = try bindScripts(pendingScripts)
-        for (pending, binding) in zip(pendingScripts, bindings) { pending.owner?.addScriptBinding(binding) }
+        try bindScripts(pendingScripts)
         guard parent.children.count > existingChildren else {
             throw WalFailure(WalDiagnostic(.missingGroupDefinition,
                                            "Group '\(identifier)' expanded to no objects.",
@@ -1003,6 +1002,12 @@ final class WasabiSkinInitializer {
                                 || kind == "truetypefont")
                             && failure.diagnostics.allSatisfy({
                                 $0.code == .resourceMissing
+                                    // Braun CC 50's nibbles easter egg draws from `../Big Bento/`,
+                                    // a skin we cannot ship (B181).
+                                    || $0.code == .missingRequiredMount
+                                    // VANDREAD and VISION point bitmaps at the author's `c:/…`
+                                    // (B180); the path is refused, the bitmap draws nothing.
+                                    || $0.code == .hostPath
                                     // A file that exists but is not a decodable image is a content
                                     // problem, not a security one, and the renderer already answers
                                     // `nil` for it safely. The Big Bento Modern Windows 10 edition
@@ -1136,13 +1141,10 @@ final class WasabiSkinInitializer {
             throw Self.undecodableImage(path, source)
         }
         let (pixels, overflow) = width.multipliedReportingOverflow(by: height)
-        guard !overflow,
-              width <= resourceLimits.maximumImageWidth,
-              height <= resourceLimits.maximumImageHeight,
-              pixels <= resourceLimits.maximumImagePixels else {
+        guard !overflow, pixels <= resourceLimits.maximumImagePixels else {
             throw WalFailure(WalDiagnostic(
                 .imageDimensionsExceeded,
-                "Image resource '\(path)' is \(width)×\(height); limits are \(resourceLimits.maximumImageWidth)×\(resourceLimits.maximumImageHeight) and \(resourceLimits.maximumImagePixels) pixels.",
+                "Image resource '\(path)' is \(width)×\(height); the limit is \(resourceLimits.maximumImagePixels) pixels.",
                 location: source
             ))
         }
@@ -1597,13 +1599,16 @@ final class WasabiSkinInitializer {
             // A `<Wasabi:Frame>` declares its two panes by group id rather than nesting them, so the
             // splitter is what brings them into the graph. cPro-Bento's entire body (library tree,
             // playlist, tabs) hangs off one, and without this the SUI expands to an empty frame.
+            // Panes, tab pages and a title box's body are groups named by id, not this widget's own
+            // body, so they recurse on their own key rather than the widget's: a tab page holding a
+            // second tab sheet is nesting, not recursion (Graviton, _Mercury; B178).
             if WasabiFrame.isFrame(object) {
                 let panes = WasabiFrame.paneIdentifiers(of: object).map {
                     WalXMLNode(name: "group", attributes: ["id": $0], location: node.location)
                 }
                 try createObjects(from: panes, parent: object, graph: graph, types: types,
                                   pendingScripts: &pendingScripts, pendingMetaCommands: &pendingMetaCommands,
-                                  definitionStack: nextDefinitionStack,
+                                  definitionStack: definitionStack,
                                   createdCount: &createdCount,
                                   documentOrder: documentOrder, enclosingOrder: nodeOrder)
                 WasabiFrame.applyLayout(to: object)
@@ -1680,7 +1685,7 @@ final class WasabiSkinInitializer {
                 try createObjects(from: [content], parent: object, graph: graph, types: types,
                                   pendingScripts: &pendingScripts,
                                   pendingMetaCommands: &pendingMetaCommands,
-                                  definitionStack: nextDefinitionStack,
+                                  definitionStack: definitionStack,
                                   createdCount: &createdCount,
                                   documentOrder: documentOrder, enclosingOrder: nodeOrder)
             }
@@ -1695,7 +1700,7 @@ final class WasabiSkinInitializer {
                     try createObjects(from: pages, parent: object, graph: graph, types: types,
                                       pendingScripts: &pendingScripts,
                                       pendingMetaCommands: &pendingMetaCommands,
-                                      definitionStack: nextDefinitionStack,
+                                      definitionStack: definitionStack,
                                       createdCount: &createdCount,
                                       documentOrder: documentOrder, enclosingOrder: nodeOrder)
                     WasabiTabSheet.select(index: WasabiTabSheet.selectedIndex(of: object), on: object)
@@ -1750,16 +1755,35 @@ final class WasabiSkinInitializer {
         return nil
     }
 
+    /// Binds each script to its owner and returns what was bound; a missing file is skipped.
+    @discardableResult
     private func bindScripts(_ pendingScripts: [PendingScript]) throws -> [WasabiScriptBinding] {
-        try pendingScripts.map { pending in
-            let path = try resolveSkinResource(pending.rawPath, source: pending.source).logicalPath
-            let data = try vfs.data(at: path, location: pending.source)
+        var bindings: [WasabiScriptBinding] = []
+        for pending in pendingScripts {
+            let path: String
+            let data: Data
+            do {
+                path = try resolveSkinResource(pending.rawPath, source: pending.source).logicalPath
+                data = try vfs.data(at: path, location: pending.source)
+            } catch let failure as WalFailure
+                where failure.diagnostics.allSatisfy({ $0.code == .resourceMissing || $0.code == .missingRequiredMount }) {
+                // Winamp runs a skin whose script file is absent without it. Nokia 5800 binds
+                // `../Big Bento/scripts/mute.maki` from a skin we cannot ship (B181); only its mute
+                // button is lost. An XML include from an absent skin still fails the load.
+                resourceRegistry?.warn(WalDiagnostic(failure.diagnostics[0].code,
+                    "Script '\(pending.rawPath)' is missing; it will not run. \(failure.diagnostics[0].message)",
+                    severity: .warning, location: pending.source))
+                continue
+            }
             guard data.count <= resourceLimits.maximumScriptSize else {
                 throw WalFailure(WalDiagnostic(.entryTooLarge, "Script '\(path)' is \(data.count) bytes; the limit is \(resourceLimits.maximumScriptSize).", location: pending.source))
             }
-            return WasabiScriptBinding(ownerID: pending.owner?.stableID, logicalPath: path,
-                                       parameter: pending.parameter, source: pending.source)
+            let binding = WasabiScriptBinding(ownerID: pending.owner?.stableID, logicalPath: path,
+                                              parameter: pending.parameter, source: pending.source)
+            pending.owner?.addScriptBinding(binding)
+            bindings.append(binding)
         }
+        return bindings
     }
 
     /// Wasabi includes are XML-file-relative, but bitmap/font/script declarations in real
@@ -1768,6 +1792,8 @@ final class WasabiSkinInitializer {
     /// `@SKINPATH@` VFS mount. Only a genuine missing-resource diagnostic may fall back;
     /// traversal, variables, and other security failures remain hard errors.
     private func resolveSkinResource(_ rawPath: String, source: WalSourceLocation) throws -> WalResolvedResource {
+        // Winamp trimmed file attributes: Slim names `scripts/TimeDisplay.maki ` (B180).
+        let rawPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             return try vfs.resolve(rawPath, relativeTo: source.path, location: source)
         } catch let failure as WalFailure
