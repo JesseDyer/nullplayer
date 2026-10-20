@@ -77,6 +77,12 @@ Two rules about *which* objects may claim a point:
   behind it. `ghost="1"` still outranks the attribute — `object(at:)` drops a ghost before
   `isInteractive` is consulted at all, which is what keeps multipass's `ghost="1"` playlist ticker
   (which carries `dblclickaction` anyway) from swallowing clicks meant for the list.
+- **A press on no control goes to the layout when its script takes presses** (B183). The stock
+  notifier is nothing but `ghost="1"` artwork over a layout whose script raises the player from
+  `notifier_layout.onLeftButtonDown`. So for such a layout the view's `hitTest` counts ghost artwork
+  as painted (`containsVisiblePixel(at:includingGhosts:)`), and `pressTarget(at:)` hands the press
+  to the layout when `object(at:)` finds nothing. Any other window stays click-through where only
+  ghosts paint.
 
 #### The three action attributes (Phase 36)
 
@@ -85,6 +91,11 @@ do: multipass's song title has the last two and not the first. The view performs
 gesture — `action` on the click, the other two after `onleftbuttondblclk` / `onrightclick`, both gated
 on press and release agreeing on the target. Only `action` flips a togglebutton or falls through to a
 `cfgattrib` binding; the other two are plain commands.
+
+When the released object's script also handles `onLeftButtonDblClk`, the host main menu that click
+asks for waits out the double-click interval, and a second press cancels it (`holdsMenuForDoubleClick`).
+The menu's tracking loop would otherwise take the second press: cPro2 minimal opens the menu on one
+click and quits on two (B187). Script `popAtMouse` menus are not held; they return their pick.
 
 The parameter has two spellings, decoded once in `WasabiClickAction` so the view and the probe cannot
 disagree:

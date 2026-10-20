@@ -930,6 +930,12 @@ play head a pure function of the elapsed time since `play()`, which is what keep
 script runtime agreeing on the current frame without either owning a clock. `stop()` freezes the head
 where it actually is, and an explicit `playing` beats the XML's `autoplay`.
 
+Because nothing steps that clock, the events are polled: a layer a script `play()`s and that has an
+`onFrame` or `onStop` binding gets a 60 Hz runtime timer (`startFrameEvents`, in
+`WinampModernScriptRuntimeTimer.swift`). It raises `onFrame(frame)` once per frame the head reaches
+and `onStop()` when a range play ends or `stop()` is called. MMD3's knobs move the EQ from `onFrame`
+alone, so without it the knob turned and the EQ never changed (B194).
+
 #### `relat*="2"` is a **percentage**, every other non-zero value is additive
 
 `relatx`/`relaty`/`relatw`/`relath` read as `atoi(value)`, and the number matters:

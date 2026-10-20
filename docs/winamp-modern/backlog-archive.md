@@ -3,6 +3,65 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B162 — the script-glue type — closed 2026-10-20
+
+| B162 | *Implemented 2026-10-20 (`WinampModernGluedWindows`, commits `fb59760b`, `a9bb62f0`; `swift test` passes, render sweep unchanged); only the live drag check under `WINAMP_MODERN_GLUE_TRACE=1` is left, blocked with B212 by the locked screen.* **Move the script-glue code out of `WinampModernMainWindowController.swift`.** The file is ~2,900 lines, and the glued-window code sits in two places ~800 lines apart. One part is `moveCarryingGluedWindow`, `gluedPartner(of:)`, `gluedWindow(over:)` and `gluedWindowPairs`. The other is `restackGluedWindows`, `attachGluedWindowsForDrag`/`detachGluedWindowsAfterDrag`, their `dragObservers` and `dragAttachedGluedWindows`, and the `tracesGlue`/`carriesGluedWindowsInDrag` switches. An extension file cannot carry the stored state and cannot reach the controller's private `skinView`/`viewsByContainer`. So give the glue its own small type that owns the drag observers and linked pairs and gets the pairs from the controller, leaving one property on the controller. No behaviour change. Done when `swift test` passes and a drag of Pure Inspired's docked playlist under `WINAMP_MODERN_GLUE_TRACE=1` still prints `drag carries` and `restacked` lines. Deferred from PR #468 to keep that diff a behaviour fix | none on screen; the glue-pair skins (Ebonite, Itemskin, Pure Inspired, K-jr, MoonLight) exercise it | M | 3 |
+
+**Closed 2026-10-20** (commits `fb59760b`, `a9bb62f0`). `WinampModernGluedWindows` owns the drag
+observers, the linked pairs and the two switches; the controller holds it as one stored `glue`
+property and supplies the pairs and windows through two closures set in its convenience init. A
+lazily created glue crashed when first touched from `deinit` ("Cannot form weak reference"), which
+is why it is stored. In the app, on Pure Inspired with `WINAMP_MODERN_GLUE_TRACE=1`: both pairs
+(`MLibrary`/`cont.clear.ml`, `PLEdit`/`cont.clear.pl`) printed `restacked` at launch, and a
+`winhelper drag` of the player printed `drag carries` for both, each pair still at one origin.
+
+## B212 — the closed rows' in-app checks — run 2026-10-20
+
+Twenty of the twenty-one checks run in the app with `app-control`; B41 needs a second display and
+stays as B212.
+
+**Pass as closed.** B196, B184, B207 (2026-10-19). B200: Dreliction's winshade menu ticks "Normal".
+B197: `_Scythe`'s Thinger "Open Files" opens the Open panel. B188: Nitrous Audio CTI 2 Glass's next
+button moved a three-track cue from 'First Index' to 'Second Index'. B186: a right-click on
+Winamp 3.0 Default's Thinger opens the window list at the pointer. B199: a right-click on Big Bento
+Modern's `shade.switch` minimizes the player (`AXMinimized` true). B201: 1010 Fullscreen's 222x289
+frame opened at (789,440) on the 1800x1169 display, exactly centred; its standard-frame timer only
+re-centres a window wholly off screen, which macOS would not let Accessibility produce. B162 above.
+B185: Symplicipod's tooltip toggle shows its state, and flips (`Enabled`/`Disabled`) on a click.
+B66: Styx's `Position` drop-down kept "3. Top Right" across closing and reopening Config.
+B110: Ebonite's playlist frame draws over its client, restacks above it, and a drag by its title
+moved both to one origin. B85: cPro2 minimal's Widgets Manager row moves the Now Playing widget into
+the player with **show in main**; **drawer** and **side** are the skin's own `ghost="1" alpha="50"`
+because that skin has neither area. Zygote's digits run while playing ("0022" at 22.6 s).
+
+**Fixed in the app** (commit `faed9f9d`, `swift test` 3,072 pass, render sweep against `sweep-e3`
+changed only the known pair and the two live clocks).
+- B187: cPro2 minimal's system button opens the menu from `onLeftClick` → a hidden SYSMENU button's
+  `leftClick()`, and the menu's tracking loop swallowed the second press, so a double-click never
+  quit. A click on an object whose script handles `onLeftButtonDblClk` now holds the main menu for
+  the double-click interval, and a second press cancels it. Single click: menu. Double: quits.
+- B183: jvc.tape's `skin.xml` never includes its `notifier.xml`, so the check moved to cPro2 minimal,
+  whose notifier calls `restoreApplication`. Three defects stood behind it: `isMinimized` answered
+  false; the notifier is all `ghost="1"` artwork, so a press fell through the window; and a press on
+  no control never reached `notifier_layout.onLeftButtonDown`. A layout whose script takes presses
+  now counts its ghosts as painted and receives the press. Minimized, track change, click: the
+  player is back.
+- B194: mmd3's knobs set the EQ from `AnimatedLayer.onFrame` alone, and nothing raised it: the play
+  head is a function of the clock. A script-played layer now raises `onFrame` per frame and `onStop`
+  at the end of its range. The bass knob ran `setEq(1)` seven times and `eqBypass` went false.
+- `System.getTimeOfDay` answered the epoch in milliseconds, truncated; cPro2's stopped clock read
+  "415:22". It is milliseconds since local midnight.
+
+**Filed.** B195 → B213: no tooltip shows at all in Winamp Modern mode. B189 → B214: 1010
+Fullscreen's Preferences window draws empty, so the cover page cannot be reached. B182, B198 → B215:
+the skin's `pledit.main.group` (with `pledit.poppler` and the sidecar) is never built, because the
+playlist component is the host's list; Bio-Nid also takes the group from `@DEFAULTSKINPATH@`.
+
+**Not reachable in the app.** B193: cPro Venus Port 1 names its "Other" tab from
+`hold_Other.getComponentName()` only when `onGetCancelComponent` routes an unclaimed component there,
+and every component NullPlayer offers (playlist, library, video, vis) has its own tab. Its headless
+number stands.
+
 ## B163, B165 — hosted-window registry and frame descriptor — closed 2026-10-20
 
 | B163 | **Make the hosted-window registry exhaustive.** `WinampModernHostedWindowRegistry.all` is an array searched by `entry(id:)`, which returns an Optional, and every definition's `makeSurface` is Optional too, although every `WinampModernHostedWindowID` has an entry and every entry builds a surface. Three production callers (`WindowManager`, `WinampModernComponentBridge.makeHostedWindowSurface`, `WinampModernHostedWindowMaterializer`) guard a nil that cannot happen, about fifteen test lines `XCTUnwrap` it, and `WinampModernHostedProviderTests` asserts the two promises the types do not make. Give `WinampModernHostedWindowID` a `definition` built by an exhaustive `switch`, make `makeSurface` non-optional, and keep `all` as `allCases.map(\.definition)` for the synthesizer. A new hosted id then fails to compile without an entry rather than falling back at run time. No behaviour change. Done when `swift test` passes with the nil guards and the registration assertions gone | none on screen; every hosted window routes through it | S | 3 |
