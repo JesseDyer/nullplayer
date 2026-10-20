@@ -3,6 +3,25 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B182 — events called as methods — closed 2026-10-19
+
+| B182 | **Let a script call a pointer or notify event as a method.** Scripts call their own handlers to reuse them: Bio-Nid's playlist editor runs `poppler.onMouseMove(x, y)` while it resizes, and NMP10's `about` script runs `Next.onLeftButtonDown(0, 0)`. Thirteen event names called this way have no arity, and `dispatchableEventArity` is keyed by name, so one entry each covers every class: `onLeftButtonDown`/`Up`, `onRightButtonDown`/`Up`, `onMouseMove`, `onNotify`, `onEqChanged`, `onInfoChange`, `onSwitchToLayout`, `onPlay`, `onStop`, `onAccelerator`, `onFrame`. Each call aborts the handler that made it. Layer's `onLeftButtonDown` (101 skins) and `onMouseMove` (78) carry most of it. S4: 255 × control-dead 3 × off-rest 2 ÷ S 1 = 1,530. Done when `wal_demand.sh` lists none of the thirteen and Bio-Nid's playlist resize follows the pointer | `maki-call '^5ab9fa15[0-9a-f]*[.]onleftbuttondown$'`: gold 10/56, silver 13/54, bronze 78/827, quarantine 0/54 (manifest 9e68ffe0); all thirteen: gold 17/56, silver 21/54, bronze 217/827 | S | 2 |
+
+**Closed 2026-10-19** (commit `05e2bad1`). `wal_demand.sh` lists none of the thirteen. Before, all
+thirteen together reached gold 17/56, silver 21/54 and bronze 217/827, and `Layer.onLeftButtonDown`
+alone 108 skins in all tiers. The demand table went from 151 calls to 114. The row's premise
+was only nearly right: three names are declared with another arity on another class. They are
+`Wac.onNotify` (3 against Object's 4), `System.onAccelerator` (3 against GuiObject's 1) and
+`Vis.onFrame` (0 against AnimatedLayer's 1). The corpus calls them only on the Object, GuiObject
+and AnimatedLayer forms, so those arities go in `dispatchableEventArity`, and
+`signature(for:classGUID:)` gives the other three classes their own. A wrong arity desynchronises
+the stack, so the gate keeps that from happening. Regression gate: `wal_render_sweep.sh --shards 10`,
+gold+silver, `8c0386a5` against `05e2bad1`. Besides the known nondeterministic pair, one image
+changed: NMP10's About window. Its `dmove` script sets effect 4 and calls
+`Next.onLeftButtonDown(0, 0)` to step to effect 5, which shows the `vis` group (the gradient
+backdrop and twelve oscilloscopes) over the logo. The handler used to abort, which left the bare
+logo. The window now opens as the script intends. The in-app check is under *Awaiting manual QA*.
+
 ## B183, B186–B188, B191, B194, B196, B197, B199, B200 — System host methods — closed 2026-10-19
 
 | B183 | **`System.restoreApplication` / `activateApplication`.** The stock notifier script (`notifier.m`) calls both last in `notifier_layout.onLeftButtonDown`. The popup closes first, then the handler aborts, so clicking a notification never raises a minimized player. Deminiaturize and activate the app. S4: 179 × 2 (the click half works) × off-rest 2 ÷ S 1 = 716. Done when `wal_demand.sh` lists neither and a click on jvc.tape's notifier raises a minimized player | `maki-call '^d6f50f64[0-9a-f]*[.]restoreapplication$'`: gold 25/56, silver 25/54, bronze 129/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
