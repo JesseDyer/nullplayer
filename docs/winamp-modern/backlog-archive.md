@@ -3,6 +3,21 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B193 — `WindowHolder.getComponentName` — closed 2026-10-19
+
+| B193 | **`WindowHolder.getComponentName()`.** cPro skins name the drawer tab after the hosted component (`refreshAIOTab.onTimer`, `checkVisName.onTimer`, Venus's `CentroSUI.m`), so the timer aborts every tick and the tab keeps its default label. Return the hosted window's display name. S4: 91 × cosmetic-to-control 2 × off-rest 2 ÷ M 2 = 182. Done when `wal_demand.sh` does not list it and cPro Venus's tab shows the component's name | `maki-call '^403abcc0[0-9a-f]*[.]getcomponentname$'`: gold 10/56, silver 7/54, bronze 74/827, quarantine 0/54 (manifest 9e68ffe0) | M | 2 |
+
+**Closed 2026-10-19** (commit `f25bccc6`). Gone from `wal_demand.sh`, from 97 skins (all tiers;
+gold 10, silver 7, bronze 74, quarantine 6). The demand table went from 94 calls to 93. A
+holder answers the title the thinger already gives its surface
+(`WinampModernComponentBucketCatalog.icons`: "Playlist Editor", "Media Library", "Visualization",
+"Video", "Equalizer"), and `.other` answers "". The installed engine's `CentroSUI2.m` uses the name
+only as a label (`update_tabname`, `visName.setText`), so nothing compares it. Regression gate:
+`wal_render_sweep.sh --shards 10`, gold+silver, `b3d4a676` against `f25bccc6`: apart from the known
+nondeterministic pair, only EPS's and Itemskin's notifier prefs changed, and not from this commit.
+Their checkbox state persisted from the feature index run between the two sweeps, which is filed as
+B211. The in-app check is under *Awaiting manual QA*.
+
 ## B189, B192, B198 — form widget methods — closed 2026-10-19
 
 | B189 | **`Edit.setAutoEnter` / `onIdleEditUpdate` / `enter`.** Config pages set up their path and value fields in `System.onScriptLoaded` (1010 Fullscreen's cover page calls `setAutoEnter` first), so the page's script dies at load. S4: 55 × surface-dead 4 × config 1 ÷ S 1 = 220. Done when `wal_demand.sh` lists none of the three and 1010 Fullscreen's cover config page fills its fields | `maki-call '^64e4bbfa[0-9a-f]*[.]setautoenter$'`: gold 0/56, silver 7/54, bronze 24/827, quarantine 0/54 (manifest 9e68ffe0) | S | 2 |
