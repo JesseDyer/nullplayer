@@ -346,7 +346,8 @@ class AudioEngine {
     /// Token used to invalidate stale in-flight gapless pre-schedule requests.
     private var gaplessPreparationToken: UInt64 = 0
 
-    /// Token used to invalidate stale deferred local track loads triggered by direct user selection.
+    /// Token used to invalidate stale deferred local track loads triggered by direct user selection,
+    /// and pending failed-track advances, local or streaming. Stop and every track load move it.
     private var deferredLocalTrackLoadToken: UInt64 = 0
 
     /// The Play Now whose film is with the video window. The film fails after `startPlayNowLocally`
@@ -4558,17 +4559,6 @@ class AudioEngine {
 
         let route = track.playbackRoute
 
-        // An about:blank placeholder still waits on its async URL fetch. It becomes current, with
-        // the outgoing track stopped, so the caller's `play()` resolves it; left out, `play()`
-        // resumed the outgoing track while the playlist highlight moved on (#583).
-        if route == .unresolved {
-            NSLog("loadTrack: placeholder track '%@' — current, awaiting async URL fetch", track.title)
-            stopLocalOnly()
-            currentTrack = track
-            currentIndex = index
-            return nil
-        }
-
         _ = stopRadioIfLoadingNonRadioContent(
             incomingTrackURL: track.url,
             context: "loadTrack"
@@ -4597,6 +4587,17 @@ class AudioEngine {
         }
 
         stopVideoBeforeLoadingAudio(logPrefix: "loadTrack")
+
+        // An about:blank placeholder still waits on its async URL fetch. It becomes current, with
+        // the outgoing track stopped, so the caller's `play()` resolves it; left out, `play()`
+        // resumed the outgoing track while the playlist highlight moved on (#583).
+        if route == .unresolved {
+            NSLog("loadTrack: placeholder track '%@' — current, awaiting async URL fetch", track.title)
+            stopLocalOnly()
+            currentTrack = track
+            currentIndex = index
+            return nil
+        }
 
         if route == .streaming {
             loadStreamingTrack(track)
@@ -7121,9 +7122,11 @@ extension AudioEngine: StreamingAudioPlayerDelegate {
                 )
             }
 
-            // Advance to next track after a brief delay to let error state settle
+            // Advance to next track after a brief delay to let error state settle. A Stop or a
+            // track selection in the meantime moves the token and cancels the advance.
+            let token = deferredLocalTrackLoadToken
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self = self else { return }
+                guard let self, self.deferredLocalTrackLoadToken == token else { return }
                 // Only advance if we're still in error/stopped state
                 if self.state == .stopped {
                     NSLog("AudioEngine: Auto-advancing after streaming error")
