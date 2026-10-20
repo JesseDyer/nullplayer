@@ -2,10 +2,10 @@
 
 **Status: partly built (reviewed 2026-10-19).** §7 is the checklist; this line only summarises it.
 
-- **Done:** §7 steps 1–3 (S0, S1, S2's MAKI half and XML census, S4's MAKI demand index, B182–B201)
-  and the §6 regression sweep. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
-- **In progress:** step 4 (S3 motion sweep) and step 5 (S3 interaction + menu sweep). Both have a
-  script (`wal_motion_sweep.sh`, `wal_interaction_sweep.sh`) and unticked boxes in §7.
+- **Done:** §7 steps 1–3 (S0, S1, S2's MAKI half and XML census, S4's MAKI demand index, B182–B201),
+  step 4 (S3 motion sweep, `wal_motion_sweep.sh`, B209–B210) and the §6 regression sweep. §8, which finished S0 and S2 for a ~1,000-skin corpus, is history.
+- **In progress:** step 5 (S3 interaction + menu sweep): `wal_interaction_sweep.sh` exists; its
+  unticked boxes are in §7.
 - **Not started:** steps 5b, 6, 7.
 
 ## Rules for every session working this plan
@@ -239,7 +239,7 @@ what to build.
 2. **S2 MAKI static demand.** *Done* (`wal_feature_index.sh`, `features.tsv`).
 3. **S4 aggregation + the demand index.** *Done* (`wal_demand.sh`, B174 → B182–B201).
 
-4. **S3 motion sweep** (§3 S3, *Motion sweep*). Directly targets the animation complaint.
+4. **S3 motion sweep** (§3 S3, *Motion sweep*). *Done.* Directly targets the animation complaint.
    - [x] Each rung is a pair: settle the run loop for the wall-clock interval, render at the matching
      pinned clock, t = 0, 0.25, 1, 4 s.
    - [x] Hash each frame; record a per-object frame/attribute delta.
@@ -249,7 +249,9 @@ what to build.
    - [x] Distinguish the three causes: never played, played but not repainted, played but drawn at
      frame 0.
    - [x] Output to S4: still objects / animated objects per skin (the impact score): `impact.tsv`.
-   - [ ] Output to S4: motion-dead capability rows ranked by the S4 formula.
+   - [x] Output to S4: motion-dead capability rows ranked by the S4 formula: `ranking.tsv`, filed as
+     B209–B210 (B203/B204 withdrawn). Severity 2 (4th of 5), visibility 3 at rest / 2 off, cost 1
+     until tuned by hand; `hidden` layers are coverage (step 5b).
    - **Done when:** every box is ticked over Gold+Silver, two runs agree on every verdict, and the
      motion-dead rows are in the queue.
 

@@ -446,6 +446,11 @@ Every skin costs the 4 s ladder, so shard it.
 The summary names suspect skins by the plan's rule (§3 S3): the skin declares an `animatedlayer`, an
 `autoplay` or a script `Timer`, and no window moved — 51 of 114 on 2026-10-19, most of them on the
 `Timer` clause. `impact.tsv` is S4's motion impact score per skin: `animated`, `still`, `suspect`.
+`ranking.tsv` is S4's motion-dead ranking: one row per plan cause (never played; played but not
+repainted; played but drawn at one frame; plus suspects with a `Timer` and no animated layer),
+counted over suspect skins only, `priority = skins × 2 × visibility ÷ 1` — severity 2 is motion-dead's
+place on the S4 ladder, visibility 3 when the cause sits in an open window, and cost stays 1 until
+the plan's hand-tuning sets it. `hidden` layers are not ranked: never drawn is coverage, not motion.
 **Verdicts are repeatable; the detail is not quite.** Two runs on 2026-10-19 (manifest `9e68ffe0`)
 had identical `verdict` columns, and 3 of 748 rows differed in `frames` or `anim`, all layers whose
 looping phase depends on the absolute uptime. Diff `verdict` across a change, not the whole file.

@@ -3,6 +3,17 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B203, B204 — withdrawn 2026-10-19
+
+| B203 | **An `animatedlayer` with a relative or negative `w` resolves to one frame.** `animationFrameCount` takes the frame width from `framewidth`, else the raw `w`, so Big Bento Modern's reader busy bars (`w="-168" relatw="1" frameheight="2"`, a 57-frame strip, `autoplay="1"`) count 1 frame and never animate. Take the frame width from the sheet when `w` is not a positive absolute width, as `frameheight` alone already implies a vertical strip. Found by the motion sweep (B202): `one-frame` on all four Big Bento Modern variants. S4: 7 × motion-dead 2 × off-rest 2 ÷ S 1 = 28. Done when `wal_motion_sweep.sh` reports no `one-frame` layer on Big Bento Modern | `xml-attr '^animatedlayer@relatw$'`: gold 2/56, silver 1/54, bronze 3/827, quarantine 1/54 (manifest 9e68ffe0) | S | 2 |
+| B204 | **Triage the motion sweep's first flags.** B202's first run (gold+silver, rev `1dff452a`) flagged 40 suspect layouts (an `animatedlayer` in an open window, nothing moved), 4 suspect skins (`--Vortex--`, Ebonite_2_1, nullsoft_media_player_10_forked, PionNer_AMP2: a self-playing layer, no window moved), 4 `stuck` layers (Alpha_Media_Player_X5's `gearwheel.*`, the cPro `beatvis.*`), and 2 `not-repainted` (ZDL Reel-To-Reel's `window.runner.play` in its library and playlist windows). Also one engine question it raised: `WasabiAnimation.state` self-plays a layer with `autoplay="0" autoreplay="1"` (Ebonite's `cube2`, NMP10's `ani.stop`/`ani.pause`), where Wasabi's `autoreplay` is believed to mean "loop", not "start". Read each against the skin's script and, where it is drawn at rest, the running app; most are expected at rest (meters, interaction-driven knobs). Done when each flag is a filed row or dismissed with its reason in the archive entry | 40 layouts over 31 skins in gold+silver (manifest 9e68ffe0) | M | 2 |
+
+**Withdrawn 2026-10-19.** Both were filed from B202's first run outside the plan's S4 ranking, one
+named after a skin and one a "triage these skins" list (`corpus-runner-plan.md`, Rules 4 and 5).
+The S4 motion ranking (`wal_motion_sweep.sh` → `ranking.tsv`) replaces them with B209 and B210. B203's
+one-frame layer is not motion-dead under the plan's suspect rule (Big Bento Modern's windows move),
+so it has no ranked row.
+
 ## B205 — the S3 interaction sweep — closed 2026-10-19
 
 | B205 | **The S3 interaction sweep (plan §7 step 5, §3 S3).** Generalise `RENDER_CLICK` to every object a script hooks the mouse on: pick a point the hit test actually reaches, drive the gesture its bindings call for (click, double-click, drag, right-click), and record whether the hit test reached it, whether a handler ran or failed on a missing method, and whether anything changed. Emit the dead-control list per skin. Done when it runs over gold+silver, two runs agree on the target list and nearly every verdict, and its first findings are filed | every skin with a script-hooked control: 106 of 114 in gold+silver | M | 2 |

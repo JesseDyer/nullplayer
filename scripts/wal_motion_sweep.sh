@@ -122,6 +122,37 @@ for row in rows:
         if "=" in item:
             cause = item.rsplit("=", 1)[1]
             causes[cause] = causes.get(cause, 0) + 1
+# The S4 motion-dead ranking (§3 S4): one row per plan cause (§3 S3), counted over suspect skins.
+# priority = skins × severity × visibility ÷ cost. Motion-dead is 4th of 5 on the ladder: weight 2.
+# Visibility 3 when the cause sits in an open window at rest, else 2. Cost 1: the plan tunes it by
+# hand afterwards, and nothing measured here estimates it. `hidden` is never drawn at all, which is
+# coverage (§7 step 5b), not motion.
+CAUSES = {"never-played": "never played", "not-repainted": "played but not repainted",
+          "stuck": "played but drawn at one frame", "one-frame": "played but drawn at one frame"}
+ranked = {}
+for skin in still:
+    for x in by_skin[skin]:
+        for item in x["anim"].split(","):
+            cause = item.rsplit("=", 1)[-1] if "=" in item else None
+            if cause in CAUSES:
+                entry = ranked.setdefault(CAUSES[cause], {"skins": set(), "open": set()})
+                entry["skins"].add(skin)
+                if x["open"] == "1":
+                    entry["open"].add(skin)
+timer_only = [s for s in still if all(x["animatedlayers"] == "0" for x in by_skin[s])]
+ranked["Timer declared, no animated layer, nothing moved"] = {"skins": set(timer_only),
+    "open": {s for s in timer_only if any(x["open"] == "1" for x in by_skin[s])}}
+with open(os.path.join(out, "ranking.tsv"), "w") as handle:
+    handle.write("priority\tcause\tskins\tseverity\tvisibility\tcost\tsamples\n")
+    lines = []
+    for cause, entry in ranked.items():
+        visibility = 3 if entry["open"] else 2
+        skins = len(entry["skins"])
+        lines.append((skins * 2 * visibility, cause, skins, visibility,
+                      ", ".join(sorted(entry["skins"], key=str.lower)[:3])))
+    for priority, cause, skins, visibility, samples in sorted(lines, key=lambda l: (-l[0], l[1])):
+        handle.write(f"{priority}\t{cause}\t{skins}\t2\t{visibility}\t1\t{samples}\n")
+
 print(f"wal_motion_sweep: {len(rows)} layouts over {len(by_skin)} skins -> {out}/motion.tsv; "
       + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
 print("  animatedlayers: " + (", ".join(f"{k} {v}" for k, v in sorted(causes.items())) or "none"))
