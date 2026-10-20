@@ -7,6 +7,11 @@
 - **In progress:** step 5 (S3 interaction + menu sweep): `wal_interaction_sweep.sh` exists; its
   unticked boxes are in §7.
 - **Not started:** steps 5b, 6, 7.
+- **Coverage:** S1, S2 and S4's demand index cover every tier (~995 skins). S3 (steps 4–5) has run
+  over Gold+Silver only, 114 skins, per the tier rule in §3 S0 — so B209/B210's counts are out of 114.
+- **Open decision (the user's):** whether S3 runs over every tier (Bronze too; Quarantine does not
+  load). Measured cost: motion ~10 min, interaction ~2.5 h as a background batch. Until decided,
+  S3 stays Gold+Silver.
 
 ## Rules for every session working this plan
 
