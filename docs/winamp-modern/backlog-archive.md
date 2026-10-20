@@ -3,6 +3,31 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B163, B165 — hosted-window registry and frame descriptor — closed 2026-10-20
+
+| B163 | **Make the hosted-window registry exhaustive.** `WinampModernHostedWindowRegistry.all` is an array searched by `entry(id:)`, which returns an Optional, and every definition's `makeSurface` is Optional too, although every `WinampModernHostedWindowID` has an entry and every entry builds a surface. Three production callers (`WindowManager`, `WinampModernComponentBridge.makeHostedWindowSurface`, `WinampModernHostedWindowMaterializer`) guard a nil that cannot happen, about fifteen test lines `XCTUnwrap` it, and `WinampModernHostedProviderTests` asserts the two promises the types do not make. Give `WinampModernHostedWindowID` a `definition` built by an exhaustive `switch`, make `makeSurface` non-optional, and keep `all` as `allCases.map(\.definition)` for the synthesizer. A new hosted id then fails to compile without an entry rather than falling back at run time. No behaviour change. Done when `swift test` passes with the nil guards and the registration assertions gone | none on screen; every hosted window routes through it | S | 3 |
+| B165 | **Let the hosted-frame descriptor carry a `WasabiSurfaceSynthesizer.Frame` instead of mirroring it.** `WinampModernHostedFrameDescriptor` has exactly `Frame`'s fields (`groupIdentifier`, `xuiTag`, `hasArtwork`, `exemplar`, `clientInsets`), and a `Frame` is rebuilt from it field by field in `WinampModernHostedWindowInstantiation.raised`, `WasabiSkinInitializer.instantiateHostedWindowAtRuntime` and three places in `WinampModernB140Tests`. A rebuild that dropped the client rect is what B140's second screenshot was, and every new frame field has to be threaded through all of them. Store the `Frame` in the descriptor (or replace the descriptor with it) so the rebuilds go away. While there, move `hasContentScript` and `hasArtwork` onto `inheritanceChain(of:definitions:)`, which `clientInsets(of:definitions:)` already uses, so no frame helper walks `inherit_group` by hand. No behaviour change. Done when `swift test` passes and no code builds a `Frame` from a descriptor's fields. Deferred from PR #559's review | none on screen; every hosted window wearing a skin frame routes through it | S | 3 |
+
+**B163 closed 2026-10-20** (commit `cc8f70ef`).
+`WinampModernHostedWindowID.definition` is an exhaustive `switch` and `makeSurface` is non-optional.
+`WinampModernHostedWindowRegistry.all` is `allCases.map(\.definition)` for the synthesizer, and
+`entry(id:)` is gone. The three production callers (`WindowManager`'s stack record,
+`WinampModernComponentBridge.makeHostedWindowSurface`, `WinampModernHostedWindowMaterializer`) lost
+their nil guards. The renderer's hosted-id lookup is `allCases.first { reference == $0.holderReference }`.
+The tests lost their `XCTUnwrap`s, and `WinampModernHostedProviderTests` lost the two registration
+assertions the types now guarantee. A new hosted id does not compile without its window.
+
+**B165 closed 2026-10-20.** `WinampModernHostedFrameDescriptor` is deleted. The route
+(`.skinFrame`) and `WinampModernHostedWindowInstantiation.frame` carry `WasabiSurfaceSynthesizer.Frame`
+itself. The five field-by-field rebuilds are gone: `raised`, `instantiateHostedWindowAtRuntime` and
+three in `WinampModernB140Tests`. `hasContentScript` and `hasArtwork` walk
+`inheritanceChain(of:definitions:)`, with the same short-circuit order and no `depth` parameter.
+`collectArt` keeps its own walk, because it also follows child `<group id=…>` references through a
+visited set, which a chain cannot express.
+
+Both have no behaviour change: `swift test` passes (3,145), and `wal_render_sweep.sh --shards 10`
+against the previous capture changed only the known pair and the two live clocks.
+
 ## B208 — the interaction sweep's dead list — closed 2026-10-20
 
 | B208 | **Triage the interaction sweep's dead list.** B205's run (gold+silver, rev `f3ca6c5c`): 343 silent and 117 blocked gestures, 433 unreachable. Blocked calls the demand queue already holds are covered there (B182's events-as-methods, 47 gestures; `shutdown` B187, 16; `getViewport*FromPoint` B195, 16). Left: the skins mostly dead — machina 31/33, shark5 23/23, HeadAMP 27/32, Anunaki 44/60, wTunes 19/27, Dreliction 57/83 (mostly right-clicks and hover labels) — and `Layout.onAccelerator` (10, Alpha_Media_Player_X5), `sqr`, `getNumLayouts`. For each, read the handler and, where it is drawn at rest, the running app: is the control dead, or doing something the sweep does not see (a hover-only layer, a sound, a state another click needs first)? Done when each skin above has a filed row or a dismissal reason in the archive | 6 skins named, 117 blocked gestures (manifest 9e68ffe0) | M | 2 |
