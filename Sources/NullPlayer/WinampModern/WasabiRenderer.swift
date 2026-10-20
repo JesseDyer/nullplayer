@@ -2644,7 +2644,9 @@ final class WasabiSceneRenderer {
                 draw(bitmap, object: object, frame: node.frame, context: context)
             }
         } else if type == "layer", let imageID = object.attributes["image"],
-                  let artwork = host.trackFolderArtwork(forImage: imageID) {
+                  host.isTrackFolderImage(imageID), let artwork = host.albumArtwork {
+            // A cover beside the playing file (`WinampModernTrackFolderImage`). Only real art is
+            // drawn: the scripts' loading stand-in answers questions, it is never shown.
             drawImage(artwork, in: node.frame, context: context)
         } else if let role = chromeButtonRole(
                     of: object,

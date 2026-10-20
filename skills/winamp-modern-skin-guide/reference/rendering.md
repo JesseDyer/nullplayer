@@ -156,19 +156,52 @@ title. Art arrives asynchronously, so the window controller repaints on
 
 #### A cover a script looks for beside the playing file (2026-10-20)
 
-Skins older than `<AlbumArt>` find the cover themselves. Deimos's `cover.maki` — **57 corpus
-skins**, Mac OS X Panther the reported one — takes `getPath(getPlayItemString())`, drops its first
-seven characters, appends `cover.jpg`, `coverart.jpg`, `folder.jpg`, `front.jpg`…, sets each as an
-`AnimatedLayer`'s `image=`, takes `getLength() > 0` as "found", and puts the hit on `cover.layer`.
-Winamp read the file from disk; a skin never may here. `WinampModernTrackFolderImage` answers it
-without opening anything: a value whose folder is the tail of the playing track's folder and whose
-leaf is an image **names** the cover, and the cover is `albumArtwork`. Three places honour it —
-`setXmlParam` lets that one unregistered image value through (any other is still refused, which
-Defix needs), the renderer draws the artwork for a `<layer>` wearing it, and `getLength()` answers 1
-while the art is present **or still loading** (the script asks once, on the title change, before
-the fetch lands) and 0 otherwise, so the skin's own "no cover found" art still shows when there is
-none. Dronev11 is **not** covered: its own `behaviors.m` only searches when the play item starts
-with `file://`, and probes with `Map.loadMap`, so its Cover Art window still says "No cover art".
+Skins older than `<AlbumArt>` find the cover themselves, by building a file path from the play item
+and asking Winamp to load it. A skin may never read the host filesystem here, so
+`WinampModernTrackFolderImage` answers every such request **without opening anything**: a value that
+names an image in the playing track's folder, or the playing file itself, *is* a request for the
+cover, and the cover is `albumArtwork` — local file and server stream alike. The corpus has three
+script families, and each asks a different question:
+
+| Family | How it asks | What answers it |
+|---|---|---|
+| Deimos `cover.maki` (Mac OS X Panther, Vortex, 1010 Fullscreen…) | `getPath` minus 7 chars + `cover.jpg`…, as an `AnimatedLayer`'s `image=`, then `getLength() > 0` | `animationFrameCount`: 1 with art (or art loading), 0 without |
+| `Map` probe (Drone, CNY, Styx, Core-X5, MIPOD, Ebonite's notifier, Winamp-2006…) | `Map.loadMap(path)`, then `getValue(0,0) > 0` or `getWidth()`; the hit goes on a layer's `image=` | `mapImage` is the artwork; `getValue` on it reads at least 1; `bitmapSize` gives `getAutoWidth`/`Height` |
+| Skin Consortium `SC:Cover` (Ebonite, MusicshowB) | `<AlbumArt>` objects, sized by `Map.loadMap(PlEdit.getFileName(i))` | the media file names its own cover; the `<AlbumArt>` draws the host's art |
+
+Rules that make it hold for every source and every timing:
+
+- **One recogniser, string-only.** Scripts cut the folder from the left (seven characters, `file://`,
+  everything up to `//`), so the request's folder is a *tail* of the track's. Separators, case,
+  `//` runs, a `file:` prefix and percent-encoding are normalised on both sides, and a playlist
+  row's `?query` (a server token) is ignored. Foundation's path helpers are not used: they turn
+  `https://` into `https:/`. Pinned for Plex and Subsonic URLs in `WinampModernB114Tests`.
+- **Never cached.** `mapImage` and `bitmapSize` cache by id; a cover changes with the track, so it
+  is answered before either cache.
+- **Loading is "found".** While the fetch is in flight the answer is a square white stand-in
+  (`loadingStandIn`) — square so a script sizing its panel from `getWidth()`/`getHeight()` lays out
+  the shape the art will have, white so `getValue(0,0) > 0` passes. The renderer never draws it.
+- **A late cover is offered again.** Scripts look once, on `onTitleChange`, and the art often lands
+  after — a stream's always does, and a local file's can lose the race (Core-X5 probed all four names
+  before `NowPlayingManager` had even started). When the art arrives, the programs that asked
+  (`coverSeekers`, recorded at `loadMap`, `setXmlParam(image)` and `getLength`) hear
+  `onTitleChange` once more — only them, because a skin-wide replay resets `beat.m`'s VU maximum —
+  and once per track. The controller defers it a turn: the host drops its per-track artwork cache
+  from its own observer of the same notification, and asked first it still says "no cover".
+- `setXmlParam` lets that one unregistered image value through; any other is still refused, which
+  Defix needs.
+
+`SC:Cover` also needed two engine fixes that are not about covers — `new PlEdit` answers the
+singleton, and a `Map` that loads nothing is 64x64 — both in
+[scripting.md](scripting.md) → *`Map`*.
+
+Verified live 2026-10-20: Panther's Cover Art on a local file and on a Plex album (the cover changed
+with the track), Ebonite's Album Art on a local file (photograph the screen — `winhelper capture` of
+its `desktopalpha` glued frame shows the see-through middle as white), and Core-X5's full probe
+sequence through a clean quit (`getValue` 0 four times, then after the art landed `cover.jpg`
+found, `getWidth()` 600). **Not covered:** Dronev11's own `behaviors.m` only searches when the play
+item starts with `file://`, which NullPlayer's never does; its Cover Art window still says "No cover
+art".
 
 #### `alpha` belongs to the object, not to one kind of drawing
 

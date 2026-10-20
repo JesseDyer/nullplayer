@@ -157,6 +157,7 @@ extension WinampModernScriptRuntime {
             guard !Self.imageKeys.contains(key.lowercased()) || resolvesToResource(value)
                     || host.isTrackFolderImage(value)
             else { return .null }
+            if Self.imageKeys.contains(key.lowercased()) { noteCoverRequest(value, by: program) }
             if Self.geometryKeys.contains(key.lowercased()) {
                 // A container or a layout is a *window*: its box is not read back out of the graph at
                 // the next repaint, it has to be pushed to AppKit. `resize()` already did this; the
@@ -543,7 +544,9 @@ extension WinampModernScriptRuntime {
             else if moved { requestRepaint(for: object) }
             return .null
         case "getcurframe": return .integer(Int32(animationFrame(of: object)))
-        case "getlength": return .integer(Int32(clamping: animationFrameCount(of: object)))
+        case "getlength":
+            noteCoverRequest(object.attributes["image"] ?? "", by: program)
+            return .integer(Int32(clamping: animationFrameCount(of: object)))
         case "setstartframe":
             _ = object.setAttribute("startframe", value: String(max(0, arguments[0].integerValue)))
             return .null
@@ -979,6 +982,7 @@ extension WinampModernScriptRuntime {
                 mapID: bitmapID, mapPath: mapLogicalPath(bitmapID: bitmapID, source: source),
                 threshold: 1, reversed: false)))
         case "loadmap":
+            noteCoverRequest(arguments[0].stringValue, by: program)
             state.role = .map(bitmapID: arguments[0].stringValue, source: program.source)
             dynamicObjects[id] = state
             return .null
@@ -1050,6 +1054,12 @@ extension WinampModernScriptRuntime {
                 // being inside the bitmap *is* being in the region.
                 return .boolean(sample.inBounds && sample.alpha > 0)
             }
+            // `getValue(0,0) > 0` is how most cover scripts ask "did the file load?", and a cover
+            // whose corner pixel is pure black would answer no. For a cover the question is only
+            // ever that one, so a loaded cover reads at least 1.
+            if sample.inBounds, host.isTrackFolderImage(bitmapID) {
+                return .integer(Int32(max(1, sample.red)))
+            }
             return .integer(Int32(sample.red))
         case "getargbvalue":
             // One channel of one pixel. The channel index is BGRA — pinned by `player.maki`, which
@@ -1091,8 +1101,16 @@ extension WinampModernScriptRuntime {
             // The map's own size, which for a sliced `<bitmap>` is the slice's, not the sheet's —
             // same reason as `mapCrop`. The path form has no definition and stays the whole file,
             // which is what ClassicPro's two width probes (`read.suiframe.png`, `installed.png`) ask.
-            guard case .map(let bitmapID, let source) = state.role,
-                  let image = mapImage(bitmapID: bitmapID, source: source) else { return .integer(0) }
+            guard case .map(let bitmapID, let source) = state.role else { return .integer(0) }
+            // A map whose bitmap does not load is Wasabi's missing-bitmap placeholder, which is
+            // 64x64 — the corpus's cover scripts test for exactly that (`getWidth() != 64`,
+            // `getWidth()==64 && getHeight()==64` = "not found"). Skin Consortium's `SC:Cover` relies
+            // on it the other way: it sizes its `<AlbumArt>` holders by `ArtW/ArtH` from a map of a
+            // file name that is still empty, so 0x0 made the ratio 0/0 and the holders vanished,
+            // where Winamp's 64/64 filled the frame. Its pixels still read 0 (`getValue`, above).
+            guard let image = mapImage(bitmapID: bitmapID, source: source) else {
+                return .integer(Self.missingMapSide)
+            }
             let crop = mapCrop(bitmapID: bitmapID, image: image)
             return .integer(Int32(clamping: method == "getwidth" ? crop.width : crop.height))
         case "additem":

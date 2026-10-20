@@ -55,7 +55,7 @@ CPro_Winamp_for_Mac_Sync, LogicallityV1_0, machina):
 | machina | An empty video window opened at launch, missing from the Windows menu | The B97 video exemption reads the container's own `hold=` — the catalog is not built yet at that point (`applyDefaultContainerVisibility`) |
 | JRS (~220 skins) | The playlist had no Add/Rem/Sel/Misc/List anywhere | A playlist frame's `<LayoutStatus>` gets the command bar, hidden where the skin has its own `PE_Add` (`WasabiStandardFrames`) |
 | Dronev11 | The compact player could not be dragged anywhere | Ghost artwork is window: `hitTest` counts it and `pressTarget` hands the press to the layout (`WinampModernMainView`) |
-| Mac OS X Panther (57 skins) | The Cover Art window always said "No cover found" | A cover `cover.maki` looks for beside the playing file draws the host's artwork; nothing is opened (`WinampModernTrackFolderImage`) |
+| Mac OS X Panther, Core-X5, Ebonite | Cover windows never showed a cover, local or streamed | One recogniser for "a cover beside the playing file, or the file itself" answers all three script families from the host's artwork, a late cover is offered again, a missing `Map` is 64x64, `new PlEdit` is the singleton (`WinampModernTrackFolderImage`) |
 
 The other skins showed nothing more on a first look. Left: Dronev11's playlist info sits high in its
 bar (cosmetic), and its own cover script (`behaviors.m`, `file://` only) still finds no cover. Filed from the code review: B216 (check `.wmz`

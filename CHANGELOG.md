@@ -52,8 +52,12 @@
   playlist (and about 220 others) can be edited. machina's help screen and skin configuration, and
   JRS's configuration, draw on the skin's own background instead of the desktop or a white sheet,
   and machina's help screen gets its switch button. A skin's video window no longer opens empty at
-  launch with no way to close it. Dronev11's compact player can be dragged again, and the Cover Art
-  window in Mac OS X Panther and 56 other skins shows the playing track's cover.
+  launch with no way to close it. Dronev11's compact player can be dragged again.
+- **Modern skins: cover art in skins that find it themselves** — Mac OS X Panther's Cover Art,
+  Ebonite's Album Art and the other skins that look for a `cover.jpg` or `folder.jpg` beside the
+  playing file now show the track's cover, for local files and for Plex, Jellyfin, Emby and Subsonic
+  streams, and change with the track. A cover that arrives a moment after the track starts still
+  appears. Nothing on disk is read; the cover is the one NullPlayer already shows.
 
 ## 0.33.0
 

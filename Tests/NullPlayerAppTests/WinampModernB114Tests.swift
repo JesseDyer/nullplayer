@@ -247,6 +247,35 @@ final class WinampModernB114Tests: XCTestCase {
         XCTAssertFalse(host.isTrackFolderImage("someone/Music/Other/cover.jpg"), "another folder")
         XCTAssertFalse(host.isTrackFolderImage("cover.jpg"), "no folder at all")
         XCTAssertFalse(host.isTrackFolderImage("someone/Music/Album/notes.txt"), "not an image")
+        XCTAssertTrue(host.isTrackFolderImage("file:///Users/someone/Music/Album/front.png"), "file: URL")
+    }
+
+    /// A stream is a folder too: Plex, Jellyfin, Emby and Subsonic tracks reach a script as a URL,
+    /// and a script may keep the scheme, chop it, or chop into the host name.
+    func testACoverBesideAStreamIsRecognisedWhateverTheScriptCut() {
+        let plex = "https://nas3:32400/library/parts/123/1700000/file.flac"
+        let subsonic = "http://nas3:4533/rest/stream.mp3"
+        for (track, request) in [(plex, "https://nas3:32400/library/parts/123/1700000/cover.jpg"),
+                                 (plex, "/nas3:32400/library/parts/123/1700000/folder.jpg"),
+                                 (subsonic, "as3:4533/rest/cover.jpg"),
+                                 (subsonic, "http:/nas3:4533/rest/cover.jpg")] {
+            XCTAssertTrue(WinampModernTrackFolderImage.names(request, trackPath: track), request)
+        }
+        XCTAssertFalse(WinampModernTrackFolderImage.names("nas3:32400/library/parts/999/cover.jpg",
+                                                         trackPath: plex), "another item's folder")
+    }
+
+    /// `SC:Cover` asks for the media file itself — `Map.loadMap(PlEdit.getFileName(i))` — which
+    /// Winamp answered with the file's embedded art. A playlist row may still carry the stream's token.
+    func testThePlayingFileItselfNamesItsCover() {
+        let plex = "https://nas3:32400/library/parts/123/1700000/file.flac"
+        XCTAssertTrue(WinampModernTrackFolderImage.names(plex + "?X-Plex-Token=abc", trackPath: plex))
+        XCTAssertTrue(WinampModernTrackFolderImage.names("/Users/someone/Music/Album/01.mp3",
+                                                        trackPath: "/Users/someone/Music/Album/01.mp3"))
+        XCTAssertFalse(WinampModernTrackFolderImage.names("/Users/someone/Music/Album/02.mp3",
+                                                         trackPath: "/Users/someone/Music/Album/01.mp3"),
+                       "another file is not an image in this folder")
+        XCTAssertFalse(WinampModernTrackFolderImage.names("", trackPath: ""), "nothing playing")
     }
 
     /// …and a layer wearing that path draws the host's album art, which is how Mac OS X Panther's

@@ -1414,6 +1414,22 @@ menu bar for it. Reading (0, 0) of `buttons.png` gave it a transport button, the
 and four cPro skins drew five magenta boxes across the titlebar that Winamp never shows. The channel
 index is BGRA (`getARGBValue(x, y, 0..3)` = B, G, R, A), pinned separately by `player.maki`.
 
+### A `Map` that loads nothing is 64x64; `new PlEdit` is the playlist editor (2026-10-20)
+
+Both turned up behind Ebonite's blank Album Art window, and neither is about covers.
+
+- **Winamp's missing bitmap is 64x64**, and a `Map` over one reports that size. The corpus says so
+  itself: 18 script tests compare a map against 64, nearly all of them "not found" checks
+  (`getWidth() != 64`, `getWidth()==64 && getHeight()==64`). `SC:Cover` relies on it the other way —
+  it sizes its `<AlbumArt>` holders by `ArtW/ArtH` from a map of a file name that is still `""`, and
+  answered 0x0 that ratio was `0/0`, the holders came out 0x0 and the window stayed blank; Winamp's
+  64/64 filled the frame. Only the size: its pixels still read 0 (`getValue`), so the `Map`-probe
+  cover scripts' `getValue(0,0) > 0` still means "not found". ClassicPro's `installed.png` probe tests
+  `!= 1` and is unaffected. `WinampModernScriptRuntime.missingMapSide`.
+- **`new PlEdit` answers the singleton**, exactly as `new ColorMgr` does (`makeObject`). `SC:Cover`
+  does `PeListener = new PlEdit` and reads the playing row through it; as a `.dynamic` shell
+  `getCurrentIndex()` was `UNSUPPORTED` and its whole `onTitleChange` aborted.
+
 ### A script may call its own `onSetXuiParam` as a method
 
 The same idiom already recorded for `onAction` and `onEqFreqChanged`: a XUI object's script hands

@@ -50,6 +50,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// Ceiling on one `List`'s length. ClassicPro's longest is its tab order (a dozen entries); the
     /// cap is what stops a script appending in a loop from growing without bound.
     static let maximumListItems = 4_096
+    /// The side of Wasabi's missing-bitmap placeholder, which is what a `Map` that loaded nothing
+    /// reports as its size.
+    static let missingMapSide: Int32 = 64
 
     let loadedSkin: WinampModernLoadedSkin
     let host: WinampModernHost
@@ -360,6 +363,8 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// Memoised bitmap pixel sizes for `getAutoWidth`/`getLength`; `nil` records a resolved-but-unknown
     /// size.
     private var bitmapSizes: [String: (width: Int32, height: Int32)?] = [:]
+    /// The scripts that went looking for a cover beside the playing file (`WinampModernTrackFolderImage`).
+    var coverSeekers = WinampModernTrackFolderImage.Seekers()
     /// Decoded `Map` bitmaps, keyed by resource id. Maps are small lookup images (44×44 for MMD3's
     /// volume knob) and there are a handful per skin.
     /// Font resolution and text measurement, shared with the renderer so `getAutoWidth()` answers
@@ -889,6 +894,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     private func bitmapHeight(identifier: String) -> Int32? { bitmapSize(identifier: identifier)?.height }
 
     private func bitmapSize(identifier: String) -> (width: Int32, height: Int32)? {
+        // Never cached: the cover changes with the track.
+        if let cover = host.trackFolderCover(forImage: identifier) {
+            return (Int32(clamping: cover.width), Int32(clamping: cover.height))
+        }
         let key = identifier.lowercased()
         if let cached = bitmapSizes[key] { return cached }
         var size: (width: Int32, height: Int32)?
@@ -915,16 +924,12 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// divided by the layer's frame box (MMD3's volume knob is a 44×1012 strip of 44×44 frames).
     func animationFrameCount(of object: WasabiObject) -> Int {
         if let raw = object.attributes["frames"], let count = Int(raw), count > 0 { return count }
-        guard let imageID = object.attributes["image"], let sheet = bitmapSize(identifier: imageID) else {
-            // A cover looked for beside the playing file (`WinampModernTrackFolderImage`) is found
-            // when the host has artwork or is still fetching it — the script asks once, on the title
-            // change, before the fetch lands. "Found" with neither left the skin's own
-            // "cover not found" image unreached behind an empty layer.
-            if let imageID = object.attributes["image"], host.isTrackFolderImage(imageID) {
-                return host.albumArtwork != nil || host.isArtworkLoading ? 1 : 0
-            }
-            return 1
+        // A cover beside the playing file is one frame when there is (or will be) art and none when
+        // there is not — `cover.maki`'s "found" test, and the skin's own "no cover" art otherwise.
+        if let imageID = object.attributes["image"], host.isTrackFolderImage(imageID) {
+            return host.trackFolderCover(forImage: imageID) == nil ? 0 : 1
         }
+        guard let imageID = object.attributes["image"], let sheet = bitmapSize(identifier: imageID) else { return 1 }
         let frameWidth = Int(object.attributes["framewidth"] ?? object.attributes["w"] ?? "") ?? Int(sheet.width)
         let frameHeight = Int(object.attributes["frameheight"] ?? object.attributes["h"] ?? "") ?? Int(sheet.height)
         guard frameWidth > 0, frameHeight > 0 else { return 1 }
@@ -988,6 +993,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     }
 
     func mapImage(bitmapID: String, source scriptSource: WalSourceLocation) -> CGImage? {
+        // A cover beside the playing file is the host's artwork, never a file read — and never
+        // cached, because it changes with the track.
+        if host.isTrackFolderImage(bitmapID) { return host.trackFolderCover(forImage: bitmapID) }
         let key = bitmapID.lowercased()
         if let cached = mapImages[key] { return cached }
         guard mapImages.count < Self.maximumCachedMaps,
@@ -3290,6 +3298,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // list. With `onLoaded` unreachable the window drew an empty list, in every cPro skin.
         if Self.canonicalGUID(classGUID) == MakiClassGUID.colorManager {
             return MakiObjectReference(.colorManager)
+        }
+        // `new PlEdit` is the same: there is one playlist editor. Skin Consortium's `SC:Cover`
+        // (Ebonite, MusicshowB) does `PeListener = new PlEdit` and reads the playing row through it;
+        // as a `.dynamic` shell `getCurrentIndex()` was unsupported, its title-change handler aborted
+        // before it named a single file, and the Album Art window stayed blank.
+        if Self.canonicalGUID(classGUID) == MakiClassGUID.playlistEditor {
+            return MakiObjectReference(.playlistEditor)
         }
         let id = nextPopupID
         nextPopupID &+= 1

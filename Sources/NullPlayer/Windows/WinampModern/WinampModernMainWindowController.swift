@@ -105,6 +105,10 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         artworkObserver = NotificationCenter.default.addObserver(
             forName: NowPlayingManager.artworkDidLoadNotification,
             object: nil, queue: .main) { [weak self] _ in
+                // A turn later: the host drops its per-track artwork cache from its own observer of
+                // this same notification, and observers run in no promised order — asked first, the
+                // cache still says "no cover" and the cover-seeking scripts are never asked again.
+                DispatchQueue.main.async { self?.skinView?.scripts.redeliverTitleToCoverSeekers() }
                 self?.skinView?.needsDisplay = true
                 self?.auxiliaryContainers.forEach { $0.view.needsDisplay = true }
             }
