@@ -450,6 +450,13 @@ itself is drawn with the font's own advances, from the reserved room's aligned e
 `WasabiTextMetrics.fixedPitch` still supplies the *measurement*, so `getTextWidth()` and any box a
 skin sizes from it are unchanged.
 
+**Centred text is the exception: it centres on the width actually drawn**, not on the reservation
+(2026-10-21). wTunes' About sentence is a `forcefixed` `align="center"` text, and a 47-character
+reservation centred in the box with the proportional string drawn from its left edge put the line
+well left of centre and clipped. Left and right alignment still anchor at the reservation's edge, so
+cPro2's 4px tuck is unchanged. Corpus sweep: Vortex's and 1010 Fullscreen's `POSITION` labels and
+Shield_Amp's window titles moved to their true centres, and nothing else changed.
+
 Drawing each glyph centred in a widest-digit cell was the earlier reading, and cPro2 Dark Aluminum
 rules it out on evidence rather than taste. `info-text.m` places the total time at
 `trackTime.getTextWidth() - 4 + 21` while the elapsed time sits at `x = 21` — a deliberate 4px tuck

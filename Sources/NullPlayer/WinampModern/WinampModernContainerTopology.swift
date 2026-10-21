@@ -225,8 +225,13 @@ enum WinampModernContainerTopology {
     }
 
     /// The container's own display name, which is what the menu shows.
+    ///
+    /// A `%09` (an escaped tab) ends the name: what follows is the accelerator Winamp right-aligns
+    /// in its Windows menu — wTunes' `name="About%09Alt+A"`, CopperdeckII's `Album Art%09Alt+A`.
     static func displayName(of info: WinampModernContainerInfo) -> String {
-        info.object.attributes["name"] ?? info.id
+        guard let name = info.object.attributes["name"] else { return info.id }
+        let label = name.components(separatedBy: "%09")[0].components(separatedBy: "\t")[0]
+        return label.isEmpty ? info.id : label
     }
 
     /// Menu labels for the skin-owned windows, qualified only where the skin left them ambiguous.

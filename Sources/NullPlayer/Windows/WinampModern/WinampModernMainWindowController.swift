@@ -556,7 +556,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         auxWindow.hasShadow = false
         auxWindow.contentView = view
         auxWindow.setAccessibilityIdentifier("WinampModernContainer_\(info.id)")
-        auxWindow.setAccessibilityLabel(info.object.attributes["name"] ?? info.id)
+        auxWindow.setAccessibilityLabel(WinampModernContainerTopology.displayName(of: info))
         auxWindow.delegate = self
         auxWindow.orderOut(nil)
         installWindowCommands(on: view, id: info.id)

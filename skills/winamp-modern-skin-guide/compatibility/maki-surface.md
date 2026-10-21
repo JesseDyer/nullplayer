@@ -391,6 +391,12 @@ By area:
   `fx_setBgFx(1)` (warping the backdrop rather than the layer's own image), and `fx_setSpeed` as a
   host-driven animation clock — the skins in the corpus drive their own timers and call `fx_update()`.
 
+  **`fx_onFrame` is the realtime clock's event**, dispatched to every `fx_setRealtime(1)` layer by
+  `refreshLayerFXMeshes` before its mesh is re-evaluated (the window's 30 Hz animation tick, not
+  `fx_setSpeed`). wTunes' needle reads `getLeftVuMeter()` only there and its `fx_onGetPixelR` answers
+  the stored angle, so without the event both needles sat still forever. BLAKK's needles are the same
+  shape. `WINAMP_MODERN_RENDER_FX_SPIN` drives the same tick headlessly.
+
   A warp is a CPU resample on the paint path, so it is bounded: vertices per layer and warped surface
   size both have ceilings, and the mesh is cached until `fx_update()` unless `fx_setRealtime(1)`. The
   warped raster is cached with the mesh that produced it, so a repaint the skin did not ask for (a
@@ -459,7 +465,7 @@ By area:
   Defix: mean 4, max 39 out of 255, its 25-frame cone on frame 0 for 96.5% of a track), so the
   magnitude is mapped through `20·log10` over a 60 dB window. Same material after: mean 139, max 232
 - **`System.getLeftVUMeter()` / `getRightVUMeter()`** — program level per channel as a vis byte
-  (0…255), measured by `WinampModernLevelMeter` as **linear peak amplitude, unsmoothed**, off the
+  (0…255), measured by `WinampModernLevelMeter` as **linear peak amplitude** with a VU falloff, off the
   main thread. **Not the spectrum**, and not a perceptual value: the skin owns the curve and the
   ballistics. Defix maps the byte through `73.813 · x^¼ − 100`, clamps at 0, and applies its own
   attack and decay before it turns a needle, so the host's only job is to hand over the same
@@ -493,6 +499,15 @@ By area:
   `WINAMP_MODERN_VU_LOG=1` prints the buffer's peak and RMS, the block spread within it, and the byte
   the skin receives — the difference between the last two entries above is visible as `peak` (one
   number for the buffer) against `blockRange` (the spread across it).
+
+  - **Raw blocks twitch a needle that has no ballistics** (2026-10-21). On real music consecutive
+    ~13 ms peaks swing by two-thirds of a sweep, and about half the VU skins (wTunes, BLAKK,
+    WMP11-BlueVU, Zygote) draw the byte as is. The read (`levels`) therefore applies **instant attack
+    and a 300 ms exponential release** (`WinampModernLevelMeter.falloff`). The 90th-percentile needle
+    step on wTunes fell from 0.40 to 0.08 rad. Skins with their own ballistics (Defix, mmd3) keep their
+    attack and decay a little slower, which the user checked on Defix. Silence detection reads the raw
+    block, so a pause still drops the needle at once. Measure needle motion with **real music**, never
+    `audio-long`: it is a frequency sweep, a steady level that cannot show twitching.
 
   The tap is the shared stereo PCM notification, received with `queue: nil` and measured on the
   posting thread; the main thread only reads the played-out block. Registering with `queue: .main`

@@ -103,6 +103,13 @@
   - The main window can be dragged by its frame.
   - A divider strip no longer runs across the Stop and Next buttons; Copperdeck II's equalizer
     and cPro Venus's seek bar lose similar overhanging pieces.
+- **Modern skins: wTunes' VU meters move, and every skin's VU meters are smoother**
+  - wTunes' two needle meters follow the music; they never moved before.
+  - VU levels now fall back like a real meter instead of twitching on every peak, in wTunes and
+    the other skins with VU meters.
+  - wTunes' About text is centred, as is Vortex's `POSITION` label, which is no longer cut off.
+  - The Windows menu no longer shows names like `About%09Alt+A` in wTunes, CopperdeckII and
+    similar skins.
 
 ## 0.33.0
 

@@ -87,11 +87,16 @@ extension WinampModernScriptRuntime {
     /// that follows finds a mesh already built and does nothing but resample.
     ///
     /// `fx_setRealtime(1)` means "re-run the callbacks every frame", and the frame clock is here, so a
-    /// realtime layer is marked stale on each pass rather than re-evaluated inside the draw.
+    /// realtime layer is marked stale on each pass rather than re-evaluated inside the draw. It also
+    /// hears `fx_onFrame` first: wTunes' VU needle reads `getLeftVuMeter()` there, and its
+    /// `fx_onGetPixelR` only answers the angle that handler stored.
     func refreshLayerFXMeshes() {
         guard !isTornDown, !layerFX.isEvaluating else { return }
         for (id, state) in layerFX.enabled {
-            if state.realtime { layerFX.invalidate(id) }
+            if state.realtime {
+                _ = try? dispatch(target: MakiObjectReference(.gui(id)), event: "fx_onFrame", arguments: [])
+                layerFX.invalidate(id)
+            }
             guard layerFX.isStale(id),
                   let object = loadedSkin.runtime.graph.object(withID: id) else { continue }
             // Evaluated first: the callbacks may write `layerFX` themselves.

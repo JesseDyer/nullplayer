@@ -308,7 +308,9 @@ extension WasabiSceneRenderer {
                 let x: CGFloat
                 switch alignment {
                 case .right: x = drawFrame.maxX - measured
-                case .center: x = drawFrame.midX - measured / 2
+                // Centred on the drawn width, not a `forcefixed` reservation: a sentence drawn
+                // proportionally from a reservation's left edge sat left of centre (wTunes' About).
+                case .center: x = drawFrame.midX - resources.textWidth(of: text, font: font) / 2
                 default: x = drawFrame.minX
                 }
                 drawCachedLine(text, font: font, color: color, x: x, baseline: baseline,

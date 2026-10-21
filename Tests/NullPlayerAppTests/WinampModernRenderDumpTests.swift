@@ -482,6 +482,8 @@ final class WinampModernRenderDumpTests: XCTestCase {
                 let start = Date()
                 while Date().timeIntervalSince(start) < seconds {
                     RunLoop.current.run(until: Date().addingTimeInterval(1.0 / 60))
+                    // The window's frame clock: a realtime layer's `fx_onFrame` (wTunes' needle).
+                    runtime.refreshLayerFXMeshes()
                     let now = Date().timeIntervalSince(start)
                     for object in objects {
                         let id = object.xmlID ?? "-"

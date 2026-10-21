@@ -80,6 +80,15 @@ Shield_Amp, S7Reflex and Defix enter this same path rather than being parsed as 
   invisible to a fresh profile. `defaults read NullPlayer | grep '_nullplayer_windows'` is the state
   to read before believing a window opened itself.
 
+#### A container `name` can carry its accelerator after `%09` (2026-10-21)
+
+`name="About%09Alt+A"` is the window's name, an escaped tab, then the shortcut Winamp right-aligns in
+its Windows menu. `WinampModernContainerTopology.displayName` keeps only the part before it, and every
+menu and accessibility label reads that. The corpus: wTunes (About, both vuMeters, Equalizer),
+CopperdeckII, Studiosus and Winamp_Single_GUI. The shortcut itself is not bound; the skin's own
+`onKeyDown` handles it where it declares one. Duplicate names are qualified with the container id by
+`menuLabels` (Bio-Nid's eight `Equalizer` copies).
+
 #### A window that only fakes a Windows desktop effect never opens (B101, 2026-09-04)
 
 Two containers in the corpus draw no UI at all: they exist to supply something the Windows shell did
