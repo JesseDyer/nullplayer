@@ -4074,7 +4074,15 @@ final class WasabiSceneRenderer {
             if on { context.fillEllipse(in: box.insetBy(dx: side / 3, dy: side / 3)) }
         } else {
             context.stroke(outline)
-            if on { context.fill(box.insetBy(dx: side / 3, dy: side / 3)) }
+            if on {
+                // The tick is the label's colour, and a skin may plate the box in that same colour
+                // (krazyPlayer's Enable RGB sits on a 155-grey rect under 156-grey text), so a dark
+                // rim keeps it legible. On the usual dark plate the rim disappears into it.
+                let tick = box.insetBy(dx: side / 3, dy: side / 3)
+                context.fill(tick)
+                context.setStrokeColor(NSColor.black.withAlphaComponent(0.7).cgColor)
+                context.stroke(tick.insetBy(dx: -0.5, dy: -0.5))
+            }
         }
         let label = object.attributes["text"] ?? ""
         guard !label.isEmpty else { return }
