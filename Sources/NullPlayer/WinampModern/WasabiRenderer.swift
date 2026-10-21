@@ -326,6 +326,7 @@ final class WasabiResourceCache {
     private struct CachedBitmap {
         let bitmap: WasabiBitmap
         var access: UInt64
+        mutating func touch(_ access: UInt64) -> WasabiBitmap { self.access = access; return bitmap }
     }
     private var bitmaps: [String: CachedBitmap] = [:]
     /// Region masks, keyed by map and threshold. Separate from `bitmaps` because they are derived
@@ -354,13 +355,8 @@ final class WasabiResourceCache {
 
     func bitmap(identifier: String?) -> WasabiBitmap? {
         guard !isTornDown, let identifier, !identifier.isEmpty else { return nil }
-        let key = identifier.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-        accessCounter &+= 1
-        if var cached = bitmaps[key] {
-            cached.access = accessCounter
-            bitmaps[key] = cached
-            return cached.bitmap
-        }
+        let key = identifier.lowercased()
+        if let hit = cachedBitmap(key) { return hit }
         guard let definition = loadedSkin.runtime.resources.resolvedDefinition(identifier: identifier),
               definition.kind == "bitmap", let path = definition.logicalFile,
               let data = try? loadedSkin.vfs.data(at: path, location: definition.source),
@@ -387,6 +383,14 @@ final class WasabiResourceCache {
         currentCost += cost
         evictIfNeeded(protecting: key)
         return bitmap
+    }
+
+    /// The bitmap cached under `key`, marked as just used, in one hash. Keys are lowercased rather
+    /// than folded: the scene walk asks several times per object per frame, and a folding `Locale`
+    /// per ask was most of the cost. A miss resolves by name, so a key can only split, never merge.
+    private func cachedBitmap(_ key: String) -> WasabiBitmap? {
+        accessCounter &+= 1
+        return bitmaps[key]?.touch(accessCounter)
     }
 
     /// A `background=` value, which Winamp accepts in **either** form — the id of a declared
@@ -420,14 +424,8 @@ final class WasabiResourceCache {
     /// A whole image file, decoded and cached under its path so it cannot collide with a `<bitmap>`
     /// of the same name. No crop and no gamma group: a path form declares neither.
     private func bitmap(atLogicalPath path: String, location: WalSourceLocation?) -> WasabiBitmap? {
-        let key = "path:" + path.folding(options: [.caseInsensitive],
-                                          locale: Locale(identifier: "en_US_POSIX"))
-        accessCounter &+= 1
-        if var cached = bitmaps[key] {
-            cached.access = accessCounter
-            bitmaps[key] = cached
-            return cached.bitmap
-        }
+        let key = "path:" + path.lowercased()
+        if let hit = cachedBitmap(key) { return hit }
         guard let data = try? loadedSkin.vfs.data(at: path, location: location),
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
@@ -536,14 +534,8 @@ final class WasabiResourceCache {
             return declared
         }
         guard let path = definition.logicalFile else { return nil }
-        let key = "bitmapfont:" + path.folding(options: [.caseInsensitive],
-                                               locale: Locale(identifier: "en_US_POSIX"))
-        accessCounter &+= 1
-        if var cached = bitmaps[key] {
-            cached.access = accessCounter
-            bitmaps[key] = cached
-            return cached.bitmap
-        }
+        let key = "bitmapfont:" + path.lowercased()
+        if let hit = cachedBitmap(key) { return hit }
         guard let data = try? loadedSkin.vfs.data(at: path, location: definition.source),
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }

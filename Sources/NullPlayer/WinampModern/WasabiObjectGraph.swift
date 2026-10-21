@@ -89,7 +89,15 @@ final class WasabiObject {
     /// The graph's structure counter, for callers memoizing something that depends on this object's
     /// position in the tree rather than only on the object itself.
     var graphStructureGeneration: UInt64 { graph?.structureGeneration ?? 0 }
-    var geometry: WasabiGeometrySpec { WasabiGeometrySpec(attributes: attributes) }
+    /// Parsed once per attribute change: the scene walk reads it several times per object per frame,
+    /// and parsing it was 39% of that walk on cPro Bento (release, playing).
+    var geometry: WasabiGeometrySpec {
+        if let geometryMemo { return geometryMemo }
+        let spec = WasabiGeometrySpec(attributes: attributes)
+        geometryMemo = spec
+        return spec
+    }
+    private var geometryMemo: WasabiGeometrySpec?
 
     @discardableResult
     func setAttribute(_ name: String, value: String?) -> Bool {
@@ -98,6 +106,7 @@ final class WasabiObject {
         let oldValue = attributes[key]
         guard oldValue != value else { return false }
         if let value { attributes[key] = value } else { attributes.removeValue(forKey: key) }
+        geometryMemo = nil
         // A script renaming an object invalidates the graph's id index. Rare, and cheap to be right
         // about: the alternative is a lookup that silently answers with the old name.
         if key == "id" { graph?.invalidateXMLIDIndex() }
