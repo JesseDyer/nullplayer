@@ -101,7 +101,7 @@ extension WinampModernScriptRuntime {
     /// any runtime-created group: object-owned `onScriptLoaded`, then XUI params. Global scripts are
     /// already running and are deliberately not restarted.
     func startTrustedHostedWindowScripts(beneath root: WasabiObject) throws {
-        guard root.typeName.caseInsensitiveCompare("container") == .orderedSame,
+        guard root.is(.container),
               root.source.path == WasabiSurfaceSynthesizer.sourcePath,
               root.attributes[WinampModernContainerTopology.synthesizedAttribute] == "1"
         else {
@@ -110,7 +110,7 @@ extension WinampModernScriptRuntime {
                                            location: root.source))
         }
         if let layout = root.children.first(where: {
-            $0.typeName.caseInsensitiveCompare("layout") == .orderedSame
+            $0.is(.layout)
         }) {
             activeLayoutByContainer[root.stableID] = layout.stableID
             realizedLayouts.insert(layout.stableID)
@@ -131,9 +131,9 @@ extension WinampModernScriptRuntime {
         let parts = owner.components(separatedBy: ",").map {
             $0.trimmingCharacters(in: .whitespaces)
         }.filter { !$0.isEmpty }
-        if let containerID = parts.first, let container = findRoot(type: "container", xmlID: containerID) {
+        if let containerID = parts.first, let container = findRoot(type: .container, xmlID: containerID) {
             let layouts = container.children.filter {
-                $0.typeName.caseInsensitiveCompare("layout") == .orderedSame
+                $0.is(.layout)
             }
             // `owner="main"` with no layout half means the container's first layout.
             if parts.count < 2 { if let first = layouts.first { return first } }
@@ -142,6 +142,6 @@ extension WinampModernScriptRuntime {
             }
         }
         guard let caller = program.ownerID.flatMap(loadedSkin.runtime.graph.object(withID:)) else { return nil }
-        return ancestor(of: caller, type: "layout")
+        return ancestor(of: caller, type: .layout)
     }
 }

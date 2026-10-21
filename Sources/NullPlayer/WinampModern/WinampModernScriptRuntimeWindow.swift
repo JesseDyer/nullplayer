@@ -49,7 +49,7 @@ extension WinampModernScriptRuntime {
             return .integer(arguments[0].integerValue)
         // `Layout.center()` — the window centred on the display the viewport methods answer for
         // (1010 Fullscreen's frame windows, B201), through the same write as `resize`.
-        case "center" where object.typeName.caseInsensitiveCompare("layout") == .orderedSame:
+        case "center" where object.is(.layout):
             let screen = NSScreen.main?.frame.size ?? .zero
             let width = dimension(resolvedFrame(of: object)?.width, declared: declaredFrame(of: object).width)
             let height = dimension(resolvedFrame(of: object)?.height, declared: declaredFrame(of: object).height)
@@ -97,11 +97,11 @@ extension WinampModernScriptRuntime {
             try parent.insertChild(object, at: method == "bringbelow" ? index : index + 1)
             notifyGraphDidMutate()
             return .null
-        case "islayout": return .boolean(object.typeName.caseInsensitiveCompare("layout") == .orderedSame)
+        case "islayout": return .boolean(object.is(.layout))
         case "getnumlayouts":
-            return .integer(Int32(object.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }.count))
+            return .integer(Int32(object.children.filter { $0.is(.layout) }.count))
         case "enumlayout":
-            let layouts = object.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }
+            let layouts = object.children.filter { $0.is(.layout) }
             let index = Int(arguments[0].integerValue)
             return layouts.indices.contains(index) ? objectValue(layouts[index]) : .null
         // The window's name, as the Windows menu lists it (Anunaki renames its own).

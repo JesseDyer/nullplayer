@@ -78,7 +78,7 @@ enum WinampModernContainerTopology {
 
     static func analyze(graph: WasabiObjectGraph) -> [WinampModernContainerInfo] {
         graph.roots
-            .filter { $0.typeName.caseInsensitiveCompare("container") == .orderedSame }
+            .filter { $0.is(.container) }
             .map { container in
                 let id = container.xmlID ?? ""
                 let isMain = id.caseInsensitiveCompare("main") == .orderedSame
@@ -170,8 +170,7 @@ enum WinampModernContainerTopology {
     static func hostsAlbumArt(_ info: WinampModernContainerInfo) -> Bool {
         guard !isNotifier(id: info.id) else { return false }
         func visit(_ object: WasabiObject) -> Bool {
-            let type = object.typeName.lowercased()
-            if type == "albumart" || type == "wasabi:albumart" { return true }
+            if object.is(.albumArt) || object.is(.albumArt, in: .wasabi) { return true }
             return object.children.contains(where: visit)
         }
         return visit(info.object)
@@ -271,7 +270,7 @@ enum WinampModernContainerTopology {
     }
 
     private static func normalLayout(of container: WasabiObject) -> WasabiObject? {
-        let layouts = container.children.filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }
+        let layouts = container.children.filter { $0.is(.layout) }
         return layouts.first { $0.xmlID?.caseInsensitiveCompare("normal") == .orderedSame } ?? layouts.first
     }
 

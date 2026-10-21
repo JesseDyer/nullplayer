@@ -129,7 +129,7 @@ extension WinampModernScriptRuntime {
             return objectValue(loadedSkin.runtime.graph.allObjectsUnordered.first(where: WasabiSceneRenderer.isBrowserElement))
         case "popmainbrowser":
             guard let browser = loadedSkin.runtime.graph.allObjectsUnordered.first(where: WasabiSceneRenderer.isBrowserElement),
-                  let container = ancestor(of: browser, type: "container") else { return .null }
+                  let container = ancestor(of: browser, type: .container) else { return .null }
             return try setVisible(container, true)
         // `showWindow(guid or group id, preferred container, transient)`: a component GUID opens that
         // component's window (Big Bento's "show playing track" opens the playlist with `guid:pl`); a
@@ -142,8 +142,8 @@ extension WinampModernScriptRuntime {
                 return objectValue(graph.allObjectsUnordered.first { WasabiSceneRenderer.componentKind(of: $0) == kind })
             }
             guard let object = graph.allObjectsUnordered.first(where: { $0.xmlID?.caseInsensitiveCompare(name) == .orderedSame }),
-                  let container = object.typeName.caseInsensitiveCompare("container") == .orderedSame
-                    ? object : ancestor(of: object, type: "container") else { return .null }
+                  let container = object.is(.container)
+                    ? object : ancestor(of: object, type: .container) else { return .null }
             _ = try setVisible(container, true)
             return objectValue(object)
         default: return nil

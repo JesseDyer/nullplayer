@@ -1807,7 +1807,7 @@ final class WinampModernRenderDumpTests: XCTestCase {
                                                in container: WasabiObject) -> [WasabiObject] {
         var found: [WasabiObject] = []
         func visit(_ object: WasabiObject) {
-            if WinampModernComponentRegistry.isHolderElement(object.typeName),
+            if WinampModernComponentRegistry.isHolderElement(object),
                WasabiSceneRenderer.componentKind(of: object) == kind {
                 found.append(object)
             }

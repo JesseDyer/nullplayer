@@ -1471,14 +1471,14 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // that is what the fallback is for.
         let scriptClosed = skinView?.scripts.scriptClosedObjects ?? []
         func visit(_ object: WasabiObject) {
-            if WinampModernComponentRegistry.isHolderElement(object.typeName),
+            if WinampModernComponentRegistry.isHolderElement(object),
                WasabiSceneRenderer.componentKind(of: object) == kind, isAutoOpen(object) {
                 var chain: [WasabiObject] = []
                 var node: WasabiObject? = object
                 var depth = 0
                 var blocked = false
                 while let current = node, depth < 64 {
-                    if current.typeName.caseInsensitiveCompare("layout") == .orderedSame { break }
+                    if current.is(.layout) { break }
                     if scriptClosed.contains(current.stableID) { blocked = true; break }
                     chain.append(current)
                     node = current.parent

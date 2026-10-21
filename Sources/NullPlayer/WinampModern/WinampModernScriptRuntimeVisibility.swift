@@ -52,7 +52,7 @@ extension WinampModernScriptRuntime {
             guard let object = loadedSkin.runtime.graph.object(withID: id),
                   let action = Self.strandableAction(of: object),
                   !isVisible(object) else { continue }
-            guard let layout = ancestor(of: object, type: "layout") else { continue }
+            guard let layout = ancestor(of: object, type: .layout) else { continue }
             guard !layoutHasVisibleControl(for: action, in: layout, excluding: object) else { continue }
             _ = try? setVisible(object, true)
         }
@@ -166,7 +166,7 @@ extension WinampModernScriptRuntime {
         //
         // This is deliberately answered from the graph rather than from the host, so it holds in
         // the headless harness too, where no container visibility is reported at all.
-        if object.typeName.caseInsensitiveCompare("layout") == .orderedSame,
+        if object.is(.layout),
            let container = Self.enclosingContainer(of: object),
            let active = activeLayoutByContainer[container.stableID] {
             return active == object.stableID
@@ -184,7 +184,7 @@ extension WinampModernScriptRuntime {
     /// The container id of the window this object belongs to, for the host queries that are answered
     /// per window rather than per object.
     func enclosingWindowID(of object: WasabiObject) -> String? {
-        let container = object.typeName.caseInsensitiveCompare("container") == .orderedSame
+        let container = object.is(.container)
             ? object
             : Self.enclosingContainer(of: object)
         guard let id = container?.xmlID, !id.isEmpty else { return nil }
@@ -206,7 +206,7 @@ extension WinampModernScriptRuntime {
         guard let query = containerActiveQuery else { return true }
         var node: WasabiObject? = object
         while let current = node {
-            if current.typeName.caseInsensitiveCompare("container") == .orderedSame,
+            if current.is(.container),
                let id = current.xmlID, !id.isEmpty {
                 return query(id) ?? false
             }

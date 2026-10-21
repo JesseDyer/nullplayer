@@ -35,7 +35,7 @@ extension WasabiSceneRenderer {
                 // what a fill animation needs: multipass's seek bar is empty ahead of the playhead, so
                 // testing the current frame alone would make the whole point of a seek bar — clicking
                 // *forward* — unreachable.
-                if object.typeName.caseInsensitiveCompare("animatedlayer") == .orderedSame {
+                if object.is(.animatedLayer) {
                     guard animationUnionAlpha(bitmap, object: object, node: node, point: point)
                             > Self.regionAlphaFloor
                     else { continue }
@@ -110,8 +110,7 @@ extension WasabiSceneRenderer {
     /// Whether an object carries a command of its own, independent of being draggable — the test that
     /// separates a skin's window-drag surface from a control that also moves the window.
     private static func hasOwnCommand(_ object: WasabiObject) -> Bool {
-        let type = object.typeName.lowercased()
-        if type == "button" || type == "togglebutton" || type == "nstatesbutton" || type == "slider" {
+        if object.is(.button) || object.is(.toggleButton) || object.is(.nStatesButton) || object.is(.slider) {
             return true
         }
         return object.attributes["action"] != nil
@@ -155,8 +154,8 @@ extension WasabiSceneRenderer {
     /// `sysregion="1"` on real bitmaps) and the non-numeric forms a skin writes (`"AND"`, which Anexa
     /// uses 15 times) all paint exactly as before. `sysregion="-2"` appears in 11 of the 18 installed
     /// skins.
-    static func isRegionOnly(_ object: WasabiObject, type: String) -> Bool {
-        guard type == "layer" || type == "animatedlayer", let value = windowRegionValue(of: object)
+    static func isRegionOnly(_ object: WasabiObject) -> Bool {
+        guard object.is(.layer) || object.is(.animatedLayer), let value = windowRegionValue(of: object)
         else { return false }
         return value < 0
     }
@@ -314,9 +313,8 @@ extension WasabiSceneRenderer {
     func regionBoxes() -> [CGRect] {
         guard windowRegion() == nil else { return [] }
         return regionCuts().compactMap { cut in
-            let type = cut.object.typeName.lowercased()
             guard cut.additive, cut.bitmapID == nil,
-                  type == "rect" || (type.hasPrefix("wasabi:standardframe:")
+                  cut.object.is(.rect) || (cut.object.namespace == .wasabiStandardFrame
                       && cut.object.attributes["background"].map({ resources.bitmap(identifier: $0) == nil }) ?? true)
             else { return nil }
             let box = cut.frame.intersection(cut.clip)
@@ -497,8 +495,7 @@ extension WasabiSceneRenderer {
     }
 
     private func isInteractive(_ object: WasabiObject) -> Bool {
-        let type = object.typeName.lowercased()
-        if type == "button" || type == "togglebutton" || type == "nstatesbutton" || type == "slider" {
+        if object.is(.button) || object.is(.toggleButton) || object.is(.nStatesButton) || object.is(.slider) {
             return true
         }
         // `<Wasabi:Button>` is a button — the standard library's, but a button, and Wasabi hit-tests
@@ -512,7 +509,7 @@ extension WasabiSceneRenderer {
         // Contained by what a `<Wasabi:Button>` *is*: all 32 in the corpus are either an explicit
         // click target (`rectrgn="1"`), artwork-backed, or labelled, so none of them becomes an
         // invisible box that swallows a click meant for something behind it.
-        if type == "wasabi:button" { return true }
+        if object.is(.button, in: .wasabi) { return true }
         // A `<Menu>` is a hit region and nothing else — it draws no artwork and carries no `action`,
         // so without naming it here the pointer never reached a single entry of a skin's own menu
         // bar. Its box is explicit (`w="0" relatw="1" h="21"`) and `object(at:)` skips the alpha test
@@ -547,7 +544,7 @@ extension WasabiSceneRenderer {
         // A `<CustomObject>` is the same kind of holder: Anunaki's `main.lcd.layouts` says `move="1"`
         // and is sized to its 482x281 group, so it sat over the whole EQ drawer and took every press
         // meant for the EQ sliders, presets and buttons.
-        if type == "group" || type == "layout" || type == "customobject" {
+        if object.is(.group) || object.is(.layout) || object.is(.customObject) {
             return object.attributes["background"] != nil
         }
         if object.attributes["move"] == "1" { return true }
@@ -557,7 +554,7 @@ extension WasabiSceneRenderer {
         // An `animatedlayer` is a layer that moves. MMD3's rotary volume/bass/treble knobs are
         // animated layers with their own `onLeftButtonDown` handlers, and leaving the type out here
         // meant a click never reached them.
-        return (type == "layer" || type == "animatedlayer") && object.attributes["ghost"] != "1"
+        return (object.is(.layer) || object.is(.animatedLayer)) && object.attributes["ghost"] != "1"
     }
 
     /// The coverage at which a pixel is still part of the window.

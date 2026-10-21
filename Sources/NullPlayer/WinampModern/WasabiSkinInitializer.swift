@@ -540,7 +540,7 @@ final class WasabiSkinRuntime {
     func isTrustedHostedHolder(_ object: WasabiObject) -> Bool {
         var node: WasabiObject? = object
         while let current = node {
-            if current.typeName.caseInsensitiveCompare("container") == .orderedSame {
+            if current.is(.container) {
                 return trustedHostedContainerIDs.contains(current.stableID)
             }
             node = current.parent
@@ -790,7 +790,7 @@ final class WasabiSkinInitializer {
                                           documentOrder: [ObjectIdentifier: Int]) throws {
         var buckets: [WasabiObject] = []
         func collect(_ object: WasabiObject) {
-            if object.typeName.caseInsensitiveCompare("componentbucket") == .orderedSame,
+            if object.is(.componentBucket),
                let type = object.attributes["wndtype"], !type.isEmpty {
                 buckets.append(object)
             }
@@ -843,7 +843,7 @@ final class WasabiSkinInitializer {
                                                createdCount: inout Int,
                                                documentOrder: [ObjectIdentifier: Int]) throws -> WasabiObject {
         let existing = graph.roots.filter {
-            $0.typeName.caseInsensitiveCompare("container") == .orderedSame &&
+            $0.is(.container) &&
             ($0.xmlID?.caseInsensitiveCompare(declaredID) == .orderedSame ||
              $0.attributes[WasabiSkinRuntime.dynamicInstanceAttribute]?
                 .caseInsensitiveCompare(declaredID) == .orderedSame)

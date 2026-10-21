@@ -21,11 +21,13 @@ enum WasabiFrame {
     static let dividerHalfThickness = 4.0
 
     static func isFrame(typeName: String) -> Bool {
-        let lower = typeName.lowercased()
-        return lower == "wasabi:frame" || lower == "frame"
+        let (kind, namespace) = WasabiKind.parse(typeName)
+        return kind == .frame && (namespace == .none || namespace == .wasabi)
     }
 
-    static func isFrame(_ object: WasabiObject) -> Bool { isFrame(typeName: object.typeName) }
+    static func isFrame(_ object: WasabiObject) -> Bool {
+        object.kind == .frame && (object.namespace == .none || object.namespace == .wasabi)
+    }
 
     /// The two group identifiers this frame instantiates, in `from`-edge-first document order
     /// (`left`/`right` for a vertical divider, `top`/`bottom` for a horizontal one). Empty when the

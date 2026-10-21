@@ -818,7 +818,7 @@ final class WasabiSceneRenderer {
     var activeLayoutID: String { layout.xmlID ?? "normal" }
     var availableLayoutIDs: [String] {
         container.children.compactMap { child in
-            child.typeName.caseInsensitiveCompare("layout") == .orderedSame ? child.xmlID : nil
+            child.is(.layout) ? child.xmlID : nil
         }
     }
 
@@ -829,7 +829,7 @@ final class WasabiSceneRenderer {
     /// window the topology measures is the window this renderer draws.
     static func primaryLayout(of container: WasabiObject) -> WasabiObject? {
         let layouts = container.children.filter {
-            $0.typeName.caseInsensitiveCompare("layout") == .orderedSame
+            $0.is(.layout)
         }
         return layouts.first { $0.xmlID?.caseInsensitiveCompare("normal") == .orderedSame } ?? layouts.first
     }
@@ -845,7 +845,7 @@ final class WasabiSceneRenderer {
         self.themes = loadedSkin.themeCoordinator.catalog
         self.resources = WasabiResourceCache(loadedSkin: loadedSkin, themes: themes)
         guard let container = loadedSkin.runtime.graph.roots.first(where: {
-            $0.typeName.caseInsensitiveCompare("container") == .orderedSame &&
+            $0.is(.container) &&
             $0.xmlID?.caseInsensitiveCompare(containerID) == .orderedSame
         }), let layout = Self.primaryLayout(of: container) else {
             throw WalFailure(WalDiagnostic(.malformedXML,
@@ -857,7 +857,7 @@ final class WasabiSceneRenderer {
         let resources = self.resources
         self.declaredLayoutHeights = Dictionary(
             container.children
-                .filter { $0.typeName.caseInsensitiveCompare("layout") == .orderedSame }
+                .filter { $0.is(.layout) }
                 .map { ($0.stableID, Self.defaultSize(for: $0, resources: resources).height) },
             uniquingKeysWith: { first, _ in first })
         // Whichever window switches the theme, every renderer of this skin drops its themed bitmaps.
@@ -875,7 +875,7 @@ final class WasabiSceneRenderer {
     @discardableResult
     func activateLayout(id: String) throws -> CGSize {
         guard let next = container.children.first(where: {
-            $0.typeName.caseInsensitiveCompare("layout") == .orderedSame &&
+            $0.is(.layout) &&
             $0.xmlID?.caseInsensitiveCompare(id) == .orderedSame
         }) else {
             throw WalFailure(WalDiagnostic(.malformedXML,
@@ -1266,8 +1266,8 @@ final class WasabiSceneRenderer {
     /// mutation counter — so a memoized node has its image re-resolved on the way out rather than
     /// serving a stale one. Only the kinds that can vary pay for it.
     private func withRefreshedBitmapID(_ node: WasabiSceneNode) -> WasabiSceneNode {
-        let type = node.object.typeName.lowercased()
-        guard type == "status" || type == "nstatesbutton" || type == "togglebutton"
+        let object = node.object
+        guard object.is(.status) || object.is(.nStatesButton) || object.is(.toggleButton)
                 || node.object.attributes["activeimage"] != nil else { return node }
         let bitmapID = resolvedBitmapID(for: node.object, pressed: false, hovered: false)
         guard bitmapID != node.bitmapID else { return node }
@@ -1568,8 +1568,7 @@ final class WasabiSceneRenderer {
     /// Frames are **parent-relative**, the space a script's own `getGuiX`/`getGuiY` reports in.
     func resizeTargets() -> [(object: WasabiObject, frame: CGRect)] {
         layoutNodes().compactMap { node in
-            let type = node.object.typeName.lowercased()
-            guard type == "layout" || type == "group" || WasabiFrame.isFrame(node.object)
+            guard node.object.is(.layout) || node.object.is(.group) || WasabiFrame.isFrame(node.object)
                     || loadedSkin.runtime.types.isXUITag(node.object.typeName) else { return nil }
             return (node.object, node.frame.offsetBy(dx: -node.parentFrame.minX,
                                                      dy: -node.parentFrame.minY))
@@ -1642,7 +1641,7 @@ final class WasabiSceneRenderer {
                                                         in: loadedSkin.configuration),
               stored.caseInsensitiveCompare(activeLayoutID) != .orderedSame,
               container.children.contains(where: {
-                  $0.typeName.caseInsensitiveCompare("layout") == .orderedSame &&
+                  $0.is(.layout) &&
                   $0.xmlID?.caseInsensitiveCompare(stored) == .orderedSame
               }) else { return nil }
         return stored
@@ -1672,7 +1671,7 @@ final class WasabiSceneRenderer {
     /// place the library host view, and route input into the right surface.
     func componentHolders() -> [WinampModernComponentHolder] {
         sceneNodes().compactMap { node in
-            guard WinampModernComponentRegistry.isHolderElement(node.object.typeName) else { return nil }
+            guard WinampModernComponentRegistry.isHolderElement(node.object) else { return nil }
             guard isVisible(node.object) else { return nil }
             guard var surfaceID = Self.surfaceID(of: node.object) else { return nil }
             // The source/attribute/token checks prevent ordinary XML spoofing. The runtime identity
@@ -1717,7 +1716,7 @@ final class WasabiSceneRenderer {
     func editControl(at point: CGPoint) -> WasabiObject? {
         for node in sceneNodes().reversed()
         where node.clip.contains(point) && node.frame.contains(point) {
-            guard node.object.localTypeName == "edit",
+            guard node.object.kind == .edit,
                   isVisible(node.object) else { continue }
             return node.object
         }
@@ -1727,7 +1726,7 @@ final class WasabiSceneRenderer {
     // MARK: - Component bucket (Winamp's thinger)
 
     static func isComponentBucket(_ object: WasabiObject) -> Bool {
-        object.typeName.caseInsensitiveCompare("componentbucket") == .orderedSame
+        object.is(.componentBucket)
     }
 
     /// The skin-wide strip state every bucket in every one of this skin's windows shares.
@@ -1791,8 +1790,7 @@ final class WasabiSceneRenderer {
     }
 
     static func isBrowserElement(_ object: WasabiObject) -> Bool {
-        let lower = object.typeName.lowercased()
-        return lower == "browser" || lower == "winamp:browser"
+        object.is(.browser) || object.is(.browser, in: .winamp)
     }
 
     /// Whether a `<browser>` element is currently visible in the scene (all ancestors visible).
@@ -1845,7 +1843,7 @@ final class WasabiSceneRenderer {
     /// **Detach Visualizer** opened a window with an empty grey box in it.
     private static func componentReference(of object: WasabiObject) -> String? {
         let keys: [String]
-        if object.typeName.caseInsensitiveCompare("component") == .orderedSame {
+        if object.is(.component) {
             keys = ["param", "guid", "hold"]
         } else {
             keys = ["hold", "component", "guid"]
@@ -1883,7 +1881,7 @@ final class WasabiSceneRenderer {
     private static func enclosingContainer(of object: WasabiObject) -> WasabiObject? {
         var node: WasabiObject? = object
         while let current = node {
-            if current.typeName.caseInsensitiveCompare("container") == .orderedSame {
+            if current.is(.container) {
                 return current
             }
             node = current.parent
@@ -1975,7 +1973,7 @@ final class WasabiSceneRenderer {
     /// Whether an object is a `<ColorThemes:List>`. The tag is unregistered — Winamp supplies it, not
     /// the skin — so it arrives as a leaf with this type name and nothing else.
     static func isColorThemeList(_ object: WasabiObject) -> Bool {
-        object.typeName.caseInsensitiveCompare("colorthemes:list") == .orderedSame
+        object.is(.list, in: .colorThemes)
     }
 
     /// Every colour-theme list in the active scene, with its resolved frame.
@@ -2052,7 +2050,7 @@ final class WasabiSceneRenderer {
             .trimmingCharacters(in: .whitespacesAndNewlines), !wanted.isEmpty else { return nil }
         var ancestor: WasabiObject? = object
         while let current = ancestor,
-              current.typeName.caseInsensitiveCompare("container") != .orderedSame {
+              !current.is(.container) {
             ancestor = current.parent
         }
         if let container = ancestor, let near = Self.descendant(of: container, xmlID: wanted) {
@@ -2135,8 +2133,7 @@ final class WasabiSceneRenderer {
             return WasabiFormWidgets.checkBoxGlyph + WasabiFormWidgets.checkBoxLabelGap
                 + resources.metrics.width(of: object, text: label)
         }
-        let type = object.typeName.lowercased()
-        guard type == "text" || type == "songticker" else { return nil }
+        guard object.is(.text) || object.is(.songticker) else { return nil }
         return resources.metrics.width(of: object,
                                        text: WasabiTextMetrics.content(of: object, host: host))
     }
@@ -2166,7 +2163,7 @@ final class WasabiSceneRenderer {
     /// rather than its own height — a group sized to the height of its last row would clip everything
     /// above it.
     private func titleBoxAutoHeight(of object: WasabiObject) -> CGFloat? {
-        guard let body = object.children.first(where: { $0.typeName.lowercased() == "group" }),
+        guard let body = object.children.first(where: { $0.is(.group) }),
               let content = contentBottom(of: body) else { return nil }
         return content - CGFloat(WasabiTitleBox.contentInset.height)
     }
@@ -2188,7 +2185,7 @@ final class WasabiSceneRenderer {
         let spec = WasabiGeometrySpec(attributes: object.attributes)
         guard !spec.relativeY, !spec.relativeHeight else { return nil }
         if let height = spec.height, height > 0 { return CGFloat(spec.y + height) }
-        guard object.localTypeName == "text" else {
+        guard object.kind == .text else {
             return nil
         }
         return CGFloat(spec.y) + resources.metrics.lineHeight(of: object)
@@ -2216,7 +2213,7 @@ final class WasabiSceneRenderer {
         // frame stretched over twenty-eight frames' worth of height, then clipped by the display group
         // to a transparent sliver, so the skin's only seek indicator was invisible while the script
         // behind it worked perfectly.
-        if object.typeName.caseInsensitiveCompare("animatedlayer") == .orderedSame {
+        if object.is(.animatedLayer) {
             if let width = Double(object.attributes["framewidth"] ?? ""), width > 0 { intrinsic.width = width }
             if let height = Double(object.attributes["frameheight"] ?? ""), height > 0 { intrinsic.height = height }
         }
@@ -2236,7 +2233,7 @@ final class WasabiSceneRenderer {
         // `lineHeight` is the same number `getAutoHeight()` answers, so the box a script measures and
         // the box we draw are one measurement.
         if object.attributes["h"] == nil,
-           object.localTypeName == "text" {
+           object.kind == .text {
             intrinsic.height = Double(resources.metrics.lineHeight(of: object))
         }
         // A window-chrome button whose artwork Winamp supplied and the skin does not. It has no
@@ -2268,7 +2265,7 @@ final class WasabiSceneRenderer {
         // The children still drew, because a group does not clip to its own box — which is why this
         // read as a layout bug rather than a missing group.
         if object.attributes["h"] == nil,
-           object.typeName.caseInsensitiveCompare("group") == .orderedSame,
+           object.is(.group),
            object.attributes["autoheightsource"] != nil,
            let bottom = contentBottom(of: object), bottom > 0 {
             intrinsic.height = Double(bottom)
@@ -2292,7 +2289,7 @@ final class WasabiSceneRenderer {
         // mmd3's component title bar is `background="component.titlebg" autowidthsource="titlebar"`,
         // where the backing is a narrow tile meant to stretch, so taking its width clipped every
         // hosted component's title to "CO".
-        if object.typeName.caseInsensitiveCompare("group") == .orderedSame,
+        if object.is(.group),
            let background = backgroundBitmap(of: object) {
             if object.attributes["w"] == nil, intrinsic.width == 0 {
                 intrinsic.width = Double(background.width)
@@ -2305,8 +2302,8 @@ final class WasabiSceneRenderer {
         // sizes any object from its content's suggested size. Anunaki's LCD is
         // `<customobject groupid="main.lcd.layout2" x="51" y="32"/>` around a `fitparent="1"`
         // group declared 482x281: at 0x0 the group fitted to nothing and the display stayed empty.
-        if object.localTypeName == "customobject",
-           let content = object.children.first(where: { $0.typeName.caseInsensitiveCompare("group") == .orderedSame }) {
+        if object.kind == .customObject,
+           let content = object.children.first(where: { $0.is(.group) }) {
             if object.attributes["w"] == nil, intrinsic.width == 0, content.attributes["relatw"] != "1" {
                 intrinsic.width = max(0, Double(content.attributes["w"] ?? "") ?? 0)
             }
@@ -2481,8 +2478,7 @@ final class WasabiSceneRenderer {
     private func draw(_ node: WasabiSceneNode, in context: WasabiDrawList,
                       pressed: WasabiObjectID?, hovered: WasabiObjectID?) {
         let object = node.object
-        let type = object.typeName.lowercased()
-        guard !Self.isRegionOnly(object, type: type) else { return }
+        guard !Self.isRegionOnly(object) else { return }
         // Fully transparent draws nothing, so don't pay to composite it. Setting `alpha(0)` on the
         // context and drawing anyway costs full price: Big Bento Modern lays
         // `<layer id="player.resizer.disable" … alpha="0">` over its **entire** 1526×868 window as a
@@ -2510,7 +2506,7 @@ final class WasabiSceneRenderer {
         if let background = object.attributes["background"], drawsBackground(object) {
             if let bitmap = resources.bitmap(background: background, declaredIn: object.source) {
                 drawImage(bitmap.image, in: node.frame, context: context)
-            } else if type == "layout" {
+            } else if object.is(.layout) {
                 // A layout's `background=` is the window's backing, and 13 corpus skins name a
                 // resource the `.wal` does not ship — `component.basetexture`,
                 // `wasabi.frame.basetexture`, `studio.BaseTexture`, `wasabi.frame` — because in
@@ -2545,45 +2541,45 @@ final class WasabiSceneRenderer {
                            pressed: pressed == object.stableID)
         }
 
-        if type == "text" || type == "songticker" {
+        if object.is(.text) || object.is(.songticker) {
             drawText(object, frame: node.frame, context: context)
-        } else if type == "edit" {
+        } else if object.is(.edit) {
             drawEdit(object, frame: node.frame, context: context)
-        } else if type == "list" || WasabiGuiList.isTree(object) {
+        } else if object.is(.list) || WasabiGuiList.isTree(object) {
             drawGuiList(object, frame: node.frame, context: context)
-        } else if type == "slider" {
+        } else if object.is(.slider) {
             drawSlider(object, frame: node.frame, context: context,
                        pressed: pressed == object.stableID,
                        hovered: hovered == object.stableID)
-        } else if type == "progressgrid" {
+        } else if object.is(.progressGrid) {
             drawProgressGrid(object, frame: node.frame, context: context)
-        } else if type == "grid" {
+        } else if object.is(.grid) {
             drawGrid(object, frame: node.frame, context: context)
-        } else if type == "rect" {
+        } else if object.is(.rect) {
             drawRect(object, frame: node.frame, context: context)
-        } else if type == "gradient" {
+        } else if object.is(.gradient) {
             drawGradient(object, frame: node.frame, context: context)
-        } else if type == "vis" {
+        } else if object.is(.vis) {
             drawVisualization(object, frame: node.frame, context: context)
-        } else if type == "eqvis" {
+        } else if object.is(.eqVis) {
             drawEQVis(object, frame: node.frame, context: context)
-        } else if type == "colorthemes:list" {
+        } else if object.is(.list, in: .colorThemes) {
             drawColorThemeList(object, frame: node.frame, context: context)
-        } else if type == "albumart" {
+        } else if object.is(.albumArt) {
             if let artwork = host.albumArtwork {
                 drawImage(artwork, in: node.frame, context: context)
             } else if let fallback = object.attributes["notfoundimage"],
                       let bitmap = resources.bitmap(identifier: fallback) {
                 draw(bitmap, object: object, frame: node.frame, context: context)
             }
-        } else if type == "componentbucket" {
+        } else if object.is(.componentBucket) {
             // Before the holder branch: a bucket *is* a holder element, and a skin whose bucket id
             // happened to name a component must still draw the strip rather than a playlist.
             drawComponentBucket(object, frame: node.frame, context: context)
-        } else if WinampModernComponentRegistry.isHolderElement(type),
+        } else if WinampModernComponentRegistry.isHolderElement(object),
                   let kind = Self.componentKind(of: object) {
             drawComponent(kind: kind, object: object, frame: node.frame, context: context)
-        } else if type == "images", let image = filmstripFrameImage(object) {
+        } else if object.is(.images), let image = filmstripFrameImage(object) {
             // Before the plain-bitmap branch: an `<images>` names its sheet with `images=`, not
             // `image=`, so `resolvedBitmapID` answers nil for it and the object drew nothing at all.
             drawImage(image, in: node.frame, context: context)
@@ -2595,15 +2591,15 @@ final class WasabiSceneRenderer {
             // layer's current frame exactly as it does to a plain one (Defix's cassette reels are
             // rotated single images; its needles are too).
             if let mesh = layerFXProvider?(object),
-               let layer = layerImage(bitmap, object: object, type: type, in: node.frame),
+               let layer = layerImage(bitmap, object: object, in: node.frame),
                drawWarped(layer.image, in: layer.rect, mesh: mesh, context: context) {
                 // drawn
-            } else if type == "animatedlayer" {
+            } else if object.is(.animatedLayer) {
                 drawAnimated(bitmap, object: object, frame: node.frame, context: context)
             } else {
                 draw(bitmap, object: object, frame: node.frame, context: context)
             }
-        } else if type == "layer", let imageID = object.attributes["image"],
+        } else if object.is(.layer), let imageID = object.attributes["image"],
                   host.isTrackFolderImage(imageID), let artwork = host.albumArtwork {
             // A cover beside the playing file (`WinampModernTrackFolderImage`). Only real art is
             // drawn: the scripts' loading stand-in answers questions, it is never shown.
@@ -2626,7 +2622,7 @@ final class WasabiSceneRenderer {
         // A plain `<button text="…">` draws its label over its artwork, as Wasabi's button does.
         // It arrives through `embed_xui`: Azenis² redefines `Wasabi:Button` as a grid under a bare
         // `<button>`, and its Switch/Prev/Next and search buttons were blank boxes.
-        if type == "button" || type == "togglebutton", let label = Self.ownLabel(of: object) {
+        if object.is(.button) || object.is(.toggleButton), let label = Self.ownLabel(of: object) {
             drawText(label, object: object, frame: node.frame, context: context,
                      undeclaredColor: palette.listText)
         }
@@ -2662,7 +2658,7 @@ final class WasabiSceneRenderer {
     /// the boxes is a reflection of whatever is above it and reads correctly for any engine.
     private func applyFlip(of object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let suppressHorizontal = spectrumAnalyzer != .skin
-            && object.typeName.caseInsensitiveCompare("vis") == .orderedSame
+            && object.is(.vis)
         guard let transform = Self.flipTransform(of: object, frame: frame,
                                                  suppressHorizontal: suppressHorizontal) else {
             return
@@ -2878,7 +2874,7 @@ final class WasabiSceneRenderer {
     /// the user just stepped away from.
     func visualizationObjects() -> [WasabiObject] {
         loadedSkin.runtime.graph.allObjectsUnordered.filter {
-            $0.typeName.caseInsensitiveCompare("vis") == .orderedSame
+            $0.is(.vis)
         }
     }
 
@@ -3100,7 +3096,7 @@ final class WasabiSceneRenderer {
     /// in the menu about to open there.
     func visualizationObject(at point: CGPoint) -> WasabiObject? {
         sceneNodes().last {
-            $0.object.typeName.caseInsensitiveCompare("vis") == .orderedSame
+            $0.object.is(.vis)
                 && $0.frame.contains(point)
         }?.object
     }
@@ -3214,7 +3210,7 @@ final class WasabiSceneRenderer {
 
     private func computeVisualizationRows() -> [WasabiObjectID: CGRect] {
         Self.visualizationRows(boxes: sceneNodes().compactMap { node in
-            guard node.object.typeName.caseInsensitiveCompare("vis") == .orderedSame,
+            guard node.object.is(.vis),
                   node.frame.width > 0, node.frame.height > 0 else { return nil }
             return (node.object.stableID, node.frame)
         })
@@ -3497,7 +3493,7 @@ final class WasabiSceneRenderer {
         guard let parent = object.parent else { return nil }
         let candidates = parent.children.filter {
             $0 !== object && $0.attributes["action"] != nil &&
-                $0.typeName.caseInsensitiveCompare("slider") == .orderedSame
+                $0.is(.slider)
         }
         guard candidates.count > 1 else { return candidates.first }
         let nodes = sceneNodes()
@@ -3787,7 +3783,7 @@ final class WasabiSceneRenderer {
     /// corpus skins declare some, CornerAmp and Anexa included — and the containment never rested on
     /// it. Corrected while measuring B95.
     static func isTextButton(_ object: WasabiObject) -> Bool {
-        guard object.typeName.caseInsensitiveCompare("wasabi:button") == .orderedSame else { return false }
+        guard object.is(.button, in: .wasabi) else { return false }
         return !(object.attributes["text"] ?? "").isEmpty
     }
 
@@ -4549,8 +4545,7 @@ final class WasabiSceneRenderer {
     }
 
     private func resolvedBitmapID(for object: WasabiObject, pressed: Bool, hovered: Bool) -> String? {
-        let type = object.typeName.lowercased()
-        if type == "status" {
+        if object.is(.status) {
             switch host.playbackState {
             case .playing: return object.attributes["playbitmap"]
             case .paused: return object.attributes["pausebitmap"]
@@ -4563,7 +4558,7 @@ final class WasabiSceneRenderer {
         // hover and the press naming ids nothing answers, so the button vanished under the mouse and
         // the skin's black display showed through — read as three dead buttons in cPro-Bento alone
         // (mute, shuffle, repeat), two of which were driving the host correctly all along.
-        if type == "nstatesbutton" {
+        if object.is(.nStatesButton) {
             let state = nStatesButtonState(of: object)
             var candidates: [String] = []
             if pressed, let down = object.attributes["downimage"] { candidates.append("\(down)\(state)") }
@@ -4585,7 +4580,7 @@ final class WasabiSceneRenderer {
         }
         if pressed, let down = object.attributes["downimage"] { return down }
         if hovered, let hover = object.attributes["hoverimage"] { return hover }
-        if type == "togglebutton" || object.attributes["activeimage"] != nil {
+        if object.is(.toggleButton) || object.attributes["activeimage"] != nil {
             let id = object.xmlID?.lowercased()
             var active = (id == "shuffle" && host.shuffleEnabled) || (id == "repeat" && host.repeatEnabled)
             // EQ on/auto read the engine, not a local toggle state, so a change made from the menu
@@ -4656,7 +4651,7 @@ final class WasabiSceneRenderer {
     func isRenderable(_ object: WasabiObject, bitmapID: String?) -> Bool {
         // A component holder paints a real surface (the playlist list, the EQ sliders), so it is
         // opaque to hit testing even though it owns no bitmap of its own.
-        if WinampModernComponentRegistry.isHolderElement(object.typeName),
+        if WinampModernComponentRegistry.isHolderElement(object),
            Self.componentKind(of: object) != nil {
             return true
         }
@@ -4678,12 +4673,12 @@ final class WasabiSceneRenderer {
         // primitive type already makes it interactive (`togglebutton`, `button`, `slider`).
         if WasabiFormWidgets.kind(of: object) != nil { return true }
         return object.attributes["background"] != nil || bitmapID != nil ||
-            object.typeName.caseInsensitiveCompare("text") == .orderedSame ||
-            object.typeName.caseInsensitiveCompare("songticker") == .orderedSame ||
-            object.typeName.caseInsensitiveCompare("vis") == .orderedSame ||
-            object.typeName.caseInsensitiveCompare("eqvis") == .orderedSame ||
-            object.typeName.caseInsensitiveCompare("albumart") == .orderedSame ||
-            object.typeName.caseInsensitiveCompare("slider") == .orderedSame
+            object.is(.text) ||
+            object.is(.songticker) ||
+            object.is(.vis) ||
+            object.is(.eqVis) ||
+            object.is(.albumArt) ||
+            object.is(.slider)
     }
 
     func isVisible(_ object: WasabiObject) -> Bool {
@@ -4712,7 +4707,7 @@ final class WasabiSceneRenderer {
     /// — was gold. A layout that declares a backing, or composites against the desktop, keeps its own.
     private func frameBaseTexture(for object: WasabiObject) -> WasabiBitmap? {
         guard WasabiStandardFrames.isStandardFrame(object),
-              let layout = object.parent, layout.typeName.lowercased() == "layout",
+              let layout = object.parent, layout.is(.layout),
               layout.attributes["background"] == nil,
               layout.attributes["desktopalpha"] != "1" else { return nil }
         return resources.bitmap(identifier: "wasabi.frame.basetexture")
@@ -4770,7 +4765,7 @@ final class WasabiSceneRenderer {
     /// under the tag's name — so it clips on the same terms. Shield_Amp's 293px songticker drew its
     /// 900px moving text across the whole player body without it (B149).
     private func isSizedGroup(_ object: WasabiObject) -> Bool {
-        guard object.typeName.caseInsensitiveCompare("group") == .orderedSame
+        guard object.is(.group)
                 || loadedSkin.runtime.types.isXUITag(object.typeName) else { return false }
         if object.attributes["fitparent"] == "1" { return true }
         // A `background` bitmap is a declaration, not a guess: the skin named the artwork the group
@@ -4785,7 +4780,7 @@ final class WasabiSceneRenderer {
     /// Only for a group: a `<layout>`'s background is the window's backing and is sized separately
     /// (`defaultSize`), and every other object type is sized by its `image`.
     private func backgroundBitmap(of object: WasabiObject) -> WasabiBitmap? {
-        guard object.typeName.caseInsensitiveCompare("group") == .orderedSame,
+        guard object.is(.group),
               let background = object.attributes["background"] else { return nil }
         return resources.bitmap(background: background, declaredIn: object.source)
     }
@@ -4934,7 +4929,7 @@ final class WasabiSceneRenderer {
     /// measure the window's shortfall from.
     private func holderExtent(atCanvas canvas: CGSize) -> CGSize? {
         let holders = sceneNodes(canvas: canvas).filter {
-            WinampModernComponentRegistry.isHolderElement($0.object.typeName) && isVisible($0.object)
+            WinampModernComponentRegistry.isHolderElement($0.object) && isVisible($0.object)
         }
         guard !holders.isEmpty else { return nil }
         return holders.reduce(CGSize.zero) {

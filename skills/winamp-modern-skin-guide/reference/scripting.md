@@ -583,7 +583,7 @@ broken on its own, and each fix looked like it had done nothing until the next o
   no command, which reads exactly like a button with no behaviour to declare.
 
 - **A button's label is drawn once, by the embedded button** (B217). The wrapper's `text=` crosses
-  onto an embedded `button`/`togglebutton` that declares none, matched on `localTypeName`, so an
+  onto an embedded `button`/`togglebutton` that declares none, matched on its `kind` (any namespace), so an
   embedded `Wasabi:Button` takes it too. The wrapper then draws no label of its own: before B217 an
   artwork-less `Wasabi:Button` wrapper drew its fallback label *and* the embedded button drew the
   real one. Five cPro skins showed a doubled, bold-looking `Search`, and only Azenis²'s grid hid the

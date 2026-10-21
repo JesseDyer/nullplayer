@@ -27,10 +27,10 @@ struct WasabiScriptBinding: Hashable {
 final class WasabiObject {
     let stableID: WasabiObjectID
     let typeName: String
-    /// `typeName` lowercased with any namespace prefix dropped: `Wasabi:Button` → `button`. The
-    /// question "what kind of widget is this?" across both spellings; a compare that must tell the
-    /// standard library's `Wasabi:Button` from a bare `<button>` uses the full `typeName`.
-    let localTypeName: String
+    /// The tag's kind whatever its namespace: `Wasabi:Button` and `<button>` are both `.button`.
+    /// Ask `is(_:in:)` when the namespace matters (`WasabiKind`).
+    let kind: WasabiKind
+    let namespace: WasabiNamespace
     let source: WalSourceLocation
     private(set) var attributes: [String: String]
     private(set) weak var parent: WasabiObject?
@@ -59,11 +59,17 @@ final class WasabiObject {
          source: WalSourceLocation, graph: WasabiObjectGraph, attributeOrder: [String] = []) {
         self.stableID = stableID
         self.typeName = typeName
-        self.localTypeName = typeName.lowercased().components(separatedBy: ":").last ?? ""
+        (kind, namespace) = WasabiKind.parse(typeName)
         self.declaredAttributeOrder = attributeOrder
         self.attributes = Dictionary(uniqueKeysWithValues: attributes.map { ($0.key.lowercased(), $0.value) })
         self.source = source
         self.graph = graph
+    }
+
+    /// Whether the tag is `kind` written in `namespace`: `is(.layout)` is a bare `<layout>`,
+    /// `is(.button, in: .wasabi)` the standard library's `Wasabi:Button`.
+    func `is`(_ kind: WasabiKind, in namespace: WasabiNamespace = .none) -> Bool {
+        self.kind == kind && self.namespace == namespace
     }
 
     var xmlID: String? { attributes["id"] }

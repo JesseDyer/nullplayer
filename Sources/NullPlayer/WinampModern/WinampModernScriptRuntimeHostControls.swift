@@ -40,7 +40,7 @@ extension WinampModernScriptRuntime {
         var seen: Set<WasabiObjectID> = []
         var found: [WasabiObject] = []
         func consider(_ object: WasabiObject) {
-            if object.typeName.caseInsensitiveCompare("slider") == .orderedSame,
+            if object.is(.slider),
                object.attributes["action"]?.lowercased() == kind.rawValue,
                seen.insert(object.stableID).inserted {
                 found.append(object)
@@ -73,7 +73,7 @@ extension WinampModernScriptRuntime {
         lastEqualizerSwitches = switches
         guard let previous, previous != switches else { return }
         for object in loadedSkin.runtime.graph.allObjectsUnordered
-        where object.typeName.caseInsensitiveCompare("togglebutton") == .orderedSame {
+        where object.is(.toggleButton) {
             guard let on = equalizerSwitchState(of: object),
                   (object.attributes["activated"] == "1") != on else { continue }
             _ = object.setAttribute("activated", value: on ? "1" : "0")

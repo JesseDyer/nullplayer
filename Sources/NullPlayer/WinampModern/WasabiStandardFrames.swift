@@ -63,12 +63,8 @@ extension WasabiStandardFrames {
     /// client area starts where the strip ends.
     static var titleHeight: Double { contentInset.y }
 
-    static func flavour(forTypeName typeName: String) -> Flavour? {
-        Flavour.allCases.first { $0.xuiTag.caseInsensitiveCompare(typeName) == .orderedSame }
-    }
-
     static func isStandardFrame(_ object: WasabiObject) -> Bool {
-        flavour(forTypeName: object.typeName) != nil
+        object.namespace == .wasabiStandardFrame && [.status, .noStatus, .staticFrame].contains(object.kind)
     }
 
     /// Set on a `<Wasabi:StandardFrame:*>` instance whose groupdef the skin never supplied, so the
@@ -278,11 +274,11 @@ extension WasabiStandardFrames {
     private static func hostsPlaylistCommandBar(_ object: WasabiObject) -> Bool {
         // `includeonly="{system}"` is the other kind of slot — Zygote's 14x9 title-bar box that
         // holds the system menu and nothing else; the command bar goes in the one that excludes it.
-        guard object.typeName.caseInsensitiveCompare("LayoutStatus") == .orderedSame,
+        guard object.is(.layoutStatus),
               object.attributes["includeonly"] == nil else { return false }
         var ancestor = object.parent
         while let current = ancestor {
-            if current.typeName.caseInsensitiveCompare("container") == .orderedSame {
+            if current.is(.container) {
                 let declared = current.attributes["component"] ?? current.attributes["hold"]
                 return declared.flatMap(WinampModernComponentRegistry.kind(for:)) == .playlist
             }
@@ -316,7 +312,7 @@ extension WasabiStandardFrames {
                 guard hostsPlaylistCommandBar(object) else { return }
                 var ancestor = object.parent
                 while let current = ancestor {
-                    if current.typeName.caseInsensitiveCompare("layout") == .orderedSame,
+                    if current.is(.layout),
                        addsOwnEntries(current) { return }
                     ancestor = current.parent
                 }

@@ -685,7 +685,7 @@ final class WasabiTextMetrics {
     /// script touching them, so only these are worth polling for `onTextChanged`.
     static func isHostBoundText(_ object: WasabiObject) -> Bool {
         if isPlaylistStatusLine(object) { return true }
-        if object.typeName.caseInsensitiveCompare("songticker") == .orderedSame { return true }
+        if object.is(.songticker) { return true }
         return !(object.attributes["display"] ?? "").isEmpty
     }
 
@@ -778,7 +778,7 @@ final class WasabiTextMetrics {
         // The thinger's caption — the component its strip is pointing at.
         case "componentbucket": return componentBucketTextProvider?() ?? ""
         default:
-            if object.typeName.caseInsensitiveCompare("songticker") == .orderedSame {
+            if object.is(.songticker) {
                 return host.trackDisplayTitle
             }
             let literal = object.attributes["text"] ?? object.attributes["default"] ?? ""
@@ -841,7 +841,7 @@ final class WasabiTextMetrics {
         var depth = 0
         while let node = current, depth < 64 {
             if let name = node.attributes["componentname"], !name.isEmpty { return name }
-            if node.typeName.caseInsensitiveCompare("container") == .orderedSame,
+            if node.is(.container),
                let name = node.attributes["name"], !name.isEmpty {
                 return name
             }

@@ -370,7 +370,7 @@ extension WasabiSceneRenderer {
     /// `text` only scrolls when it opts in, so static labels stay put.
     private func tickerMotion(for object: WasabiObject, overflow: CGFloat,
                               textWidth: CGFloat) -> (offset: CGFloat, wraps: Bool)? {
-        let isSongticker = object.typeName.caseInsensitiveCompare("songticker") == .orderedSame
+        let isSongticker = object.is(.songticker)
         let mode = (object.attributes["ticker"] ?? (isSongticker ? "1" : "0")).lowercased()
         guard !["0", "off", "false", "no"].contains(mode) else { return nil }
         if mode == "bounce" {

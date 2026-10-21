@@ -28,11 +28,7 @@ enum WasabiTitleBox {
     /// Height of the title line above the border.
     static let titleHeight = 12.0
 
-    static func isTitleBox(typeName: String) -> Bool {
-        typeName.caseInsensitiveCompare(xuiTag) == .orderedSame
-    }
-
-    static func isTitleBox(_ object: WasabiObject) -> Bool { isTitleBox(typeName: object.typeName) }
+    static func isTitleBox(_ object: WasabiObject) -> Bool { object.is(.titleBox, in: .wasabi) }
 
     /// The title as written, trimmed — skins pad it for the artwork we do not have (Bio-Nid's begins
     /// with a space, which would otherwise indent the label past its own border).

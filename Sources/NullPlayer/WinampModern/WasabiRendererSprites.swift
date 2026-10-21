@@ -156,9 +156,9 @@ extension WasabiSceneRenderer {
     /// The single image a bitmap layer paints right now, and where in `frame` it goes: an animated
     /// layer's current frame, or the whole bitmap over the whole frame for a plain one. Shared with the
     /// Layer FX path, which warps exactly that image into exactly that rect.
-    func layerImage(_ bitmap: WasabiBitmap, object: WasabiObject, type: String,
+    func layerImage(_ bitmap: WasabiBitmap, object: WasabiObject,
                     in frame: CGRect) -> (image: CGImage, rect: CGRect)? {
-        guard type == "animatedlayer" else { return (bitmap.image, frame) }
+        guard object.is(.animatedLayer) else { return (bitmap.image, frame) }
         return animatedFrame(bitmap, object: object, in: frame)
     }
 

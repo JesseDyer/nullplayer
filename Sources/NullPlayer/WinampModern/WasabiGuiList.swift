@@ -42,12 +42,11 @@ enum WasabiGuiList {
 
     /// A `<Tree>` is drawn and clicked as a list of its visible items (`refreshTree`).
     static func isList(_ object: WasabiObject) -> Bool {
-        let type = object.localTypeName
-        return type == "list" || type == "tree"
+        object.kind == .list || object.kind == .tree
     }
 
     static func isTree(_ object: WasabiObject) -> Bool {
-        object.localTypeName == "tree"
+        object.kind == .tree
     }
 
     static func items(of object: WasabiObject) -> [String] {

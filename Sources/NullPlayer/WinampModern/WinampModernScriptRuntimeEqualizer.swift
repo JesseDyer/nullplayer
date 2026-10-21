@@ -64,7 +64,7 @@ extension WinampModernScriptRuntime {
         let position = String(Int32(((Double(max(-127, min(127, value))) + 127) / 254 * 255).rounded()))
         var moved = false
         for object in loadedSkin.runtime.graph.allObjectsUnordered
-        where object.typeName.caseInsensitiveCompare("slider") == .orderedSame {
+        where object.is(.slider) {
             guard WinampModernEQAction.decode(action: object.attributes["action"],
                                               parameter: object.attributes["param"]) == action else { continue }
             guard object.attributes["value"] != position else { continue }

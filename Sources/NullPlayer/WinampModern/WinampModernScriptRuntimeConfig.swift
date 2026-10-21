@@ -130,15 +130,14 @@ extension WinampModernScriptRuntime {
 
     @discardableResult
     func toggleActivation(of object: WasabiObject) -> Bool {
-        let type = object.typeName.lowercased()
-        guard type == "togglebutton" || type == "nstatesbutton",
+        guard object.is(.toggleButton) || object.is(.nStatesButton),
               Self.configBinding(of: object) == nil else { return false }
         // An `nstatesbutton` is a togglebutton that counts: a click advances it to the next state
         // and wraps, and `getCurCfgVal()` is how its script reads the position it landed on.
         // ClassicPro's mute is one of these with no binding — `mute_but.onToggle` is the whole of
         // its behaviour (save the volume, set it to zero, and back) and nothing was ever flipping
         // it, so the button was inert however completely the engine implemented it.
-        let states = type == "nstatesbutton" ? max(1, Int(object.attributes["nstates"] ?? "") ?? 2) : 2
+        let states = object.is(.nStatesButton) ? max(1, Int(object.attributes["nstates"] ?? "") ?? 2) : 2
         let previous = Int(object.attributes["value"] ?? "") ?? (object.attributes["activated"] == "1" ? 1 : 0)
         let state = (max(0, previous) + 1) % states
         _ = object.setAttribute("value", value: String(state))
@@ -160,7 +159,7 @@ extension WinampModernScriptRuntime {
     /// this the lamp came up lit while the button still counted itself as sitting on state 0.
     func setActivated(_ object: WasabiObject, _ activated: Bool) {
         _ = object.setAttribute("activated", value: activated ? "1" : "0")
-        if object.typeName.caseInsensitiveCompare("nstatesbutton") == .orderedSame {
+        if object.is(.nStatesButton) {
             _ = object.setAttribute("value", value: activated ? "1" : "0")
         }
         notifyObjectDidMutate(object)
@@ -202,7 +201,7 @@ extension WinampModernScriptRuntime {
     /// its crossfade readout, and a duration changed from the Fade Duration menu has to reach it.
     func notifyPositionChanged(section: String, key: String, value: Int32) {
         for object in loadedSkin.runtime.graph.allObjectsUnordered
-        where object.typeName.caseInsensitiveCompare("slider") == .orderedSame {
+        where object.is(.slider) {
             guard let binding = Self.configBinding(of: object),
                   binding.section.caseInsensitiveCompare(section) == .orderedSame,
                   binding.key.caseInsensitiveCompare(key) == .orderedSame else { continue }

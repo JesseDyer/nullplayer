@@ -91,7 +91,7 @@ extension WinampModernScriptRuntime {
             return .null
         // There is no modal loop here, so ending one closes the dialog's window.
         case "endmodal":
-            guard let container = ancestor(of: object, type: "container") else { return .null }
+            guard let container = ancestor(of: object, type: .container) else { return .null }
             _ = container.setAttribute("visible", value: "0")
             notifyGraphDidMutate()
             requestWindow(for: container, visible: false)
@@ -143,7 +143,7 @@ extension WinampModernScriptRuntime {
     static let mouseRedirectionKey = "nullplayer.mouseredir"
 
     static func isGroupList(_ object: WasabiObject) -> Bool {
-        object.typeName.caseInsensitiveCompare("grouplist") == .orderedSame
+        object.is(.groupList)
     }
 
     /// Where a press on `object` goes: its `setRedirection` target, or itself.

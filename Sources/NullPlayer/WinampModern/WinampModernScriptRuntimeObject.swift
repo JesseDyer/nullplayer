@@ -31,7 +31,7 @@ extension WinampModernScriptRuntime {
         // volume control. See `WinampModernScriptRuntime.realizedLayouts`.
         case "getlayout":
             guard let match = object.children.first(where: {
-                $0.typeName.caseInsensitiveCompare("layout") == .orderedSame &&
+                $0.is(.layout) &&
                 $0.xmlID?.caseInsensitiveCompare(arguments[0].stringValue) == .orderedSame
             }) ?? descendant(of: object, xmlID: arguments[0].stringValue) else { return .null }
             return isLayoutCreated(match, askedBy: program) ? objectValue(match) : .null
@@ -48,9 +48,9 @@ extension WinampModernScriptRuntime {
         case "findobject":
             let wanted = arguments[0].stringValue
             if let near = descendant(of: object, xmlID: wanted) { return objectValue(near) }
-            guard let root = ancestor(of: object, type: "container") else { return .null }
+            guard let root = ancestor(of: object, type: .container) else { return .null }
             return objectValue(descendant(of: root, xmlID: wanted))
-        case "getcontainer": return objectValue(ancestor(of: object, type: "container"))
+        case "getcontainer": return objectValue(ancestor(of: object, type: .container))
         // A container the skin *declared* is static; one a script asked `newDynamicContainer` for is
         // dynamic, and Wasabi marks the declaration itself `dynamic="1"` for the ones meant to be
         // instantiated that way. Ebonite's standard frame branches on it —
@@ -61,9 +61,9 @@ extension WinampModernScriptRuntime {
         case "getcurlayout":
             return objectValue(activeLayoutByContainer[object.stableID].flatMap(loadedSkin.runtime.graph.object(withID:)))
         case "switchtolayout":
-            guard object.typeName.caseInsensitiveCompare("container") == .orderedSame,
+            guard object.is(.container),
                   let next = object.children.first(where: {
-                      $0.typeName.caseInsensitiveCompare("layout") == .orderedSame &&
+                      $0.is(.layout) &&
                       $0.xmlID?.caseInsensitiveCompare(arguments[0].stringValue) == .orderedSame
                   }) else { return .null }
             activeLayoutByContainer[object.stableID] = next.stableID
@@ -111,7 +111,7 @@ extension WinampModernScriptRuntime {
             return objectValue(instantiated)
         case "getid": return .string(object.xmlID ?? "")
         case "getparent": return objectValue(object.parent)
-        case "getparentlayout": return objectValue(ancestor(of: object, type: "layout"))
+        case "getparentlayout": return objectValue(ancestor(of: object, type: .layout))
         case "getxmlparam": return .string(object.attributes[arguments[0].stringValue.lowercased()] ?? "")
         case "setxmlparam":
             let key = arguments[0].stringValue
@@ -152,7 +152,7 @@ extension WinampModernScriptRuntime {
                 // can only guess at (B125: ClassicPro engine two writes `minimum_h` =
                 // titlebar+info+playback from `fullScreen(false)`, and our inferred floor was three
                 // times it).
-                if object.typeName.caseInsensitiveCompare("layout") == .orderedSame,
+                if object.is(.layout),
                    ["minimum_w", "minimum_h"].contains(key.lowercased()) {
                     object.noteScriptAuthoredMinimum(key)
                 }
@@ -246,7 +246,7 @@ extension WinampModernScriptRuntime {
             let clamped = max(0, min(255, arguments[0].integerValue))
             _ = object.setAttribute("alpha", value: String(clamped))
             notifyObjectDidMutate(object)
-            if object.typeName.caseInsensitiveCompare("container") == .orderedSame,
+            if object.is(.container),
                let id = object.xmlID {
                 containerAlphaChanged?(id, CGFloat(clamped) / 255.0)
             }
@@ -363,8 +363,7 @@ extension WinampModernScriptRuntime {
         // receiver is honestly not loading anything.
         case "isloading":
             // The XUI form (`<Wasabi:AlbumArt>`) keeps its namespace prefix in the element name.
-            let type = object.localTypeName
-            guard type == "albumart" else { return .boolean(false) }
+            guard object.kind == .albumArt else { return .boolean(false) }
             return .boolean(host.isArtworkLoading)
         case "getposition" where WasabiFrame.isFrame(object):
             // A splitter's position is its divider offset, not a slider value. ClassicPro reads it to
@@ -673,7 +672,7 @@ extension WinampModernScriptRuntime {
             // child object would be a second, rival scale for the same pixels (see `getscale`
             // below, which stays 1 for exactly that reason). A non-layout receiver is accepted and
             // inert rather than refused — refusing a method aborts the handler that called it.
-            if object.typeName.caseInsensitiveCompare("layout") == .orderedSame {
+            if object.is(.layout) {
                 let factor = arguments[0].doubleValue
                 // A skin is not allowed to drive the host off the end of the scale; the host snaps
                 // the request to one of its own levels anyway, and a garbage value should not reach
@@ -856,7 +855,7 @@ extension WinampModernScriptRuntime {
     func isLayoutCreated(_ layout: WasabiObject, askedBy program: MakiProgram) -> Bool {
         let owner = program.ownerID.flatMap(loadedSkin.runtime.graph.object(withID:))
         return Self.layoutIsCreated(layout,
-                                    forScriptIn: owner.flatMap { ancestor(of: $0, type: "layout") },
+                                    forScriptIn: owner.flatMap { ancestor(of: $0, type: .layout) },
                                     realized: realizedLayouts)
     }
 
@@ -884,16 +883,16 @@ extension WinampModernScriptRuntime {
     private static func container(of object: WasabiObject) -> WasabiObject? {
         var candidate: WasabiObject? = object
         while let current = candidate {
-            if current.typeName.caseInsensitiveCompare("container") == .orderedSame { return current }
+            if current.is(.container) { return current }
             candidate = current.parent
         }
         return nil
     }
 
-    func ancestor(of object: WasabiObject, type: String) -> WasabiObject? {
+    func ancestor(of object: WasabiObject, type: WasabiKind) -> WasabiObject? {
         var candidate: WasabiObject? = object
         while let current = candidate {
-            if current.typeName.caseInsensitiveCompare(type) == .orderedSame { return current }
+            if current.is(type) { return current }
             candidate = current.parent
         }
         return nil
@@ -947,7 +946,7 @@ extension WinampModernScriptRuntime {
     ///
     /// Anything that is not a `GroupList` keeps whatever geometry it was instantiated with.
     func stackInGroupList(_ child: WasabiObject, list: WasabiObject) {
-        guard list.typeName.caseInsensitiveCompare("grouplist") == .orderedSame else { return }
+        guard list.is(.groupList) else { return }
         var top = 0.0
         for sibling in list.children where sibling !== child { top += stackedHeight(of: sibling) }
         _ = child.setAttribute("x", value: "0")

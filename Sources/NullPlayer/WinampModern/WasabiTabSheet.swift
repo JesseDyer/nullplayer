@@ -85,11 +85,7 @@ enum WasabiTabSheet {
     /// artwork-less shell, and the renderer and the view both key off it rather than off the tag.
     static let hostedAttribute = "nullplayer.tabsheet"
 
-    static func isTabSheet(typeName: String) -> Bool {
-        typeName.caseInsensitiveCompare(xuiTag) == .orderedSame
-    }
-
-    static func isTabSheet(_ object: WasabiObject) -> Bool { isTabSheet(typeName: object.typeName) }
+    static func isTabSheet(_ object: WasabiObject) -> Bool { object.is(.tabSheet, in: .wasabi) }
 
     /// A tab sheet this engine supplies the body for — the only kind anything downstream acts on.
     static func isHosted(_ object: WasabiObject) -> Bool {

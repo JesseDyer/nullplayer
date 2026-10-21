@@ -248,7 +248,7 @@ All engine code is in `Sources/NullPlayer/WinampModern/`; all UI/controller code
 | Directory-backed provider (engine) | `WalDirectoryResourceProvider.swift` |
 | Lenient XML parse + include expansion | `WalXML.swift` |
 | Initialization passes, registries | `WasabiSkinInitializer.swift` |
-| Retained object graph | `WasabiObjectGraph.swift` |
+| Retained object graph; what an object is (`kind`, `namespace`, `is(_:in:)`) | `WasabiObjectGraph.swift`, `WasabiKind.swift` |
 | Coordinates / anchors | `WasabiGeometry.swift` |
 | `<Wasabi:Frame>` splitter | `WasabiFrame.swift` |
 | What the host remembers about a skin between launches (B44/B44a/B50) | `WinampModernSkinState.swift` |

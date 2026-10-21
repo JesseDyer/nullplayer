@@ -50,11 +50,12 @@ enum WinampModernComponentRegistry {
     /// for their playlist/video/library *content* (mmd3 `xml/pledit-normal.xml`, CornerAmp
     /// `xml/pledit.xml`, Winamp Modern `xml/ml-normal.xml`); `windowholder`/`componentbucket` are the
     /// SUI forms cPro's engine uses.
-    static func isHolderElement(_ typeName: String) -> Bool {
-        switch typeName.lowercased() {
-        case "windowholder", "componentbucket", "component": return true
-        default: return false
-        }
+    static func isHolderElement(_ typeName: String) -> Bool { isHolder(WasabiKind.parse(typeName)) }
+
+    static func isHolderElement(_ object: WasabiObject) -> Bool { isHolder((object.kind, object.namespace)) }
+
+    private static func isHolder(_ tag: (kind: WasabiKind, namespace: WasabiNamespace)) -> Bool {
+        tag.namespace == .none && [.windowHolder, .componentBucket, .component].contains(tag.kind)
     }
 
     /// Resolve the kind a `windowholder hold="…"` / `componentbucket` / `component param="…"` value
