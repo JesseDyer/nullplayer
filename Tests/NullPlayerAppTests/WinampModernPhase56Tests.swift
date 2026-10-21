@@ -75,6 +75,14 @@ final class WinampModernPhase56Tests: XCTestCase {
         XCTAssertEqual(spec.resolve(in: parent).height, 0)
     }
 
+    /// Geometry is read with `atoi`: MoonLight writes `w="29,5"` with a decimal comma, which is 29
+    /// wide in Winamp and was no width at all here. A value with no leading number is still absent.
+    func testADecimalCommaReadsAsItsLeadingNumber() {
+        XCTAssertEqual(WasabiGeometrySpec(attributes: ["w": "29,5"]).width, 29)
+        XCTAssertEqual(WasabiGeometrySpec(attributes: ["x": "-7,16"]).x, -7)
+        XCTAssertNil(WasabiGeometrySpec(attributes: ["w": "auto"]).width)
+    }
+
     /// The_Nokia_5220 ships `relatw="5"`. Nothing about 5 is special; it is simply non-zero, and
     /// stays additive — only `2` is the percentage.
     func testAnyNonZeroNumberOtherThanTwoIsAdditive() {

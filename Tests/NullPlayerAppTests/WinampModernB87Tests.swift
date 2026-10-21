@@ -48,6 +48,19 @@ final class WinampModernB87Tests: XCTestCase {
                                  "a group with no room to give still cuts the string at its edge")
     }
 
+    /// A text placed straight on a layout has no group to hand its overflow to — the window bounds
+    /// nothing — so it is cut at its own box. JRS's remote: a 54px ticker with scrolling switched off
+    /// ran the whole title across the remote and off both sides of the window.
+    func testAStringOnTheLayoutIsCutAtItsBox() throws {
+        let scene = try makeScene(markup: """
+                <text id="label" x="0" y="0" w="\(narrowBox)" h="40" fontsize="20"
+                      color="255,255,255" text="\(word)"/>
+        """)
+        let ink = try XCTUnwrap(scene.inkColumns())
+        XCTAssertLessThanOrEqual(ink.upperBound, CGFloat(narrowBox),
+                                 "a layout-level string stops at the box the skin declared")
+    }
+
     /// A **scrolling** ticker keeps its own box on both axes: the motion is defined against that box,
     /// and a marquee let loose in its parent would smear across the whole panel. This is the case the
     /// fix must not touch.

@@ -531,6 +531,11 @@ Two traps in the same attribute:
 Use `atoi` semantics (leading integer), not `Int(_:)`, which refuses a trailing character and would
 send `"1px"` down the opposite branch from the one Winamp takes.
 
+`x`/`y`/`w`/`h` follow the same rule: trailing junk ends the number rather than voiding it.
+MoonLight and Pure Inspired write decimal commas (`w="29,5"`, `h="2,2"`), which Winamp reads as 29
+and 2; read as `Double(_:)` they were absent, so MoonLight's title and clock had 0-wide boxes and
+Pure Inspired's seek line never drew. A value with no leading number (`w="auto"`) is still absent.
+
 > **Gotcha:** the Y flip to AppKit's bottom-left happens exactly **once**, at the Core Graphics
 > drawing boundary in `WasabiSceneRenderer` (and once at the event boundary in `WinampModernMainView`).
 > Never store flipped coordinates back into the graph, and never insert AppKit types into graph objects.

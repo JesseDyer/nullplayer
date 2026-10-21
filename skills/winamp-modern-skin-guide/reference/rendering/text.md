@@ -85,6 +85,14 @@ at all, and a skin that stacks readouts one box apart and shows one at a time by
 its own box on both axes, because the motion is defined against that box and a marquee let loose in
 its parent would smear across the whole panel.
 
+The release needs a **group** to hand the overflow to. A text placed straight on a `<layout>` has only
+the window around it, so it keeps its own box like Winamp's `DrawText`. JRS's remote is the case: its
+script sets the 54px song ticker to `ticker="0"` when "Scroll Basic Songticker" is unchecked, and
+bounded by the layout the title ran across the remote and off both sides. The same rule cleaned up
+Enkera's, NEO_CLASSIC's and Symplicipod's shade titles in the sweep and left every cPro tab strip
+byte-identical. Proportional or fixed slacks do not separate the two: cPro's tab label overruns its
+17px box by ~30%, so any threshold that cut JRS also cut `BRO` to `BRC`.
+
 > **Gotcha, now historical: there were two scissors, and moving one alone did nothing.**
 > `NSString.draw(in:)` lays the string out *inside* the rect it is given and cuts it there, so
 > widening the context clip and leaving `drawFrame` alone produced a byte-identical render. The draw

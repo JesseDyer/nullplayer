@@ -72,7 +72,9 @@ struct WasabiGeometrySpec: Equatable {
         func number(_ key: String) -> Double? {
             guard let raw = attributes[key.lowercased()]?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !raw.isEmpty else { return nil }
-            return Double(raw)
+            // Winamp reads these with `atoi`, so trailing junk ends the number rather than voiding it:
+            // MoonLight's clock is `w="29,5"` (a decimal comma), 29 wide there and 0 wide as nil.
+            return Double(raw) ?? Double(raw.prefix { "+-0123456789.".contains($0) })
         }
         func flag(_ key: String) -> Bool { Self.flag(attributes[key.lowercased()]) }
         x = number("x") ?? 0

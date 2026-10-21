@@ -181,8 +181,14 @@ extension WasabiSceneRenderer {
         // the width is not an approximation the skin measured a string against, it is the width the
         // paragraph was broken to. Anything still overrunning it is one unbreakable word, and Winamp
         // cuts it there.
+        //
+        // The release needs a **group** to hand it to. A text placed straight on a layout has only the
+        // window around it, which bounds nothing, so it keeps its own box like Winamp's `DrawText`:
+        // JRS's remote turns its 54px song ticker's scrolling off from a script (`ticker="0"` when
+        // "Scroll Basic Songticker" is unchecked), and with the layout as the bound the title ran
+        // across the remote and off both sides of the window.
         let clip: CGRect
-        if scroll == nil, !wraps {
+        if scroll == nil, !wraps, object.parent?.tag.is(.layout) != true {
             let ambient = context.boundingBoxOfClipPath
             let minX = min(frame.minX, ambient.minX)
             let maxX = max(frame.maxX, ambient.maxX)

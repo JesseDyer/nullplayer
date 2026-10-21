@@ -110,6 +110,12 @@
   - wTunes' About text is centred, as is Vortex's `POSITION` label, which is no longer cut off.
   - The Windows menu no longer shows names like `About%09Alt+A` in wTunes, CopperdeckII and
     similar skins.
+- **Modern skins: song titles stay inside their display**
+  - JRS's remote no longer spills the song title across the remote and off the window when
+    ticker scrolling is off; Enkera's, NEO_CLASSIC's and Symplicipod's shade titles no longer
+    run over their buttons and clock.
+  - MoonLight shows its song title and clock, and its equalizer labels sit where they belong;
+    Pure Inspired's seek line appears.
 
 ## 0.33.0
 
