@@ -2653,7 +2653,7 @@ final class WinampModernMainView: NSView {
     ]
 
     private static func isControl(_ object: WasabiObject) -> Bool {
-        object.tag.is(anyOf: controlKinds) || object.tag.is(.button, in: .wasabi)
+        object.tag.is(anyOf: controlKinds) || object.tag.isStandard(anyOf: [.button, .toggleButton])
     }
 
     /// Show a script-built menu at the mouse and answer the command id the user picked (0 = nothing).

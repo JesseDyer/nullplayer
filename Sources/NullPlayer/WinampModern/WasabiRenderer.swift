@@ -1102,22 +1102,17 @@ final class WasabiSceneRenderer {
         let canvas = CGRect(origin: .zero, size: size)
         var result = WasabiFitFailures()
         for node in sceneNodes(canvas: size) {
-            guard !node.frame.isEmpty, !isClippedByItsParent(node.object) else { continue }
+            guard !node.frame.isEmpty else { continue }
             // A half-pixel slack: geometry resolves in Double, and a box that lands exactly on its
-            // parent's edge is flush, not overflowing.
-            let box = node.parentFrame.insetBy(dx: -0.5, dy: -0.5)
+            // parent's edge is flush, not overflowing. On an axis the parent clips, nothing escapes.
+            let clipped = node.object.parent.map(clipAxes(of:)) ?? []
+            let box = clipped.unbounding(node.parentFrame.insetBy(dx: -0.5, dy: -0.5))
             guard !box.contains(node.frame), node.frame.intersects(canvas) else { continue }
             // Only the part that escapes matters, and only where the window still shows it.
             guard !box.contains(node.frame.intersection(canvas)) else { continue }
             result.overflowing.insert(node.object.stableID)
         }
         return result
-    }
-
-    /// Whether this object's parent cuts it to its own box.
-    private func isClippedByItsParent(_ object: WasabiObject) -> Bool {
-        guard let parent = object.parent else { return false }
-        return clipsChildren(parent) || isFramePane(parent)
     }
 
     /// The smallest whole pixel in `from...to` that satisfies `predicate`, searched **downwards from
@@ -1371,6 +1366,12 @@ final class WasabiSceneRenderer {
         return Int(raw.trimmingCharacters(in: .whitespaces)) != 1
     }
 
+    /// The `sysregion` boxes this layout paints black — what `drawScene` fills, and so part of the
+    /// window for the pointer too.
+    func backedRegionBoxes() -> [CGRect] {
+        layoutBacksRegionBoxes ? regionBoxes() : []
+    }
+
     /// Channel maps for `promoteAlphaToRegion`: one that leaves a channel alone, and one that
     /// promotes every non-zero alpha to fully opaque — the window's region, as a lookup table.
     private static let identityChannelTable: [UInt8] = (0...255).map(UInt8.init)
@@ -1459,12 +1460,10 @@ final class WasabiSceneRenderer {
         context.saveGState()
         context.translateBy(x: 0, y: canvasSize.height)
         context.scaleBy(x: 1, y: -1)
-        if layoutBacksRegionBoxes {
-            let boxes = regionBoxes()
-            if !boxes.isEmpty {
-                context.setFillColor(gray: 0, alpha: 1)
-                context.fill(boxes)
-            }
+        let boxes = backedRegionBoxes()
+        if !boxes.isEmpty {
+            context.setFillColor(gray: 0, alpha: 1)
+            context.fill(boxes)
         }
         context.interpolationQuality = .high
         if Self.profilesDrawing {
@@ -2372,17 +2371,8 @@ final class WasabiSceneRenderer {
         //
         // Only a *declared* box does this. A group whose height we inferred (or failed to) keeps the
         // inherited clip, because clipping children to a guess erases content that is really there —
-        // the same reason `isSizedGroup` gates ordinary clipping.
-        let childClip: CGRect
-        if clipsChildren(object) || isFramePane(object) {
-            childClip = resolved.isEmpty
-                ? CGRect(x: min(max(resolved.minX, parentClip.minX), parentClip.maxX),
-                         y: min(max(resolved.minY, parentClip.minY), parentClip.maxY),
-                         width: 0, height: 0)
-                : parentClip.intersection(resolved)
-        } else {
-            childClip = parentClip
-        }
+        // the same reason `clipAxes` gates ordinary clipping.
+        let childClip = clipAxes(of: object).clip(parentClip, to: resolved)
         let childAlpha = inheritedAlpha * Self.alphaFraction(of: object, active: isWindowActive)
         // A container a script has scrolled lays its children out against a box shifted *up* by the
         // offset; the clip stays on the unscrolled box, so content leaves through the top and arrives
@@ -3313,6 +3303,11 @@ final class WasabiSceneRenderer {
         return max(0, min(1, normalized))
     }
 
+    /// Winamp's `<rect>` is an outline unless it says `filled="1"`.
+    static func isFilledRect(_ object: WasabiObject) -> Bool {
+        ["1", "true", "yes"].contains(object.attributes["filled"]?.lowercased() ?? "0")
+    }
+
     /// `<rect>` — a flat colour fill or outline. 44 of them in the ClassicPro engine, including the
     /// backing behind the SUI list surfaces and the browser, all of which drew nothing.
     private func drawRect(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
@@ -3322,7 +3317,7 @@ final class WasabiSceneRenderer {
         context.saveGState()
         // Winamp's default is an outline; the engine writes `filled="1"` wherever it wants a fill and
         // `filled="0"` wherever it wants the border, so neither case is guessed at.
-        if ["1", "true", "yes"].contains(object.attributes["filled"]?.lowercased() ?? "0") {
+        if Self.isFilledRect(object) {
             context.setFillColor(color.cgColor)
             context.fill(frame)
         } else {
@@ -4657,6 +4652,9 @@ final class WasabiSceneRenderer {
         // drop-down's frame, an edit's field — so it is opaque to hit testing without a bitmap. Its
         // primitive type already makes it interactive (`togglebutton`, `button`, `slider`).
         if WasabiFormWidgets.kind(of: object) != nil { return true }
+        // A `<gradient>` and a filled `<rect>` paint their whole box. Prakrit draws its entire frame
+        // from them, `move="1"` bevels included, and every press on one fell through to the desktop.
+        if object.tag.is(.gradient) || (object.tag.is(.rect) && Self.isFilledRect(object)) { return true }
         return object.attributes["background"] != nil || bitmapID != nil ||
             object.tag.is(anyOf: [.text, .songticker, .vis, .eqVis, .albumArt, .slider])
     }
@@ -4722,37 +4720,41 @@ final class WasabiSceneRenderer {
         return spec
     }
 
-    private func clipsChildren(_ object: WasabiObject) -> Bool {
-        let value = object.attributes["clipchildren"]?.lowercased()
-        if value == "1" || value == "true" { return true }
-        return isSizedGroup(object)
-    }
-
+    /// The axes an object cuts its children to — the one clipping rule, read by the scene walk and
+    /// by the protective minimum alike.
+    ///
     /// A `<group>` is a **window** in Wasabi, so its children are bounded by it whether or not the
     /// skin says `clipchildren`. Defix's cassette display is a 263×79 group holding a 117×117 reel
     /// bitmap: unclipped, the two reels spilled 53px past the bottom of the cassette and painted
     /// straight over the song ticker below it, leaving the title visible only in the gaps between
     /// them.
     ///
-    /// Only a group whose box the skin actually **declared** clips. One that is sized from its
-    /// background bitmap, or that falls through to the renderer's default, has a rect we inferred —
-    /// and clipping children to a guess can erase content that is really there, which is a far worse
-    /// failure than the overhang it would prevent. `fitparent` counts as declared: it states the
-    /// group's size outright (the parent's, on whichever axis the group does not size itself), so the
-    /// clip it produces is the one the children already had.
+    /// A group clips only on an axis whose size the skin actually **declared**. One that falls
+    /// through to the renderer's default has a rect we inferred — and clipping children to a guess
+    /// can erase content that is really there, which is a far worse failure than the overhang it
+    /// would prevent. The axes are independent: Prakrit's
+    /// `<group id="base.lookgood" x="10" y="140" w="70"/>` states a width and no height, and its
+    /// 180px strip ran across the Stop and Next buttons until the width alone clipped it.
+    /// `fitparent` counts as declared: it states the group's size outright (the parent's, on
+    /// whichever axis the group does not size itself), so the clip it produces is the one the
+    /// children already had.
     ///
     /// An `xuitag` instance is a group too — `<OneDirectionText>` is its `groupdef`, instantiated
     /// under the tag's name — so it clips on the same terms. Shield_Amp's 293px songticker drew its
     /// 900px moving text across the whole player body without it (B149).
-    private func isSizedGroup(_ object: WasabiObject) -> Bool {
-        guard object.tag.is(.group)
-                || loadedSkin.runtime.types.isXUITag(object.typeName) else { return false }
-        if object.attributes["fitparent"] == "1" { return true }
+    private func clipAxes(of object: WasabiObject) -> WasabiClipAxes {
+        let value = object.attributes["clipchildren"]?.lowercased()
+        if value == "1" || value == "true" || isFramePane(object) { return .both }
+        guard object.tag.is(.group) || loadedSkin.runtime.types.isXUITag(object.typeName) else { return [] }
+        if object.attributes["fitparent"] == "1" { return .both }
         // A `background` bitmap is a declaration, not a guess: the skin named the artwork the group
         // is the size of, on both axes, so the box it produces is as much the author's as `w`/`h`.
         // It is what makes BLAKK's spectrum/volume drawer an aperture rather than a pile.
-        if backgroundBitmap(of: object) != nil { return true }
-        return object.geometry.width != nil && object.geometry.height != nil
+        if backgroundBitmap(of: object) != nil { return .both }
+        var axes: WasabiClipAxes = []
+        if object.geometry.width != nil { axes.insert(.x) }
+        if object.geometry.height != nil { axes.insert(.y) }
+        return axes
     }
 
     /// The bitmap a `<group>` states its box with, when it states one.

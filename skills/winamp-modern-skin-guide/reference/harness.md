@@ -748,7 +748,7 @@ becomes the expectation.
 
 > **A golden nobody has seen fail is a blind instrument** (§"A blind instrument reads as a working
 > feature"). Each of these five was checked to fail under a deliberately reintroduced regression —
-> `isSizedGroup` → `false`, the animation row → `0`, the bitmap-font `valign` offset → top,
+> `clipAxes` → `[]`, the animation row → `0`, the bitmap-font `valign` offset → top,
 > `WasabiFrame.dividerHalfThickness` → 2 — and to fail nowhere else. Do the same for a scene you add.
 > `group-background-box` was added that way and it earned its keep immediately: its first draft put
 > the oversized child at the group's origin, where it covered the backing exactly, so the

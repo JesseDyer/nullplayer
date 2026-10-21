@@ -1178,7 +1178,7 @@ could never reflect the track position, because the width it is drawn from meant
 while the paint did not follow.
 
 **Only a *declared* box does this.** A group whose height we inferred, or failed to, keeps the
-inherited clip — the same reason `isSizedGroup` gates ordinary clipping: clipping children to a guess
+inherited clip — the same reason `clipAxes` gates ordinary clipping: clipping children to a guess
 erases content that is really there, which is a worse failure than the overhang it prevents. The
 empty clip is built as an explicit zero-size rect pinned inside the parent clip rather than
 `CGRect.null`, so `intersects` and `CGContext.clip(to:)` both behave.
@@ -1189,7 +1189,7 @@ their box across the window chrome; it is not a cPro2-only shape.
 ## A `<group>`'s `background` bitmap states its box (B109, 2026-09-03)
 
 A group that declares no `w`/`h` is the size of its **`background`** bitmap. That is a *declaration*,
-not an inference, so it satisfies `isSizedGroup` and the group clips its children — which is the whole
+not an inference, so `clipAxes` clips its children on both axes — which is the whole
 point of the attribute for the many groups that pair it with `drawbackground="0"`, where the bitmap is
 never painted and exists only to say how big the group is. Read with the section above: the two
 together are "a group clips to the box its author gave it, however the author gave it."

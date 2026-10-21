@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 struct WasabiSize: Equatable, Codable {
@@ -208,5 +209,38 @@ struct WasabiGeometrySpec: Equatable {
             width: resolved(rawWidth, percent: percentWidth, relative: relativeWidth, span: parent.width),
             height: resolved(rawHeight, percent: percentHeight, relative: relativeHeight, span: parent.height)
         )
+    }
+}
+
+/// The axes on which an object cuts its children to its own box (`WasabiSceneRenderer.clipAxes`).
+struct WasabiClipAxes: OptionSet {
+    let rawValue: Int
+    static let x = WasabiClipAxes(rawValue: 1)
+    static let y = WasabiClipAxes(rawValue: 2)
+    static let both: WasabiClipAxes = [.x, .y]
+
+    /// What children of `box` are drawn inside: `parent` narrowed to `box` on these axes. A box
+    /// that is empty on a clipped axis clips to nothing — a zero rect pinned inside `parent`, so
+    /// `intersects` and `CGContext.clip(to:)` both behave (the reveal-window idiom).
+    func clip(_ parent: CGRect, to box: CGRect) -> CGRect {
+        guard !isEmpty else { return parent }
+        let cut = CGRect(x: contains(.x) ? box.minX : parent.minX,
+                         y: contains(.y) ? box.minY : parent.minY,
+                         width: contains(.x) ? box.width : parent.width,
+                         height: contains(.y) ? box.height : parent.height)
+        guard cut.isEmpty else { return parent.intersection(cut) }
+        return CGRect(x: min(max(cut.minX, parent.minX), parent.maxX),
+                      y: min(max(cut.minY, parent.minY), parent.maxY),
+                      width: 0, height: 0)
+    }
+
+    /// `rect` with every clipped axis opened to infinity: on those axes nothing a child does can
+    /// reach the screen, so nothing there counts as overflow.
+    func unbounding(_ rect: CGRect) -> CGRect {
+        let open = CGRect.infinite
+        return CGRect(x: contains(.x) ? open.minX : rect.minX,
+                      y: contains(.y) ? open.minY : rect.minY,
+                      width: contains(.x) ? open.width : rect.width,
+                      height: contains(.y) ? open.height : rect.height)
     }
 }

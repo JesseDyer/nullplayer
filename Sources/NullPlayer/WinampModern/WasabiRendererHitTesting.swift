@@ -69,6 +69,8 @@ extension WasabiSceneRenderer {
     /// paints still does, and the press goes to the layout (the stock notifier is all ghosts, B183).
     func containsVisiblePixel(at point: CGPoint, includingGhosts: Bool = false) -> Bool {
         object(at: point, interactiveOnly: false, includingGhosts: includingGhosts) != nil
+            // The black a `sysregion` box is backed with is the window too (Prakrit's whole body).
+            || backedRegionBoxes().contains { $0.contains(point) }
     }
 
     /// Every draggable `<Wasabi:Frame>` divider in the active scene, with its grab strip in skin
@@ -498,19 +500,14 @@ extension WasabiSceneRenderer {
     private func isInteractive(_ object: WasabiObject) -> Bool {
         // The button it wraps takes the press, and that button's events reach the wrapper's script.
         if WasabiEmbeddedXUI.wrapsButton(object) { return false }
-        if object.tag.is(anyOf: Self.commandKinds) { return true }
-        // `<Wasabi:Button>` is a button — the standard library's, but a button, and Wasabi hit-tests
-        // it as one. It reached here only through `isTextButton` (a *label* it has to draw) or an
-        // `action=`, so a button whose whole behaviour is a script binding was never under the mouse
-        // at all: T800's five `Mem1…Mem5` song slots are `rectrgn="1"` 4x3 boxes driven entirely from
-        // `quicksongpick.maki`, and every click fell past them onto the layout. Big Bento's
-        // `query.pathurl` dialog has the same shape from the other direction — its `Ok` is
-        // artwork-backed with `text=""`, so the label test rejected it too.
-        //
-        // Contained by what a `<Wasabi:Button>` *is*: all 32 in the corpus are either an explicit
-        // click target (`rectrgn="1"`), artwork-backed, or labelled, so none of them becomes an
-        // invisible box that swallows a click meant for something behind it.
-        if object.tag.is(.button, in: .wasabi) { return true }
+        // The standard library's `<Wasabi:Button>` and `<Wasabi:ToggleButton>` are buttons too, and
+        // Wasabi hit-tests them as such. Left to `isTextButton` or `action=`, a button whose whole
+        // behaviour is a script binding was never under the mouse: T800's five `Mem1…Mem5` song
+        // slots are `rectrgn="1"` 4x3 boxes driven entirely from `quicksongpick.maki`, and Big
+        // Bento's `query.pathurl` `Ok` is artwork-backed with `text=""`. Prakrit's Rep/Shu/Xfd
+        // switches are alpha-0 `Wasabi:ToggleButton`s carrying only a `cfgattrib`, so every press
+        // fell to the XUI wrapper and toggled nothing.
+        if object.tag.isStandard(anyOf: Self.commandKinds) { return true }
         // A `<Menu>` is a hit region and nothing else — it draws no artwork and carries no `action`,
         // so without naming it here the pointer never reached a single entry of a skin's own menu
         // bar. Its box is explicit (`w="0" relatw="1" h="21"`) and `object(at:)` skips the alpha test

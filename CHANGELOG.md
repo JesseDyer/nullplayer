@@ -98,6 +98,11 @@
   - The repeat, shuffle and crossfade indicators show and switch.
   - The Fade slider keeps the crossfade length you drag it to instead of snapping back to 1 second.
   - Ebonite's and iNTELLI_design's window-mode buttons are no longer squashed.
+- **Modern skins: Prakrit's buttons work and its window drags**
+  - The Rep, Shu and Xfd buttons switch repeat, shuffle and crossfade.
+  - The main window can be dragged by its frame.
+  - A divider strip no longer runs across the Stop and Next buttons; Copperdeck II's equalizer
+    and cPro Venus's seek bar lose similar overhanging pieces.
 
 ## 0.33.0
 
