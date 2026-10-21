@@ -124,20 +124,30 @@ extension WinampModernScriptRuntime {
         return true
     }
 
+    /// A slider's `low…high`. Winamp's default is 0…255, but an `EQ_BAND`/`EQ_PREAMP` slider
+    /// defaults to −127…127, the `onEqBandChanged` scale: Tristania's band fill sends the event value
+    /// and the slider's own position through one routine that slices its map at `position + 128`, and
+    /// multipass declares its EQ fillbars `range="-128,128"` against the slider position. On 0…255 the
+    /// first drag pushed Tristania's threshold past 255 and flooded the whole track.
+    static func sliderRange(of object: WasabiObject) -> (low: Double, high: Double) {
+        let isEqualizer = WinampModernEQAction.decode(action: object.attributes["action"],
+                                                      parameter: object.attributes["param"]) != nil
+        return (Double(object.attributes["low"] ?? "") ?? (isEqualizer ? -127 : 0),
+                Double(object.attributes["high"] ?? "") ?? (isEqualizer ? 127 : 255))
+    }
+
     /// A position in the slider's own `low…high` unit as 0…1 — `sliderPosition`'s inverse.
     static func normalizedSliderPosition(_ position: Int32, of object: WasabiObject) -> CGFloat {
-        let low = Double(object.attributes["low"] ?? "0") ?? 0
-        let high = Double(object.attributes["high"] ?? "255") ?? 255
+        let (low, high) = sliderRange(of: object)
         guard high != low else { return 0 }
         return CGFloat(max(0, min(1, (Double(position) - low) / (high - low))))
     }
 
-    /// A 0…1 host reading in the slider's **own** `low…high` unit — the same conversion the view's
-    /// `notePosition` writes with, so a script that reads a position and one that hears
-    /// `onSetPosition` are handed the same number. Winamp's default range is 0…255.
+    /// A 0…1 host reading in the slider's **own** `low…high` unit — the conversion the view's
+    /// `notePosition` writes with too, so a script that reads a position and one that hears
+    /// `onSetPosition` are handed the same number.
     static func sliderPosition(normalized: CGFloat, of object: WasabiObject) -> Int32 {
-        let low = Double(object.attributes["low"] ?? "0") ?? 0
-        let high = Double(object.attributes["high"] ?? "255") ?? 255
+        let (low, high) = sliderRange(of: object)
         return Int32((low + Double(normalized) * (high - low)).rounded())
     }
 

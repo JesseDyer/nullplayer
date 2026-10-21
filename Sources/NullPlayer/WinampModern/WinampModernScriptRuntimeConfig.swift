@@ -54,7 +54,10 @@ extension WinampModernScriptRuntime {
     /// to the same attribute is told, because each script registers its own.
     @discardableResult
     func toggleConfigAttribute(of object: WasabiObject) -> Bool {
-        guard let binding = Self.configBinding(of: object) else { return false }
+        // A bound slider's attribute is its position, which the drag already wrote. Its release is
+        // still a click on it, and flipping the number there put Tristania's crossfade back to 1 s
+        // at the end of every drag.
+        guard !object.tag.is(.slider), let binding = Self.configBinding(of: object) else { return false }
         let flipped = configInteger(section: binding.section, key: binding.key) != 0 ? "0" : "1"
         setConfigAttribute(section: binding.section, key: binding.key, value: flipped)
         // A click also tells the clicked button `onToggle`, bound or not, as Wasabi's does: Anunaki

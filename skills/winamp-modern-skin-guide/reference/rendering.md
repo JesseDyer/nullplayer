@@ -100,6 +100,17 @@ the app itself offers (`WinampModernConfigBridge.crossfadeSecondsRange`) rather 
 given — and because the control reads its position back from the host, the readout shows the clamped
 value instead of lying about a duration the engine never took.
 
+**A bound slider is never flipped.** Releasing a drag over the slider is still a click on it, and
+`toggleConfigAttribute` used to treat its number like a lamp. Official Tristania's crossfade slider
+went 10 s → 0 → clamped to 1 s at the end of every drag. That method now refuses a slider.
+
+**An `EQ_BAND`/`EQ_PREAMP` slider counts −127…127**, the `onEqBandChanged` scale, unless it declares
+its own `low`/`high` (`WinampModernScriptRuntime.sliderRange(of:)`). Every other slider keeps
+Winamp's 0…255 default. Official Tristania's band fill runs both the slider's position and the event
+value through one routine that cuts its map at `position + 128`. On 0…255 the first drag pushed that
+past 255 and filled the whole track. multipass declares its EQ fillbars `range="-128,128"` against
+the same slider positions.
+
 ##### `onActivate` — how a skin shows that a toggle is on
 
 Wasabi raises `onActivate(int activated)` whenever a button's activation changes, whoever changed

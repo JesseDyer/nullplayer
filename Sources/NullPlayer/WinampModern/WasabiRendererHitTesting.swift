@@ -496,6 +496,8 @@ extension WasabiSceneRenderer {
     }
 
     private func isInteractive(_ object: WasabiObject) -> Bool {
+        // The button it wraps takes the press, and that button's events reach the wrapper's script.
+        if WasabiEmbeddedXUI.wrapsButton(object) { return false }
         if object.tag.is(anyOf: Self.commandKinds) { return true }
         // `<Wasabi:Button>` is a button — the standard library's, but a button, and Wasabi hit-tests
         // it as one. It reached here only through `isTextButton` (a *label* it has to draw) or an

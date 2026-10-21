@@ -611,7 +611,8 @@ a whole script):
   message in a skin was silently dropped. Phase 24
 - `setPosition` fires `onSetPosition` **only on a change**. Skins pair two sliders that write each
   other's position from that handler. A **user drag** goes through the same rule (Phase 37): the view
-  writes the dragged slider's 0…255 `value=` and dispatches `onSetPosition` with it, so a skin whose
+  writes the dragged slider's `value=` in its own `low…high` unit (0…255 by default, −127…127 for an
+  EQ slider) and dispatches `onSetPosition` with it, so a skin whose
   only feedback is that handler — multipass prints "Balance: Left +40%" on its song ticker from it —
   works under the mouse and not only under a script.
 - `getPosition()` on a **host-bound** slider answers the host, not the object's `value=` (B129). The

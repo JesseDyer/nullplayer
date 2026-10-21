@@ -45,6 +45,14 @@ enum WasabiEmbeddedXUI {
         /// A wrapped **button** takes its label the same way, centred unless the skin says
         /// otherwise (Azenis²'s own `Wasabi:Button`, a grid under a bare `<button>`).
         case buttonLabel
+        /// A wrapped **button** draws the artwork and keeps the state its wrapper declares, because
+        /// the wrapper is a group and Wasabi hands both to the button. Tristania's
+        /// `<Deimos:GlowButton image=…>` wraps a bare `<ToggleButton>` and its script shows Play or
+        /// Pause by hiding the inner button: drawn on the wrapper, Play's blank disc covered Pause's
+        /// ‖ glyph while playing and still took the click. Its `<Deimos:NStatesGlowButton
+        /// image="player.button.repeat" nstates="3" cfgattrib=…>` drew nothing at all, because the
+        /// state suffix and the binding only mean something on the `NStatesButton` inside.
+        case buttonArtwork
         /// The **structure** a host-built widget is told to show: 1010 Fullscreen's
         /// `<Deimos:ConfigPage content=… title=…>` wraps a `<Wasabi:TitleBox>`, and its
         /// `<Deimos:ConfigSheet children=…>` a `<Wasabi:TabSheet>`. The widget was created
@@ -61,6 +69,8 @@ enum WasabiEmbeddedXUI {
                         "shadowcolor", "shadowx", "shadowy", "forceuppercase", "forcelowercase",
                         "timecolonwidth", "timeroffstyle", "timerhours", "wrap"]
             case .buttonLabel: return ["text", "font", "fontsize", "color", "bold"]
+            case .buttonArtwork:
+                return ["image", "hoverimage", "downimage", "activeimage", "nstates", "cfgattrib", "cfgvals"]
             case .structure: return ["content", "title", "children"]
             }
         }
@@ -73,14 +83,27 @@ enum WasabiEmbeddedXUI {
             case .buttonLabel:
                 return embedded.tag.isStandard(anyOf: [.button, .toggleButton])
                     && embedded.attributes["text"] == nil && !(attributes["text"] ?? "").isEmpty
+            case .buttonArtwork:
+                // All or nothing: a button that states its own `image` keeps its own artwork whole,
+                // rather than gaining the wrapper's hover and press frames over it.
+                return embedded.tag.is(anyOf: buttonKinds) && embedded.attributes["image"] == nil
+                    && attributes["image"] != nil
             }
         }
     }
 
+    private static let buttonKinds: Set<WasabiKind> = [.button, .toggleButton, .nStatesButton]
+
     /// The embedded widget's tag when `object` is an `embed_xui` wrapper, else nil.
     static func embeddedTag(of object: WasabiObject) -> String? { object.attributes[markerKey] }
 
+    /// Whether `object` is a wrapper whose `image` crossed onto the button it embeds. Such a wrapper
+    /// keeps its box — its children are laid out and clipped in it — but the button inside draws
+    /// the artwork and takes the press, so the wrapper does neither.
+    static func wrapsButton(_ object: WasabiObject) -> Bool { object.attributes[buttonMarkerKey] == "1" }
+
     private static let markerKey = "nullplayer.embedxui"
+    private static let buttonMarkerKey = "nullplayer.embedbutton"
 
     /// Mark `wrapper` as the XUI for `embedded` (found by `tag`) and forward what crosses from the
     /// wrapper's `attributes`. Answers whether the wrapper's structure crossed, in which case the
@@ -97,6 +120,9 @@ enum WasabiEmbeddedXUI {
                     forwarded = true
                 }
             }
+            // Only artwork that actually moved takes the drawing with it: Big Bento's tab mousetrap
+            // states its own placeholder `image="wtf"`, and its wrapper draws the tab icon as before.
+            if group == .buttonArtwork { _ = wrapper.setAttribute(buttonMarkerKey, value: "1") }
             if group == .buttonLabel, embedded.attributes["align"] == nil {
                 _ = embedded.setAttribute("align", value: attributes["align"] ?? "center")
             }

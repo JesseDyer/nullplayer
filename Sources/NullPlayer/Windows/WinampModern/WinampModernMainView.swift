@@ -2857,9 +2857,7 @@ final class WinampModernMainView: NSView {
     }
 
     private func notePosition(_ normalized: CGFloat, on object: WasabiObject) {
-        let low = Double(object.attributes["low"] ?? "0") ?? 0
-        let high = Double(object.attributes["high"] ?? "255") ?? 255
-        let position = Int32((low + Double(normalized) * (high - low)).rounded())
+        let position = WinampModernScriptRuntime.sliderPosition(normalized: normalized, of: object)
         guard object.attributes["value"] != String(position) else { return }
         _ = object.setAttribute("value", value: String(position))
         _ = try? scripts.dispatch(object: object, event: "onsetposition",

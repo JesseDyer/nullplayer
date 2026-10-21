@@ -91,6 +91,13 @@
   - Soft-edged skins such as meridian no longer have darkened edges.
   - CopperdeckII's rounded corners lose the thin dark line beside them.
   - The drop shadow follows the window, so Anunaki's sliding equalizer leaves no shadow behind.
+- **Modern skins: Official Tristania's buttons and sliders work**
+  - Moving an equalizer slider no longer fills its whole track with colour; multipass's equalizer
+    bars also line up with their sliders.
+  - The big Play button shows its pause symbol while playing, and a click pauses.
+  - The repeat, shuffle and crossfade indicators show and switch.
+  - The Fade slider keeps the crossfade length you drag it to instead of snapping back to 1 second.
+  - Ebonite's and iNTELLI_design's window-mode buttons are no longer squashed.
 
 ## 0.33.0
 

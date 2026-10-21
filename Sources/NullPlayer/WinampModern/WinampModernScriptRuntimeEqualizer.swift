@@ -77,18 +77,18 @@ extension WinampModernScriptRuntime {
         }
     }
 
-    /// Write the 0…255 position of every slider bound to `action`, so a script that reads the slider
-    /// rather than the event (multipass's fillbars) sees the change too. The renderer already draws
-    /// an EQ slider's thumb from the host, so this is the *script's* view of it catching up.
-    /// Returns whether anything moved.
+    /// Write the position of every slider bound to `action`, in its own `low…high` unit, so a script
+    /// that reads the slider rather than the event (multipass's fillbars) sees the change too. The
+    /// renderer already draws an EQ slider's thumb from the host, so this is the *script's* view of
+    /// it catching up. Returns whether anything moved.
     func syncEqualizerSliders(for action: WinampModernEQAction, value: Int) -> Bool {
-        // −127…127 → 0…255, through the same ±12 dB midpoint the renderer and the drag use.
-        let position = String(Int32(((Double(max(-127, min(127, value))) + 127) / 254 * 255).rounded()))
+        let normalized = CGFloat(Double(max(-127, min(127, value))) + 127) / 254
         var moved = false
         for object in loadedSkin.runtime.graph.allObjectsUnordered
         where object.tag.is(.slider) {
             guard WinampModernEQAction.decode(action: object.attributes["action"],
                                               parameter: object.attributes["param"]) == action else { continue }
+            let position = String(Self.sliderPosition(normalized: normalized, of: object))
             guard object.attributes["value"] != position else { continue }
             _ = object.setAttribute("value", value: position)
             moved = true

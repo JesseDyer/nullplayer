@@ -570,9 +570,8 @@ broken on its own, and each fix looked like it had done nothing until the next o
 - **The commands declared on the wrapper are the embedded control's commands** (B70). A `<groupdef
   xuitag="…" embed_xui="…">` wrapper is a `<group>`, which has no click behaviour of its own, and the
   object the pointer lands on is the embedded one — so `action`, `param`, `dblclickaction`,
-  `rightclickaction` and `tooltip` are forwarded to it at creation, and only those. Geometry, identity
-  and appearance stay on the wrapper, which is what draws: our renderer honours an `image=` on the
-  group, and copying it down would paint the artwork twice.
+  `rightclickaction` and `tooltip` are forwarded to it at creation. Geometry and identity stay on the
+  wrapper; for a button's artwork see the next rule.
   Enkera's **whole transport** is `<button:glow … action="play">` over a bare `<button id="but"
   fitparent="1"/>`; Defix's playlist and visualization bars are `<Defix:Bottom.bar.button
   action="PE_Add">` over a `mousetrap`. In every one the artwork drew, the press animated and the
@@ -582,6 +581,19 @@ broken on its own, and each fix looked like it had done nothing until the next o
   The probe line that names it is `CLICK markup action:` — absent entirely when the hit object carries
   no command, which reads exactly like a button with no behaviour to declare.
 
+- **A bare button's artwork and state are the embedded button's.** `image`, `hoverimage`,
+  `downimage`, `activeimage`, `nstates`, `cfgattrib` and `cfgvals` cross onto an embedded
+  `button`/`togglebutton`/`nstatesbutton` that states no `image` of its own, and the wrapper
+  (`WasabiEmbeddedXUI.wrapsButton`) then neither draws that artwork nor takes the press. It keeps
+  its box, because its other children are laid out and clipped in it. Official Tristania is the
+  case: its `Deimos:GlowButton` script shows Play or Pause by hiding the *inner* `glowbutton.button`,
+  so a disc drawn on the wrapper covered Pause's ‖ glyph and still took the click. Its
+  `Deimos:NStatesGlowButton` repeat/shuffle/crossfade lamps drew nothing at all, because
+  `image="player.button.repeat"` is a state prefix that only means something on the
+  `NStatesButton`. **All or nothing:** an embedded button that states its own `image` keeps its
+  artwork whole, and its wrapper draws as before. Big Bento's tab mousetrap is `image="wtf"` under
+  a wrapper that draws the tab icon. Corpus effect: Ebonite's and iNTELLI_design's window-mode
+  buttons now draw at their bitmap's own size, clipped by the wrapper, instead of squashed into it.
 - **A button's label is drawn once, by the embedded button** (B217). The wrapper's `text=` crosses
   onto an embedded `button`/`togglebutton` that declares none, bare or `Wasabi:` (B237), so an
   embedded `Wasabi:Button` takes it too — krazyPlayer's and Vortex's `SC:HyperLinkButton` link labels

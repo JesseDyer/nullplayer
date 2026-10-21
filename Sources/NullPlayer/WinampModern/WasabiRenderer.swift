@@ -2566,6 +2566,8 @@ final class WasabiSceneRenderer {
             // Before the plain-bitmap branch: an `<images>` names its sheet with `images=`, not
             // `image=`, so `resolvedBitmapID` answers nil for it and the object drew nothing at all.
             drawImage(image, in: node.frame, context: context)
+        } else if WasabiEmbeddedXUI.wrapsButton(object) {
+            // The button inside draws this artwork (`WasabiEmbeddedXUI.wrapsButton`).
         } else if let imageID = resolvedBitmapID(for: object,
                                                   pressed: pressed == object.stableID,
                                                   hovered: hovered == object.stableID),
