@@ -41,41 +41,56 @@
   the end of a song moved the highlight but kept playing the same song, for as long as 17 minutes
   on a large playlist. The chosen track now loads and plays at once. A song that fails to stream
   also moves on to the next one and plays it, instead of stopping there.
-- **Modern skins: sixteen more skins draw and behave as designed** — among them Prakrit's player is
-  no longer see-through and its equalizer is no longer empty, wTunes is no longer cut short on the
-  right, Anunaki's display and NEO_CLASSIC's album-art pane appear, WinampAzenis2's text buttons have
-  labels, and Vortex, Alpha Media Player X5 and 1010 Fullscreen stay on screen. Windows that cannot
-  fit beside the player now open in a screen corner rather than on top of it, and skins that ask for
-  uppercase window titles (BOOM and 96 others) get them.
-- **Modern skins: playlist buttons, window backings and a stray video window** — playlist windows
-  that leave a slot for Winamp's Add / Rem / Sel / Misc / List buttons now show them, so JRS's
-  playlist (and about 220 others) can be edited. machina's help screen and skin configuration, and
-  JRS's configuration, draw on the skin's own background instead of the desktop or a white sheet,
-  and machina's help screen gets its switch button. A skin's video window no longer opens empty at
-  launch with no way to close it. Dronev11's compact player can be dragged again.
-- **Modern skins: cover art in skins that find it themselves** — Mac OS X Panther's Cover Art,
-  Ebonite's Album Art and the other skins that look for a `cover.jpg` or `folder.jpg` beside the
-  playing file now show the track's cover, for local files and for Plex, Jellyfin, Emby and Subsonic
-  streams, and change with the track. A cover that arrives a moment after the track starts still
-  appears. Nothing on disk is read; the cover is the one NullPlayer already shows.
-- **Modern skins: playlist buttons where a skin's frame expects Winamp's** — Mac OS X Panther's
-  Playlist Editor now has its Add, Rem, Sel, Misc and List buttons in its status bar, as JRS's
-  already did; it had none, so its playlist could not be edited from the window.
-- **Modern skins: button labels drawn once** — the Search button on five ClassicPro skins no longer
-  draws its label twice, which had made it look smeared and bold, and the link buttons on
-  krazyPlayer's About page and on Vortex's and 1010 Fullscreen's config pages now show their text.
-- **Modern skins: a visualization window that stays one visualization** — krazyPlayer's
-  Visualizations window no longer switches to a small analyzer, with a different menu, when it is
-  made short and wide; a skin's own visualization window now runs the full visualization at any size.
-- **Modern skins: sharper, lighter windows, with a shadow that follows them** — windows are now drawn
-  at the display's full Retina resolution, so text and edges are crisper at UI Sizes like 125% and
-  135%, and the drawing work moved off the app's main thread (about 40% less main-thread work on
-  cPro Bento while playing). Soft-edged skins such as meridian no longer get darker edges than
-  designed. The drop shadow now follows the window as drawn, frame by frame, so a sliding drawer
-  such as Anunaki's equalizer no longer leaves a shadow behind.
-- **Modern skins: no stray line beside rounded corners at fractional UI Sizes** — at sizes like 135%
-  on a Retina display, skins with shaped corners such as CopperdeckII showed a thin dark line just
-  outside their corners and along their sides.
+- **Modern skins: more skins open and run**
+  - 54 skins that failed to load now open.
+  - Ten more skins' scripts no longer fail outright.
+  - Accented text in older skins shows correctly.
+  - Skin scripts can use dozens more of Winamp's features, so more of their menus, lists and
+    readouts work.
+- **Modern skins: sixteen more skins look as designed**
+  - Prakrit's player is no longer see-through, and its equalizer is no longer empty.
+  - wTunes is no longer cut off on the right.
+  - Anunaki's display and NEO_CLASSIC's album-art pane appear; NEO_CLASSIC's titles are centred.
+  - WinampAzenis2's text buttons have labels.
+  - Vortex's Party! layout shows its panes.
+  - Enkera's and Nullsoft 2000's shade modes lay out properly.
+  - BOOM and 96 other skins get the uppercase window titles they ask for.
+- **Modern skins: Preferences, settings and About pages**
+  - 1010 Fullscreen's Preferences shows its tree, About sheet and Cover Search page.
+  - Mac OS X Panther's and Official Tristania's Preferences show their About sheets, and Panther's
+    tabs are visible.
+  - Anunaki's Config Panel shows its five tabs.
+  - machina's help and configuration screens, and JRS's configuration, draw on the skin's own
+    background. machina's help screen gets its switch button.
+  - Link buttons on krazyPlayer's About page and on Vortex's and 1010 Fullscreen's config pages show
+    their text.
+  - The Search button on five ClassicPro skins no longer looks smeared.
+- **Modern skins: playlists you can edit**
+  - JRS, Mac OS X Panther and about 220 other skins now show Winamp's Add, Rem, Sel, Misc and List
+    buttons.
+  - Nitrous Audio's playlist shows its rows.
+- **Modern skins: more buttons and controls work**
+  - Skin buttons that eject, minimize, quit or open the Windows menu now do so.
+  - cPro2 minimal's system button quits on a double-click, and cPro2's clock shows the right time.
+  - Clicking the stock track notifier brings the player forward.
+  - mmd3's bass knob turns the equalizer on.
+  - Text and album art that a skin makes clickable respond to clicks.
+- **Modern skins: cover art in Mac OS X Panther, Ebonite and similar skins**
+  - Skins that look for a `cover.jpg` or `folder.jpg` beside the song show the track's cover.
+  - Works for local files and for Plex, Jellyfin, Emby and Subsonic, and changes with the track.
+- **Modern skins: windows open, move and resize properly**
+  - Vortex, Alpha Media Player X5 and 1010 Fullscreen stay on screen.
+  - A window with no room beside the player opens in a screen corner, not on top of it.
+  - Dronev11's compact player can be dragged again.
+  - A skin's own resize corner, such as Itemskin's playlist corner, resizes both edges.
+  - A skin's video window no longer opens empty at launch.
+  - krazyPlayer's Visualizations window keeps its full visualization when made short and wide.
+- **Modern skins: sharper and lighter**
+  - Windows draw at full Retina resolution, so text is crisper at UI Sizes like 125% and 135%.
+  - Playback uses less CPU (about 40% less on cPro Bento).
+  - Soft-edged skins such as meridian no longer have darkened edges.
+  - CopperdeckII's rounded corners lose the thin dark line beside them.
+  - The drop shadow follows the window, so Anunaki's sliding equalizer leaves no shadow behind.
 
 ## 0.33.0
 
