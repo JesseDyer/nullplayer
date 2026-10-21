@@ -78,4 +78,39 @@ final class WinampModernCanvasTests: XCTestCase {
         XCTAssertTrue(canvas.isFresh(pixelWidth: width, pixelHeight: height,
                                      colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!))
     }
+
+    /// A bitmap matched once into the canvas's space draws the pixels CoreGraphics' own per-draw
+    /// matching does: stretched, tiled, translucent, and on the frame that reuses it.
+    func testAMatchedBitmapDrawsAsCoreGraphicsMatchesIt() throws {
+        let display = CGColorSpace(name: CGColorSpace.displayP3)!
+        var pixels = [UInt8](repeating: 0, count: 7 * 5 * 4)
+        for i in 0..<(7 * 5) {
+            let a = UInt8(i * 7 % 256)
+            pixels[i * 4 + 3] = a
+            for c in 0..<3 { pixels[i * 4 + c] = UInt8((i * (37 + c * 29)) % (Int(a) + 1)) }
+        }
+        let sprite = try XCTUnwrap(CGContext(data: &pixels, width: 7, height: 5, bitsPerComponent: 8,
+                                             bytesPerRow: 28, space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage())
+        let list = scene([(CGRect(x: 0, y: 0, width: 40, height: 30), CGColor(red: 0.2, green: 0.6, blue: 0.4, alpha: 1))])
+        list.draw(sprite, in: CGRect(x: 2, y: 2, width: 7, height: 5))
+        list.draw(sprite, in: CGRect(x: 12, y: 3, width: 19, height: 11))
+        list.saveGState()
+        list.clip(to: CGRect(x: 0, y: 18, width: 40, height: 12))
+        list.draw(sprite, in: CGRect(x: 0, y: 18, width: 7, height: 5), byTiling: true)
+        list.restoreGState()
+
+        let reference = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                                bytesPerRow: 0, space: display,
+                                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        list.replay(into: reference)
+        let expected = bytes(try XCTUnwrap(reference.makeImage()))
+
+        let canvas = WinampModernCanvas()
+        let job = WinampModernCanvas.Job(pixelWidth: width, pixelHeight: height, colorSpace: display, scale: 1,
+                                         rects: [CGRect(x: 0, y: 0, width: width, height: height)],
+                                         scene: list, chrome: nil, promotesAlpha: false)
+        XCTAssertEqual(bytes(try XCTUnwrap(canvas.render(job)).picture), expected)
+        XCTAssertEqual(bytes(try XCTUnwrap(canvas.render(job)).picture), expected, "the kept copy")
+    }
 }

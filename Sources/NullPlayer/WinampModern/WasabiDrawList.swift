@@ -54,9 +54,16 @@ final class WasabiDrawList {
         self.devicePixelsPerUnit = devicePixelsPerUnit
     }
 
-    func replay(into context: CGContext) {
+    /// `matchImage`, when given, swaps each bitmap for one already in the replay context's colour
+    /// space (`WinampModernCanvas.matched`).
+    func replay(into context: CGContext, matchImage: ((CGImage) -> CGImage)? = nil) {
+        self.matchImage = matchImage
         for op in ops { op(context) }
+        self.matchImage = nil
     }
+
+    /// Set only for the length of a replay, on the replaying thread.
+    private var matchImage: ((CGImage) -> CGImage)?
 
     /// For a draw that needs a real context: run on the replaying thread, with the replay context.
     /// The closure must capture only immutable values.
@@ -208,7 +215,8 @@ final class WasabiDrawList {
     func clear(_ rect: CGRect) { ops.append { $0.clear(rect) } }
 
     func draw(_ image: CGImage, in rect: CGRect, byTiling: Bool = false) {
-        ops.append { $0.draw(image, in: rect, byTiling: byTiling) }
+        // Unowned: the list owns its ops, and outlives every replay of them.
+        ops.append { [unowned self] in $0.draw(matchImage?(image) ?? image, in: rect, byTiling: byTiling) }
     }
 
     func drawLinearGradient(_ gradient: CGGradient, start: CGPoint, end: CGPoint,

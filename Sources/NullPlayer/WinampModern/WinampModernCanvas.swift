@@ -17,8 +17,9 @@ import CoreGraphics
 /// **In the window's colour space.** The picture is copied into AppKit's backing store on the main
 /// thread every frame, and a canvas in any other space is colour-matched there, whole: in Device RGB
 /// that conversion was 15.7% of cPro Bento's main thread (debug, playing), more than the walk that
-/// records the frame. In the window's own space the copy is a copy, and the matching happens once
-/// per bitmap as the frame is drawn, off the main thread.
+/// records the frame. In the window's own space the copy is a copy. The skin's bitmaps are matched
+/// into that space once each and kept (`matched`): CoreGraphics matches a bitmap on *every* draw,
+/// and that was 68% of a playing frame's render on a "Color LCD" panel.
 ///
 /// **RGBA, and measured rather than assumed.** BGRA is the layout the window server composites
 /// natively, and it is the *wrong* choice here: the skin's own artwork is RGBA, so the scene draw pays
@@ -64,6 +65,10 @@ final class WinampModernCanvas {
     /// over a frame's own rects only, so a readout tick inside the outline costs a row compare.
     private var alpha: [UInt8] = []
     private var scratch: [UInt8] = []
+    /// Each bitmap matched into the canvas's colour space, holding its source so the identifier
+    /// cannot be reused. Emptied with a new canvas, which may be in another space.
+    private var matchedImages: [ObjectIdentifier: (source: CGImage, matched: CGImage)] = [:]
+    private var matchedPixels = 0
 
     /// Whether a frame would start a new canvas, and so has to be drawn whole: only the dirty rects
     /// would be filled otherwise, over a blank buffer.
@@ -78,14 +83,17 @@ final class WinampModernCanvas {
                                 bitsPerComponent: 8, bytesPerRow: 0, space: job.colorSpace,
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
             alpha = [UInt8](repeating: 0, count: job.pixelWidth * job.pixelHeight)
+            matchedImages = [:]
+            matchedPixels = 0
         }
         guard let context, let data = context.data else { return nil }
         for rect in job.rects { context.clear(rect) }
+        let match = { [unowned self] (image: CGImage) in matched(image, into: job.colorSpace) }
 
         context.saveGState()
         context.clip(to: job.rects)
         context.scaleBy(x: job.scale, y: job.scale)
-        job.scene.replay(into: context)
+        job.scene.replay(into: context, matchImage: match)
         context.restoreGState()
 
         if job.promotesAlpha {
@@ -103,7 +111,7 @@ final class WinampModernCanvas {
             context.setBlendMode(.destinationOver)
             context.beginTransparencyLayer(auxiliaryInfo: nil)
             context.scaleBy(x: job.scale, y: job.scale)
-            chrome.replay(into: context)
+            chrome.replay(into: context, matchImage: match)
             context.endTransparencyLayer()
             context.restoreGState()
         }
@@ -112,6 +120,29 @@ final class WinampModernCanvas {
         let changed = job.rects.reduce(false) { updateAlpha(data, rect: $1, in: context) || $0 }
         return Frame(picture: picture, outline: changed ? outlineImage(width: context.width,
                                                                        height: context.height) : nil)
+    }
+
+    /// `image` in `space`, matched once and kept. An image already in it, or one that is not 8-bit
+    /// RGB, draws as it is. Bounded by pixels like the renderer's prescale cache, which feeds it.
+    private func matched(_ image: CGImage, into space: CGColorSpace) -> CGImage {
+        guard let source = image.colorSpace, source != space, source.model == .rgb,
+              image.bitsPerComponent == 8 else { return image }
+        if let hit = matchedImages[ObjectIdentifier(image)] { return hit.matched }
+        let pixels = image.width * image.height
+        guard pixels <= WasabiSceneRenderer.maximumPrescaledPixels,
+              let matcher = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        matcher.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let result = matcher.makeImage() else { return image }
+        matchedPixels += pixels
+        if matchedPixels > WasabiSceneRenderer.maximumPrescaledCachePixels {
+            matchedImages = [:]
+            matchedPixels = pixels
+        }
+        matchedImages[ObjectIdentifier(image)] = (image, result)
+        return result
     }
 
     /// The RGBA pixels under `rect` (bottom-left origin, whole pixels) as a vImage buffer.
