@@ -314,8 +314,9 @@ changed pixels were *partially* transparent and only 2 were empty.
 `WasabiSceneRenderer` renders the scene into a readable buffer and promotes its alpha — non-zero to
 255, zero left alone. In a premultiplied buffer the colours are *already* the composite over black,
 so that one channel is the whole fix; the window context cannot be read back, which is why there is a
-buffer. It is held across frames and sized to the caller's clip, so a targeted repaint pays for its
-own rect.
+buffer. In the app that buffer is the window's canvas (`WinampModernCanvas`), which promotes each
+frame's dirty rects after replaying the scene into them; the harness's `draw(in:)` renders the same
+recorded scene into a buffer of its own, sized to the caller's clip.
 
 Three traps in that buffer, all measured on `main/normal` at 2x against a 2.81 ms/frame baseline, and
 all of them things to copy rather than rediscover:
@@ -331,11 +332,38 @@ all of them things to copy rather than rediscover:
   `WinampModernSurfaceStyle` draws its labels with `NSString.draw`, which takes its destination from
   that global. Left pointing at the caller's context, impulse's Configuration window lost its slider
   labels and its "Hold Time" caption: 841 pixels of text drawn into the wrong buffer and then buried
-  by the blit.
+  by the blit. Every such draw is now recorded with `WasabiDrawList.drawWithAppKit`, which binds the
+  global to the replay context on the replaying thread.
 
 Cost after all three: **3.63 ms/frame** against 2.81, debug. Corpus sweep, 590 renders: **2 changed**
 — WMP11-BlueVU's display area, and 7 pixels at maxdelta 2 on EPS's left speaker where the
 silhouette's anti-aliased fringe goes opaque.
+
+#### A region cut reaches as far as the smoothing (2026-10-21)
+
+The `sysregion` cut (`drawWindowRegionCut`, `WasabiRendererHitTesting.swift`) is a binary image at
+skin resolution, composited `.destinationOut` over the finished scene with nearest sampling, so each
+device pixel is cut or kept by the skin pixel its **centre** falls in. At a fractional device scale
+the artwork is smoothed (`WasabiBitmapInterpolationPolicy`) and a cut pixel's art bleeds up to half
+a skin pixel into its uncut neighbour. The device pixel holding that bleed can centre on the uncut
+pixel, and the promotion above turns it solid. Reported on CopperdeckII at UI Size 135% on Retina
+(2.7): `player/back.png`'s left edge at skin x=178 lands at device x=480.6, the upscale leaves
+alpha 63 in column 480, the cut takes the art's own column and keeps 480, and a dark 1px line
+floated beside the rounded corners and along the skin's sides. The headless harness reproduces it
+at `WINAMP_MODERN_RENDER_SCALE=2.7`, and so does any layout with a cut at any fractional scale. The
+old live path drew at point resolution (1.35), where that geometry happened to put the bleed inside
+the cut.
+
+At a fractional scale the cut is drawn four times, nudged ±0.49 skin pixel on each axis, which
+reaches every pixel the bleed can. The nudged draws are aliased: their own edges fall inside the
+canvas, an antialiased edge cuts its pixels only partly, and the promotion made those solid again,
+adding pixels along the window border. At an integral scale nothing is smoothed, and the cut is the
+one draw it always was.
+
+Corpus sweep: 1x and 2x unchanged. At 2.5x, 308 images changed, all on layouts with a cut, and every
+change removes pixels, none adds. Up to one device pixel of art along a cut edge goes with the
+bleed, which is the half-blended fringe of the art that was cut; corners sit very slightly tighter
+and read the same at zoom.
 
 #### A standard frame's box is window (B151, 2026-09-28)
 
@@ -404,33 +432,31 @@ every auxiliary container and every hosted window get one; the code is
 family (`skinWindowShadows`); every family's windows cast the same shadow (`ui-guide` § *Window Drop
 Shadows (Every Family)*). Trace: `NP_SKIN_SHADOW_TRACE=1` (`reference/harness.md`).
 
-- **The outline is rendered on purpose.** `.wal` has no frame image, so the view runs the same
-  `renderer.draw` into a one-pixel-per-point buffer, then fills every visible hosted surface's frame
-  — the renderer draws only the chrome around a library, browser, video or vis surface, and its area
-  would otherwise read as a hole. The fingerprint and the rebuild run off the main thread.
-- **The shadow pulls; the view only invalidates.** `SkinWindowShadow` is attached with the outline
-  render as its `shape`, watches the window's move, resize, key and occlusion notifications itself,
-  and pulls at most once per `shadowShapeInterval` (250 ms), leading edge first with a trailing pull
-  for the end of an animation, and never while the window is hidden. **Only a pull that rebuilt the
-  shadow spends the interval**: one click on PionNer_AMP2's EQ tab swaps the tab's image, then 14 ms
-  later moves the drawer, and the swap's unchanged-outline pull held the drawer's for 250 ms with the
-  open drawer's shadow still drawn — a ghost outline of the closed drawer. Cost of the change,
-  20 s of playback: cPro2 Dark Aluminum 8 unchanged pulls, Big Bento Modern 14.
-- **What invalidates it is an event that can move the outline, never invalidation.** Layer FX
-  invalidates the window 30 times a second and a playing skin writes readouts every tick, so neither
-  `repaintRequested` nor `needsDisplay` is a trigger. The triggers are a layout switch, a canvas
-  change, a resize (`setFrameSize`), and a graph write — and a graph write only past
-  `WinampModernShadowOutlineGate`: **`WasabiObjectGraph.shapeGeneration`** moved (geometry,
-  structure, `visible`, `alpha`, an image; never `text`, colour or `frame` — the graph decides it
-  beside `isSceneNeutral`) *and* this window's own scene fingerprint changed. The counter alone is
-  graph-wide: cPro2 Dark Aluminum writes its shade layout and About window every second, which cost
-  the player 34 renders in 20 s before the scene check.
-- **An animated layer contributes its core, not its current frame.** The outline pass is
-  `WasabiSceneRenderer.drawOutline(in:)`, which makes an `<animatedlayer>` paint the pixels opaque
-  in *every* frame (`drawsAnimationCores`, the minimum of each frame's `AlphaPlane`). Anaheim's mini player is a frame-stepped ball whose ears `vis_mini.maki` flaps to
-  the music; a frame step is not (and must not be) a trigger, so a shadow cut from whichever frame it
-  last sampled kept the old ears as a white ghost behind the ball. With the core, the ball casts the
-  shadow, the ears cast none, and the shadow costs nothing while the skin plays.
+- **The outline is the frame the window drew (2026-10-21).** The canvas (`WinampModernCanvas`,
+  `performance.md` § *A frame is recorded on the main thread and rasterized off it*) keeps a mirror
+  of its own alpha and compares each frame's dirty rects against it, row by row. A frame that changed
+  the alpha hands back an alpha-only image of the mirror, and only then does the view call
+  `invalidateShape("draw")`. So the shadow follows whatever is on screen frame by frame: Anunaki's
+  EQ drawer rebuilds once per drawn frame of its slide (33 over the slide, `pull=0.0ms`), and
+  Anaheim's flapping ears are simply part of the outline. A readout tick or a meter inside the outline
+  costs a row compare and no pull: cPro2 Dark Aluminum's player rebuilt once in 20 s of playback.
+  The shape is `[outline, hostedSurfaceMask()]`. The renderer draws only the chrome around a library,
+  browser, video or vis surface, so each visible one's frame is filled solid, built per pull because
+  a subview's `isHidden` or `alphaValue` changes without a layout pass.
+- **What this replaced, and why it is gone.** The outline used to be a second render made for the
+  shadow, on the main thread, throttled to one pull every 250 ms, and gated by a graph-wide shape
+  counter plus a per-window scene fingerprint (`WinampModernShadowOutlineGate`). Animated layers
+  contributed only their *core* (the pixels opaque in every frame), because a frame step could not be
+  a trigger. Every one of those mechanisms existed to keep that render rare. With the outline read
+  off the drawn frame there is nothing to keep rare. The throttle had its own failure too: one click
+  on PionNer_AMP2's EQ tab swaps the tab's image and, 14 ms later, moves the drawer, and a pull taken
+  between the two held the open drawer's shadow for 250 ms, a ghost outline.
+- **The shadow pulls; the view only invalidates.** `SkinWindowShadow` watches the window's move,
+  resize, key and occlusion notifications itself, never pulls while the window is hidden, and pulls
+  again as soon as the previous build lands. The layout-switch, canvas-change and resize triggers
+  still fire, and find the outline unchanged (`same`) when the frame has already reported it.
+- **A window too large for a canvas keeps its last shadow.** It draws straight into AppKit's context
+  (`drawDirectly`), which has no alpha to read back; no corpus window comes near the limit.
 - **A move is checked a turn late, and only for the frame (2026-10-02).** AppKit carries the child
   shadow *after* posting the parent's `didMove`, so a check inside the notification always saw the
   old frame. It then called `setFrame` on the shadow and `orderedIndex`, which lists every window on
@@ -472,8 +498,9 @@ also the nearer answer.
   does not move.
 - **The grid is the real pixel grid, not the context's.** A `.wal` view's `draw` runs at **CTM 1.0**
   on a 2x panel: AppKit records it into a display list and replays that at the backing scale. So
-  the view sets `devicePixelsPerContextUnit` to the backing factor over the CTM it was handed, and
-  the opaque-backing buffer sets it back to 1 for its own bitmap. Snapping to the context's own unit
+  the direct-draw fallback sets `devicePixelsPerContextUnit` to the backing factor over the CTM it
+  was handed, while the canvas and the harness's opaque buffer, which are bitmaps already at device
+  resolution, set it to 1. Snapping to the context's own unit
   would have moved every edge to a whole *point* — up to a full device pixel off.
 - `WINAMP_MODERN_PIXEL_SNAP=0` turns it off; `WINAMP_MODERN_RENDER_SEAMS=1` counts what is left
   (`reference/harness.md`).

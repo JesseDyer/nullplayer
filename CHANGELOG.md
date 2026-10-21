@@ -67,6 +67,15 @@
 - **Modern skins: a visualization window that stays one visualization** — krazyPlayer's
   Visualizations window no longer switches to a small analyzer, with a different menu, when it is
   made short and wide; a skin's own visualization window now runs the full visualization at any size.
+- **Modern skins: sharper, lighter windows, with a shadow that follows them** — windows are now drawn
+  at the display's full Retina resolution, so text and edges are crisper at UI Sizes like 125% and
+  135%, and the drawing work moved off the app's main thread (about 40% less main-thread work on
+  cPro Bento while playing). Soft-edged skins such as meridian no longer get darker edges than
+  designed. The drop shadow now follows the window as drawn, frame by frame, so a sliding drawer
+  such as Anunaki's equalizer no longer leaves a shadow behind.
+- **Modern skins: no stray line beside rounded corners at fractional UI Sizes** — at sizes like 135%
+  on a Retina display, skins with shaped corners such as CopperdeckII showed a thin dark line just
+  outside their corners and along their sides.
 
 ## 0.33.0
 

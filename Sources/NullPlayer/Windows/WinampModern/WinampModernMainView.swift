@@ -65,12 +65,12 @@ final class WinampModernMainView: NSView {
         for surface in librarySurfaces.values { surface.applyContentScale(scale) }
     }
 
-    private var pressedObject: WasabiObject?
+    private(set) var pressedObject: WasabiObject?
     private var pendingMainMenu: DispatchWorkItem?
     private var rightPressedObject: WasabiObject?
     private var pressedEQHolder: WasabiObject?
     private var draggedDivider: WasabiObject?
-    private var hoveredObject: WasabiObject?
+    private(set) var hoveredObject: WasabiObject?
     private var isDraggingWindow = false
     private var windowDragStartPoint: NSPoint = .zero
     /// A press on a layer that acts on the button *up* and has nothing to do on the down: the drag is
@@ -140,8 +140,9 @@ final class WinampModernMainView: NSView {
     private(set) var isTornDown = false
 
     /// This window's drop shadow, built from the scene's outline (`WinampModernMainView+Shadow`).
-    let windowShadow = SkinWindowShadow(minimumInterval: WinampModernMainView.shadowShapeInterval)
-    var shadowOutlineGate = WinampModernShadowOutlineGate()
+    /// The window's pixels and the frames on their way to them (`WinampModernMainView+Frames`).
+    let frames = WinampModernFrames()
+    let windowShadow = SkinWindowShadow()
     /// The scene readers graph writes this turn still owe (`WinampModernMainView+GraphSettle`).
     var pendingGraphSettle: WinampModernGraphSettle = []
     private var sceneIsVisible = false
@@ -592,7 +593,6 @@ final class WinampModernMainView: NSView {
             // Scoped: a warped layer on the *main* window fires this 30 times a second, and this
             // window has no business repainting for it.
             if let object, !self.owns(object) { return }
-            self.scheduleGraphSettle(.shadowOutline)
             // A window nobody can see does not paint for the skin's animation: it catches up in one
             // pass when it comes back (`occlusionDidChange`).
             guard self.isOnScreen else {
@@ -632,7 +632,7 @@ final class WinampModernMainView: NSView {
             self?.needsDisplay = true
             // A script can also turn Layer FX on outside load (switching Defix's display style does
             // exactly that), and the warp needs the repaint clock from then on.
-            self?.scheduleGraphSettle([.animationClock, .shadowOutline])
+            self?.scheduleGraphSettle(.animationClock)
         }
         // The light path a warped layer takes 30 times a second: repaint, nothing else.
         scripts.hooks.repaintRequested = { [weak self] in self?.needsDisplay = true }
@@ -995,6 +995,9 @@ final class WinampModernMainView: NSView {
             })
         occlusionDidChange()
         attachWindowShadow(to: window)
+        #if DEBUG
+        if drivesScripts { scheduleLiveClicksOnce() }
+        #endif
         matchResizableMaskToLayout()
         needsDisplay = true
     }
@@ -1021,13 +1024,22 @@ final class WinampModernMainView: NSView {
     /// **Cached** from the occlusion notification rather than asked per call: this is read on every
     /// script notification, thousands of times a second, and a first draft that asked the window
     /// each time cost 40% of the main thread on its own — more than the paint it saved.
-    private var isOnScreen = false
+    private(set) var isOnScreen = false
+
+    /// `WINAMP_MODERN_ASSUME_VISIBLE=1`, debug builds: treat every window as on screen whatever its
+    /// occlusion says, so a locked screen or a screen saver does not stop the window painting. The
+    /// way to drive and capture a live window when nobody is at the machine.
+    #if DEBUG
+    static let assumesVisible = ProcessInfo.processInfo.environment["WINAMP_MODERN_ASSUME_VISIBLE"] == "1"
+    #else
+    static let assumesVisible = false
+    #endif
 
     /// Repaints a hidden window skipped; the next time it shows, it redraws whole.
-    private var repaintDeferredWhileHidden = false
+    var repaintDeferredWhileHidden = false
 
     private func occlusionDidChange() {
-        isOnScreen = window?.occlusionState.contains(.visible) ?? false
+        isOnScreen = Self.assumesVisible || (window?.occlusionState.contains(.visible) ?? false)
         guard !isTornDown, isOnScreen, repaintDeferredWhileHidden else { return }
         repaintDeferredWhileHidden = false
         invalidateRectCaches()
@@ -1036,38 +1048,35 @@ final class WinampModernMainView: NSView {
         updateAnimationTimer()
     }
 
+    /// The window's picture is the layer's `contents`, rendered off the main thread
+    /// (`WinampModernMainView+Frames`). Only a window too large for a canvas draws.
+    override var wantsUpdateLayer: Bool { !frames.drawsDirectly }
+
+    override func updateLayer() {
+        guard !isTornDown else { return }
+        showFrame()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard !isTornDown, let context = NSGraphicsContext.current?.cgContext else { return }
         #if DEBUG
         Self.reportDrawFormatOnce(context: context, view: self)
-        #endif
-        if Self.paintRateProbe { recordPaint(dirtyRect) }
-        #if DEBUG
         if Self.dirtyTrace { traceDirty(dirtyRect, context: context) }
         #endif
-        // Only what is being repainted is cleared: a partial repaint (a meter that moved) must not
-        // blank the rest of the window it is not going to draw again.
         context.clear(dirtyRect)
-        // Which of `activealpha`/`inactivealpha` every object paints at. Read here rather than
-        // cached on the notification: a window can lose key without either notification reaching us
-        // (the app deactivating, a sheet), and the read is one Boolean.
-        renderer.isWindowActive = window?.isKeyWindow ?? true
-        // Measured before `skinScale` is applied: a display-list context arrives at CTM 1.0 and is
-        // replayed at the backing scale, a bitmap one already carries it (B80).
-        let contextScale = abs(context.ctm.a)
-        renderer.devicePixelsPerContextUnit = contextScale > 0
-            ? max(1, (window?.backingScaleFactor ?? 1) / contextScale) : 1
-        context.saveGState()
-        if skinScale != 1 { context.scaleBy(x: skinScale, y: skinScale) }
-        if drawsHostChrome { drawHostChrome(in: context) }
-        renderer.draw(in: context, pressed: pressedObject?.stableID,
-                      hovered: hoveredObject?.stableID)
-        context.restoreGState()
+        drawDirectly(in: context)
     }
 
-    /// `WINAMP_MODERN_PAINT_RATE=1` — paints per second per window, and how much of the window each
-    /// one covered: `dirty=` is the mean share of `dirtyRect` (the union AppKit hands `draw`),
-    /// `rects=` the mean share of the rects actually being drawn. Printed every two seconds. Release
+    /// Every invalidation, `needsDisplay = true` and AppKit's own included, is a request for a new
+    /// frame: recorded now, rendered off the main thread, shown when it lands.
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        requestFrame(invalidRect)
+        super.setNeedsDisplay(invalidRect)
+    }
+
+    /// `WINAMP_MODERN_PAINT_RATE=1` — frames shown per second per window, and how much of the window
+    /// each one redrew: `dirty=` is the mean share of the rects' bounding box, `rects=` the mean share
+    /// of the rects themselves. Printed every two seconds. Release
     /// builds too, because the question it answers — is a periodic update repainting the whole
     /// window? — is a release-profile question (B152).
     #if DEBUG
@@ -1100,15 +1109,13 @@ final class WinampModernMainView: NSView {
     static let paintRateProbe = ProcessInfo.processInfo.environment["WINAMP_MODERN_PAINT_RATE"] == "1"
     private var paintRateWindow: (start: CFTimeInterval, paints: Int, dirty: CGFloat, rects: CGFloat)?
 
-    private func recordPaint(_ dirtyRect: NSRect) {
+    func recordPaint(_ rects: [NSRect]) {
         let area = max(1, bounds.width * bounds.height)
-        var drawn: UnsafePointer<NSRect>?
-        var count = 0
-        getRectsBeingDrawn(&drawn, count: &count)
-        let rectsArea = (0..<count).reduce(CGFloat(0)) { sum, i in
-            let rect = drawn![i].intersection(bounds)
+        let rectsArea = rects.reduce(CGFloat(0)) { sum, rect in
+            let rect = rect.intersection(bounds)
             return sum + rect.width * rect.height
         }
+        let dirtyRect = rects.reduce(NSRect.null) { $0.union($1) }
         let now = CACurrentMediaTime()
         var window = paintRateWindow ?? (now, 0, 0, 0)
         window.paints += 1

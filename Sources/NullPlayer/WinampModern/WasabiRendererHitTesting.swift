@@ -129,7 +129,7 @@ extension WasabiSceneRenderer {
     /// object's rect: a region is a set of *map pixels*, and `Region.offset` moves it in those same
     /// units. An unresolvable map leaves the object unclipped — a skin whose map is missing should
     /// look the way it did before regions existed, not lose the control altogether.
-    func applyRegionClip(of object: WasabiObject, frame: CGRect, context: CGContext) {
+    func applyRegionClip(of object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard let region = WasabiRegionClip(object: object),
               let mask = resources.regionMask(region) else { return }
         let rect = CGRect(x: frame.minX + CGFloat(region.offsetX),
@@ -324,10 +324,9 @@ extension WasabiSceneRenderer {
         }
     }
 
-    /// The window's shape, as the bite the skin's `sysregion` objects take out of it: an image whose
-    /// alpha is the *cut* coverage — transparent where the window stays, opaque where it goes.
-    ///
-    /// Nil when the layout cuts nothing, which is the common case and costs nothing.
+    /// Take the window's shape out of the finished scene: the bite the skin's `sysregion` objects take
+    /// out of it, an image whose alpha is the *cut* coverage — transparent where the window stays,
+    /// opaque where it goes. Nothing at all when the layout cuts nothing, the common case.
     ///
     /// **Why a composite and not a clip.** A `CGContext` clip mask is consulted by *every* drawing
     /// operation, so a fractional mask value is applied once per overlapping draw and accumulates:
@@ -338,7 +337,33 @@ extension WasabiSceneRenderer {
     ///
     /// The image is built through the same y-flip the scene draw uses, so it is composited in the
     /// *unflipped* space `draw` starts and ends in.
-    func windowRegionCutImage() -> CGImage? { windowRegion()?.cut }
+    ///
+    /// **At a fractional scale the cut reaches half a skin pixel further.** The artwork is smoothed
+    /// there (`WasabiBitmapInterpolationPolicy`), so a cut pixel's art bleeds up to half a skin pixel
+    /// into its uncut neighbour, and the opaque promotion turns that bleed solid: CopperdeckII at UI
+    /// Size 135% on Retina (2.7) kept alpha 63 of `player/back.png`'s cut edge in a column beside it,
+    /// a dark line floating outside the rounded corners. Four draws nudged just under half a skin
+    /// pixel each way reach every pixel the bleed can, four full-canvas composites per whole frame.
+    /// Their own edges fall inside the canvas, so they are drawn aliased: an antialiased edge cuts
+    /// its pixels only partly, and the promotion turns them solid again.
+    func drawWindowRegionCut(in context: WasabiDrawList) {
+        guard let cut = windowRegion()?.cut else { return }
+        let canvas = CGRect(origin: .zero, size: canvasSize)
+        context.saveGState()
+        context.setBlendMode(.destinationOut)
+        context.interpolationQuality = .none
+        if WasabiBitmapInterpolationPolicy.isInteger(abs(context.ctm.a) * devicePixelsPerContextUnit) {
+            context.draw(cut, in: canvas)
+        } else {
+            context.setShouldAntialias(false)
+            for dx: CGFloat in [-0.49, 0.49] {
+                for dy: CGFloat in [-0.49, 0.49] {
+                    context.draw(cut, in: canvas.offsetBy(dx: dx, dy: dy))
+                }
+            }
+        }
+        context.restoreGState()
+    }
 
     private func windowRegion() -> (cut: CGImage, alpha: [UInt8], width: Int, height: Int)? {
         let cuts = regionCuts()
@@ -364,10 +389,10 @@ extension WasabiSceneRenderer {
         guard width >= 1, height >= 1 else { return nil }
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
         rgba.withUnsafeMutableBytes { bytes in
-            guard let context = CGContext(data: bytes.baseAddress, width: width, height: height,
-                                          bitsPerComponent: 8, bytesPerRow: width * 4,
-                                          space: CGColorSpaceCreateDeviceRGB(),
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            guard let target = CGContext(data: bytes.baseAddress, width: width, height: height,
+                                         bitsPerComponent: 8, bytesPerRow: width * 4,
+                                         space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
             else { return }
             // The window starts as its own rect. Winamp builds the region up from nothing instead,
             // but every framed window in the corpus opens that composition with a full-bleed
@@ -375,10 +400,15 @@ extension WasabiSceneRenderer {
             // `sysregion="1"` on the group that fills the window), so seeding the rect gives the same
             // answer where a skin does say — and leaves the window whole where one does not, rather
             // than erasing it.
-            context.setFillColor(gray: 1, alpha: 1)
-            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-            context.translateBy(x: 0, y: CGFloat(height))
-            context.scaleBy(x: 1, y: -1)
+            target.setFillColor(gray: 1, alpha: 1)
+            target.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            target.translateBy(x: 0, y: CGFloat(height))
+            target.scaleBy(x: 1, y: -1)
+            // Drawn through the scene's own sprite path, which records; replayed straight back.
+            let context = WasabiDrawList(ctm: target.ctm,
+                                         clip: CGRect(x: 0, y: 0, width: width, height: height),
+                                         interpolationQuality: target.interpolationQuality)
+            defer { context.replay(into: target) }
             // **Except inside a full-bleed group that only wraps the window's real content.** Such a
             // group reaches as far as what it holds, not as far as its box — and not merely as far
             // as its descendants' region, because a standard frame's client content declares none

@@ -1371,7 +1371,7 @@ final class WasabiSceneRenderer {
     /// the other opt in — Ujola Cat's cat declares it and no `desktopalpha`, and the skin's own
     /// Winamp screenshot shows that window's soft edges over the wallpaper with no black halo.
     /// Reading those as regions put black fringes round the drop shadows of 14 skins.
-    private var layoutWantsOpaqueBacking: Bool {
+    var layoutWantsOpaqueBacking: Bool {
         guard let raw = layout.attributes["desktopalpha"] else {
             return layout.attributes["alphabackground"] == nil
         }
@@ -1385,26 +1385,45 @@ final class WasabiSceneRenderer {
         return Int(raw.trimmingCharacters(in: .whitespaces)) != 1
     }
 
-    /// The scratch buffer the opaque path renders through, kept across frames.
-    ///
-    /// One canvas-sized allocation per frame is 2.5 MB at Retina scale on a 752x414 player, and this
-    /// runs on every repaint including the per-object ones the animation path fires — so it is held
-    /// and cleared rather than made and thrown away. Keyed on the pixel size it was made for, which
-    /// is the clip's, so a targeted repaint pays for its own rect and not for the window.
-    private var opaqueBackingBuffer: (context: CGContext, width: Int, height: Int,
-                                      appKit: NSGraphicsContext?)?
-
-    /// Channel maps for that pass: one that leaves a channel alone, and one that promotes every
-    /// non-zero alpha to fully opaque — the window's region, as a lookup table.
+    /// Channel maps for `promoteAlphaToRegion`: one that leaves a channel alone, and one that
+    /// promotes every non-zero alpha to fully opaque — the window's region, as a lookup table.
     private static let identityChannelTable: [UInt8] = (0...255).map(UInt8.init)
     private static let opaqueAlphaTable: [UInt8] = [0] + [UInt8](repeating: 255, count: 255)
 
+    /// The window's region, applied to the one channel that carries it, over an RGBA premultiplied
+    /// buffer. The colours are already the composite over black — that is what premultiplication
+    /// *is* — so an opaque window is this pass and nothing else, and a pixel the skin never touched
+    /// keeps the alpha 0 that puts it outside the window.
+    ///
+    /// **Through vImage, not a Swift loop.** This runs on every repaint of every window that declares
+    /// the flag, and a hand-written pass over the alpha byte measured **7.5 ms/frame** on a 354x147
+    /// player at 2x — an unoptimised build is exactly where a per-pixel loop is worst, and a debug
+    /// build is what live QA runs. `vImageTableLookUp_ARGB8888` is one vectorised pass: identity
+    /// tables for the three colour channels, and a table that maps 0 to 0 and everything else to 255
+    /// for the fourth. The tables go in *memory* channel order, so for an RGBA buffer alpha is the
+    /// last one — the parameter this ARGB-named call spells `blue`.
+    static func promoteAlphaToRegion(_ buffer: inout vImage_Buffer) {
+        identityChannelTable.withUnsafeBufferPointer { identity in
+            opaqueAlphaTable.withUnsafeBufferPointer { saturate in
+                _ = vImageTableLookUp_ARGB8888(&buffer, &buffer, identity.baseAddress,
+                                               identity.baseAddress, identity.baseAddress,
+                                               saturate.baseAddress, vImage_Flags(kvImageDoNotTile))
+            }
+        }
+    }
+
+    /// The scene recorded and replayed into `context` at once: the harness's and the tests' draw,
+    /// and a window too large for a canvas. Every other window draws through `WinampModernCanvas`.
     func draw(in context: CGContext, pressed: WasabiObjectID? = nil,
               hovered: WasabiObjectID? = nil) {
         guard layoutWantsOpaqueBacking,
               let backed = drawSceneOpaquely(in: context, pressed: pressed, hovered: hovered)
         else {
-            drawScene(in: context, pressed: pressed, hovered: hovered)
+            let list = WasabiDrawList(ctm: context.ctm,
+                                      clip: context.boundingBoxOfClipPath.applying(context.ctm),
+                                      interpolationQuality: context.interpolationQuality)
+            record(into: list, pressed: pressed, hovered: hovered)
+            list.replay(into: context)
             return
         }
         context.saveGState()
@@ -1420,8 +1439,6 @@ final class WasabiSceneRenderer {
     /// straight into the caller's context — a window that is merely translucent beats no window.
     private func drawSceneOpaquely(in context: CGContext, pressed: WasabiObjectID?,
                                    hovered: WasabiObjectID?) -> (image: CGImage, rect: CGRect)? {
-        // A partial repaint must not rasterise the whole window: the animation path invalidates one
-        // object's box at a time, and Big Bento's is 1526x868.
         let clip = context.boundingBoxOfClipPath.intersection(CGRect(origin: .zero, size: canvasSize))
         guard !clip.isNull, !clip.isEmpty else { return nil }
         let transform = context.ctm
@@ -1436,72 +1453,39 @@ final class WasabiSceneRenderer {
         let rect = CGRect(x: CGFloat(left) / scale, y: CGFloat(bottom) / scale,
                           width: CGFloat(width) / scale, height: CGFloat(height) / scale)
 
-        let buffer: CGContext
-        if let held = opaqueBackingBuffer, held.width == width, held.height == height {
-            buffer = held.context
-            buffer.clear(CGRect(x: 0, y: 0, width: width, height: height))
-        } else {
-            // **RGBA, and measured rather than assumed.** BGRA is the layout the window server
-            // composites natively, and it is the *wrong* choice here: the skin's own artwork is
-            // RGBA, so the scene draw pays a swizzle per bitmap and `main/normal` went from 2.8 to
-            // **4.8 ms/frame** on the scene pass alone. The one conversion at the blit is cheaper
-            // than one per bitmap. `bytesPerRow: 0` lets CoreGraphics pick its own aligned stride,
-            // which the alpha pass below reads back rather than assuming.
-            guard let made = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                       bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            else { return nil }
-            opaqueBackingBuffer = (made, width, height,
-                                   NSGraphicsContext(cgContext: made, flipped: false))
-            buffer = made
-        }
+        // RGBA, as `WinampModernCanvas` explains.
+        guard let buffer = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                     bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
 
         // The buffer's device space is its pixels, whatever the window's context says.
         let pixelsPerUnit = devicePixelsPerContextUnit
         devicePixelsPerContextUnit = 1
         defer { devicePixelsPerContextUnit = pixelsPerUnit }
-        buffer.saveGState()
         buffer.scaleBy(x: scale, y: scale)
         buffer.translateBy(x: -rect.minX, y: -rect.minY)
-        // **Rebind the AppKit context with the CoreGraphics one.** Not every string goes through
-        // CoreText: `WinampModernSurfaceStyle` draws its labels with `NSString.draw`, which takes its
-        // destination from `NSGraphicsContext.current` and not from the context it is handed. Leave
-        // that pointing at the caller's context and those strings are drawn *there*, then buried by
-        // the blit — impulse's Configuration window lost its slider labels and its "Hold Time"
-        // caption exactly that way, 841 pixels of text that the sweep caught and no assertion would.
-        let hostContext = NSGraphicsContext.current
-        NSGraphicsContext.current = opaqueBackingBuffer?.appKit
-        drawScene(in: buffer, pressed: pressed, hovered: hovered)
-        NSGraphicsContext.current = hostContext
-        buffer.restoreGState()
+        let list = WasabiDrawList(ctm: buffer.ctm, clip: CGRect(x: 0, y: 0, width: width, height: height),
+                                  interpolationQuality: buffer.interpolationQuality)
+        record(into: list, pressed: pressed, hovered: hovered)
+        list.replay(into: buffer)
 
-        // The window's region, applied to the one channel that carries it. The colours are already
-        // the composite over black — that is what premultiplication *is* — so an opaque window is
-        // this pass and nothing else, and a pixel the skin never touched keeps the alpha 0 that puts
-        // it outside the window.
         guard let data = buffer.data else { return nil }
-        // **Through vImage, not a Swift loop.** This runs on every repaint of every window that
-        // declares the flag, and a hand-written pass over the alpha byte measured **7.5 ms/frame**
-        // on a 354x147 player at 2x — an unoptimised build is exactly where a per-pixel loop is
-        // worst, and a debug build is what live QA runs. `vImageTableLookUp_ARGB8888` is one
-        // vectorised pass: identity tables for the three colour channels, and a table that maps 0 to
-        // 0 and everything else to 255 for the fourth. The tables go in *memory* channel order, so
-        // for an RGBA buffer alpha is the last one — the parameter this ARGB-named call spells
-        // `blue`.
         var image = vImage_Buffer(data: data, height: vImagePixelCount(height),
                                   width: vImagePixelCount(width), rowBytes: buffer.bytesPerRow)
-        Self.identityChannelTable.withUnsafeBufferPointer { identity in
-            Self.opaqueAlphaTable.withUnsafeBufferPointer { saturate in
-                _ = vImageTableLookUp_ARGB8888(&image, &image, identity.baseAddress,
-                                               identity.baseAddress, identity.baseAddress,
-                                               saturate.baseAddress, vImage_Flags(kvImageDoNotTile))
-            }
-        }
+        Self.promoteAlphaToRegion(&image)
         guard let image = buffer.makeImage() else { return nil }
         return (image, rect)
     }
 
-    private func drawScene(in context: CGContext, pressed: WasabiObjectID? = nil,
+    /// Record the whole scene into `list`. The walk reads the live graph, so it runs on the main
+    /// thread; the list can be replayed anywhere (`WasabiDrawList`).
+    func record(into list: WasabiDrawList, pressed: WasabiObjectID? = nil,
+                hovered: WasabiObjectID? = nil) {
+        drawScene(in: list, pressed: pressed, hovered: hovered)
+    }
+
+    private func drawScene(in context: WasabiDrawList, pressed: WasabiObjectID? = nil,
                            hovered: WasabiObjectID? = nil) {
         // Whether the host's PCM tap needs to run is a property of the graph, and the frame is where
         // every route that can change it — a menu, a script's `setMode`, a scene rebuild — has
@@ -1548,13 +1532,7 @@ final class WasabiSceneRenderer {
         // The window's own shape, taken out of the finished picture: a `sysregion` silhouette applies
         // to the whole scene rather than to one layer, and every standard-frame window in the corpus
         // depends on it for the rounded corners `component.bg` would otherwise paint square (B76).
-        if let cut = windowRegionCutImage() {
-            context.saveGState()
-            context.setBlendMode(.destinationOut)
-            context.interpolationQuality = .none
-            context.draw(cut, in: CGRect(origin: .zero, size: canvasSize))
-            context.restoreGState()
-        }
+        drawWindowRegionCut(in: context)
         loadedSkin.runtime.markFirstPaintComplete()
     }
 
@@ -2150,7 +2128,6 @@ final class WasabiSceneRenderer {
         sceneNodeCache = nil
         warpSourceCache.removeAll()
         warpedImageCache.removeAll()
-        opaqueBackingBuffer = nil
         clearPrescaledCache()
     }
 
@@ -2532,7 +2509,7 @@ final class WasabiSceneRenderer {
     var prescaledCache: [WarpSourceKey: (source: CGImage, image: CGImage)] = [:]
     var prescaledPixelCost = 0
 
-    private func draw(_ node: WasabiSceneNode, in context: CGContext,
+    private func draw(_ node: WasabiSceneNode, in context: WasabiDrawList,
                       pressed: WasabiObjectID?, hovered: WasabiObjectID?) {
         let object = node.object
         let type = object.typeName.lowercased()
@@ -2714,7 +2691,7 @@ final class WasabiSceneRenderer {
     /// transfer: a mirrored Cava runs its frequency sweep backwards, and vis_classic's profile
     /// artwork comes out reversed. `flipv` is untouched, because the dimmed reflection strip beneath
     /// the boxes is a reflection of whatever is above it and reads correctly for any engine.
-    private func applyFlip(of object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func applyFlip(of object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let suppressHorizontal = spectrumAnalyzer != .skin
             && object.typeName.caseInsensitiveCompare("vis") == .orderedSame
         guard let transform = Self.flipTransform(of: object, frame: frame,
@@ -2771,7 +2748,7 @@ final class WasabiSceneRenderer {
     /// the playlist panel and the `<edit>` — the content is ours to paint. It takes its text size from
     /// the object's own `fontsize` and its colours from the skin's list palette, which is what keeps a
     /// search-results popup legible in a Light skin and a dark one without either being special-cased.
-    private func drawGuiList(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawGuiList(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let items = WasabiGuiList.items(of: object)
         guard !items.isEmpty, frame.width > 2, frame.height > 2 else { return }
         let rowHeight = CGFloat(WasabiGuiList.rowHeight(of: object))
@@ -2870,7 +2847,7 @@ final class WasabiSceneRenderer {
     /// draws the string — in Winamp the edit is a native child window. So this paints only the content
     /// and the insertion point, in the object's own font and colour, which is what makes the typed
     /// text land in the box the skin drew rather than in a rectangle of our choosing.
-    private func drawEdit(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawEdit(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let text = object.attributes["text"] ?? ""
         if !text.isEmpty {
             drawText(text, object: object, frame: frame, context: context,
@@ -2905,35 +2882,6 @@ final class WasabiSceneRenderer {
     /// parent's backing store.
     static let maximumCachedCrops = 512
     var cropCache: [CropKey: (source: CGImage, crop: CGImage)] = [:]
-
-    /// Set only inside `drawOutline(in:)`: an animated layer then paints its **core** — the pixels
-    /// opaque in every one of its frames — instead of its current frame.
-    ///
-    /// Anaheim's mini player *is* an animated layer, a 130x130 ball whose ears `vis_mini.maki` flaps
-    /// to the music ~30 times a second by stepping frames. Steps are not shape events and must not
-    /// be (they are the hottest repaint path a skin has), so a shadow cut from whichever frame it
-    /// last sampled kept the ears' old outline as a white ghost behind the ball. The core never
-    /// changes while the layer plays, so the ball casts its shadow and the ears, which are always
-    /// drawn over it, cast none and leave nothing behind.
-    private(set) var drawsAnimationCores = false
-    /// One core per sheet and grid, built on first use. The source is held so its address cannot
-    /// be reused by another image while the entry lives.
-    var animationCoreCache: [AnimationCoreKey: (source: CGImage, core: CGImage)] = [:]
-
-    /// The window drop shadow's outline pass (`WinampModernMainView+Shadow`): `draw(in:)` into a
-    /// bitmap at one pixel per context unit, with every animated layer at its core. Whatever the
-    /// next real draw reads is put back.
-    func drawOutline(in context: CGContext) {
-        // A bitmap's device space is its pixels (B80).
-        let pixelsPerUnit = devicePixelsPerContextUnit
-        devicePixelsPerContextUnit = 1
-        drawsAnimationCores = true
-        defer {
-            devicePixelsPerContextUnit = pixelsPerUnit
-            drawsAnimationCores = false
-        }
-        draw(in: context)
-    }
 
     /// `<vis mode>` — which visualization the skin wants in this box, and whether it wants one at all.
     ///
@@ -3223,7 +3171,7 @@ final class WasabiSceneRenderer {
             || hasDecayingComponentAnalyzerState
     }
 
-    private func drawVisualization(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawVisualization(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         // Only the box's own size is a precondition here. The spectrum-levels check used to be, and
         // that gated the *oscilloscope* — which reads PCM — on the analyzer's input: with nothing
         // playing (`endVisualizationConsumption` clears the levels, and they are empty before the
@@ -3347,7 +3295,7 @@ final class WasabiSceneRenderer {
 
     /// `<eqvis>` — the little curve a skin draws over its equalizer, from the current band gains.
     /// Winamp colours it with a top/middle/bottom triple plus a separate preamp line colour.
-    private func drawEQVis(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawEQVis(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 1, frame.height > 1, let snapshot = componentHost?.equalizerSnapshot() else { return }
         let bands = snapshot.bandGainsDB
         guard !bands.isEmpty else { return }
@@ -3417,7 +3365,7 @@ final class WasabiSceneRenderer {
 
     /// `<rect>` — a flat colour fill or outline. 44 of them in the ClassicPro engine, including the
     /// backing behind the SUI list surfaces and the browser, all of which drew nothing.
-    private func drawRect(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawRect(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 0, frame.height > 0 else { return }
         let color = objectColor(object.attributes["color"] ?? "255,255,255",
                                gammaGroup: object.attributes["gammagroup"])
@@ -3446,7 +3394,7 @@ final class WasabiSceneRenderer {
     /// `WinampModernSurfaceStyle` rather than in a fixed grey, for the same reason the chrome buttons
     /// are line work in one colour: the strip has to read on a skin of either polarity, and this is
     /// the palette NullPlayer's own windows beside the skin already use.
-    private func drawHostedStandardFrame(frame: CGRect, context: CGContext) {
+    private func drawHostedStandardFrame(frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 0, frame.height > 0 else { return }
         let style = surfaceStyle
         let border = CGFloat(WasabiStandardFrames.borderWidth)
@@ -3516,7 +3464,7 @@ final class WasabiSceneRenderer {
     /// alpha — which is the whole point of the element here, a fade that masks a reflection back into
     /// the list background. Anything this cannot parse draws nothing and records a diagnostic rather
     /// than guessing at a colour to paint over the skin's artwork with.
-    private func drawGradient(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawGradient(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 0, frame.height > 0 else { return }
         let mode = (object.attributes["mode"] ?? "linear").lowercased()
         guard mode == "linear" else {
@@ -3595,7 +3543,7 @@ final class WasabiSceneRenderer {
         return best
     }
 
-    private func drawSlider(_ object: WasabiObject, frame: CGRect, context: CGContext,
+    private func drawSlider(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList,
                             pressed: Bool, hovered: Bool) {
         guard frame.width > 0, frame.height > 0 else { return }
         // `hoverthumb` on the same footing as `downthumb`: a slider's knob lights under the pointer
@@ -3637,7 +3585,7 @@ final class WasabiSceneRenderer {
     /// every measured bucket is placed on artwork that is meant to show. Each icon gets a rounded
     /// plate instead, which is what keeps a glyph readable on a bucket parked over a bright
     /// background (the same guarantee `legibleRowColor` gives the lists this renderer draws).
-    private func drawComponentBucket(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawComponentBucket(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 1, frame.height > 1 else { return }
         let state = componentBucket
         let layout = WinampModernComponentBucketLayout(object: object, frame: frame)
@@ -3670,7 +3618,7 @@ final class WasabiSceneRenderer {
     }
 
     private func drawComponent(kind: WinampModernComponentKind, object: WasabiObject,
-                               frame: CGRect, context: CGContext) {
+                               frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 1, frame.height > 1 else { return }
         switch kind {
         case .playlist: drawPlaylistComponent(object, frame: frame, context: context)
@@ -3747,7 +3695,7 @@ final class WasabiSceneRenderer {
     /// So a claimed component is drawn last. The frames are collected during the walk (with the
     /// scene's transform already established) and replayed here inside the same `saveGState`, so the
     /// coordinates are the ones the walk computed.
-    private func drawDeferredHostComponents(in context: CGContext) {
+    private func drawDeferredHostComponents(in context: WasabiDrawList) {
         let pending = deferredHostComponents
         deferredHostComponents.removeAll(keepingCapacity: true)
         for (kind, frame) in pending where kind == .waveformSeeker {
@@ -3758,7 +3706,7 @@ final class WasabiSceneRenderer {
     /// Collected during the scene walk, drained by `drawDeferredHostComponents` in the same frame.
     private var deferredHostComponents: [(kind: WinampModernComponentKind, frame: CGRect)] = []
 
-    private func drawWaveformSeeker(frame: CGRect, context: CGContext) {
+    private func drawWaveformSeeker(frame: CGRect, context: WasabiDrawList) {
         let (samples, isLoading) = host.seekerWaveform
         let played = host.duration > 0
             ? CGFloat(min(max(host.currentTime / host.duration, 0), 1)) : 0
@@ -3807,7 +3755,7 @@ final class WasabiSceneRenderer {
     /// **No scrollbar.** The renderer has no scrollbar support at all, so a `<Wasabi:Scrollbar>` a
     /// skin places beside its list stays inert and the wheel is the only way down an 83-row list.
     /// Opening scrolled to the applied theme is the mitigation; see the rendering reference.
-    private func drawColorThemeList(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawColorThemeList(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 1, frame.height > 1 else { return }
         let palette = palette
         // The caller has already drawn a declared `background=`. Only when the skin declared none do
@@ -3885,7 +3833,7 @@ final class WasabiSceneRenderer {
         return label
     }
 
-    private func drawTextButton(_ object: WasabiObject, frame: CGRect, context: CGContext,
+    private func drawTextButton(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList,
                                 pressed: Bool) {
         guard frame.width > 2, frame.height > 2 else { return }
         let color = palette.listText
@@ -3919,7 +3867,7 @@ final class WasabiSceneRenderer {
     /// the bitmap branch has failed, so a skin that ships the artwork draws its own and never comes
     /// here. See `WasabiChromeButtons` for what the corpus actually references.
     private func drawChromeButton(_ role: WasabiChromeButtons.Role, frame: CGRect,
-                                  context: CGContext, pressed: Bool) {
+                                  context: WasabiDrawList, pressed: Bool) {
         guard frame.width > 2, frame.height > 2 else { return }
         let color = palette.listText
         context.saveGState()
@@ -3947,7 +3895,7 @@ final class WasabiSceneRenderer {
     /// gap has to be measured in the font actually drawing the label, which may be one of the skin's
     /// own bitmap fonts, and a gap that does not match the text is worse than no gap at all. The body
     /// group is inset clear of both (`WasabiTitleBox.contentInset`), so nothing overlaps either way.
-    private func drawTitleBox(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawTitleBox(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let titleHeight = WasabiTitleBox.titleHeight
         guard frame.width > 4, frame.height > titleHeight else { return }
         let color = object.attributes["color"].flatMap(resolvedColor) ?? palette.listText
@@ -3978,7 +3926,7 @@ final class WasabiSceneRenderer {
     /// the same treatment: the skin's own nine-slice when it has one, and a drawn strip in the
     /// object's own `color=` when it does not — Anexa and Enkera ship neither, and a settings window
     /// whose tabs are invisible is the empty slab this item exists to fix.
-    private func drawTabSheet(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawTabSheet(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let rects = tabSheetTabRects(of: object, frame: frame)
         guard !rects.isEmpty else { return }
         let pages = WasabiTabSheet.pages(of: object)
@@ -4103,7 +4051,7 @@ final class WasabiSceneRenderer {
     /// three-part track under the skin's own thumb. The flat track is the fallback for a skin that
     /// ships neither.
     private func drawFormWidget(_ kind: WasabiFormWidgets.Kind, object: WasabiObject, frame: CGRect,
-                                context: CGContext, pressed: Bool) {
+                                context: WasabiDrawList, pressed: Bool) {
         guard frame.width > 1, frame.height > 1 else { return }
         let color = object.attributes["color"].flatMap(resolvedColor) ?? palette.listText
         context.saveGState()
@@ -4133,7 +4081,7 @@ final class WasabiSceneRenderer {
     /// The standard horizontal slider's track: the skin's own left/middle/right strip when it ships
     /// one, and a hairline when it does not. `drawSlider` puts the thumb on top of whichever it is.
     private func drawStandardSliderTrack(_ object: WasabiObject, frame: CGRect, color: NSColor,
-                                         context: CGContext, pressed: Bool) {
+                                         context: WasabiDrawList, pressed: Bool) {
         let ids = WasabiFormWidgets.horizontalTrack
         if let left = resources.bitmap(identifier: ids.left),
            let middle = resources.bitmap(identifier: ids.middle),
@@ -4177,7 +4125,7 @@ final class WasabiSceneRenderer {
     /// bound box (the same rule `resolvedBitmapID` follows for a bound togglebutton), and `activated`
     /// for one the skin's own script drives.
     private func drawCheckBox(_ object: WasabiObject, frame: CGRect, color: NSColor,
-                              context: CGContext) {
+                              context: WasabiDrawList) {
         let side = min(WasabiFormWidgets.checkBoxGlyph, frame.height)
         let box = CGRect(x: frame.minX, y: frame.midY - side / 2, width: side, height: side)
         let radio = WasabiFormWidgets.radioIdentifier(of: object) != nil
@@ -4214,7 +4162,7 @@ final class WasabiSceneRenderer {
     /// inside the object — that node exists to be *found* by the skin's script, which persists the
     /// pick from its `onTextChanged`, and drawing it as well would print the selection twice.
     private func drawDropDownList(_ object: WasabiObject, frame: CGRect, color: NSColor,
-                                  context: CGContext) {
+                                  context: WasabiDrawList) {
         context.setFillColor(palette.editBackground.cgColor)
         context.fill(frame)
         context.setStrokeColor(color.withAlphaComponent(0.55).cgColor)
@@ -4280,7 +4228,7 @@ final class WasabiSceneRenderer {
         return (label, ink)
     }
 
-    private func drawPlaylistComponent(_ holder: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawPlaylistComponent(_ holder: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         // Drawn by us, coloured by the skin: the list sits inside the skin's own frame, so its text
         // and selection follow the skin's colour resources and its active colour theme.
         let palette = palette
@@ -4333,7 +4281,7 @@ final class WasabiSceneRenderer {
         context.restoreGState()
     }
 
-    private func drawEqualizerComponent(frame: CGRect, context: CGContext) {
+    private func drawEqualizerComponent(frame: CGRect, context: WasabiDrawList) {
         let palette = palette
         context.setFillColor(palette.contentBackground.cgColor)
         context.fill(frame)
@@ -4430,7 +4378,7 @@ final class WasabiSceneRenderer {
     /// - Everything else — the oscilloscope, Cava, vis_classic — is the same `WasabiVisRenderer` seam
     ///   the `<vis>` boxes paint through, handed a style synthesized from the skin's palette, which
     ///   is the route every other NullPlayer-owned surface inside a `.wal` takes.
-    private func drawVisualizationHolder(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawVisualizationHolder(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let suite = spectrumAnalyzer(for: .componentHolder)
         let mode = visualizationHolderMode
         if suite == .skin && mode == .analyzer {
@@ -4487,7 +4435,7 @@ final class WasabiSceneRenderer {
         .flatMap { Int($0) }
     #endif
 
-    private func drawVisualizationBars(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    private func drawVisualizationBars(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         guard frame.width > 0, frame.height > 0 else { return }
         // Band count comes from the box (~1 band per 6pt), and the tap is asked for exactly that
         // many: the analysis is log-spaced across 20 Hz-20 kHz for whatever count it is given, so

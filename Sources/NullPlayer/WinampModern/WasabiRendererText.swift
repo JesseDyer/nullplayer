@@ -8,7 +8,7 @@ import Foundation
 /// out of `WasabiRenderer.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/rendering/text.md`.
 extension WasabiSceneRenderer {
-    func drawText(_ object: WasabiObject, frame: CGRect, context: CGContext) {
+    func drawText(_ object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         // Content resolution (`display=`, a songticker's implicit track title, `setAlternateText`)
         // is shared with the measurement a script's `getAutoWidth()` gets — see `WasabiTextMetrics`.
         drawText(WasabiTextMetrics.content(of: object, host: host),
@@ -22,7 +22,7 @@ extension WasabiSceneRenderer {
     /// *"lists/trees item foreground (also edit text)"*). Left as white, a search box typed into a
     /// Light skin wrote white on white.
     func drawText(_ text: String, object: WasabiObject, frame rawFrame: CGRect,
-                          context: CGContext, undeclaredColor: NSColor = .white) {
+                          context: WasabiDrawList, undeclaredColor: NSColor = .white) {
         // `leftpadding`/`rightpadding` inset the text inside its own rect. They are part of the width
         // a script measures with `getAutoWidth()`, so honouring them here is what makes a box sized
         // from that measurement fit the string it was sized for (ClassicPro's menu bar and SUI tabs).
@@ -298,7 +298,9 @@ extension WasabiSceneRenderer {
                 // `boundingRect` on the same attributes decided the block's height above. Replacing
                 // it means re-implementing line breaking to keep the draw and the measure agreeing,
                 // for a case that is rare and never in a per-row loop.
-                (text as NSString).draw(in: drawFrame, withAttributes: attributes)
+                context.drawWithAppKit {
+                    (text as NSString).draw(in: drawFrame, withAttributes: attributes)
+                }
             } else {
                 // The object's own alignment, applied to the origin rather than inside a rect —
                 // which is what it already was, so cPro2's 4px tuck and Big Bento's clock columns
@@ -323,11 +325,10 @@ extension WasabiSceneRenderer {
     /// makes it y-up rather than something to undo. The colour goes on the context because the line
     /// is cached colourless; see `WasabiTextMetrics.line(for:font:)`.
     private func drawCachedLine(_ text: String, font: NSFont, color: NSColor, x: CGFloat,
-                                baseline: CGFloat, context: CGContext) {
+                                baseline: CGFloat, context: WasabiDrawList) {
         guard !text.isEmpty, let line = resources.line(for: text, font: font) else { return }
         context.setFillColor(color.cgColor)
-        context.textPosition = CGPoint(x: x, y: baseline)
-        CTLineDraw(line, context)
+        context.draw(line: line, at: CGPoint(x: x, y: baseline))
     }
 
     /// The attribute dictionary a string draws with — memoized, because it is a pure function of
@@ -387,7 +388,7 @@ extension WasabiSceneRenderer {
     }
 
     private func drawBitmapText(_ text: String, definition: WalResourceDefinition,
-                                object: WasabiObject, frame: CGRect, context: CGContext) {
+                                object: WasabiObject, frame: CGRect, context: WasabiDrawList) {
         let alignment: NSTextAlignment
         switch object.attributes["align"]?.lowercased() {
         case "center": alignment = .center
@@ -406,7 +407,7 @@ extension WasabiSceneRenderer {
                                 alignment: NSTextAlignment,
                                 verticalAlignment: WasabiTextMetrics.VerticalAlignment = .center,
                                 colonWidth: CGFloat? = nil,
-                                ticker: WasabiObject?, context: CGContext) {
+                                ticker: WasabiObject?, context: WasabiDrawList) {
         guard let sheet = resources.fontSheet(for: definition) else { return }
         let run = WasabiTextMetrics.BitmapRun(definition: definition, colonWidth: colonWidth)
         let charWidth = run.charWidth
@@ -465,7 +466,7 @@ extension WasabiSceneRenderer {
     /// font when it has one, and a system font when it does not.
     func drawSurfaceText(_ text: String, in rect: CGRect, color: NSColor,
                                  alignment: NSTextAlignment, pointSize: CGFloat,
-                                 context: CGContext) {
+                                 context: WasabiDrawList) {
         if let definition = surfaceFont, definition.kind == "bitmapfont" {
             drawBitmapText(text, definition: definition, frame: rect, alignment: alignment,
                            ticker: nil, context: context)
@@ -516,7 +517,7 @@ extension WasabiSceneRenderer {
     }
 
     private func drawFlippedText(_ text: String, in frame: CGRect, font: NSFont, color: NSColor,
-                                 alignment: NSTextAlignment, context: CGContext) {
+                                 alignment: NSTextAlignment, context: WasabiDrawList) {
         context.saveGState()
         context.translateBy(x: 0, y: frame.midY)
         context.scaleBy(x: 1, y: -1)
@@ -532,7 +533,9 @@ extension WasabiSceneRenderer {
             // worth the exactness: this is the branch a *widened* playlist column leaves behind.
             let attributes = textAttributes(font: font, color: color, alignment: alignment,
                                             lineBreakMode: .byTruncatingTail)
-            (text as NSString).draw(in: frame, withAttributes: attributes)
+            context.drawWithAppKit {
+                (text as NSString).draw(in: frame, withAttributes: attributes)
+            }
         } else {
             // The common case, and the per-row playlist path: one cached line, drawn from the
             // alignment's own origin. `NSString.draw` scissored at the rect, so the rect becomes the
