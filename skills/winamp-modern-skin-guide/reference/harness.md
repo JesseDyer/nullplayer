@@ -504,7 +504,11 @@ writes at ~1.5 Hz — slower than the window. Diff verdicts across a change with
 B228's check (2026-10-21, gold and silver run separately at `--shards 60`, ~4 min each) found the
 noise reaches past Styler: two baseline passes of one build disagreed on 67 cells and 8 verdicts,
 led by seek sliders, mute toggles and vis triggers. CopperdeckII's `seeker.ghost.act` drag and
-winampmodern566's `main.vis.trigger` drag flip verdict between two solo baseline runs. Take a second
+winampmodern566's `main.vis.trigger` drag flip verdict between two solo baseline runs. B236/B237's
+check (2026-10-21) added more that flip between solo runs of one build: Dreliction's transport labels
+(`Label Play/Pause/Stop over-active`, `button#Stop` right), CopperdeckII's `player.vis.cover` drag,
+S7Reflex's `beatvisualization` click, winampmodern566's album-art double-click, Symplicipod's
+`window:notifier=0` effect, and hatsune_miku's `visual.trigger` drive point (440/441/436). Take a second
 baseline pass and count only what differs from both.
 
 `interaction.tsv`, one row per (skin, container, layout, object, gesture):
@@ -657,6 +661,8 @@ canvas flips between 410x281 and 560x340 in a sharded pass (solo runs of either 
 `--Vortex--` and `Mac_OS_X__-_Panther`'s `main-dashboard.png` draw a clock at the bottom, so they
 differ between two solo runs of one build, like Anexa's shade. `Itemskin`'s `cont.clear.avs` canvas
 flips between 330x137 and 660x274 the same way as MoonLight's (B228's sweeps, both directions).
+`CopperdeckII`'s `MLibrary/normal` flips `min=467x135`/`min=289x135` between solo runs of one build,
+like S7Reflex's (B237, 2026-10-21).
 
 Those grep-selected lines are the invariants worth diffing: the container list, the surface catalog,
 the window menu, every layout's canvas size and node count, every hosted holder's frame, and the

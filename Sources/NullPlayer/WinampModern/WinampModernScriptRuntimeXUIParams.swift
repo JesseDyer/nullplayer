@@ -91,7 +91,7 @@ extension WinampModernScriptRuntime {
     /// one on screen.
     func applyCustomObjectGroup(_ key: String, value: String, to object: WasabiObject) {
         guard key.caseInsensitiveCompare("groupid") == .orderedSame,
-              object.tag.kind == .customObject
+              object.tag.is(.customObject)
         else { return }
         // `children` is a value-typed array, so the loop iterates the snapshot it took even though
         // `discardSubtree` empties the property underneath it.
@@ -223,10 +223,10 @@ extension WinampModernScriptRuntime {
         if let cover = host.trackFolderCover(forImage: identifier) {
             return (Int32(clamping: cover.width), Int32(clamping: cover.height))
         }
-        let key = identifier.lowercased()
-        if let cached = bitmapSizes[key] { return cached }
-        var size: (width: Int32, height: Int32)?
-        defer { bitmapSizes[key] = size }
+        return scriptBitmaps.size(identifier.lowercased()) { measureBitmap(identifier: identifier) }
+    }
+
+    private func measureBitmap(identifier: String) -> (width: Int32, height: Int32)? {
         guard let definition = loadedSkin.runtime.resources.resolvedDefinition(identifier: identifier),
               definition.kind == "bitmap" else { return nil }
         var declared: (Int32?, Int32?) = (definition.attributes["w"].flatMap { Int32($0) },
@@ -239,10 +239,8 @@ extension WinampModernScriptRuntime {
             declared.0 = declared.0 ?? (properties[kCGImagePropertyPixelWidth] as? Int).map { Int32(clamping: $0) }
             declared.1 = declared.1 ?? (properties[kCGImagePropertyPixelHeight] as? Int).map { Int32(clamping: $0) }
         }
-        if let width = declared.0, let height = declared.1, width > 0, height > 0 {
-            size = (width, height)
-        }
-        return size
+        guard let width = declared.0, let height = declared.1, width > 0, height > 0 else { return nil }
+        return (width, height)
     }
 
     /// The `<container>` an object lives in, or nil for one that is not inside a window.

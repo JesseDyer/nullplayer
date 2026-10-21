@@ -8,7 +8,7 @@ Part of [compatibility.md](../compatibility.md). Implemented and unimplemented s
 unconditional branches; host/global method calls; local call/return; move; pre/post
 increment/decrement; arithmetic and modulo; bitwise and logical operations; allocation; delete.
 
-**Supported API** — the authoritative list is `signature(for:)` in `WinampModernScriptRuntime.swift`.
+**Supported API** — the authoritative list is `WinampModernScriptSignatures` in `WinampModernScriptRuntimeSignatures.swift`, which the runtime's `signature(for:)` asks.
 By area:
 
 - **Playback host**: playback state, current time, duration, volume, shuffle/repeat, title/info,

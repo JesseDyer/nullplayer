@@ -2,82 +2,31 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// `XmlDoc`'s callback parser. Split out of
-/// `WinampModernScriptRuntime.swift`.
-extension WinampModernScriptRuntime {
+/// `XmlDoc`'s callback parser: which elements of a document a script's registered paths select.
+enum WinampModernXmlDocReader {
     /// Ceiling on the paths one `XmlDoc` may register. Big Bento Modern registers one.
-    static let maximumParserCallbacks = 16
+    static let maximumCallbacks = 16
     /// Ceiling on the elements one `parser_start()` reports. The measured document holds 31
     /// `<sourceitem>`s; the cap is what stops a hand-edited one — this file is the skin's own
     /// documented customisation point, so users do edit it — from driving an unbounded number of
     /// script dispatches inside a single event.
-    static let maximumParserElements = 512
+    private static let maximumElements = 512
 
-    /// Where `XmlDoc.load(path)` landed, or `nil` when the file is not in the VFS. Skins call `load`
-    /// speculatively and branch on `exists()`, so a miss is the ordinary case rather than a failure:
-    /// Big Bento Modern's reader tries its own `@SKINSPATH@\…\reader_providers.xml` first and then
-    /// falls back to a Windows install path under `getApplicationPath()`, which resolves to nothing
-    /// here and must answer false rather than abort the handler.
-    func xmlDocumentPath(_ rawPath: String, program: MakiProgram) -> String? {
-        guard !rawPath.isEmpty else { return nil }
-        guard let resolved = try? loadedSkin.vfs.resolve(rawPath, relativeTo: program.source.path,
-                                                         location: program.source) else { return nil }
-        return resolved.logicalPath
-    }
-
-    /// Walks the loaded document once and dispatches `parser_onCallback` at the `XmlDoc` for every
-    /// element whose path matches one of the registered callbacks.
-    ///
-    /// The handler's four arguments are pinned by Big Bento Modern's bytecode, which pops them into
-    /// `(String path, String tag, List names, List values)` and then walks the two lists in parallel
-    /// with `getNumItems`/`enumItem`, branching on the name to fill its provider row. The two lists
-    /// are one reused pair of dynamic objects rather than a pair per element: the callback reads them
-    /// synchronously and keeps neither, and a document of hand-edited length would otherwise allocate
-    /// a script object per attribute set with nothing to free it.
-    func parserStart(documentAt path: String, callbacks: [String], id: UInt64,
-                             program: MakiProgram) {
-        guard !callbacks.isEmpty,
-              let data = try? loadedSkin.vfs.data(at: path, location: program.source),
-              let text = String(data: data, encoding: .utf8)
-                  ?? String(data: data, encoding: .isoLatin1),
-              let parsed = try? WalLenientXMLParser().parse(text, path: path) else { return }
-
-        let names = makeParserList()
-        let values = makeParserList()
-        defer {
-            dynamicObjects.removeValue(forKey: names.id)
-            dynamicObjects.removeValue(forKey: values.id)
-        }
-
+    /// Calls `visit` with the path and element of every element a callback selects, in document
+    /// order, up to `maximumElements`.
+    static func forEachMatch(in roots: [WalXMLNode], callbacks: [String],
+                             _ visit: (_ path: [String], _ node: WalXMLNode) -> Void) {
         var reported = 0
         func walk(_ node: WalXMLNode, path components: [String]) {
-            guard reported < Self.maximumParserElements else { return }
+            guard reported < maximumElements else { return }
             let here = components + [node.name]
-            if callbacks.contains(where: { Self.parserPath($0, matches: here) }) {
+            if callbacks.contains(where: { parserPath($0, matches: here) }) {
                 reported += 1
-                // Document order, not alphabetical: a `parser_onCallback` body reads these two lists
-                // positionally and ClassicPro's keys its whole apply loop on reaching `id` first.
-                // See `WalXMLNode.attributeOrder`.
-                let attributes = node.orderedAttributes
-                dynamicObjects[names.id]?.items = attributes.map { .string($0.key) }
-                dynamicObjects[values.id]?.items = attributes.map { .string($0.value) }
-                _ = try? dispatch(target: MakiObjectReference(.dynamic(id)),
-                                  event: "parser_oncallback",
-                                  arguments: [.string(here.joined(separator: "/")),
-                                              .string(node.name),
-                                              .object(names.reference),
-                                              .object(values.reference)])
+                visit(here, node)
             }
             for child in node.children { walk(child, path: here) }
         }
-        for root in parsed.roots { walk(root, path: []) }
-    }
-
-    func makeParserList() -> (id: UInt64, reference: MakiObjectReference) {
-        let id = nextPopupID
-        nextPopupID &+= 1
-        dynamicObjects[id] = DynamicObjectState()
-        return (id, MakiObjectReference(.dynamic(id)))
+        for root in roots { walk(root, path: []) }
     }
 
     /// A `parser_addCallback` path against an element's own path.
@@ -141,5 +90,60 @@ extension WinampModernScriptRuntime {
         }
 
         return false
+    }
+}
+
+extension WinampModernScriptRuntime {
+    /// Where `XmlDoc.load(path)` landed, or `nil` when the file is not in the VFS. Skins call `load`
+    /// speculatively and branch on `exists()`, so a miss is the ordinary case rather than a failure:
+    /// Big Bento Modern's reader tries its own `@SKINSPATH@\…\reader_providers.xml` first and then
+    /// falls back to a Windows install path under `getApplicationPath()`, which resolves to nothing
+    /// here and must answer false rather than abort the handler.
+    func xmlDocumentPath(_ rawPath: String, program: MakiProgram) -> String? {
+        guard !rawPath.isEmpty else { return nil }
+        guard let resolved = try? loadedSkin.vfs.resolve(rawPath, relativeTo: program.source.path,
+                                                         location: program.source) else { return nil }
+        return resolved.logicalPath
+    }
+
+    /// Walks the loaded document once and dispatches `parser_onCallback` at the `XmlDoc` for every
+    /// element whose path matches one of the registered callbacks.
+    ///
+    /// The handler's four arguments are pinned by Big Bento Modern's bytecode, which pops them into
+    /// `(String path, String tag, List names, List values)` and then walks the two lists in parallel
+    /// with `getNumItems`/`enumItem`, branching on the name to fill its provider row. The two lists
+    /// are one reused pair of dynamic objects rather than a pair per element: the callback reads them
+    /// synchronously and keeps neither, and a document of hand-edited length would otherwise allocate
+    /// a script object per attribute set with nothing to free it.
+    func parserStart(documentAt path: String, callbacks: [String], id: UInt64,
+                     program: MakiProgram) {
+        guard !callbacks.isEmpty,
+              let data = try? loadedSkin.vfs.data(at: path, location: program.source),
+              let text = String(data: data, encoding: .utf8)
+                  ?? String(data: data, encoding: .isoLatin1),
+              let parsed = try? WalLenientXMLParser().parse(text, path: path) else { return }
+
+        let names = newObjectID(), values = newObjectID()
+        dynamicObjects[names] = DynamicObjectState()
+        dynamicObjects[values] = DynamicObjectState()
+        defer {
+            dynamicObjects.removeValue(forKey: names)
+            dynamicObjects.removeValue(forKey: values)
+        }
+
+        WinampModernXmlDocReader.forEachMatch(in: parsed.roots, callbacks: callbacks) { here, node in
+            // Document order, not alphabetical: a `parser_onCallback` body reads these two lists
+            // positionally and ClassicPro's keys its whole apply loop on reaching `id` first.
+            // See `WalXMLNode.attributeOrder`.
+            let attributes = node.orderedAttributes
+            dynamicObjects[names]?.items = attributes.map { .string($0.key) }
+            dynamicObjects[values]?.items = attributes.map { .string($0.value) }
+            _ = try? dispatch(target: MakiObjectReference(.dynamic(id)),
+                              event: "parser_oncallback",
+                              arguments: [.string(here.joined(separator: "/")),
+                                          .string(node.name),
+                                          .object(MakiObjectReference(.dynamic(names))),
+                                          .object(MakiObjectReference(.dynamic(values)))])
+        }
     }
 }

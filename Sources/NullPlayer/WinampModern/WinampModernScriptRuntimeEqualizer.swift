@@ -2,13 +2,27 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// Last equalizer values announced to the scripts, on MAKI's −127…127 scale. `nil` before the first
+/// observation, which is what makes the opening state an announcement rather than silence.
+struct WinampModernAnnouncedEqualizer {
+    private(set) var bands: [Int]?
+    private(set) var preamp: Int?
+
+    /// Records the new values and answers the previous ones, or nil when nothing moved.
+    mutating func announce(bands: [Int], preamp: Int) -> (bands: [Int]?, preamp: Int?)? {
+        guard self.bands != bands || self.preamp != preamp else { return nil }
+        defer { (self.bands, self.preamp) = (bands, preamp) }
+        return (self.bands, self.preamp)
+    }
+}
+
 /// The equalizer event funnel: host EQ state into `onEqBandChanged`/`onEqPreampChanged` and the
 /// skin's EQ sliders. Split out of
 /// `WinampModernScriptRuntime.swift`.
 extension WinampModernScriptRuntime {
     /// Test seam: what the scripts were last told the equalizer was.
     var lastDispatchedEqualizerForTesting: (bands: [Int]?, preamp: Int?) {
-        (lastDispatchedEQBands, lastDispatchedEQPreamp)
+        (announcedEqualizer.bands, announcedEqualizer.preamp)
     }
 
     /// Raise `onEqBandChanged(band, value)` / `onEqPreampChanged(value)` for whatever moved, and put
@@ -30,11 +44,8 @@ extension WinampModernScriptRuntime {
         guard let bandValue = hooks.equalizerBandRequested else { return }
         let bands = (0..<WinampModernEQAction.bandCount).map { bandValue($0) }
         let preamp = hooks.equalizerPreampRequested?() ?? 0
-        let previousBands = lastDispatchedEQBands
-        let previousPreamp = lastDispatchedEQPreamp
-        guard previousBands != bands || previousPreamp != preamp else { return }
-        lastDispatchedEQBands = bands
-        lastDispatchedEQPreamp = preamp
+        guard let (previousBands, previousPreamp) = announcedEqualizer.announce(bands: bands, preamp: preamp)
+        else { return }
         var movedSlider = false
         if previousPreamp != preamp {
             movedSlider = syncEqualizerSliders(for: .preamp, value: preamp) || movedSlider

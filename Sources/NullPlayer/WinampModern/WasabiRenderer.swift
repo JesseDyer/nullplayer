@@ -1420,23 +1420,16 @@ final class WasabiSceneRenderer {
         let bottom = Int((clip.minY * scale).rounded(.down))
         let width = Int((clip.maxX * scale).rounded(.up)) - left
         let height = Int((clip.maxY * scale).rounded(.up)) - bottom
-        guard width * height <= Self.maximumPrescaledPixels else {
-            let list = WasabiDrawList(ctm: context.ctm,
-                                      clip: context.boundingBoxOfClipPath.applying(context.ctm),
-                                      interpolationQuality: context.interpolationQuality)
-            record(into: list, pressed: pressed, hovered: hovered)
-            list.replay(into: context)
+        guard Self.fitsCanvas(pixelWidth: width, pixelHeight: height) else {
+            drawDirectly(in: context, pressed: pressed, hovered: hovered)
             return
         }
         let rect = CGRect(x: CGFloat(left) / scale, y: CGFloat(bottom) / scale,
                           width: CGFloat(width) / scale, height: CGFloat(height) / scale)
-        let whole = CGRect(x: 0, y: 0, width: width, height: height)
-        let scene = WasabiDrawList(ctm: CGAffineTransform(scaleX: scale, y: scale), clip: whole)
-        scene.translateBy(x: -rect.minX, y: -rect.minY)
-        record(into: scene, pressed: pressed, hovered: hovered)
-        let job = WinampModernCanvas.Job(
-            pixelWidth: width, pixelHeight: height, colorSpace: WinampModernCanvas.colorSpace(matching: context.colorSpace), scale: scale, rects: [whole],
-            scene: scene, chrome: nil, promotesAlpha: layoutWantsOpaqueBacking)
+        let job = canvasJob(pixelWidth: width, pixelHeight: height, scale: scale,
+                            rects: [CGRect(x: 0, y: 0, width: width, height: height)],
+                            colorSpace: WinampModernCanvas.colorSpace(matching: context.colorSpace),
+                            origin: rect.origin, pressed: pressed, hovered: hovered)
         guard let frame = WinampModernCanvas().render(job) else { return }
         context.saveGState()
         // Interpolating a copy would soften every edge in the window.
@@ -1714,7 +1707,7 @@ final class WasabiSceneRenderer {
     func editControl(at point: CGPoint) -> WasabiObject? {
         for node in sceneNodes().reversed()
         where node.clip.contains(point) && node.frame.contains(point) {
-            guard node.object.tag.kind == .edit,
+            guard node.object.tag.is(.edit),
                   isVisible(node.object) else { continue }
             return node.object
         }
@@ -2183,7 +2176,7 @@ final class WasabiSceneRenderer {
         let spec = WasabiGeometrySpec(attributes: object.attributes)
         guard !spec.relativeY, !spec.relativeHeight else { return nil }
         if let height = spec.height, height > 0 { return CGFloat(spec.y + height) }
-        guard object.tag.kind == .text else {
+        guard object.tag.is(.text) else {
             return nil
         }
         return CGFloat(spec.y) + resources.metrics.lineHeight(of: object)
@@ -2231,7 +2224,7 @@ final class WasabiSceneRenderer {
         // `lineHeight` is the same number `getAutoHeight()` answers, so the box a script measures and
         // the box we draw are one measurement.
         if object.attributes["h"] == nil,
-           object.tag.kind == .text {
+           object.tag.is(.text) {
             intrinsic.height = Double(resources.metrics.lineHeight(of: object))
         }
         // A window-chrome button whose artwork Winamp supplied and the skin does not. It has no
@@ -2300,7 +2293,7 @@ final class WasabiSceneRenderer {
         // sizes any object from its content's suggested size. Anunaki's LCD is
         // `<customobject groupid="main.lcd.layout2" x="51" y="32"/>` around a `fitparent="1"`
         // group declared 482x281: at 0x0 the group fitted to nothing and the display stayed empty.
-        if object.tag.kind == .customObject,
+        if object.tag.is(.customObject),
            let content = object.children.first(where: { $0.tag.is(.group) }) {
             if object.attributes["w"] == nil, intrinsic.width == 0, content.attributes["relatw"] != "1" {
                 intrinsic.width = max(0, Double(content.attributes["w"] ?? "") ?? 0)

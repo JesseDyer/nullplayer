@@ -145,7 +145,7 @@ extension WinampModernScriptRuntime {
             return .boolean(path != nil)
         case "parser_addcallback":
             guard case .xmlDocument = state.role,
-                  state.parserCallbacks.count < Self.maximumParserCallbacks else { return .null }
+                  state.parserCallbacks.count < WinampModernXmlDocReader.maximumCallbacks else { return .null }
             state.parserCallbacks.append(arguments[0].stringValue)
             dynamicObjects[id] = state
             return .null

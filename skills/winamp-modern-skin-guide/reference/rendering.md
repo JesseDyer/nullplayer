@@ -316,7 +316,10 @@ changed pixels were *partially* transparent and only 2 were empty.
 so that one channel is the whole fix; the window context cannot be read back, which is why there is a
 buffer. In the app that buffer is the window's canvas (`WinampModernCanvas`), which promotes each
 frame's dirty rects after replaying the scene into them; the harness's `draw(in:)` renders one
-canvas job of its own, sized to the caller's clip, so the sweep checks the window's pipeline (B231).
+canvas job sized to the caller's clip, so the sweep checks the window's pipeline (B231). Both build
+that job with `WasabiSceneRenderer.canvasJob` and fall back to its `drawDirectly` past the pixel
+limit (`WinampModernCanvas.swift`), so the sweep records the scene as the window does (B235); only
+the window passes a UI Size and host chrome.
 
 Three traps in that buffer, all measured on `main/normal` at 2x against a 2.81 ms/frame baseline, and
 all of them things to copy rather than rediscover:

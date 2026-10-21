@@ -163,3 +163,60 @@ final class WinampModernCanvas {
         }
     }
 }
+
+/// The one way a scene becomes a canvas frame, or a direct draw when it is too large for one. The
+/// window's frames (`WinampModernMainView+Frames`) and the harness's `draw(in:)` both come through
+/// here, so the corpus sweep renders the recording the window does (B235).
+extension WasabiSceneRenderer {
+    /// Whether a canvas this size is within `maximumPrescaledPixels`; no corpus window comes near it.
+    static func fitsCanvas(pixelWidth: Int, pixelHeight: Int) -> Bool {
+        pixelWidth * pixelHeight <= maximumPrescaledPixels
+    }
+
+    /// One frame recorded for a `pixelWidth`×`pixelHeight` canvas at `scale` canvas pixels per point,
+    /// redrawing `rects` (non-empty, canvas pixels). `origin` (points) lands at the canvas's corner, and
+    /// `skinScale` applies within that. `chrome`, when given, records the host's chrome on the same
+    /// terms.
+    func canvasJob(pixelWidth: Int, pixelHeight: Int, scale: CGFloat, rects: [CGRect],
+                   colorSpace: CGColorSpace, origin: CGPoint = .zero, skinScale: CGFloat = 1,
+                   pressed: WasabiObjectID?, hovered: WasabiObjectID?,
+                   chrome: ((WasabiDrawList) -> Void)? = nil) -> WinampModernCanvas.Job {
+        let clip = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
+        func list() -> WasabiDrawList {
+            let list = WasabiDrawList(ctm: CGAffineTransform(scaleX: scale, y: scale), clip: clip)
+            if origin != .zero { list.translateBy(x: -origin.x, y: -origin.y) }
+            if skinScale != 1 { list.scaleBy(x: skinScale, y: skinScale) }
+            return list
+        }
+        let scene = list()
+        record(into: scene, pressed: pressed, hovered: hovered)
+        let chromeList = chrome.map { draw in
+            let chromeList = list()
+            draw(chromeList)
+            return chromeList
+        }
+        return WinampModernCanvas.Job(pixelWidth: pixelWidth, pixelHeight: pixelHeight, colorSpace: colorSpace,
+                                      scale: scale, rects: rects, scene: scene, chrome: chromeList,
+                                      promotesAlpha: layoutWantsOpaqueBacking)
+    }
+
+    /// A scene too large for a canvas, drawn straight into `context`: chrome first, then the scene,
+    /// as a translucent layout once was.
+    func drawDirectly(in context: CGContext, pressed: WasabiObjectID?, hovered: WasabiObjectID?,
+                      skinScale: CGFloat = 1, devicePixelsPerUnit: CGFloat = 1,
+                      chrome: ((WasabiDrawList) -> Void)? = nil) {
+        context.saveGState()
+        if skinScale != 1 { context.scaleBy(x: skinScale, y: skinScale) }
+        let clip = context.boundingBoxOfClipPath.applying(context.ctm)
+        if let chrome {
+            let list = WasabiDrawList(ctm: context.ctm, clip: clip, devicePixelsPerUnit: devicePixelsPerUnit)
+            chrome(list)
+            list.replay(into: context)
+        }
+        let scene = WasabiDrawList(ctm: context.ctm, clip: clip, interpolationQuality: context.interpolationQuality,
+                                   devicePixelsPerUnit: devicePixelsPerUnit)
+        record(into: scene, pressed: pressed, hovered: hovered)
+        scene.replay(into: context)
+        context.restoreGState()
+    }
+}

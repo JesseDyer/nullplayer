@@ -54,7 +54,7 @@ the class — everything else becomes a generic dynamic object, which is what a 
 > `execute` silently returns at its `guard let dispatcher` without running an instruction — the test
 > then passes for the wrong reason. Bind the dispatcher to a local first.
 
-Extending the API: add to `signature(for:)` **and** the matching system/GUI/object dispatch path
+Extending the API: add to `signature(for:)` (`WinampModernScriptSignatures`) **and** the matching system/GUI/object dispatch path
 together, so argument counts and return kinds stay explicit. Add a regression test with each method.
 Use the measured-demand signal rather than porting reference stubs blindly — see
 [Debugging](#debugging-a-skin) below.
@@ -176,7 +176,7 @@ container attribute instead of a script.
 `WasabiSkinRuntime.instantiateGroup` performs the expansion (set by `WasabiSkinInitializer`, so
 runtime growth shares the load-time VFS, limits, and object budget). Scripts declared inside the new
 subtree are parsed and started via `startScripts(addedBeneath:)`, bounded by `maximumRuntimePrograms`
-and by `maximumRuntimeScriptStartDepth` (a new subtree's `onScriptLoaded` may instantiate more groups;
+and by `WinampModernScriptStarts.maximumDepth` (a new subtree's `onScriptLoaded` may instantiate more groups;
 ClassicPro nests two levels — the SUI builds the tab strip, which builds each tab).
 
 **`newGroup` is only half of it.** Wasabi instantiates in two steps, and a skin that uses both needs
@@ -583,8 +583,9 @@ broken on its own, and each fix looked like it had done nothing until the next o
   no command, which reads exactly like a button with no behaviour to declare.
 
 - **A button's label is drawn once, by the embedded button** (B217). The wrapper's `text=` crosses
-  onto an embedded `button`/`togglebutton` that declares none, matched on its `kind` (any namespace), so an
-  embedded `Wasabi:Button` takes it too. The wrapper then draws no label of its own: before B217 an
+  onto an embedded `button`/`togglebutton` that declares none, bare or `Wasabi:` (B237), so an
+  embedded `Wasabi:Button` takes it too — krazyPlayer's and Vortex's `SC:HyperLinkButton` link labels
+  are that case, and vanish without it. The wrapper then draws no label of its own: before B217 an
   artwork-less `Wasabi:Button` wrapper drew its fallback label *and* the embedded button drew the
   real one. Five cPro skins showed a doubled, bold-looking `Search`, and only Azenis²'s grid hid the
   wrapper's copy. The rule is `WasabiSceneRenderer.ownLabel(of:)`, which the plain-button label in `draw` and the label in `drawTextButton`'s border both use.

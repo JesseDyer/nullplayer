@@ -2,6 +2,33 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// Whether the current event owes the scene an `onResize` pass, and whether one is running.
+struct WinampModernGeometrySettle {
+    /// Whether anything a script did during the current event could have moved an object. Only the
+    /// mutations that can — geometry, visibility, parentage, splitter position — set it, so a skin whose
+    /// timer merely advances an animation frame (cPro's beat display, every 10 ms) costs nothing.
+    private var mayHaveChanged = false
+    /// Guards the settle callback against the `onResize` dispatch it makes re-entering it.
+    private var isSettling = false
+
+    mutating func noteChange() { mayHaveChanged = true }
+
+    /// Whether there was a change to settle; it is spent by asking.
+    mutating func takeChange() -> Bool {
+        defer { mayHaveChanged = false }
+        return mayHaveChanged
+    }
+
+    /// Starts a settle, or answers false when one is already running.
+    mutating func begin() -> Bool {
+        guard !isSettling else { return false }
+        isSettling = true
+        return true
+    }
+
+    mutating func end() { isSettling = false }
+}
+
 /// Window geometry: origins a script reads and writes, glued windows, settling geometry after a
 /// change, and the move/resize events. Split out of
 /// `WinampModernScriptRuntime.swift`.
@@ -39,8 +66,7 @@ extension WinampModernScriptRuntime {
     /// spends the read.
     func takeOriginRead(of object: WasabiObject, moves: Bool) -> Bool {
         guard Self.isWindowObject(object) else { return false }
-        return moves ? originReadSinceWrite.remove(object.stableID) != nil
-                     : originReadSinceWrite.contains(object.stableID)
+        return borrowedOrigin.takeRead(of: object.stableID, moves: moves)
     }
 
     /// `getLeft()`/`getTop()`: the reported origin, remembered when it was read off a window object
@@ -48,7 +74,7 @@ extension WinampModernScriptRuntime {
     func scriptReadsOrigin(of object: WasabiObject) -> CGPoint {
         let reported = reportedOrigin(of: object)
         guard Self.isWindowObject(object) else { return reported }
-        originReadSinceWrite.insert(object.stableID)
+        borrowedOrigin.noteRead(of: object.stableID)
         if let desktop = windowOrigin(of: object) {
             let onScreen = enclosingWindowID(of: object).flatMap { containerVisibilityQuery?($0) } != false
             borrowedOrigin.record(.init(window: object.stableID, reported: reported, desktop: desktop,
@@ -118,11 +144,11 @@ extension WinampModernScriptRuntime {
     }
 
     func noteGeometryChange() {
-        geometryMayHaveChanged = true
+        geometrySettle.noteChange()
         // A mutation made *outside* any event (the host, or a direct call) has no event to unwind, so
         // it settles at once. Inside one it waits: a handler that moves five things in a row should
         // produce one round of `onResize`, not five.
-        if eventsBeingDispatched.isEmpty { settleGeometryIfNeeded() }
+        if !isDispatchingEvent { settleGeometryIfNeeded() }
     }
 
     /// `setXmlParam` keys that can move an object or take it out of the layout. Everything else a
@@ -147,15 +173,13 @@ extension WinampModernScriptRuntime {
     func settleGeometryIfNeeded() {
         // Never mid-draw: a Layer FX callback runs inside a repaint, and settling geometry from there
         // would re-solve the scene while it is being painted.
-        guard !isSettlingGeometry, !isEvaluatingLayerFX else { return }
-        isSettlingGeometry = true
-        defer { isSettlingGeometry = false }
+        guard !isEvaluatingLayerFX, geometrySettle.begin() else { return }
+        defer { geometrySettle.end() }
         // Before the resize pass, and independently of whether a scene is listening: the stranding
         // rule is about the graph, and a headless load has no `geometryDidSettle` to hang it off.
         // A restore here marks the geometry dirty again, so the pass below sees the restored state.
         settleStrandedControls()
-        guard geometryMayHaveChanged, let geometryDidSettle else { return }
-        geometryMayHaveChanged = false
+        guard let geometryDidSettle, geometrySettle.takeChange() else { return }
         geometryDidSettle()
     }
 

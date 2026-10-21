@@ -40,13 +40,15 @@ enum WasabiGuiList {
     /// `addItem` loop in a skin must not be able to grow it without bound.
     static let maximumItems = 4096
 
-    /// A `<Tree>` is drawn and clicked as a list of its visible items (`refreshTree`).
+    /// A `<Tree>` is drawn and clicked as a list of its visible items (`refreshTree`). Only the bare
+    /// tags: a `<ColorThemes:List>` is Winamp's theme picker (`isColorThemeList`), which the draw
+    /// dispatch never treats as a script list, so `addItem` on it must not fill rows nobody draws.
     static func isList(_ object: WasabiObject) -> Bool {
-        object.tag.kind == .list || object.tag.kind == .tree
+        object.tag.is(.list) || isTree(object)
     }
 
     static func isTree(_ object: WasabiObject) -> Bool {
-        object.tag.kind == .tree
+        object.tag.is(.tree)
     }
 
     static func items(of object: WasabiObject) -> [String] {

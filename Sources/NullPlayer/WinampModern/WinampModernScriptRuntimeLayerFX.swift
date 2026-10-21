@@ -2,6 +2,38 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// Every layer's FX configuration and its last evaluated warp.
+struct WinampModernLayerFXStore {
+    /// Per-layer FX configuration, written by the `fx_set*` methods.
+    private var states: [WasabiObjectID: WasabiLayerFXState] = [:]
+    /// The last evaluated mesh per layer, reused until the skin calls `fx_update()` (or always
+    /// re-evaluated when it asked for `fx_setRealtime(1)`).
+    private var meshes: [WasabiObjectID: WasabiLayerFXMesh] = [:]
+    private var stale: Set<WasabiObjectID> = []
+
+    func state(of id: WasabiObjectID) -> WasabiLayerFXState? { states[id] }
+    var hasEnabled: Bool { states.values.contains { $0.enabled } }
+    var enabled: [(id: WasabiObjectID, state: WasabiLayerFXState)] {
+        states.compactMap { $0.value.enabled ? ($0.key, $0.value) : nil }
+    }
+
+    /// Writes a layer's configuration and marks its mesh stale.
+    mutating func set(_ state: WasabiLayerFXState, for id: WasabiObjectID) {
+        states[id] = state
+        stale.insert(id)
+    }
+
+    mutating func invalidate(_ id: WasabiObjectID) { stale.insert(id) }
+    func isStale(_ id: WasabiObjectID) -> Bool { stale.contains(id) }
+    /// The layer's mesh, unless it is stale or was never evaluated.
+    func freshMesh(for id: WasabiObjectID) -> WasabiLayerFXMesh? { stale.contains(id) ? nil : meshes[id] }
+
+    mutating func store(_ mesh: WasabiLayerFXMesh, for id: WasabiObjectID) {
+        meshes[id] = mesh
+        stale.remove(id)
+    }
+}
+
 /// Layer FX: the per-object state, the evaluated mesh and the `fx_*` callbacks. Split out of
 /// `WinampModernScriptRuntime.swift`.
 extension WinampModernScriptRuntime {
@@ -16,34 +48,29 @@ extension WinampModernScriptRuntime {
     static let tracesLayerFX = ProcessInfo.processInfo.environment["WINAMP_MODERN_FX_TRACE"] != nil
 
     /// The FX configuration a layer's script has set, or `nil` when it has never called one.
-    func layerFXState(of object: WasabiObject) -> WasabiLayerFXState? { layerFXStates[object.stableID] }
+    func layerFXState(of object: WasabiObject) -> WasabiLayerFXState? { layerFX.state(of: object.stableID) }
 
     /// Whether any layer in this skin currently has FX switched on — the signal a window uses to
     /// decide it needs the 30 Hz repaint clock.
-    var hasEnabledLayerFX: Bool { layerFXStates.values.contains { $0.enabled } }
+    var hasEnabledLayerFX: Bool { layerFX.hasEnabled }
 
     /// Every layer with FX switched on, for the render harness (`WINAMP_MODERN_RENDER_FX=1`). The
     /// warp itself can only be seen under playback, but *which* layers are warped, how they are
     /// configured and how far the mesh moves are all answerable headlessly.
     var enabledLayerFXObjects: [WasabiObject] {
-        layerFXStates.compactMap { id, state in
-            guard state.enabled else { return nil }
-            return loadedSkin.runtime.graph.object(withID: id)
-        }
+        layerFX.enabled.compactMap { loadedSkin.runtime.graph.object(withID: $0.id) }
     }
 
     /// The warp for one layer, or `nil` when the layer has no enabled FX (the overwhelming majority —
     /// this is checked for every object in every frame, so the miss has to be a dictionary lookup).
     func layerFXMesh(for object: WasabiObject) -> WasabiLayerFXMesh? {
         guard !isTornDown, !isEvaluatingLayerFX else { return nil }
-        guard let state = layerFXStates[object.stableID], state.enabled else { return nil }
-        if !layerFXNeedsEvaluation.contains(object.stableID),
-           let cached = layerFXMeshes[object.stableID] {
+        guard let state = layerFX.state(of: object.stableID), state.enabled else { return nil }
+        if let cached = layerFX.freshMesh(for: object.stableID) {
             return cached.isIdentity ? nil : cached
         }
         let mesh = evaluateLayerFXMesh(for: object, state: state)
-        layerFXNeedsEvaluation.remove(object.stableID)
-        layerFXMeshes[object.stableID] = mesh
+        layerFX.store(mesh, for: object.stableID)
         return mesh.isIdentity ? nil : mesh
     }
 
@@ -59,12 +86,13 @@ extension WinampModernScriptRuntime {
     /// realtime layer is marked stale on each pass rather than re-evaluated inside the draw.
     func refreshLayerFXMeshes() {
         guard !isTornDown, !isEvaluatingLayerFX else { return }
-        for (id, state) in layerFXStates where state.enabled {
-            if state.realtime { layerFXNeedsEvaluation.insert(id) }
-            guard layerFXNeedsEvaluation.contains(id),
+        for (id, state) in layerFX.enabled {
+            if state.realtime { layerFX.invalidate(id) }
+            guard layerFX.isStale(id),
                   let object = loadedSkin.runtime.graph.object(withID: id) else { continue }
-            layerFXMeshes[id] = evaluateLayerFXMesh(for: object, state: state)
-            layerFXNeedsEvaluation.remove(id)
+            // Evaluated first: the callbacks may write `layerFX` themselves.
+            let mesh = evaluateLayerFXMesh(for: object, state: state)
+            layerFX.store(mesh, for: id)
         }
     }
 
@@ -93,13 +121,13 @@ extension WinampModernScriptRuntime {
     /// Force the next `layerFXMesh(for:)` to re-run the skin's callbacks. The harness uses it to
     /// measure a frame that really does re-evaluate, as a moving meter's does.
     func invalidateLayerFXMesh(for object: WasabiObject) {
-        layerFXNeedsEvaluation.insert(object.stableID)
+        layerFX.invalidate(object.stableID)
     }
 
     /// Whether this layer's warp is still waiting to be evaluated — the state `refreshLayerFXMeshes`
     /// exists to clear before the frame is painted rather than during it.
     func layerFXMeshIsPending(for object: WasabiObject) -> Bool {
-        layerFXNeedsEvaluation.contains(object.stableID)
+        layerFX.isStale(object.stableID)
     }
 
     func evaluateLayerFXMesh(for object: WasabiObject,
@@ -153,7 +181,7 @@ extension WinampModernScriptRuntime {
     /// layer's mesh and asks for a repaint; the getters answer from the same state.
     func invokeLayerFX(method: String, object: WasabiObject,
                                arguments: [MakiValue]) -> MakiValue {
-        var state = layerFXStates[object.stableID] ?? WasabiLayerFXState()
+        var state = layerFX.state(of: object.stableID) ?? WasabiLayerFXState()
         let flag = arguments.first?.truthy ?? false
         if Self.tracesLayerFX {
             print("FX-TRACE \(method) on \(object.typeName)#\(object.xmlID ?? "-") "
@@ -186,14 +214,12 @@ extension WinampModernScriptRuntime {
         case "fx_update", "fx_restart":
             // The skin has changed whatever its callbacks read (a needle's angle) and is telling the
             // host to re-run them. This is the repaint that moves the meter.
-            layerFXStates[object.stableID] = state
-            layerFXNeedsEvaluation.insert(object.stableID)
+            layerFX.set(state, for: object.stableID)
             requestRepaint(for: object)
             return .null
         default: return .null
         }
-        layerFXStates[object.stableID] = state
-        layerFXNeedsEvaluation.insert(object.stableID)
+        layerFX.set(state, for: object.stableID)
         requestRepaint(for: object)
         return .null
     }

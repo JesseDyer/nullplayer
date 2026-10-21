@@ -2,6 +2,31 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// What scripts read out of a skin's bitmaps, memoised per runtime: decoded `Map` images and pixel
+/// sizes, keyed by lower-cased resource id.
+struct WinampModernScriptBitmaps {
+    /// Maps are small lookup images (44×44 for MMD3's volume knob) and there are a handful per skin.
+    private static let maximumMaps = 16
+    private var maps: [String: CGImage] = [:]
+    /// `nil` records a resolved-but-unknown size.
+    private var sizes: [String: (width: Int32, height: Int32)?] = [:]
+
+    mutating func map(_ key: String, decode: () -> CGImage?) -> CGImage? {
+        if let cached = maps[key] { return cached }
+        guard maps.count < Self.maximumMaps, let image = decode() else { return nil }
+        maps[key] = image
+        return image
+    }
+
+    mutating func size(_ key: String,
+                       measure: () -> (width: Int32, height: Int32)?) -> (width: Int32, height: Int32)? {
+        if let cached = sizes[key] { return cached }
+        let size = measure()
+        sizes[key] = size
+        return size
+    }
+}
+
 /// `animatedlayer` frames and the MAKI `Map` class: pixels, crops and images read from a bitmap. Split out of
 /// `WinampModernScriptRuntime.swift`.
 extension WinampModernScriptRuntime {
@@ -26,7 +51,7 @@ extension WinampModernScriptRuntime {
     }
 
     /// Sample a `Map`'s bitmap at a point in its own pixel space. Decoded images are cached, bounded
-    /// by `maximumCachedMaps`; the bitmap itself passed the loader's dimension limits.
+    /// by `WinampModernScriptBitmaps`; the bitmap itself passed the loader's dimension limits.
     func mapPixel(bitmapID: String, source: WalSourceLocation, x: Int, y: Int)
         -> (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8, inBounds: Bool) {
         guard let image = mapImage(bitmapID: bitmapID, source: source) else { return (0, 0, 0, 0, false) }
@@ -81,14 +106,11 @@ extension WinampModernScriptRuntime {
         // A cover beside the playing file is the host's artwork, never a file read — and never
         // cached, because it changes with the track.
         if host.isTrackFolderImage(bitmapID) { return host.trackFolderCover(forImage: bitmapID) }
-        let key = bitmapID.lowercased()
-        if let cached = mapImages[key] { return cached }
-        guard mapImages.count < Self.maximumCachedMaps,
-              let data = mapData(bitmapID: bitmapID, source: scriptSource),
-              let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else { return nil }
-        mapImages[key] = image
-        return image
+        return scriptBitmaps.map(bitmapID.lowercased()) {
+            guard let data = mapData(bitmapID: bitmapID, source: scriptSource),
+                  let imageSource = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+            return CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+        }
     }
 
     /// `loadMap` takes *either* a declared bitmap id or a path. ClassicPro's install check is the

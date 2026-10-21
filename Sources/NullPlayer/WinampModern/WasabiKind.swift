@@ -6,8 +6,9 @@ import Foundation
 /// `<button>` is `button` in `none`. The two answer different questions, and a compare used to pick
 /// one by spelling — the full name or the namespace-dropped one — at each site, which is how B217
 /// found the two spellings matching differently from one line to the next. Now a site says which
-/// it means: `tag.kind == .button` for any namespace, `tag.is(.button)` for the bare tag only,
-/// `tag.is(.button, in: .wasabi)` for the standard library's.
+/// it means: `tag.is(.button)` for the bare tag, `tag.is(.button, in: .wasabi)` for the standard
+/// library's. There is no any-namespace match (B237): `ColorThemes:List` is not a list, so a site
+/// that wants a foreign namespace names it.
 ///
 /// The cases are the tags the engine treats specially; every other tag is `.other`. A skin's own
 /// XUI tags are not cases: they are the skin's, looked up in its registry.
@@ -66,10 +67,8 @@ enum WasabiNamespace {
 
 /// A tag parsed once into its kind and namespace, ignoring case (`WasabiKind`).
 struct WasabiTag: Hashable {
-    /// The local name whatever the namespace: `Wasabi:Button` and `<button>` are both `.button`, and
-    /// so is every other namespace's — `ColorThemes:List` is `.list`. Ask `is(_:in:)` when the
-    /// namespace matters.
-    let kind: WasabiKind
+    /// The local name whatever the namespace — private, so every match names its namespace too.
+    private let kind: WasabiKind
     let namespace: WasabiNamespace
 
     init(_ name: String) {

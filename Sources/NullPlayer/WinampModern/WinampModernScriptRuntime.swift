@@ -187,7 +187,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// Without this, closing the playlist hid the only control that could bring it back.
     var geometryDidSettle: (() -> Void)?
 
-    struct ScriptEventKey: Hashable {
+    private struct ScriptEventKey: Hashable {
         let target: MakiObjectReference.Kind
         let event: String
         /// The programs a *scoped* dispatch was limited to; empty for a dispatch to all of them.
@@ -200,16 +200,17 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         /// its script's `trigger`/`label`/`grid` variables never bound, which is the real reason
         /// clicking a tab did nothing (TASKS §15.6 blamed the strip's own script, which does run).
         ///
-        /// The subsets are disjoint by construction — `boundScriptPaths` binds each script path+owner
+        /// The subsets are disjoint by construction — `scriptStarts` binds each script path+owner
         /// exactly once — so distinguishing them cannot reopen the ping-pong the guard exists for, and
-        /// `maximumRuntimeScriptStartDepth` bounds the nesting.
+        /// `WinampModernScriptStarts.maximumDepth` bounds the nesting.
         let scope: [ObjectIdentifier]
     }
     /// Events currently on the interpreter stack. A skin can wire two objects to update each other
     /// (MMD3's seek slider and its ghost both call `setPosition` from the other's `onSetPosition`),
     /// which is a bounded ping-pong in Winamp but unbounded native recursion here — and native
     /// recursion is not something the interpreter's own call-depth budget can see.
-    var eventsBeingDispatched: Set<ScriptEventKey> = []
+    private var eventsBeingDispatched: Set<ScriptEventKey> = []
+    var isDispatchingEvent: Bool { !eventsBeingDispatched.isEmpty }
 
     /// One setting a skin registered with `ConfigItem.newAttribute`, in registration order.
     ///
@@ -251,7 +252,12 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// and `getItemByGuid` do not name anything new — they address an item that already exists.
     var configItemNames: [String: String] = [:]
 
-    var nextPopupID: UInt64 = 1
+    private var nextObjectID: UInt64 = 1
+    /// A fresh id for a script-created popup menu or dynamic object.
+    func newObjectID() -> UInt64 {
+        defer { nextObjectID &+= 1 }
+        return nextObjectID
+    }
     var popupCommands: [UInt64: [PopupEntry]] = [:]
     var dynamicObjects: [UInt64: DynamicObjectState] = [:]
     var activeTargetAnimations: [WasabiObjectID: TargetAnimationState] = [:]
@@ -278,28 +284,17 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     var realizedLayouts: Set<WasabiObjectID> = []
     let preferenceNamespace: String
 
-    /// Script bindings already parsed into `programs`, so a runtime-instantiated group's scripts are
-    /// started exactly once even if the same group is instantiated again.
-    var boundScriptPaths: Set<WasabiScriptBinding> = []
-    /// Memoised bitmap pixel sizes for `getAutoWidth`/`getLength`; `nil` records a resolved-but-unknown
-    /// size.
-    var bitmapSizes: [String: (width: Int32, height: Int32)?] = [:]
+    var scriptStarts = WinampModernScriptStarts(bound: [])
+    /// Bitmap pixel sizes for `getAutoWidth`/`getLength`, and decoded `Map` images.
+    var scriptBitmaps = WinampModernScriptBitmaps()
     /// The scripts that went looking for a cover beside the playing file (`WinampModernTrackFolderImage`).
     var coverSeekers = WinampModernTrackFolderImage.Seekers()
-    /// Decoded `Map` bitmaps, keyed by resource id. Maps are small lookup images (44×44 for MMD3's
-    /// volume knob) and there are a handful per skin.
     /// Font resolution and text measurement, shared with the renderer so `getAutoWidth()` answers
     /// what the text will actually occupy when drawn.
     lazy var metrics = WasabiTextMetrics(loadedSkin: loadedSkin)
-    var mapImages: [String: CGImage] = [:]
-    static let maximumCachedMaps = 16
     /// Ceiling on total loaded programs. Runtime instantiation (`System.newGroup`) can add scripts,
     /// so this bounds a skin that instantiates groups in a loop.
     static let maximumRuntimePrograms = 512
-    /// How deeply a runtime-instantiated group's `onScriptLoaded` may instantiate further groups.
-    /// ClassicPro nests two levels (the SUI builds the tab strip, which builds each tab).
-    static let maximumRuntimeScriptStartDepth = 8
-    var runtimeScriptStartDepth = 0
 
     /// Standard GUI events a script is allowed to invoke as a method on an object, with their argument
     /// counts. Kept explicit: an unknown arity would desynchronise the interpreter's stack.
@@ -498,7 +493,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         }
         parsedPrograms.forEach(Self.seedHostSingletons)
         self.programs = parsedPrograms
-        self.boundScriptPaths = Set(loadedSkin.runtime.scriptBindings)
+        self.scriptStarts = WinampModernScriptStarts(bound: Set(loadedSkin.runtime.scriptBindings))
         self.scriptFailures = Array(parseFailures.prefix(Self.maximumRecordedScriptFailures))
         for root in loadedSkin.runtime.graph.roots where root.tag.is(.container) {
             let layouts = root.children.filter {
@@ -682,10 +677,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         return interpreter.completionCount != before
     }
 
-    /// Last equalizer values announced to the scripts, on MAKI's −127…127 scale. `nil` before the
-    /// first observation, which is what makes the opening state an announcement rather than silence.
-    var lastDispatchedEQBands: [Int]?
-    var lastDispatchedEQPreamp: Int?
+    var announcedEqualizer = WinampModernAnnouncedEqualizer()
 
     /// Test seam, off by default: the GUI events the runtime sent, in order. The difference between
     /// `setActivated` and `setActivatedNoCallback` is *whether the event went out at all*, and with no
@@ -734,15 +726,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         return handled
     }
 
-    /// The last window position a script read, and the rule that recognises it being written onto
-    /// another window. See `WinampModernBorrowedOrigin`.
+    /// The window positions scripts read, and the rules that recognise them being written back.
+    /// See `WinampModernBorrowedOrigin`.
     var borrowedOrigin = WinampModernBorrowedOrigin()
-
-    /// Window objects whose origin a script has read since their last geometry write: the only ones
-    /// a write of that same origin can be a round trip on (B61). A layout reports (0, 0), so without
-    /// this every script that parks its window at the desktop's corner — Nitrous Audio's monitor
-    /// mode writes `x=0`/`y=0` on its layout and never asks where it is — was taken as one.
-    var originReadSinceWrite: Set<WasabiObjectID> = []
 
     /// Which container's window is kept parked on which other container's window — leader → follower,
     /// learned from the `follower.resize(leader.getLeft(), leader.getTop(), …)` idiom above. The
@@ -754,12 +740,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// setting that actually moved. Four entries — one per `WinampModernConfigBridge.Attribute`.
     var lastBridgedValues: [String: Int32] = [:]
 
-    /// Whether anything a script did during the current event could have moved an object. Only the
-    /// mutations that can — geometry, visibility, parentage, splitter position — set it, so a skin whose
-    /// timer merely advances an animation frame (cPro's beat display, every 10 ms) costs nothing.
-    var geometryMayHaveChanged = false
-    /// Guards the settle callback against the `onResize` dispatch it makes re-entering it.
-    var isSettlingGeometry = false
+    var geometrySettle = WinampModernGeometrySettle()
 
     /// The ids the last diffing pass judged to have left the layout — the objects it told
     /// `onResize(x, y, 0, 0)`. Recorded before the binding check, so it reports the *decision*
@@ -943,12 +924,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
 
     // MARK: - Layer FX
 
-    /// Per-layer FX configuration, written by the `fx_set*` methods.
-    var layerFXStates: [WasabiObjectID: WasabiLayerFXState] = [:]
-    /// The last evaluated mesh per layer, reused until the skin calls `fx_update()` (or always
-    /// re-evaluated when it asked for `fx_setRealtime(1)`).
-    var layerFXMeshes: [WasabiObjectID: WasabiLayerFXMesh] = [:]
-    var layerFXNeedsEvaluation: Set<WasabiObjectID> = []
+    var layerFX = WinampModernLayerFXStore()
     /// While a mesh is being evaluated, the callbacks run *inside a repaint*. A script that touched
     /// the graph from one would ask for another repaint and settle geometry mid-draw, so both are
     /// suppressed for the duration and the pending repaint is the one already in flight.
@@ -1117,8 +1093,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         if Self.canonicalGUID(classGUID) == MakiClassGUID.playlistEditor {
             return MakiObjectReference(.playlistEditor)
         }
-        let id = nextPopupID
-        nextPopupID &+= 1
+        let id = newObjectID()
         if Self.canonicalGUID(classGUID) == "f4787af44ef7b2bb4be7fb9c8da8bea9" {
             popupCommands[id] = []
             return MakiObjectReference(.popupMenu(id))
@@ -1145,8 +1120,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     }
 
     func dynamicValue(role: DynamicRole) -> MakiValue {
-        let id = nextPopupID
-        nextPopupID &+= 1
+        let id = newObjectID()
         dynamicObjects[id] = DynamicObjectState(role: role)
         return .object(MakiObjectReference(.dynamic(id)))
     }

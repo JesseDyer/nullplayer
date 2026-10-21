@@ -760,10 +760,10 @@ final class WinampModernMainView: NSView {
     }
 
     private static func editControl(in object: WasabiObject) -> WasabiObject? {
-        if object.tag.kind == .edit { return object }
+        if object.tag.is(.edit) { return object }
         var stack = object.children
         while let node = stack.popLast() {
-            if node.tag.kind == .edit { return node }
+            if node.tag.is(.edit) { return node }
             stack.append(contentsOf: node.children)
         }
         return nil

@@ -3,9 +3,8 @@ import CoreGraphics
 import Foundation
 
 /// The arity table: every MAKI method the runtime answers, and the class-gated tables for
-/// `PlEdit` and `MLPlaylists`. Split out of
-/// `WinampModernScriptRuntime.swift`.
-extension WinampModernScriptRuntime {
+/// `PlEdit` and `MLPlaylists`. Pure static data; the runtime asks through `signature(for:classGUID:)`.
+enum WinampModernScriptSignatures {
     /// The playlist-editor API, **keyed by `PlEdit`'s class** rather than registered globally.
     ///
     /// Half of these names belong to other classes too — `getLength` is an `animatedlayer`'s frame
@@ -19,7 +18,7 @@ extension WinampModernScriptRuntime {
     /// reverse, so the net pushes between the two settle it. `moveTo` is the one that pays for the
     /// measurement — it reads like a one-argument "scroll to" and is `moveTo(from, to)`, which
     /// Defix's *Move selected to top* proves by passing a literal 0 and then a running counter.
-    static let playlistEditorSignatures: [String: MakiMethodSignature] = [
+    private static let playlistEditorSignatures: [String: MakiMethodSignature] = [
         "getcurrentindex": .init(argumentCount: 0, returnKind: .integer),
         "getnumtracks": .init(argumentCount: 0, returnKind: .integer),
         "gettitle": .init(argumentCount: 1, returnKind: .string),
@@ -49,7 +48,7 @@ extension WinampModernScriptRuntime {
     /// Arities read off Big Bento's own call sites (`RENDER_DISASM=@player-normal-mcv`): the menu
     /// loop is `for (i = 0; i < manager.getNumItems(); i++) addCommand(manager.getItemName(i), …)`
     /// — one push for the receiver at `getnumitems`, two at `getitemname` and `playitem`.
-    static let playlistManagerSignatures: [String: MakiMethodSignature] = [
+    private static let playlistManagerSignatures: [String: MakiMethodSignature] = [
         "getnumitems": .init(argumentCount: 0, returnKind: .integer),
         "getitemname": .init(argumentCount: 1, returnKind: .string),
         "playitem": .init(argumentCount: 1, returnKind: .null),
@@ -63,7 +62,7 @@ extension WinampModernScriptRuntime {
     /// which is every method invocation the interpreter makes, in every skin. Measured at 10.4% of
     /// the main thread on cPro Bento, whose realtime Layer FX layer dispatches 1320 calls a second
     /// (B103). A dictionary literal this size is not something to rebuild on a hot path.
-    static let generalSignatures: [String: MakiMethodSignature] = [
+    private static let generalSignatures: [String: MakiMethodSignature] = [
         "getcontainer": .init(argumentCount: 1, returnKind: .object),
         "newdynamiccontainer": .init(argumentCount: 1, returnKind: .object),
         // `Container.isDynamic()` — was this container created by `newDynamicContainer`, or is it one
@@ -709,10 +708,11 @@ extension WinampModernScriptRuntime {
         "playfile": .init(argumentCount: 1, returnKind: .null),
     ]
 
-    func signature(for method: String, classGUID: String?) -> MakiMethodSignature? {
+    /// The arity of `method` on a receiver declared by `classGUID`, or nil when the runtime has none.
+    static func signature(for method: String, classGUID: String?) -> MakiMethodSignature? {
         // Both of these were recomputed per test below — the GUID five times, through a fold that
         // is itself O(n²) (see `MakiClassGUID.canonical`). They are loop-invariant for the call.
-        let canonical = classGUID.map(Self.canonicalGUID)
+        let canonical = classGUID.map(MakiClassGUID.canonical)
         let name = method.lowercased()
         if method.caseInsensitiveCompare("getcontainer") == .orderedSame,
            canonical == "60906d4e482e537e94cc04b072568861" {
@@ -769,15 +769,24 @@ extension WinampModernScriptRuntime {
         // crossfade slider's handler once at load with `slidercb.onSetPosition(slidercb.getPosition())`.
         // Without an arity the interpreter cannot unwind the stack, so only events with a known
         // signature are callable; the call dispatches the event exactly as the UI would.
-        if let arity = Self.dispatchableEventArity[name] {
+        if let arity = WinampModernScriptRuntime.dispatchableEventArity[name] {
             // `onAction` answers with an int (the drawer keeps the slot the widget manager gives it);
             // the rest are void.
             return .init(argumentCount: arity, returnKind: name == "onaction" ? .integer : .null)
         }
+        return nil
+    }
+}
+
+extension WinampModernScriptRuntime {
+    func signature(for method: String, classGUID: String?) -> MakiMethodSignature? {
+        if let signature = WinampModernScriptSignatures.signature(for: method, classGUID: classGUID) {
+            return signature
+        }
         // Record the miss here as well as in `unsupported(_:program:)`: the interpreter fails closed
         // on a missing *signature* (without an arity it cannot unwind the stack), so this is the path
         // most unimplemented methods actually take. Phase 7.3's tally never saw it.
-        unsupportedMethodCalls[name, default: 0] += 1
+        unsupportedMethodCalls[method.lowercased(), default: 0] += 1
         return nil
     }
 }

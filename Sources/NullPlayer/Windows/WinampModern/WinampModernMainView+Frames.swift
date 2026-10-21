@@ -157,7 +157,7 @@ extension WinampModernMainView {
     private func makeJob(dirty: [NSRect]) -> (job: WinampModernCanvas.Job, viewRects: [NSRect], isWhole: Bool)? {
         let scale = window?.backingScaleFactor ?? 1
         let (pixelWidth, pixelHeight) = pixelSize(scale: scale)
-        let fits = pixelWidth * pixelHeight <= WasabiSceneRenderer.maximumPrescaledPixels
+        let fits = WasabiSceneRenderer.fitsCanvas(pixelWidth: pixelWidth, pixelHeight: pixelHeight)
         if frames.drawsDirectly == fits {
             frames.drawsDirectly = !fits
             if !fits { Self.logOversizedCanvasOnce(pixelWidth: pixelWidth, pixelHeight: pixelHeight) }
@@ -176,28 +176,15 @@ extension WinampModernMainView {
             : Self.coalesced(dirty.map { $0.applying(CGAffineTransform(scaleX: scale, y: scale)).integral.intersection(whole) }
                 .filter { !$0.isNull && !$0.isEmpty })
         guard !rects.isEmpty else { return nil }
-        let clip = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
 
         // Which of `activealpha`/`inactivealpha` every object paints at. Read here rather than
         // cached on the notification: a window can lose key without either notification reaching us
         // (the app deactivating, a sheet), and the read is one Boolean.
         renderer.isWindowActive = window?.isKeyWindow ?? true
-        let base = CGAffineTransform(scaleX: scale, y: scale)
-        let scene = WasabiDrawList(ctm: base, clip: clip)
-        scene.saveGState()
-        if skinScale != 1 { scene.scaleBy(x: skinScale, y: skinScale) }
-        renderer.record(into: scene, pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID)
-        scene.restoreGState()
-        var chrome: WasabiDrawList?
-        if drawsHostChrome {
-            let list = WasabiDrawList(ctm: base, clip: clip)
-            if skinScale != 1 { list.scaleBy(x: skinScale, y: skinScale) }
-            drawHostChrome(in: list)
-            chrome = list
-        }
-        let job = WinampModernCanvas.Job(
-            pixelWidth: pixelWidth, pixelHeight: pixelHeight, colorSpace: colorSpace, scale: scale, rects: rects,
-            scene: scene, chrome: chrome, promotesAlpha: renderer.layoutWantsOpaqueBacking)
+        let job = renderer.canvasJob(pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, rects: rects,
+                                     colorSpace: colorSpace, skinScale: skinScale,
+                                     pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID,
+                                     chrome: drawsHostChrome ? { [unowned self] in drawHostChrome(in: $0) } : nil)
         let viewRects = rects.map { $0.applying(CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)) }
         return (job, viewRects, isWhole)
     }
@@ -210,19 +197,9 @@ extension WinampModernMainView {
         // one already carries it (B80).
         let contextScale = abs(context.ctm.a)
         let pixelsPerUnit = contextScale > 0 ? max(1, (window?.backingScaleFactor ?? 1) / contextScale) : 1
-        context.saveGState()
-        if skinScale != 1 { context.scaleBy(x: skinScale, y: skinScale) }
-        let clip = context.boundingBoxOfClipPath.applying(context.ctm)
-        if drawsHostChrome {
-            let chrome = WasabiDrawList(ctm: context.ctm, clip: clip, devicePixelsPerUnit: pixelsPerUnit)
-            drawHostChrome(in: chrome)
-            chrome.replay(into: context)
-        }
-        let scene = WasabiDrawList(ctm: context.ctm, clip: clip, interpolationQuality: context.interpolationQuality,
-                                   devicePixelsPerUnit: pixelsPerUnit)
-        renderer.record(into: scene, pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID)
-        scene.replay(into: context)
-        context.restoreGState()
+        renderer.drawDirectly(in: context, pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID,
+                              skinScale: skinScale, devicePixelsPerUnit: pixelsPerUnit,
+                              chrome: drawsHostChrome ? { [unowned self] in drawHostChrome(in: $0) } : nil)
     }
 
     private static var oversizedCanvasLogged = false

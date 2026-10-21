@@ -363,7 +363,7 @@ extension WinampModernScriptRuntime {
         // receiver is honestly not loading anything.
         case "isloading":
             // The XUI form (`<Wasabi:AlbumArt>`) keeps its namespace prefix in the element name.
-            guard object.tag.kind == .albumArt else { return .boolean(false) }
+            guard object.tag.is(.albumArt) || object.tag.is(.albumArt, in: .wasabi) else { return .boolean(false) }
             return .boolean(host.isArtworkLoading)
         case "getposition" where WasabiFrame.isFrame(object.tag):
             // A splitter's position is its divider offset, not a slider value. ClassicPro reads it to

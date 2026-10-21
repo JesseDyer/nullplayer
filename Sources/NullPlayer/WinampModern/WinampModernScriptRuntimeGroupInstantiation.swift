@@ -2,6 +2,31 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// Which script bindings have been parsed into the runtime's programs, so a runtime-instantiated
+/// group's scripts are started exactly once even if the same group is instantiated again, and how
+/// deeply those starts are nested.
+struct WinampModernScriptStarts {
+    /// How deeply a runtime-instantiated group's `onScriptLoaded` may instantiate further groups.
+    /// ClassicPro nests two levels (the SUI builds the tab strip, which builds each tab).
+    static let maximumDepth = 8
+    private var bound: Set<WasabiScriptBinding>
+    private var depth = 0
+
+    init(bound: Set<WasabiScriptBinding>) { self.bound = bound }
+
+    func isBound(_ binding: WasabiScriptBinding) -> Bool { bound.contains(binding) }
+    mutating func bind(_ binding: WasabiScriptBinding) { bound.insert(binding) }
+
+    /// One level deeper, or false at `maximumDepth`. Each `true` is paired with `leave()`.
+    mutating func enter() -> Bool {
+        guard depth < Self.maximumDepth else { return false }
+        depth += 1
+        return true
+    }
+
+    mutating func leave() { depth -= 1 }
+}
+
 /// Scripts for groups added after load: pending runtime groups, starting their programs, and
 /// the layout that owns a group definition. Split out of
 /// `WinampModernScriptRuntime.swift`.
@@ -37,22 +62,21 @@ extension WinampModernScriptRuntime {
         // A group's `onScriptLoaded` may itself instantiate groups (ClassicPro's tab strip does exactly
         // that, five times), so this is genuinely recursive. `maximumRuntimePrograms` bounds the total
         // but not the native stack depth, which this does.
-        guard runtimeScriptStartDepth < Self.maximumRuntimeScriptStartDepth else {
+        guard scriptStarts.enter() else {
             loadedSkin.runtime.record(WalDiagnostic(.scriptBudgetExceeded,
                                                     "Runtime group instantiation nested deeper than "
-                                                    + "\(Self.maximumRuntimeScriptStartDepth); the "
+                                                    + "\(WinampModernScriptStarts.maximumDepth); the "
                                                     + "scripts of '\(root.xmlID ?? root.typeName)' were "
                                                     + "not started.",
                                                     severity: .warning, location: root.source))
             return
         }
-        runtimeScriptStartDepth += 1
-        defer { runtimeScriptStartDepth -= 1 }
+        defer { scriptStarts.leave() }
         var added: [MakiProgram] = []
         func collect(_ object: WasabiObject) throws {
-            for binding in object.scriptBindings where !boundScriptPaths.contains(binding) {
+            for binding in object.scriptBindings where !scriptStarts.isBound(binding) {
                 guard programs.count + added.count < Self.maximumRuntimePrograms else { return }
-                boundScriptPaths.insert(binding)
+                scriptStarts.bind(binding)
                 do {
                     let data = try loadedSkin.vfs.data(at: binding.logicalPath, location: binding.source)
                     added.append(try MakiBytecodeParser().parse(data, source: binding.source,

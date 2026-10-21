@@ -3,6 +3,45 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B237 — Every namespace match is the tag's own — closed 2026-10-21
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B237 | **Thirteen sites ask `tag.kind ==`, which matches any namespace, carried over from `localTypeName` without a decision.** `WasabiGuiList.isList` counts a `<ColorThemes:List>` as a script list (so `addItem` and the rest dispatch on it), while the draw dispatch's `tag.is(.list)` does not; the same any-namespace match sits in the edit, menu, text, album-art and custom-object checks. Decide per site whether a foreign namespace belongs (Wasabi's own answer is the registered class, not the spelling), and write it as `tag.is(_:in:)`. Done when no `tag.kind ==` remains outside `WasabiTag`, and the render and interaction sweeps match their baselines or every diff is judged | `xml-tag '^colorthemes:list$'`: gold 23/56, silver 20/54, bronze 187/827, quarantine 18/54 (manifest 9e68ffe0) | S | 3 |
+
+**Closed 2026-10-21**. The thirteen sites now say which namespace they mean, and `WasabiTag.kind` is `private`, so the compiler keeps it that way: every match is `is(_:in:)`. Each site took the namespace its draw-side twin already used. `isList`/`isTree`, the `<edit>` hit test and focus, the `<text>` line height and declared bottom, `<CustomObject>` sizing and `groupid`, and `<Menu>` are bare-only. So a `<ColorThemes:List>` (gold 23/56) no longer takes `addItem` and the rest of the list API into rows nothing draws; it stays Winamp's theme picker. `AlbumArt.isLoading` keeps `Wasabi:AlbumArt` too, as the container topology does. The embedded-XUI forwards accept bare and `Wasabi:`: text styling for `text`, the button label for `button`/`togglebutton`. The first sweep caught the button case: krazyPlayer's and Vortex's `SC:HyperLinkButton` embed a `<Wasabi:Button>` and lost their link labels when only the bare tag matched. Gold+silver render sweep at 1x against HEAD: identical bar the documented noise. CopperdeckII's `MLibrary` `min=` flip is new to the list and was confirmed by solo runs. Interaction sweep (`--shards 60`) against two baseline passes: the seven rows that differed from both flip back in a solo run of the same build (added to `harness.md`). `swift test`: 3090 tests, 0 failures.
+
+## B236 — The script runtime's concerns own their state — closed 2026-10-21
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B236 | **B230's split widened about fifty script-runtime members from `private` to internal, mutable state included.** `mapImages`, `bitmapSizes`, `eventsBeingDispatched`, `runtimeScriptStartDepth` and the per-concern caps are now writable from any file in the module, because a cross-file extension cannot see `private`. The concerns that own their state should be types the runtime holds: the Map image cache (`WinampModernScriptRuntimeMap.swift`), the XmlDoc reader, and the signature tables (pure static data, a plain `enum`). `WinampModernScriptRuntime.swift` is still 1,340 lines; `…Object.swift` (997) and `…System.swift` (973) sit at the limit. Done when each extracted concern keeps its state `private` behind its own type, no runtime state is internal only for an extension's sake, and the interaction sweep matches its baseline | code health; no corpus demand | M | 3 |
+
+**Closed 2026-10-21**. Each concern's state is now private inside a type of its own:
+
+- `WinampModernScriptSignatures`: an `enum` with private tables. The runtime's `signature(for:classGUID:)` asks it and records the miss.
+- `WinampModernScriptBitmaps`: the `Map` image cache and the bitmap size memo, in `…Map.swift`.
+- `WinampModernXmlDocReader`: the document walk, the element cap and `parserPath`.
+- `WinampModernScriptStarts`: bound script bindings and nesting depth.
+- `WinampModernAnnouncedEqualizer`: the last EQ values the scripts were told.
+- `WinampModernLayerFXStore`: per-layer FX state, meshes and staleness.
+- `WinampModernGeometrySettle`: the change flag and the re-entrancy guard.
+
+The B61 read set joined `WinampModernBorrowedOrigin`, which already owned the cross-window half of that rule. `eventsBeingDispatched` and its key are `private` behind `isDispatchingEvent`, and `nextPopupID` is `private` behind `newObjectID()`. Two pieces stay internal on purpose:
+
+- `isEvaluatingLayerFX` is a re-entrancy guard the main file, geometry and Layer FX all read.
+- `lastBridgedValues` and `strandingCandidates` are one collection each, used through the collection's own API, so a wrapper type would only pass calls through.
+
+Internal `static let` constants were left as they are, since they are immutable. Interaction sweep against two baseline passes: what differed from both flips between solo runs of the baseline itself (S7Reflex's beat-vis click, winampmodern566's album-art double-click, hatsune_miku's drive point). The render sweep is unchanged from B237's. `swift test`: 3090 tests, 0 failures.
+
+## B235 — The harness and the window build one canvas job — closed 2026-10-21
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B235 | **The harness's `WasabiSceneRenderer.draw(in:)` assembles its canvas job apart from the window's.** B231 made the sweep render through `WinampModernCanvas`, but the job is built twice: `draw(in:)` computes its own scale, pixel snap and `Job`, and the view's `makeJob` (`WinampModernMainView+Frames.swift`) does the same from the bounds, and adds `skinScale` and the host chrome the harness never applies. The oversized fallback is written twice as well (`draw(in:)`'s direct list and `drawDirectly`). So the sweep checks the canvas, not the recording the window does. The fix: one job builder (scale, pixel rect, clip, colour space, optional chrome list) that both call, which lands with B233's side-effect-free `makeJob`. Done when `draw(in:)` and the view share that builder and the oversized path, and the gold+silver render sweep at 1x, 2x and 2.5x matches its baseline bar the noise listed in `harness.md` | code health; no corpus demand | S | 3 |
+
+**Closed 2026-10-21**, ahead of B233. `WasabiSceneRenderer.canvasJob` (`WinampModernCanvas.swift`) builds the job. It records the scene, and optionally the host chrome, at a scale for a pixel size and rects, with an optional origin offset and UI Size, and it has no side effects. `drawDirectly` is the one oversized fallback, and `fitsCanvas` is the one limit test. `draw(in:)` and the view's `makeJob`/`drawDirectly` call all three. `makeJob` keeps its `drawsDirectly` switch, which is B233's to move. Gold+silver render sweep at 1x, 2x and 2.5x against HEAD: identical bar the documented noise (clocks, the MoonLight and Itemskin canvas flips, the MLibrary `min=` flips). In the app (debug, cPro Bento, playing), the main window renders. Its About page wears the host glass rim, which is the path where the view hands `canvasJob` a chrome closure.
+
 ## B228 — A typed widget kind — closed 2026-10-21
 
 | B228 | **A typed widget kind instead of string compares on `typeName`.** "What is this object" is answered by about 40 string compares across seven files: 28 on `typeName.lowercased()` (`WasabiRenderer`, `WinampModernMainView`, the script runtime, hit testing, `WasabiChromeButtons`, `WasabiFrame`, `WinampModernComponents`) and 14 on `localTypeName`, plus the `isList`/`isTree`/`isMenu`/`isTextButton` predicates that wrap them. Whether a compare means the standard library's `Wasabi:Button` or a bare `<button>` is decided again at each site, and B217 found the two spellings matching differently from one line to the next. Parse the kind once when the graph is built: an enum whose cases keep the namespace distinction where it matters (`.button` vs `.wasabiButton`), stored on `WasabiObject` beside `typeName`. Route the predicates and the `let type = …` dispatches through it, and drop `localTypeName` if nothing still needs it. Done when no `typeName` string compare is left outside the parser and the gold+silver render sweep matches its baseline apart from the documented noise | code health; no corpus demand | L | 3 |
