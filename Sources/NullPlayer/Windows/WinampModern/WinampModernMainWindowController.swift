@@ -1714,8 +1714,8 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // Clamped to the screen as well as to the layout's own range. A 1x on a 1080p film is a
         // ~1940px window and a 2x is nearly 3900 — Winamp's own 1x/2x are exactly that literal, but a
         // window wider than the display is one the user cannot get hold of again.
-        let visible = (container.window.screen ?? NSScreen.main)?.visibleFrame.size
-            ?? CGSize(width: 1_440, height: 900)
+        let visibleFrame = (container.window.screen ?? NSScreen.main)?.visibleFrame
+        let visible = visibleFrame?.size ?? CGSize(width: 1_440, height: 900)
         let limits = renderer.userResizeLimits
         let ceilingW = min(limits.maximum.width, visible.width / skinScale)
         let ceilingH = min(limits.maximum.height, visible.height / skinScale)
@@ -1724,6 +1724,12 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             height: min(max(proposed.height, limits.minimum.height), ceilingH)))
         let size = container.view.scaledCanvasSize
         resize(window: container.window, to: size)
+        // …and kept on it. The resize holds the top-left corner, so Anunaki's video window, opened
+        // low on the screen, grew off the bottom edge with its 1X/2X buttons — the only way back.
+        if let visibleFrame {
+            container.window.setFrameOrigin(
+                WindowPlacement.rescued(container.window.frame, into: visibleFrame).origin)
+        }
         container.view.setFrameSize(size)
         container.view.needsLayout = true
         container.view.needsDisplay = true
@@ -1923,7 +1929,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
     /// This is the arrangement; `place` below is only what holds a window until this runs. It is
     /// called once launch has settled, which is the first moment the inputs exist — during skin load
     /// the player is not yet at its restored frame and no window is yet at its final size, so nothing
-    /// decided then can be right. See `WindowManager.WinampModernTiler`.
+    /// decided then can be right. See `WinampModernTiler`.
     ///
     /// Only the skin's own windows and the hosted windows are laid out, then `trailing` — windows
     /// this controller does not own (a classic-fallback playlist or library) that a full re-layout

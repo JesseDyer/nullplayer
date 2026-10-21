@@ -325,7 +325,7 @@ Every `.wal` window is `.borderless`, which changes what AppKit will do for you:
 
 **There is no center stack in Winamp Modern.** A `.wal` skin's windows are whatever shape and size the
 author chose, so the arrangement is a **tiling generated in one deterministic sweep**
-(`WindowManager.WinampModernTiler`), not a placement negotiated per window as each one opens. Columns
+(`WinampModernTiler`, `App/WinampModernTiler.swift`), not a placement negotiated per window as each one opens. Columns
 run down from the player, each window flush under the last; one that will not fit starts the next
 column to the right. Fixed order, no scoring, no iteration. The player is the anchor and never moves —
 its frame is restored user state.

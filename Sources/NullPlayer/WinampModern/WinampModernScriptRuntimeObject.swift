@@ -286,6 +286,7 @@ extension WinampModernScriptRuntime {
         // crossfade/shuffle/repeat indicator set is `alpha = 255 * getActivated()` at load.
         case "getactivated", "ischecked":
             if Self.configBinding(of: object) != nil { return .boolean(configValue(of: object)) }
+            if let on = equalizerSwitchState(of: object) { return .boolean(on) }
             return .boolean(object.attributes["activated"] == "1")
         // The graph type, which is the XML tag the object was declared with (`layer`, `button`,
         // `togglebutton`, `slider`, …) — what a script comparing `strUpper(getClassName())` against
@@ -362,7 +363,7 @@ extension WinampModernScriptRuntime {
         // receiver is honestly not loading anything.
         case "isloading":
             // The XUI form (`<Wasabi:AlbumArt>`) keeps its namespace prefix in the element name.
-            let type = object.typeName.lowercased().components(separatedBy: ":").last ?? ""
+            let type = object.localTypeName
             guard type == "albumart" else { return .boolean(false) }
             return .boolean(host.isArtworkLoading)
         case "getposition" where WasabiFrame.isFrame(object):
@@ -413,9 +414,21 @@ extension WinampModernScriptRuntime {
             // unit it was cut for. Only a declared range clamps: an object that states neither `low`
             // nor `high` is left exactly as it was.
             let target = embeddedControl(of: object) ?? object
-            let position = String(Self.clampedSliderPosition(arguments[0].integerValue, of: target))
-            guard target.attributes["value"] != position else { return .null }
+            let clamped = Self.clampedSliderPosition(arguments[0].integerValue, of: target)
+            let position = String(clamped)
+            // A host-bound slider stands where the host stands (see `getposition`), so that is what a
+            // write is compared against — and the write moves the host, as a drag does. Not a seek
+            // bar: Winamp seeks on the *release*, so a script that keeps its thumb in step with the
+            // clock (shark5's `seekslide`, from a timer) must not seek on every tick.
+            let hostReading = target.attributes["action"]?.lowercased() == "seek"
+                ? nil : hostBoundValue(of: target)
+            let current = hostReading.map { String(Self.sliderPosition(normalized: $0, of: target)) }
+                ?? target.attributes["value"]
+            guard current != position else { return .null }
             _ = target.setAttribute("value", value: position)
+            if hostReading != nil {
+                driveHost(from: target, normalized: Self.normalizedSliderPosition(clamped, of: target))
+            }
             notifyObjectDidMutate(target)
             // Dispatched at the control that actually moved; `embeddedXUIForwardedEvents` carries it
             // back up to the wrapper, so a script bound to either one hears it exactly once.
@@ -782,7 +795,7 @@ extension WinampModernScriptRuntime {
     /// **wrapper**. Kept apart, the two drifted permanently — the page read 0 however far the bar had
     /// been moved, and opened every settings page scrolled to its own bottom (BB19).
     func embeddedControl(of object: WasabiObject) -> WasabiObject? {
-        guard let id = object.attributes["nullplayer.embedxui"] else { return nil }
+        guard let id = WasabiEmbeddedXUI.embeddedTag(of: object) else { return nil }
         return descendant(of: object, xmlID: id)
     }
 

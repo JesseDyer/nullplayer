@@ -69,21 +69,26 @@ enum WasabiEmbeddedXUI {
             switch self {
             case .range, .commands, .structure: return true
             case .textStyling:
-                return (embedded.typeName.lowercased().components(separatedBy: ":").last ?? "") == "text"
+                return embedded.localTypeName == "text"
             case .buttonLabel:
-                let type = embedded.typeName.lowercased()
+                let type = embedded.localTypeName
                 return (type == "button" || type == "togglebutton")
                     && embedded.attributes["text"] == nil && !(attributes["text"] ?? "").isEmpty
             }
         }
     }
 
+    /// The embedded widget's tag when `object` is an `embed_xui` wrapper, else nil.
+    static func embeddedTag(of object: WasabiObject) -> String? { object.attributes[markerKey] }
+
+    private static let markerKey = "nullplayer.embedxui"
+
     /// Mark `wrapper` as the XUI for `embedded` (found by `tag`) and forward what crosses from the
     /// wrapper's `attributes`. Answers whether the wrapper's structure crossed, in which case the
     /// caller builds the embedded widget's hosted body.
     static func forward(_ attributes: [String: String], from wrapper: WasabiObject, tag: String,
                         onto embedded: WasabiObject) -> Bool {
-        _ = wrapper.setAttribute("nullplayer.embedxui", value: tag.lowercased())
+        _ = wrapper.setAttribute(markerKey, value: tag.lowercased())
         var structureCrossed = false
         for group in KeyGroup.allCases where group.applies(to: embedded, wrapper: attributes) {
             var forwarded = false

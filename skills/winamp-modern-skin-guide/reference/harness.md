@@ -234,6 +234,8 @@ that changes the right attributes but nothing on screen is a renderer gap.
 > regressions with no new diagnostic. The store is now in memory per process, so a sweep is a
 > function of the tree: two captures with a full feature-index run between them differ only in the
 > known nondeterministic items and the live clocks (Vortex's and Mac OS X Panther's dashboards).
+> Itemskin's `cont.clear.avs` is one of those items: it dumps at 330x137 or 660x274 from run to run
+> of the same tree, and running the skin alone flips it either way (measured 2026-10-20).
 
 > **A click is driven when the loop reaches its container, so the clicked container is dumped
 > first.** The dump walks containers in declaration order and drives `RENDER_CLICK` inside that walk;

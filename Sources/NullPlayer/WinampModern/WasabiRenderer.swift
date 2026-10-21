@@ -1770,7 +1770,7 @@ final class WasabiSceneRenderer {
     func editControl(at point: CGPoint) -> WasabiObject? {
         for node in sceneNodes().reversed()
         where node.clip.contains(point) && node.frame.contains(point) {
-            guard node.object.typeName.lowercased().components(separatedBy: ":").last == "edit",
+            guard node.object.localTypeName == "edit",
                   isVisible(node.object) else { continue }
             return node.object
         }
@@ -2242,7 +2242,7 @@ final class WasabiSceneRenderer {
         let spec = WasabiGeometrySpec(attributes: object.attributes)
         guard !spec.relativeY, !spec.relativeHeight else { return nil }
         if let height = spec.height, height > 0 { return CGFloat(spec.y + height) }
-        guard (object.typeName.lowercased().components(separatedBy: ":").last ?? "") == "text" else {
+        guard object.localTypeName == "text" else {
             return nil
         }
         return CGFloat(spec.y) + resources.metrics.lineHeight(of: object)
@@ -2290,7 +2290,7 @@ final class WasabiSceneRenderer {
         // `lineHeight` is the same number `getAutoHeight()` answers, so the box a script measures and
         // the box we draw are one measurement.
         if object.attributes["h"] == nil,
-           (object.typeName.lowercased().components(separatedBy: ":").last ?? "") == "text" {
+           object.localTypeName == "text" {
             intrinsic.height = Double(resources.metrics.lineHeight(of: object))
         }
         // A window-chrome button whose artwork Winamp supplied and the skin does not. It has no
@@ -2359,7 +2359,7 @@ final class WasabiSceneRenderer {
         // sizes any object from its content's suggested size. Anunaki's LCD is
         // `<customobject groupid="main.lcd.layout2" x="51" y="32"/>` around a `fitparent="1"`
         // group declared 482x281: at 0x0 the group fitted to nothing and the display stayed empty.
-        if (object.typeName.lowercased().components(separatedBy: ":").last ?? "") == "customobject",
+        if object.localTypeName == "customobject",
            let content = object.children.first(where: { $0.typeName.caseInsensitiveCompare("group") == .orderedSame }) {
             if object.attributes["w"] == nil, intrinsic.width == 0, content.attributes["relatw"] != "1" {
                 intrinsic.width = max(0, Double(content.attributes["w"] ?? "") ?? 0)
@@ -2680,8 +2680,7 @@ final class WasabiSceneRenderer {
         // A plain `<button text="…">` draws its label over its artwork, as Wasabi's button does.
         // It arrives through `embed_xui`: Azenis² redefines `Wasabi:Button` as a grid under a bare
         // `<button>`, and its Switch/Prev/Next and search buttons were blank boxes.
-        if type == "button" || type == "togglebutton",
-           let label = object.attributes["text"], !label.isEmpty {
+        if type == "button" || type == "togglebutton", let label = Self.ownLabel(of: object) {
             drawText(label, object: object, frame: node.frame, context: context,
                      undeclaredColor: palette.listText)
         }
@@ -3875,6 +3874,17 @@ final class WasabiSceneRenderer {
         return !(object.attributes["text"] ?? "").isEmpty
     }
 
+    /// A button's own `text=`, or nil when it has none to draw. An `embed_xui` wrapper draws none:
+    /// its label crossed onto the embedded `<button>`, which draws it (B217). Drawing both doubled
+    /// five cPro skins' `Search` label. A form widget draws none either: a substituted check box is a
+    /// `togglebutton` whose `drawCheckBox` already set its label beside the box (Anunaki's Config Panel).
+    static func ownLabel(of object: WasabiObject) -> String? {
+        guard WasabiEmbeddedXUI.embeddedTag(of: object) == nil,
+              WasabiFormWidgets.kind(of: object) == nil,
+              let label = object.attributes["text"], !label.isEmpty else { return nil }
+        return label
+    }
+
     private func drawTextButton(_ object: WasabiObject, frame: CGRect, context: CGContext,
                                 pressed: Bool) {
         guard frame.width > 2, frame.height > 2 else { return }
@@ -3887,10 +3897,11 @@ final class WasabiSceneRenderer {
             context.setFillColor(color.withAlphaComponent(0.25).cgColor)
             context.fill(frame.insetBy(dx: 1, dy: 1))
         }
-        let label = object.attributes["text"] ?? ""
-        let inset = frame.insetBy(dx: 2, dy: max(0, (frame.height - 11) / 2))
-        drawSurfaceText(label, in: inset, color: color, alignment: .center, pointSize: 9,
-                        context: context)
+        if let label = Self.ownLabel(of: object) {
+            let inset = frame.insetBy(dx: 2, dy: max(0, (frame.height - 11) / 2))
+            drawSurfaceText(label, in: inset, color: color, alignment: .center, pointSize: 9,
+                            context: context)
+        }
         context.restoreGState()
     }
 
@@ -4648,8 +4659,10 @@ final class WasabiSceneRenderer {
                 // Only that shape, though: a bare `image` is otherwise a prefix with no states behind
                 // it, which Wasabi draws as nothing. NEO_CLASSIC's invisible crossfade toggle is
                 // `image="dummy"`, and `dummy` is its 300x50 title-bar font sheet.
+                // In that shape any state past the first is "on": Anunaki's three-state repeat
+                // (`autoelements="0"`, `cfgvals="0;1;-1"`) drew its rest artwork in every state.
                 candidates.append("\(image)\(state)")
-                if object.attributes["activeimage"] != nil { candidates.append(image) }
+                if let active = object.attributes["activeimage"] { candidates.append(state > 0 ? active : image) }
             }
             return candidates.first { resources.bitmap(identifier: $0) != nil } ?? candidates.first
         }
@@ -4660,10 +4673,8 @@ final class WasabiSceneRenderer {
             var active = (id == "shuffle" && host.shuffleEnabled) || (id == "repeat" && host.repeatEnabled)
             // EQ on/auto read the engine, not a local toggle state, so a change made from the menu
             // bar or a script lights the skin's own button.
-            switch object.attributes["action"]?.uppercased() {
-            case "EQ_TOGGLE": active = componentHost?.equalizerSnapshot().enabled ?? false
-            case "EQ_AUTO": active = componentHost?.equalizerSnapshot().auto ?? false
-            default: break
+            if let eqSwitch = WinampModernEQSwitch.decode(action: object.attributes["action"]) {
+                active = componentHost.map { eqSwitch.isOn(in: $0.equalizerSnapshot()) } ?? false
             }
             // A `cfgattrib` binding *is* the button's state — it is how a skin draws a preference it
             // does not otherwise track. Defix pairs a `ghost="1"` indicator with a bare click target

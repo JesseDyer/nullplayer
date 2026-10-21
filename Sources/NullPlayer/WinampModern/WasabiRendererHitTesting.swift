@@ -514,7 +514,12 @@ extension WasabiSceneRenderer {
         // one of its own children, which is what killed the drawer tabs and the colour-theme strip
         // declared before it. A group that paints a background does have a region and keeps one.
         // (Window dragging is unaffected: `shouldDragWindow` only ever accepts a `layer`.)
-        if type == "group" || type == "layout" { return object.attributes["background"] != nil }
+        // A `<CustomObject>` is the same kind of holder: Anunaki's `main.lcd.layouts` says `move="1"`
+        // and is sized to its 482x281 group, so it sat over the whole EQ drawer and took every press
+        // meant for the EQ sliders, presets and buttons.
+        if type == "group" || type == "layout" || type == "customobject" {
+            return object.attributes["background"] != nil
+        }
         if object.attributes["move"] == "1" { return true }
         // ponytail: asks the runtime's bindings per candidate under the pointer; cache per object if
         // hover profiling shows it.

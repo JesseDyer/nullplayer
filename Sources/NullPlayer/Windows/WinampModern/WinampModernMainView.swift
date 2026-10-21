@@ -703,7 +703,7 @@ final class WinampModernMainView: NSView {
         // menu) are built by a script and shown through `popAtMouse`. With no presenter installed
         // that call answered 0 — "the user picked nothing" — so those menus never appeared at all.
         scripts.popupPresenter = { [weak self] items, point in
-            self?.presentScriptPopup(items, at: point) ?? 0
+            self?.presentScriptPopup(items, at: point) ?? WinampModernScriptRuntime.popupDismissed
         }
         scripts.hooks.themeSwitchRequested = { [weak self] name in
             guard let self else { return false }
@@ -762,10 +762,10 @@ final class WinampModernMainView: NSView {
     }
 
     private static func editControl(in object: WasabiObject) -> WasabiObject? {
-        if object.typeName.lowercased().components(separatedBy: ":").last == "edit" { return object }
+        if object.localTypeName == "edit" { return object }
         var stack = object.children
         while let node = stack.popLast() {
-            if node.typeName.lowercased().components(separatedBy: ":").last == "edit" { return node }
+            if node.localTypeName == "edit" { return node }
             stack.append(contentsOf: node.children)
         }
         return nil
@@ -2273,9 +2273,7 @@ final class WinampModernMainView: NSView {
         let posted = duration > 0 ? Int32(max(0, min(255, current / duration * 255))) : 0
         if posted != lastPostedPosition {
             lastPostedPosition = posted
-            for object in positionListeners {
-                _ = try? scripts.dispatch(object: object, event: "onpostedposition", arguments: [.integer(posted)])
-            }
+            scripts.postPosition(posted, to: .seek)
             traceSeekObjects(posted: posted)
         }
         let rects = timeDependentRects()
@@ -2293,44 +2291,6 @@ final class WinampModernMainView: NSView {
 
     /// The boxes of everything whose drawing follows the playback clock: an elapsed-time readout, a
     /// seek slider's thumb, a seek progress bar. Cached with the other rect scans.
-    /// The objects Winamp posts the play position to, ten times a second.
-    ///
-    /// This used to be `graph.objects(xmlID: "HiddenSeek")` alone — stock Winamp Modern's own name
-    /// for its off-screen seek slider — so a skin that calls its seek slider anything else never
-    /// heard the clock. ClassicPro engine "two" hangs its entire seek fill off
-    /// `two.info.seeker.slider.0`'s `onPostedPosition`, and in cPro2 Dark Aluminum the seek bar *is*
-    /// the whole top panel: it never advanced while a track played. Dragging it still worked, which
-    /// is what made this look like a paint bug rather than a missing event — a drag is the user's own
-    /// value change, and only the clock comes through here.
-    ///
-    /// The rule is the one `timeDependentRects` already uses to decide what repaints from the clock:
-    /// a seek slider is `action="SEEK"`, whatever it is named. `HiddenSeek` stays in the union so a
-    /// skin that names one without declaring the action keeps working; the ids are deduplicated
-    /// because stock declares both a `Seeker` and a `SeekerGhost` and a doubled post is a doubled
-    /// handler chain.
-    private var positionListeners: [WasabiObject] {
-        if let positionListenerCache { return positionListenerCache }
-        var seen: Set<WasabiObjectID> = []
-        var found: [WasabiObject] = []
-        func consider(_ object: WasabiObject) {
-            let isSeekSlider = object.typeName.caseInsensitiveCompare("slider") == .orderedSame
-                && object.attributes["action"]?.lowercased() == "seek"
-            if isSeekSlider, seen.insert(object.stableID).inserted { found.append(object) }
-            object.children.forEach(consider)
-        }
-        renderer.loadedSkin.runtime.graph.roots.forEach(consider)
-        for named in renderer.loadedSkin.runtime.graph.objects(xmlID: "HiddenSeek")
-        where seen.insert(named.stableID).inserted {
-            found.append(named)
-        }
-        positionListenerCache = found
-        return found
-    }
-
-    /// Cleared with the skin, not with the layout: the graph a skin declares does not change when a
-    /// different layout is activated, and this is read ten times a second while a track plays.
-    private var positionListenerCache: [WasabiObject]?
-
     func timeDependentRects() -> [NSRect] {
         if let timeRectsCache { return timeRectsCache }
         let rects = renderer.sceneNodes().compactMap { node -> NSRect? in
@@ -2387,10 +2347,7 @@ final class WinampModernMainView: NSView {
         // An equalizer change made outside the skin — a preset, the menu bar, the classic EQ window,
         // a restored session — reaches the scripts on the same beat, and only when it moved.
         scripts.refreshEqualizerState()
-        for object in renderer.loadedSkin.runtime.graph.objects(xmlID: "HiddenVolume") {
-            _ = try? scripts.dispatch(object: object, event: "onpostedposition",
-                                      arguments: [.integer(postedVolume)])
-        }
+        scripts.postPosition(postedVolume, to: .volume)
         needsDisplay = true
     }
 
@@ -2753,7 +2710,7 @@ final class WinampModernMainView: NSView {
     private func presentScriptPopup(_ items: [WinampModernPopupMenuItem], at point: CGPoint?) -> Int32 {
         let target = ScriptPopupTarget()
         let menu = build(popupMenu: items, target: target)
-        guard menu.numberOfItems > 0 else { return 0 }
+        guard menu.numberOfItems > 0 else { return WinampModernScriptRuntime.popupDismissed }
         let location: NSPoint?
         if let point {
             location = NSPoint(x: point.x * skinScale, y: bounds.height - point.y * skinScale)
@@ -2789,9 +2746,9 @@ final class WinampModernMainView: NSView {
         // *against* whatever NullPlayer engine was drawing: the box goes back to Winamp's own
         // analyzer, and the skin's own command runs on top of that as it always did. Without this,
         // "Oscilloscope" would tick a row and change nothing on screen while Cava kept painting.
-        // `0` is "nothing chosen" — a dismissed menu, and also what our own rows leave behind — so it
-        // can never mean the user asked for the skin's engine back.
-        if target.chosen != 0, skinModeCommands.contains(Int(target.chosen)) {
+        // `popupDismissed` — a dismissed menu, and also what our own rows leave behind — can never
+        // mean the user asked for the skin's engine back.
+        if skinModeCommands.contains(Int(target.chosen)) {
             WindowManager.shared.setWinampModernSpectrumAnalyzer(.skin)
         }
         return target.chosen
@@ -2825,7 +2782,7 @@ final class WinampModernMainView: NSView {
 
     /// Carries the picked command out of `NSMenu.popUp`'s tracking loop.
     private final class ScriptPopupTarget: NSObject {
-        var chosen: Int32 = 0
+        var chosen = WinampModernScriptRuntime.popupDismissed
         @objc func pick(_ sender: NSMenuItem) { chosen = Int32(sender.tag) }
     }
 
@@ -2836,30 +2793,16 @@ final class WinampModernMainView: NSView {
         let value = vertical ? 1 - (point.y - frame.minY) / frame.height
                              : (point.x - frame.minX) / frame.width
         let normalized = max(0, min(1, value))
-        if let eq = WinampModernEQAction.decode(action: object.attributes["action"],
-                                                parameter: object.attributes["param"]),
-           let componentHost {
-            // ±12 dB through the host, which is the same value the thumb is drawn from.
-            eq.apply(normalized: normalized, to: componentHost)
-            // …and the skin hears its own equalizer move, as it does in Winamp. Before `notePosition`
-            // below, so the drag's own position is the last thing written to this slider.
-            scripts.refreshEqualizerState()
-        } else if WinampModernPanAction.matches(action: object.attributes["action"]) {
-            // The balance slider. The engine's unit is −1…+1 and the slider's is 0…1; both
-            // conversions live in `WinampModernPanAction` so the thumb cannot disagree with the drag.
-            host.balance = WinampModernPanAction.balance(normalized: normalized)
-        } else if object.attributes["action"] == nil,
-                  scripts.setConfigAttribute(of: object, normalized: normalized) {
+        // EQ, balance, seek and volume, through the host — the same value the thumb is drawn from.
+        // The EQ half also lets the skin hear its own equalizer move, before `notePosition` below,
+        // so the drag's own position is the last thing written to this slider.
+        if !scripts.driveHost(from: object, normalized: normalized),
+           object.attributes["action"] == nil,
+           scripts.setConfigAttribute(of: object, normalized: normalized) {
             // A slider bound to a `cfgattrib` carries no action — the binding *is* what it drives.
             // mmd3's `sCrossfade` (`high="20"`) is the crossfade length, and four other skins spell
             // the same control the same way.
             WindowManager.shared.refreshWinampModernSurfaces()
-        } else {
-            switch object.attributes["action"]?.lowercased() {
-            case "seek": host.seek(to: host.duration * normalized)
-            case "volume": host.volume = normalized
-            default: break
-            }
         }
         // Wasabi moves the object's own position on a drag and tells the skin about it, whatever the
         // slider drives. Skins hang their only feedback off that: multipass's balance and crossfade

@@ -61,6 +61,9 @@
 - **Modern skins: playlist buttons where a skin's frame expects Winamp's** — Mac OS X Panther's
   Playlist Editor now has its Add, Rem, Sel, Misc and List buttons in its status bar, as JRS's
   already did; it had none, so its playlist could not be edited from the window.
+- **Modern skins: button labels drawn once** — the Search button on five ClassicPro skins no longer
+  draws its label twice, which had made it look smeared and bold, and the link buttons on
+  krazyPlayer's About page and on Vortex's and 1010 Fullscreen's config pages now show their text.
 
 ## 0.33.0
 

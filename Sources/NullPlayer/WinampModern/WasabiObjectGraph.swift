@@ -27,6 +27,10 @@ struct WasabiScriptBinding: Hashable {
 final class WasabiObject {
     let stableID: WasabiObjectID
     let typeName: String
+    /// `typeName` lowercased with any namespace prefix dropped: `Wasabi:Button` → `button`. The
+    /// question "what kind of widget is this?" across both spellings; a compare that must tell the
+    /// standard library's `Wasabi:Button` from a bare `<button>` uses the full `typeName`.
+    let localTypeName: String
     let source: WalSourceLocation
     private(set) var attributes: [String: String]
     private(set) weak var parent: WasabiObject?
@@ -55,6 +59,7 @@ final class WasabiObject {
          source: WalSourceLocation, graph: WasabiObjectGraph, attributeOrder: [String] = []) {
         self.stableID = stableID
         self.typeName = typeName
+        self.localTypeName = typeName.lowercased().components(separatedBy: ":").last ?? ""
         self.declaredAttributeOrder = attributeOrder
         self.attributes = Dictionary(uniqueKeysWithValues: attributes.map { ($0.key.lowercased(), $0.value) })
         self.source = source

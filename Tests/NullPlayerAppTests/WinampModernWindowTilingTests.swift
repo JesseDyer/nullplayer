@@ -18,8 +18,8 @@ final class WinampModernWindowTilingTests: XCTestCase {
     private let region = NSRect(x: 0, y: 0, width: 1600, height: 1000)
     private var player: NSRect { NSRect(x: 0, y: 620, width: 400, height: 380) }
 
-    private func makeTiler() -> WindowManager.WinampModernTiler {
-        WindowManager.WinampModernTiler(playerFrame: player, region: region)
+    private func makeTiler() -> WinampModernTiler {
+        WinampModernTiler(playerFrame: player, region: region)
     }
 
     // MARK: - Column packing
@@ -128,7 +128,7 @@ final class WinampModernWindowTilingTests: XCTestCase {
     /// The case that made the app unusable: a skin so wide that column 2 begins past the right edge.
     func testASkinWiderThanHalfTheScreenStillTilesOnScreen() {
         let wide = NSRect(x: 0, y: 122, width: 1000, height: 878)
-        var tiler = WindowManager.WinampModernTiler(playerFrame: wide, region: region)
+        var tiler = WinampModernTiler(playerFrame: wide, region: region)
         for size in [NSSize(width: 700, height: 500), NSSize(width: 700, height: 500),
                      NSSize(width: 900, height: 400)] {
             let slot = tiler.nextSlot(for: size)
@@ -146,7 +146,7 @@ final class WinampModernWindowTilingTests: XCTestCase {
     func testAClampThatWouldCoverThePlayerGoesLeftOfItInstead() {
         let region = NSRect(x: 0, y: 0, width: 1800, height: 1130)
         let player = NSRect(x: 762, y: 743, width: 419, height: 133)
-        var tiler = WindowManager.WinampModernTiler(playerFrame: player, region: region)
+        var tiler = WinampModernTiler(playerFrame: player, region: region)
         var placed = [player]
         for size in [NSSize(width: 419, height: 205), NSSize(width: 419, height: 182),
                      NSSize(width: 430, height: 182), NSSize(width: 688, height: 496)] {
@@ -169,7 +169,7 @@ final class WinampModernWindowTilingTests: XCTestCase {
     func testWithNoRoomOnEitherSideTheClampCoversLess() {
         let region = NSRect(x: 0, y: 0, width: 1800, height: 1130)
         let player = NSRect(x: 762, y: 717, width: 503, height: 159)
-        var tiler = WindowManager.WinampModernTiler(playerFrame: player, region: region)
+        var tiler = WinampModernTiler(playerFrame: player, region: region)
         for size in [NSSize(width: 503, height: 246), NSSize(width: 503, height: 219),
                      NSSize(width: 516, height: 219)] {
             _ = tiler.nextSlot(for: size)
@@ -184,7 +184,7 @@ final class WinampModernWindowTilingTests: XCTestCase {
     /// player parked near the right edge, rather than jumping across to the left.
     func testAClampThatCoversNothingStaysInItsColumn() {
         let player = NSRect(x: 1300, y: 620, width: 300, height: 380)
-        var tiler = WindowManager.WinampModernTiler(playerFrame: player, region: region)
+        var tiler = WinampModernTiler(playerFrame: player, region: region)
         let slot = tiler.nextSlot(for: NSSize(width: 400, height: 200))
         XCTAssertEqual(slot, NSRect(x: 1200, y: 420, width: 400, height: 200))
     }
@@ -215,7 +215,7 @@ final class WinampModernWindowTilingTests: XCTestCase {
         let player = NSRect(x: 762, y: 701, width: 335, height: 106)
         let equalizer = NSRect(x: 762, y: 537, width: 335, height: 164)
         let size = NSSize(width: 335, height: 145)
-        var tiler = WindowManager.WinampModernTiler(playerFrame: player, region: region)
+        var tiler = WinampModernTiler(playerFrame: player, region: region)
         let first = tiler.nextSlot(for: size)
         XCTAssertTrue(first.intersects(equalizer))
         tiler.skip(past: [equalizer])

@@ -206,7 +206,7 @@ final class WinampModernInteractionSweepTests: XCTestCase {
         runtime.hooks.containerVisibilityRequested = { id, visible in effects.append("window:\(id)=\(visible ? 1 : 0)") }
         runtime.popupPresenter = { items, _ in
             effects.append("menu:\(items.filter { !$0.isSeparator }.count)")
-            return 0
+            return WinampModernScriptRuntime.popupDismissed
         }
         var pointer = point
         runtime.hooks.mousePositionInObjectSpaceRequested = { _ in pointer }

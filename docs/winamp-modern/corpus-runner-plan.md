@@ -29,7 +29,7 @@ general, so it applies to every skin with the same shape, named after the skin t
 
 | Skin | What was wrong | Fix (where) |
 |---|---|---|
-| Mac OS X Panther, New_Night | A library or browser wider than either side of the player was clamped onto the player. | The tiler also tries the region's corners and takes the least-covered candidate, counting the player 4× (`WindowManager.WinampModernTiler`) |
+| Mac OS X Panther, New_Night | A library or browser wider than either side of the player was clamped onto the player. | The tiler also tries the region's corners and takes the least-covered candidate, counting the player 4× (`WinampModernTiler`, `App/WinampModernTiler.swift`) |
 | CopperdeckII | Every window hung 178px off the player; the shade collapsed to 1px; the video window opened 2147 wide | Tiling uses the player's `snapadjust*` edges; a `linkwidth` entry keeps the entered layout's declared height; the content fit ignores an axis the skin sized with an absolute number |
 | Anunaki | The LCD was empty | A sizeless `<CustomObject>` takes the size of the group it hosts |
 | WinampAzenis2 | Switch, Prev, Next and the search buttons were blank | A plain `<button text=…>` draws its label; an `embed_xui` wrapper passes its label down |

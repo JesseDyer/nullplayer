@@ -57,6 +57,7 @@ final class WinampModernConfiguration {
         for name in defaults.dictionaryRepresentation().keys where name.hasPrefix(prefix) {
             defaults.removeObject(forKey: name)
         }
+        spellingsByFoldedKey = nil
     }
 
     static let keyPrefix = "winampModern.config."
@@ -66,7 +67,30 @@ final class WinampModernConfiguration {
     }
 
     private func storageKey(section: String, key: String) -> String {
-        sectionPrefix(section) + Self.safeComponent(key)
+        storedSpelling(of: sectionPrefix(section) + Self.safeComponent(key))
+    }
+
+    /// Wasabi names an attribute case-insensitively, and so does the old MAKI compiler, which folds
+    /// strings differing only in case into one: Anunaki's `main.maki` registers "Normal" as `normal`
+    /// (sharing its layout id's string) while `inits.maki` and the Config Panel spell it `Normal`.
+    /// Stored under the exact spelling those were two settings — Party! cleared one, the player-mode
+    /// script read the other and switched straight back to normal. A key resolves to the spelling
+    /// already stored, so nothing persisted is lost; a new key keeps the spelling it arrives with.
+    private var spellingsByFoldedKey: [String: String]?
+
+    private func storedSpelling(of key: String) -> String {
+        if spellingsByFoldedKey == nil {
+            let prefix = "\(Self.keyPrefix)\(namespace)."
+            var index: [String: String] = [:]
+            for name in defaults.dictionaryRepresentation().keys.sorted() where name.hasPrefix(prefix) {
+                index[name.lowercased()] = index[name.lowercased()] ?? name
+            }
+            spellingsByFoldedKey = index
+        }
+        let folded = key.lowercased()
+        if let stored = spellingsByFoldedKey?[folded] { return stored }
+        spellingsByFoldedKey?[folded] = key
+        return key
     }
 
     /// `static`, for the reason `WinampModernComponentRegistry.normalize` is written over bytes:

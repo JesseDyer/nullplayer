@@ -122,12 +122,17 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     var graphDidMutate: (() -> Void)?
     /// What the window layer answers for the scripts; see `WinampModernScriptHooks`.
     var hooks = WinampModernScriptHooks()
-    /// Show a script-built popup menu and answer the command the user picked, or 0. The runtime
-    /// resolves the submenu tree before calling, so the presenter only builds UI.
+    /// Show a script-built popup menu and answer the command the user picked, or `popupDismissed`.
+    /// The runtime resolves the submenu tree before calling, so the presenter only builds UI.
     ///
     /// A `nil` point is `popAtMouse`. A point is `popAtXY`, in **window-client space** — the space
     /// `clientToScreenX/Y` answer in, which is what every measured caller computes the point with.
     var popupPresenter: (([WinampModernPopupMenuItem], CGPoint?) -> Int32)?
+    /// What Winamp's `popAtMouse`/`popAtXY` answer for a menu that was dismissed or never shown. Not
+    /// 0: skins number their first command 0 and test `res < 0` for a cancel — Anunaki's wheel
+    /// (0 = Volume), lights (0 = Off) and player-mode (0 = normal) menus all do — so answering 0 ran
+    /// the first row whenever a menu was dismissed.
+    static let popupDismissed: Int32 = -1
     /// A hosted window's borrowed chrome dropped a strip after the window was built — Itemskin
     /// creates its chrome when the window is shown — so the window is this many points shorter.
     var hostedChromeLiftApplied: ((WasabiObjectID, CGFloat) -> Void)?
@@ -686,7 +691,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// one on screen.
     func applyCustomObjectGroup(_ key: String, value: String, to object: WasabiObject) {
         guard key.caseInsensitiveCompare("groupid") == .orderedSame,
-              (object.typeName.lowercased().components(separatedBy: ":").last ?? "") == "customobject"
+              object.localTypeName == "customobject"
         else { return }
         // `children` is a value-typed array, so the loop iterates the snapshot it took even though
         // `discardSubtree` empties the property underneath it.
@@ -699,10 +704,28 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         // `frame=(8.0, 132.0, 0.0, 0.0)` inside a 280x176 holder, drawing nothing at all while its
         // script ran perfectly). `System.newGroup`'s path deliberately keeps the bare node — there
         // the script places the group itself with `init(parent)` — so the fill belongs here.
-        _ = child.setAttribute("fitparent", value: "1")
+        //
+        // Filled means placed at the box's origin too: Wasabi resizes the content to the custom
+        // object's own rect, so a groupdef's `x`/`y` does not move it. And when neither side states
+        // a size there is no box to fill — Anunaki's stick and shade LCD groups declare none and
+        // carry the main LCD's `x="51" y="32"`, so filling a 0x0 holder clipped the whole display
+        // away. Left unsized, the group does not clip, and its children land where the skin drew them.
+        _ = child.setAttribute("x", value: "0")
+        _ = child.setAttribute("y", value: "0")
+        let sizeKeys = ["w", "h", "relatw", "relath", "fitparent"]
+        if sizeKeys.contains(where: { object.attributes[$0] != nil })
+            || child.attributes["w"] != nil || child.attributes["h"] != nil {
+            _ = child.setAttribute("fitparent", value: "1")
+        }
         // Started now, for the reason `instantiate` starts its own: the group is already parented,
         // and the caller's next move is to configure what it just put on screen.
         try? startScripts(addedBeneath: child)
+        // Content that comes up on screen is told so, as Wasabi tells a group it shows. Anunaki's
+        // digital clock starts its tick from `onSetVisible(1)` alone; without it the stick and main
+        // LCD clocks drew the time once and stood still.
+        if effectiveVisibility(of: object) {
+            _ = try? dispatch(object: child, event: "onsetvisible", arguments: [.boolean(true)])
+        }
         noteGeometryChange()
         notifyGraphDidMutate()
     }
@@ -962,6 +985,11 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// started when the outermost dispatch finishes.
     var pendingRuntimeGroups: [WasabiObject] = []
 
+    /// The sliders `postPosition(_:to:)` posts to, and the graph structure they were read from.
+    var postedSliderCache: [PostedSlider: (generation: UInt64, sliders: [WasabiObject])] = [:]
+    /// The engine's EQ switches as `syncEqualizerSwitches` last saw them.
+    var lastEqualizerSwitches: (enabled: Bool, auto: Bool)?
+
     /// Start the scripts of a pending runtime group, if `object` is one (or contains one — a script may
     /// `init` an ancestor of the group it created).
     func startPendingScripts(for object: WasabiObject) throws {
@@ -1140,6 +1168,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// its own write twice, and a poll costs eleven integer compares.
     func refreshEqualizerState() {
         guard !isTornDown else { return }
+        syncEqualizerSwitches()
         guard let bandValue = hooks.equalizerBandRequested else { return }
         let bands = (0..<WinampModernEQAction.bandCount).map { bandValue($0) }
         let preamp = hooks.equalizerPreampRequested?() ?? 0
@@ -1371,46 +1400,6 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         return nil
     }
 
-    /// Where a host-bound control stands, 0…1 — the script-side twin of the renderer's
-    /// `normalizedValue(of:)`, and deliberately the same four families in the same order, so the
-    /// number a skin reads back can never disagree with the thumb that is drawn for it. `nil` for
-    /// everything else: a slider with no action, or one bound to a `cfgattrib`, keeps reading the
-    /// setting or its own `value` exactly as before.
-    func hostBoundValue(of object: WasabiObject) -> CGFloat? {
-        switch object.attributes["action"]?.lowercased() {
-        case "volume": return CGFloat(host.volume)
-        case "seek": return host.duration > 0 ? CGFloat(host.currentTime / host.duration) : 0
-        case let action where WinampModernPanAction.matches(action: action):
-            return WinampModernPanAction.normalized(balance: host.balance)
-        default:
-            guard let eq = WinampModernEQAction.decode(action: object.attributes["action"],
-                                                       parameter: object.attributes["param"]),
-                  let snapshot = componentHost?.equalizerSnapshot() else { return nil }
-            return eq.normalizedValue(in: snapshot)
-        }
-    }
-
-    /// A 0…1 host reading in the slider's **own** `low…high` unit — the same conversion the view's
-    /// `notePosition` writes with, so a script that reads a position and one that hears
-    /// `onSetPosition` are handed the same number. Winamp's default range is 0…255.
-    static func sliderPosition(normalized: CGFloat, of object: WasabiObject) -> Int32 {
-        let low = Double(object.attributes["low"] ?? "0") ?? 0
-        let high = Double(object.attributes["high"] ?? "255") ?? 255
-        return Int32((low + Double(normalized) * (high - low)).rounded())
-    }
-
-    /// A slider position held inside the `low…high` the object declares. Untouched when it declares
-    /// neither, so nothing that never stated a range changes behaviour.
-    static func clampedSliderPosition(_ value: Int32, of object: WasabiObject) -> Int32 {
-        let lowText = object.attributes["low"]
-        let highText = object.attributes["high"]
-        guard lowText != nil || highText != nil else { return value }
-        let low = Int32(lowText ?? "") ?? 0
-        let high = Int32(highText ?? "") ?? 255
-        guard low <= high else { return value }
-        return min(high, max(low, value))
-    }
-
     private static let embeddedXUIForwardedEvents: Set<String> = [
         "onleftbuttondown", "onleftbuttonup", "onleftclick", "onleftbuttondblclk",
         "onrightbuttondown", "onrightbuttonup", "onrightclick", "onenterarea", "onleavearea",
@@ -1475,6 +1464,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         guard let binding = Self.configBinding(of: object) else { return false }
         let flipped = configInteger(section: binding.section, key: binding.key) != 0 ? "0" : "1"
         setConfigAttribute(section: binding.section, key: binding.key, value: flipped)
+        // A click also tells the clicked button `onToggle`, bound or not, as Wasabi's does: Anunaki
+        // prints "Shuffle On" / "Repeat Off" from its shuffle and repeat buttons' `onToggle` alone.
+        _ = try? dispatch(object: object, event: "ontoggle", arguments: [.boolean(flipped == "1")])
         return true
     }
 
@@ -1740,7 +1732,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         var owners: [WasabiObject] = []
         var candidate = object.parent
         while let current = candidate {
-            if current.attributes["nullplayer.embedxui"] == id { owners.append(current) }
+            if WasabiEmbeddedXUI.embeddedTag(of: current) == id { owners.append(current) }
             candidate = current.parent
         }
         return owners
@@ -3711,10 +3703,6 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         let value = object.attributes["visible"]?.lowercased()
         return value != "0" && value != "false" && value != "no"
     }
-
-    /// Winamp applies `targetspeed` as an exponential ease factor per ~20 ms timer tick.
-    /// Scale to real elapsed time so the animation looks the same at any frame rate.
-    static let wasabiTargetTickPeriod: Double = 0.020
 
     /// Bind the host-provided singletons a program declares but never assigns.
     ///

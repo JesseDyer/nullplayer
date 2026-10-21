@@ -23,8 +23,9 @@ extension WinampModernScriptRuntime {
         let startW: Double
         let startH: Double
         let startAlpha: Double
-        let speed: Double
-        var lastTick: Double
+        /// Seconds to reach the target — what Winamp's `setTargetSpeed(float insecond)` takes.
+        let duration: Double
+        let startTime: Double
         let hasTargetX: Bool
         let hasTargetY: Bool
         let hasTargetW: Bool
@@ -196,7 +197,10 @@ extension WinampModernScriptRuntime {
             _ = try? dispatch(object: object, event: "ontargetreached")
             return
         }
-        let speed = min(1.0, rawSpeed)
+        // `setTargetSpeed` is a **duration**: "the number of seconds in which to reach the target"
+        // (`std.mi`). It was read as a per-tick ease fraction capped at 1, so every value of 1 or
+        // more snapped in a few ticks: Anunaki's notifier fades out over its 5 s setting and was
+        // gone in a fraction of a second.
         let cx = Double(object.attributes["x"] ?? "0") ?? 0
         let cy = Double(object.attributes["y"] ?? "0") ?? 0
         let cw = Double(object.attributes["w"] ?? "0") ?? 0
@@ -210,8 +214,8 @@ extension WinampModernScriptRuntime {
             targetH: hasH ? (Double(object.attributes["targeth"]!) ?? ch) : ch,
             targetAlpha: hasA ? (Double(object.attributes["targeta"]!) ?? ca) : ca,
             startX: cx, startY: cy, startW: cw, startH: ch, startAlpha: ca,
-            speed: speed,
-            lastTick: ProcessInfo.processInfo.systemUptime,
+            duration: rawSpeed,
+            startTime: ProcessInfo.processInfo.systemUptime,
             hasTargetX: hasX, hasTargetY: hasY, hasTargetW: hasW, hasTargetH: hasH, hasTargetA: hasA
         )
 
@@ -238,22 +242,20 @@ extension WinampModernScriptRuntime {
             return
         }
 
-        let now = ProcessInfo.processInfo.systemUptime
-        let dt = max(0.001, now - state.lastTick)
-        state.lastTick = now
-        let factor = 1 - pow(1 - state.speed, dt / Self.wasabiTargetTickPeriod)
+        // Linear from where the move started, over the stated duration, as Wasabi steps it.
+        let progress = min(1, (ProcessInfo.processInfo.systemUptime - state.startTime) / state.duration)
 
-        func lerp(_ current: Double, _ target: Double) -> Double {
-            current + (target - current) * factor
+        func lerp(_ start: Double, _ target: Double) -> Double {
+            start + (target - start) * progress
         }
 
-        state.currentX = lerp(state.currentX, state.targetX)
-        state.currentY = lerp(state.currentY, state.targetY)
-        state.currentW = lerp(state.currentW, state.targetW)
-        state.currentH = lerp(state.currentH, state.targetH)
-        state.currentAlpha = lerp(state.currentAlpha, state.targetAlpha)
+        state.currentX = lerp(state.startX, state.targetX)
+        state.currentY = lerp(state.startY, state.targetY)
+        state.currentW = lerp(state.startW, state.targetW)
+        state.currentH = lerp(state.startH, state.targetH)
+        state.currentAlpha = lerp(state.startAlpha, state.targetAlpha)
 
-        // What this tick actually *changed*, kept apart by kind. A 60 Hz ease writes an integer
+        // What this tick actually *changed*, kept apart by kind. A 60 Hz step writes an integer
         // attribute, so most ticks of a slow fade write the value the object already has —
         // `setAttribute` answers false and there is nothing on screen to repaint. And a tick that
         // moves only `alpha` moves no geometry: it needs the object's own rect repainted, not a

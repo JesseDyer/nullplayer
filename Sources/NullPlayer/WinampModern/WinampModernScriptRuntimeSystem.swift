@@ -67,6 +67,7 @@ extension WinampModernScriptRuntime {
             // The change is what a skin listens for. Re-entrancy is bounded by the dispatch guard, so
             // a handler that sets the volume again cannot recurse.
             _ = try? dispatchSystem(event: "onvolumechanged", arguments: [.integer(level)])
+            postPosition(level, to: .volume)
             return .null
         case "play": host.play(); return .null
         case "pause": host.pause(); return .null
@@ -204,7 +205,8 @@ extension WinampModernScriptRuntime {
                                                key: arguments[1].stringValue)
             return .null
         case "getitem":
-            return dynamicValue(role: .configItem(section: arguments[0].stringValue))
+            let section = WinampModernConfigBridge.section(forItemName: arguments[0].stringValue)
+            return dynamicValue(role: .configItem(section: section))
         case "getitembyguid":
             // Winamp's config is addressed either by display name or by the owning component's GUID.
             // Both name the same private store here, so the GUID is simply the section key —
