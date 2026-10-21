@@ -865,6 +865,13 @@ final class WinampModernMainView: NSView {
         // shares its keys while the engine feeding it is paused.
         if videoSurfaces.values.contains(where: { $0.handleKeyDown(event) }) { return }
         if let surface = hostedVisualizationSurface, surface.handleKeyDown(event) { return }
+        // ↑/↓ step the volume, as in every other mode's main window. Only those two: the rest of that
+        // table's letters are the visualization's keys here. The engine announces no volume change, so
+        // the skin's own readout is told here, the way `updatePlaybackState` tells it of any other.
+        if MainWindowKeys.performVolumeStep(event) {
+            updatePlaybackState()
+            return
+        }
         super.keyDown(with: event)
     }
 

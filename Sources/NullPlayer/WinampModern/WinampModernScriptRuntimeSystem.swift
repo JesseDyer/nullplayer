@@ -61,8 +61,12 @@ extension WinampModernScriptRuntime {
         case "getvisband":
             return .integer(visBand(channel: arguments[0].integerValue, band: arguments[1].integerValue))
         case "getvolume": return .integer(Int32((host.volume * 255).rounded()))
+        // Winamp keeps the volume in a byte, so a level outside 0…255 wraps rather than clamps — and a
+        // skin can be written against that. Symplicipod's rotary knob hands the left half of its
+        // sweep over as −254…−127, which only reads as the 2…129 its right half continues from once
+        // wrapped; clamped, half the knob was mute and the volume jumped as the pointer crossed the top.
         case "setvolume":
-            let level = max(0, min(255, arguments[0].integerValue))
+            let level = Int32(UInt8(truncatingIfNeeded: arguments[0].integerValue))
             host.volume = Double(level) / 255
             // The change is what a skin listens for. Re-entrancy is bounded by the dispatch guard, so
             // a handler that sets the volume again cannot recurse.
