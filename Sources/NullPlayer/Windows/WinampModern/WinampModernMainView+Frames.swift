@@ -184,7 +184,7 @@ extension WinampModernMainView {
         let job = renderer.canvasJob(pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, rects: rects,
                                      colorSpace: colorSpace, skinScale: skinScale,
                                      pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID,
-                                     chrome: drawsHostChrome ? { [unowned self] in drawHostChrome(in: $0) } : nil)
+                                     chrome: hostChrome)
         let viewRects = rects.map { $0.applying(CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)) }
         return (job, viewRects, isWhole)
     }
@@ -199,7 +199,7 @@ extension WinampModernMainView {
         let pixelsPerUnit = contextScale > 0 ? max(1, (window?.backingScaleFactor ?? 1) / contextScale) : 1
         renderer.drawDirectly(in: context, pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID,
                               skinScale: skinScale, devicePixelsPerUnit: pixelsPerUnit,
-                              chrome: drawsHostChrome ? { [unowned self] in drawHostChrome(in: $0) } : nil)
+                              chrome: hostChrome)
     }
 
     private static var oversizedCanvasLogged = false

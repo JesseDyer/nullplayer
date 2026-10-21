@@ -69,9 +69,7 @@ extension WinampModernScriptRuntime {
     func syncEqualizerSwitches() {
         guard let snapshot = componentHost?.equalizerSnapshot() else { return }
         let switches = (enabled: snapshot.enabled, auto: snapshot.auto)
-        let previous = lastEqualizerSwitches
-        lastEqualizerSwitches = switches
-        guard let previous, previous != switches else { return }
+        guard announcedEqualizer.announce(switches: switches) else { return }
         for object in loadedSkin.runtime.graph.allObjectsUnordered
         where object.tag.is(.toggleButton) {
             guard let on = equalizerSwitchState(of: object),

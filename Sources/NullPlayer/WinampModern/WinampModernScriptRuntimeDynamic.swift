@@ -42,7 +42,7 @@ extension WinampModernScriptRuntime {
         // answers `sendAction("cancelinfo")` — which `seek.maki` posts on every mouse-up and on
         // `onSetFinalPosition` — with `timer.onTimer()`, and without this the whole `onAction`
         // handler aborted there, leaving the ticker stuck on its `Seek: 1:13/4:05 (30%)` preview.
-        if Self.dispatchableEventArity[method] != nil {
+        if WinampModernScriptSignatures.dispatchableEventArity[method] != nil {
             _ = try dispatch(target: MakiObjectReference(.dynamic(id)), event: method,
                              arguments: arguments)
             return method == "onaction" ? .integer(0) : .null

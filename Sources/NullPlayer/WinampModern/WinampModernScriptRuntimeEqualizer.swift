@@ -2,11 +2,22 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// Last equalizer values announced to the scripts, on MAKI's −127…127 scale. `nil` before the first
-/// observation, which is what makes the opening state an announcement rather than silence.
+/// The equalizer as the scripts were last told it: bands and preamp on MAKI's −127…127 scale, and the
+/// two switches the skin's EQ buttons mirror.
 struct WinampModernAnnouncedEqualizer {
+    /// `nil` before the first observation, which is what makes the opening state an announcement
+    /// rather than silence.
     private(set) var bands: [Int]?
     private(set) var preamp: Int?
+    /// `nil` before the first observation, which is *not* announced: the buttons load in step.
+    private var switches: (enabled: Bool, auto: Bool)?
+
+    /// Records the switches and answers whether they moved since the last observation.
+    mutating func announce(switches: (enabled: Bool, auto: Bool)) -> Bool {
+        defer { self.switches = switches }
+        guard let previous = self.switches else { return false }
+        return previous != switches
+    }
 
     /// Records the new values and answers the previous ones, or nil when nothing moved.
     mutating func announce(bands: [Int], preamp: Int) -> (bands: [Int]?, preamp: Int?)? {

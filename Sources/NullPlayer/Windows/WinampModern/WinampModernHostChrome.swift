@@ -30,6 +30,11 @@ extension WinampModernMainView {
         context.restoreGState()
     }
 
+    /// `drawHostChrome` for the canvas builders, or nil when this window has no host chrome.
+    var hostChrome: ((WasabiDrawList) -> Void)? {
+        drawsHostChrome ? { [unowned self] in drawHostChrome(in: $0) } : nil
+    }
+
     /// What a press at `viewPoint` (this view's own coordinates) means to the host's chrome, or nil
     /// for the contents: the fallback close corner of a scene with no close of its own, or the glass
     /// chrome's close and rim.

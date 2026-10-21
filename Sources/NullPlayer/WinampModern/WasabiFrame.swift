@@ -21,7 +21,7 @@ enum WasabiFrame {
     static let dividerHalfThickness = 4.0
 
     static func isFrame(_ tag: WasabiTag) -> Bool {
-        tag.is(.frame) || tag.is(.frame, in: .wasabi)
+        tag.isStandard(.frame)
     }
 
     /// The two group identifiers this frame instantiates, in `from`-edge-first document order

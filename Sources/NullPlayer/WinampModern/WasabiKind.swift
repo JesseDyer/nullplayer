@@ -7,7 +7,7 @@ import Foundation
 /// one by spelling — the full name or the namespace-dropped one — at each site, which is how B217
 /// found the two spellings matching differently from one line to the next. Now a site says which
 /// it means: `tag.is(.button)` for the bare tag, `tag.is(.button, in: .wasabi)` for the standard
-/// library's. There is no any-namespace match (B237): `ColorThemes:List` is not a list, so a site
+/// library's, `tag.isStandard(.button)` for either. There is no any-namespace match (B237): `ColorThemes:List` is not a list, so a site
 /// that wants a foreign namespace names it.
 ///
 /// The cases are the tags the engine treats specially; every other tag is `.other`. A skin's own
@@ -97,5 +97,15 @@ struct WasabiTag: Hashable {
     /// Whether the tag is one of `kinds`, written in `namespace`.
     func `is`(anyOf kinds: Set<WasabiKind>, in namespace: WasabiNamespace = .none) -> Bool {
         self.namespace == namespace && kinds.contains(kind)
+    }
+
+    /// Whether the tag is `kind` bare or in the standard library: `<text>` or `<Wasabi:Text>`.
+    func isStandard(_ kind: WasabiKind) -> Bool {
+        isStandard(anyOf: [kind])
+    }
+
+    /// Whether the tag is one of `kinds`, bare or in the standard library.
+    func isStandard(anyOf kinds: Set<WasabiKind>) -> Bool {
+        (namespace == .none || namespace == .wasabi) && kinds.contains(kind)
     }
 }

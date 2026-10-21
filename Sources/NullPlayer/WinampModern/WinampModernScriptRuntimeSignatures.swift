@@ -5,6 +5,150 @@ import Foundation
 /// The arity table: every MAKI method the runtime answers, and the class-gated tables for
 /// `PlEdit` and `MLPlaylists`. Pure static data; the runtime asks through `signature(for:classGUID:)`.
 enum WinampModernScriptSignatures {
+    /// Standard GUI events a script is allowed to invoke as a method on an object, with their argument
+    /// counts. Kept explicit: an unknown arity would desynchronise the interpreter's stack.
+    static let dispatchableEventArity: [String: Int] = [
+        "onsetposition": 1,
+        "onsetfinalposition": 1,
+        "onpostedposition": 1,
+        "onleftclick": 0,
+        "onrightclick": 0,
+        "ontargetreached": 0,
+        "ontoggle": 1,
+        // `onActivate`'s companion. One argument, read off every handler in the corpus — mmd3,
+        // BLAKK, Ebonite, boom, impulse and Styx all open theirs with a single integer store.
+        "onactivate": 1,
+        // `onAction` is Wasabi's generic message channel, and scripts *send* on it as well as
+        // receive: ClassicPro's menu bar posts itself `update_menu`, and the drawer registers its
+        // widgets with the widget manager, both by calling the event as a method.
+        "onaction": 7,
+        // ClassicPro's EQ script labels its bands by calling its own `System.onEqFreqChanged` handler
+        // once at load with the value it read out of Winamp's config.
+        "oneqfreqchanged": 1,
+        // Same idiom, one layer in: a XUI object's script hands itself a param it computed rather
+        // than one the markup declared. ClassicPro's Now Playing widget resolves the skin's list
+        // background through `ColorMgr` and then feeds it to its own handler as
+        // `System.onSetXuiParam("bgcolor", "r,g,b")` — which, unimplemented, aborted `onScriptLoaded`
+        // on the line after `getColor` and left the widget an empty pane.
+        "onsetxuiparam": 2,
+        // Winamp fires this whenever the level moves, and a skin with no volume slider relies on it
+        // for the only feedback it has: Love is War Miku's `+`/`-` buttons show "Volume: 40%" on the
+        // song ticker from this handler and clear it a moment later.
+        "onvolumechanged": 1,
+        // The star row's echo: Winamp raises it whenever the playing track's rating changes, whoever
+        // changed it, and Big Bento's `fileinfo` redraws its five stars from the handler rather than
+        // from the click. One argument — the new rating in stars — which is also how the API is
+        // documented and the only shape the getter/setter pair leaves room for.
+        "oncurrenttrackrated": 1,
+        // The equalizer's two, on the same footing: Winamp raises them whenever a band or the preamp
+        // moves, whoever moved it. Arities read off the five skins that handle them (multipass, mmd3,
+        // Rika, winampmodern566, Overdrive_2) — every one of them opens `onEqBandChanged` with two
+        // stores and `onEqPreampChanged` with one.
+        "oneqbandchanged": 2,
+        "oneqpreampchanged": 1,
+        // The Phase 24 additions. ClassicPro calls all of these as methods as well as receiving them:
+        // `beat.m`'s own `frameGroup.onResize(0, 0, w, h)` re-solves its geometry after a change it
+        // made itself, `tagviewer.m` does the same, and a script that reuses its `onSetVisible` or
+        // `onTitleChange` body is the same idiom `onSetPosition` already had.
+        "onresize": 4,
+        // Scripts call their own pointer and notify handlers to reuse them: Bio-Nid's playlist editor
+        // runs `poppler.onMouseMove(x, y)` while it resizes, NMP10's `about` script
+        // `Next.onLeftButtonDown(0, 0)` (B182). Arities from `std.mi`. Three names are declared
+        // with another arity on a class the corpus never calls them on (`Wac.onNotify` 3,
+        // `System.onAccelerator` 3, `Vis.onFrame` 0); `signature(for:classGUID:)` gates those.
+        "onleftbuttondown": 2,
+        "onleftbuttonup": 2,
+        "onrightbuttondown": 2,
+        "onrightbuttonup": 2,
+        "onmousemove": 2,
+        "onnotify": 4,
+        "oneqchanged": 1,
+        "oninfochange": 1,
+        "onswitchtolayout": 1,
+        "onplay": 0,
+        "onstop": 0,
+        "onaccelerator": 1,
+        "onframe": 1,
+        // `onUserResize` is **not** `onResize`: it fires only for a resize the *user* dragged, which
+        // is the whole difference a standard frame is built on. Ebonite's frame writes the client's
+        // new box from it (through a 1 ms timer) and would otherwise fight its own `onResize`.
+        // Four arguments, the same box `onResize` carries.
+        "onuserresize": 4,
+        "onsetvisible": 1,
+        // The wheel. **Two** arguments, not one — read off two independent skins' bytecode (Big Bento
+        // Modern's `config_vscrollbars` at `@638` and cPro-Bento's `centro.multidrawer` at `@1091`
+        // both open with two `op3` stores), which is the corroboration a guessed arity needs. Wasabi
+        // documents them as `(clicks, lines)`; neither corpus consumer *reads* them, both simply relay
+        // them as `sendAction`'s `p1`/`p2`, so the names are taken from the API rather than measured.
+        "onmousewheelup": 2,
+        "onmousewheeldown": 2,
+        // `Timer.onTimer()` called as a method is "run the body now rather than at the next tick".
+        // Zero arguments — Winamp's timer event carries none, and every handler in the corpus opens
+        // with no store. Big Bento Modern's songticker uses it to restore the song title the moment
+        // a seek preview is cancelled instead of a beat later.
+        "ontimer": 0,
+        "onpause": 0,
+        "onresume": 0,
+        "ontitlechange": 1,
+        "onleftbuttondblclk": 2,
+        "ontextchanged": 1,
+        // The keyboard. Winamp hands `onKeyDown` **one string** — `"alt+g"`, `"ctrl+w"`, `"esc"` —
+        // not a virtual keycode, and every handler in the corpus opens with a single string store
+        // (multipass `system.maki`, Defix `PLAYLIST_WINDOW.xml`, winampmodern566's display, playlist
+        // and album-art programs). It is in this table because it is dispatchable, not because a
+        // script calls it: none in the corpus does, but the arity has to be declared for the
+        // dispatch either way.
+        "onkeydown": 1,
+        // The pointer's own pair, called as methods. ClassicPro's CentroSUI uses them as the *only*
+        // way to put its album-art overlay up and away, and calls them from five places in
+        // `CentroSUI2.m` — including the two that decide what the Now Playing selector does after the
+        // menu closes. Without an arity the interpreter fails closed before the call is even traced,
+        // so `but_miniGoto.onLeftClick` stopped one statement after its two `isMouseOverRect` tests
+        // and `openMini()` never ran (B100): Album Art, File Info and Visualization all did nothing,
+        // the last two after `openMini` had already hidden every pane. Zero arguments — 57 handler
+        // declarations in the engine and 193 in the corpus, every one of them `()`.
+        "onenterarea": 0,
+        "onleavearea": 0,
+        "onshownotification": 0,
+        // `System.onScriptLoaded()` called as a method — a script re-running its **own** startup body.
+        // Ebonite's standard frame is built around it: it closes its frame container on every hide and
+        // rebuilds it on the next show with
+        // `if (!comp_layout.getContainer().isDynamic()) system.onScriptLoaded();`, so without an arity
+        // the call abandoned `onSetVisible` one statement before `frame_layout.show()` and the frame
+        // never came back (B110). Zero arguments — Winamp's load event carries none.
+        // `invokeSystem` scopes this one to the calling program; see there for why.
+        "onscriptloaded": 0,
+        // `System.onSeek(int newpos)` — the position the player moved to, in the same milliseconds
+        // `getPosition()` answers. It is in this table because Anexa *calls* it: both its main and
+        // shade progress bars are a `<layer>` clipped by a region map, and the only thing that fills
+        // them is a 99 ms timer whose whole body is `System.onSeek(getPosition())`. Dispatch is
+        // fail-closed, so without an arity that call abandoned the handler on its first statement and
+        // the bar never moved — it was only ever seen full, because `onStop` sets it to 255 (B64).
+        "onseek": 1,
+        // The `<edit>` control's own three events, all arity 0 in Wasabi. `onEnter` is the one every
+        // corpus consumer declares (Big Bento's `playlistpro.maki` runs the playlist search from it);
+        // `onAbort` is Escape leaving the box, and `onEditUpdate` fires per keystroke for a skin that
+        // filters as you type. Declared here because they are dispatchable — the view drives them from
+        // the keyboard.
+        "onenter": 0,
+        "onabort": 0,
+        // `List.onDoubleClick(item)` — the row, one argument (a single store at Big Bento's handler
+        // entry, which is what opens the track a search result names).
+        "ondoubleclick": 1,
+        "oneditupdate": 0,
+        // Config pages call it to run their own field handler (B189).
+        "onidleeditupdate": 0,
+        // `attribute.onDataChanged()` — a script running its own settings handler once at load, so
+        // the layout the stored options describe is applied before anything is drawn. Zero
+        // arguments, and it is the *only* way a skin has of saying "apply what I read". Big Bento
+        // Modern's `pledit` ends `onScriptLoaded` with it, and while the call was inert the enlarged
+        // playlist never positioned its album-art splitter at load — leaving the frame on its markup
+        // seed, which the same script then saved over the user's remembered cover height at unload
+        // (BB32).
+        "ondatachanged": 0,
+        "onscriptunloading": 0
+    ]
+
     /// The playlist-editor API, **keyed by `PlEdit`'s class** rather than registered globally.
     ///
     /// Half of these names belong to other classes too — `getLength` is an `animatedlayer`'s frame
@@ -769,7 +913,7 @@ enum WinampModernScriptSignatures {
         // crossfade slider's handler once at load with `slidercb.onSetPosition(slidercb.getPosition())`.
         // Without an arity the interpreter cannot unwind the stack, so only events with a known
         // signature are callable; the call dispatches the event exactly as the UI would.
-        if let arity = WinampModernScriptRuntime.dispatchableEventArity[name] {
+        if let arity = dispatchableEventArity[name] {
             // `onAction` answers with an int (the drawer keeps the slot the widget manager gives it);
             // the rest are void.
             return .init(argumentCount: arity, returnKind: name == "onaction" ? .integer : .null)

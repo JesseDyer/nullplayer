@@ -223,7 +223,11 @@ extension WinampModernScriptRuntime {
         if let cover = host.trackFolderCover(forImage: identifier) {
             return (Int32(clamping: cover.width), Int32(clamping: cover.height))
         }
-        return scriptBitmaps.size(identifier.lowercased()) { measureBitmap(identifier: identifier) }
+        let key = identifier.lowercased()
+        if let cached = scriptBitmaps.size(for: key) { return cached }
+        let size = measureBitmap(identifier: identifier)
+        scriptBitmaps.store(size, for: key)
+        return size
     }
 
     private func measureBitmap(identifier: String) -> (width: Int32, height: Int32)? {

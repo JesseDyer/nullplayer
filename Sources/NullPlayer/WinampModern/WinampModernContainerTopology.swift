@@ -170,7 +170,7 @@ enum WinampModernContainerTopology {
     static func hostsAlbumArt(_ info: WinampModernContainerInfo) -> Bool {
         guard !isNotifier(id: info.id) else { return false }
         func visit(_ object: WasabiObject) -> Bool {
-            if object.tag.is(.albumArt) || object.tag.is(.albumArt, in: .wasabi) { return true }
+            if object.tag.isStandard(.albumArt) { return true }
             return object.children.contains(where: visit)
         }
         return visit(info.object)

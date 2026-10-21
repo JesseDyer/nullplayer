@@ -52,8 +52,6 @@ enum WasabiEmbeddedXUI {
         /// every page of that skin's Preferences window was an empty box (B214).
         case structure
 
-        private static let buttonKinds: Set<WasabiKind> = [.button, .toggleButton]
-
         var keys: [String] {
             switch self {
             case .range: return ["low", "high"]
@@ -71,9 +69,9 @@ enum WasabiEmbeddedXUI {
             switch self {
             case .range, .commands, .structure: return true
             case .textStyling:
-                return embedded.tag.is(.text) || embedded.tag.is(.text, in: .wasabi)
+                return embedded.tag.isStandard(.text)
             case .buttonLabel:
-                return (embedded.tag.is(anyOf: Self.buttonKinds) || embedded.tag.is(anyOf: Self.buttonKinds, in: .wasabi))
+                return embedded.tag.isStandard(anyOf: [.button, .toggleButton])
                     && embedded.attributes["text"] == nil && !(attributes["text"] ?? "").isEmpty
             }
         }

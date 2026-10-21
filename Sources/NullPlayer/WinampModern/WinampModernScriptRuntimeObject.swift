@@ -14,7 +14,7 @@ extension WinampModernScriptRuntime {
             if index >= 0 { hooks.playlistRevealRowRequested?(index) }
             return .null
         }
-        if Self.dispatchableEventArity[method] != nil {
+        if WinampModernScriptSignatures.dispatchableEventArity[method] != nil {
             _ = try dispatch(object: object, event: method, arguments: arguments)
             // No handler can answer through this path (the interpreter's return value belongs to the
             // handler's own frame), so `onAction` reports the neutral slot 0 rather than a fiction.
@@ -363,7 +363,7 @@ extension WinampModernScriptRuntime {
         // receiver is honestly not loading anything.
         case "isloading":
             // The XUI form (`<Wasabi:AlbumArt>`) keeps its namespace prefix in the element name.
-            guard object.tag.is(.albumArt) || object.tag.is(.albumArt, in: .wasabi) else { return .boolean(false) }
+            guard object.tag.isStandard(.albumArt) else { return .boolean(false) }
             return .boolean(host.isArtworkLoading)
         case "getposition" where WasabiFrame.isFrame(object.tag):
             // A splitter's position is its divider offset, not a slider value. ClassicPro reads it to

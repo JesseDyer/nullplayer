@@ -5,26 +5,26 @@ import Foundation
 /// What scripts read out of a skin's bitmaps, memoised per runtime: decoded `Map` images and pixel
 /// sizes, keyed by lower-cased resource id.
 struct WinampModernScriptBitmaps {
+    typealias Size = (width: Int32, height: Int32)
+
     /// Maps are small lookup images (44×44 for MMD3's volume knob) and there are a handful per skin.
     private static let maximumMaps = 16
     private var maps: [String: CGImage] = [:]
     /// `nil` records a resolved-but-unknown size.
-    private var sizes: [String: (width: Int32, height: Int32)?] = [:]
+    private var sizes: [String: Size?] = [:]
 
-    mutating func map(_ key: String, decode: () -> CGImage?) -> CGImage? {
-        if let cached = maps[key] { return cached }
-        guard maps.count < Self.maximumMaps, let image = decode() else { return nil }
-        maps[key] = image
-        return image
-    }
+    /// Lookups and stores are separate calls so the decode between them runs with no access to this
+    /// value held: a decode that reached back into the cache would otherwise trap as an overlapping
+    /// access.
+    func map(for key: String) -> CGImage? { maps[key] }
+    /// A full cache answers no new map at all, rather than decoding one per call.
+    var acceptsMaps: Bool { maps.count < Self.maximumMaps }
+    mutating func store(_ image: CGImage, for key: String) { maps[key] = image }
 
-    mutating func size(_ key: String,
-                       measure: () -> (width: Int32, height: Int32)?) -> (width: Int32, height: Int32)? {
-        if let cached = sizes[key] { return cached }
-        let size = measure()
-        sizes[key] = size
-        return size
-    }
+    /// The memoised size, `.some(nil)` for one already known to be unknown, `nil` when never measured.
+    func size(for key: String) -> Size?? { sizes[key] }
+
+    mutating func store(_ size: Size?, for key: String) { sizes[key] = size }
 }
 
 /// `animatedlayer` frames and the MAKI `Map` class: pixels, crops and images read from a bitmap. Split out of
@@ -106,11 +106,14 @@ extension WinampModernScriptRuntime {
         // A cover beside the playing file is the host's artwork, never a file read — and never
         // cached, because it changes with the track.
         if host.isTrackFolderImage(bitmapID) { return host.trackFolderCover(forImage: bitmapID) }
-        return scriptBitmaps.map(bitmapID.lowercased()) {
-            guard let data = mapData(bitmapID: bitmapID, source: scriptSource),
-                  let imageSource = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-            return CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
-        }
+        let key = bitmapID.lowercased()
+        if let cached = scriptBitmaps.map(for: key) { return cached }
+        guard scriptBitmaps.acceptsMaps,
+              let data = mapData(bitmapID: bitmapID, source: scriptSource),
+              let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else { return nil }
+        scriptBitmaps.store(image, for: key)
+        return image
     }
 
     /// `loadMap` takes *either* a declared bitmap id or a path. ClassicPro's install check is the

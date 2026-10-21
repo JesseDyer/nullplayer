@@ -38,7 +38,7 @@ extension WinampModernScriptRuntime {
                              arguments: arguments, in: [program])
             return .null
         }
-        if Self.dispatchableEventArity[method] != nil {
+        if WinampModernScriptSignatures.dispatchableEventArity[method] != nil {
             _ = try dispatchSystem(event: method, arguments: arguments)
             return method == "onaction" ? .integer(0) : .null
         }
