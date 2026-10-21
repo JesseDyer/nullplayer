@@ -1,0 +1,200 @@
+import AppKit
+import CoreGraphics
+import Foundation
+
+/// Layer FX: the per-object state, the evaluated mesh and the `fx_*` callbacks. Split out of
+/// `WinampModernScriptRuntime.swift`.
+extension WinampModernScriptRuntime {
+    /// Total vertices one layer may ask the interpreter to evaluate per mesh. `fx_setGridSize` takes
+    /// script variables, so a skin can name any grid at all; this is what keeps a bad number off the
+    /// UI thread. 65×65 covers every measured grid with room to spare (Defix asks for 1×1 on its
+    /// cassette reels).
+    static let maximumLayerFXVertices = 65 * 65
+
+    /// `WINAMP_MODERN_FX_TRACE=1` prints every `fx_*` call with its receiver — how "which layers does
+    /// this skin warp, and when does it switch them on?" is answered without a debugger.
+    static let tracesLayerFX = ProcessInfo.processInfo.environment["WINAMP_MODERN_FX_TRACE"] != nil
+
+    /// The FX configuration a layer's script has set, or `nil` when it has never called one.
+    func layerFXState(of object: WasabiObject) -> WasabiLayerFXState? { layerFXStates[object.stableID] }
+
+    /// Whether any layer in this skin currently has FX switched on — the signal a window uses to
+    /// decide it needs the 30 Hz repaint clock.
+    var hasEnabledLayerFX: Bool { layerFXStates.values.contains { $0.enabled } }
+
+    /// Every layer with FX switched on, for the render harness (`WINAMP_MODERN_RENDER_FX=1`). The
+    /// warp itself can only be seen under playback, but *which* layers are warped, how they are
+    /// configured and how far the mesh moves are all answerable headlessly.
+    var enabledLayerFXObjects: [WasabiObject] {
+        layerFXStates.compactMap { id, state in
+            guard state.enabled else { return nil }
+            return loadedSkin.runtime.graph.object(withID: id)
+        }
+    }
+
+    /// The warp for one layer, or `nil` when the layer has no enabled FX (the overwhelming majority —
+    /// this is checked for every object in every frame, so the miss has to be a dictionary lookup).
+    func layerFXMesh(for object: WasabiObject) -> WasabiLayerFXMesh? {
+        guard !isTornDown, !isEvaluatingLayerFX else { return nil }
+        guard let state = layerFXStates[object.stableID], state.enabled else { return nil }
+        if !layerFXNeedsEvaluation.contains(object.stableID),
+           let cached = layerFXMeshes[object.stableID] {
+            return cached.isIdentity ? nil : cached
+        }
+        let mesh = evaluateLayerFXMesh(for: object, state: state)
+        layerFXNeedsEvaluation.remove(object.stableID)
+        layerFXMeshes[object.stableID] = mesh
+        return mesh.isIdentity ? nil : mesh
+    }
+
+    /// Re-evaluate every warp whose skin has invalidated it, **off the paint path**.
+    ///
+    /// Evaluating a mesh runs the skin's `fx_onGetPixel*` callbacks once per grid vertex through the
+    /// MAKI interpreter — 49 vertices × 2 layers × 30 Hz for Defix — and doing that lazily from
+    /// `layerFXMesh(for:)` put all of it inside `NSView.draw`, between the frame the user is watching
+    /// and the next one. The window's animation clock calls this *before* it invalidates, so the paint
+    /// that follows finds a mesh already built and does nothing but resample.
+    ///
+    /// `fx_setRealtime(1)` means "re-run the callbacks every frame", and the frame clock is here, so a
+    /// realtime layer is marked stale on each pass rather than re-evaluated inside the draw.
+    func refreshLayerFXMeshes() {
+        guard !isTornDown, !isEvaluatingLayerFX else { return }
+        for (id, state) in layerFXStates where state.enabled {
+            if state.realtime { layerFXNeedsEvaluation.insert(id) }
+            guard layerFXNeedsEvaluation.contains(id),
+                  let object = loadedSkin.runtime.graph.object(withID: id) else { continue }
+            layerFXMeshes[id] = evaluateLayerFXMesh(for: object, state: state)
+            layerFXNeedsEvaluation.remove(id)
+        }
+    }
+
+    /// Every script bound to one layer's `fx_onGetPixelR`, with the answer each gives for one probe
+    /// point — the harness probe behind "*which* script drives this layer's warp?". A layer can be
+    /// configured by one script and animated by another (Defix's needles are), and only the first
+    /// bound handler answers.
+    func layerFXAnswerBreakdown(for object: WasabiObject, event: String = "fx_ongetpixelr",
+                                arguments: [MakiValue] = [.double(0), .double(1), .double(1), .double(0.5)])
+    -> [(program: String, answer: Double)] {
+        var results: [(String, Double)] = []
+        for program in programs {
+            guard program.bindings.contains(where: {
+                program.methods[$0.methodIndex].name == event.lowercased()
+            }) else { continue }
+            var answer: MakiValue?
+            _ = try? dispatch(target: MakiObjectReference(.gui(object.stableID)), event: event,
+                              arguments: arguments, in: [program], answer: &answer)
+            guard let answer else { continue }
+            let name = (program.source.path as NSString).lastPathComponent
+            results.append(("\(name)[\(program.parameter ?? "-")]", answer.doubleValue))
+        }
+        return results
+    }
+
+    /// Force the next `layerFXMesh(for:)` to re-run the skin's callbacks. The harness uses it to
+    /// measure a frame that really does re-evaluate, as a moving meter's does.
+    func invalidateLayerFXMesh(for object: WasabiObject) {
+        layerFXNeedsEvaluation.insert(object.stableID)
+    }
+
+    /// Whether this layer's warp is still waiting to be evaluated — the state `refreshLayerFXMeshes`
+    /// exists to clear before the frame is painted rather than during it.
+    func layerFXMeshIsPending(for object: WasabiObject) -> Bool {
+        layerFXNeedsEvaluation.contains(object.stableID)
+    }
+
+    func evaluateLayerFXMesh(for object: WasabiObject,
+                                     state: WasabiLayerFXState) -> WasabiLayerFXMesh {
+        var columns = state.vertexColumns
+        var rows = state.vertexRows
+        while columns * rows > Self.maximumLayerFXVertices {
+            columns = max(2, columns / 2)
+            rows = max(2, rows / 2)
+        }
+        // Which callbacks this layer actually implements, resolved once rather than per vertex: a
+        // skin supplies only the coordinate it wants changed and leaves the other one alone.
+        let events = state.rect ? ("fx_ongetpixelx", "fx_ongetpixely")
+                                : ("fx_ongetpixelr", "fx_ongetpixeld")
+        let hasFirst = hasBinding(for: object, event: events.0)
+        let hasSecond = hasBinding(for: object, event: events.1)
+        var sources = [CGPoint](repeating: .zero, count: columns * rows)
+        isEvaluatingLayerFX = true
+        defer { isEvaluatingLayerFX = false }
+        for row in 0..<rows {
+            for column in 0..<columns {
+                let x = CGFloat(column) / CGFloat(columns - 1)
+                let y = CGFloat(row) / CGFloat(rows - 1)
+                let angle = WasabiLayerFXCoordinates.angle(x: x, y: y)
+                let distance = WasabiLayerFXCoordinates.distance(x: x, y: y)
+                let arguments: [MakiValue] = [.double(Double(angle)), .double(Double(distance)),
+                                              .double(Double(x)), .double(Double(y))]
+                func answer(_ event: String, _ fallback: CGFloat) -> CGFloat {
+                    guard let value = call(object: object, event: event, arguments: arguments) else {
+                        return fallback
+                    }
+                    let result = CGFloat(value.doubleValue)
+                    return result.isFinite ? result : fallback
+                }
+                let first = hasFirst ? answer(events.0, state.rect ? x : angle) : (state.rect ? x : angle)
+                if Self.tracesLayerFX, row == 0, column == 0 {
+                    print(String(format: "FX-TRACE mesh %@ in=%.4f out=%.4f",
+                                 object.xmlID ?? "-", Double(state.rect ? x : angle), Double(first)))
+                }
+                let second = hasSecond ? answer(events.1, state.rect ? y : distance) : (state.rect ? y : distance)
+                sources[row * columns + column] = state.rect
+                    ? CGPoint(x: first, y: second)
+                    : WasabiLayerFXCoordinates.point(angle: first, distance: second)
+            }
+        }
+        return WasabiLayerFXMesh(columns: columns, rows: rows, sources: sources,
+                                 wrap: state.wrap, bilinear: state.bilinear)
+    }
+
+    /// One `fx_*` call. Every setter writes state and, where it changes what is drawn, invalidates the
+    /// layer's mesh and asks for a repaint; the getters answer from the same state.
+    func invokeLayerFX(method: String, object: WasabiObject,
+                               arguments: [MakiValue]) -> MakiValue {
+        var state = layerFXStates[object.stableID] ?? WasabiLayerFXState()
+        let flag = arguments.first?.truthy ?? false
+        if Self.tracesLayerFX {
+            print("FX-TRACE \(method) on \(object.typeName)#\(object.xmlID ?? "-") "
+                  + "args=\(arguments.map(\.stringValue))")
+        }
+        switch method {
+        case "fx_setenabled": state.enabled = flag
+        case "fx_setwrap": state.wrap = flag
+        case "fx_setrect": state.rect = flag
+        case "fx_setbgfx": state.backgroundFX = flag
+        case "fx_setclear": state.clear = flag
+        case "fx_setrealtime": state.realtime = flag
+        case "fx_setlocalized": state.localized = flag
+        case "fx_setbilinear": state.bilinear = flag
+        case "fx_setalphamode": state.alphaMode = flag
+        case "fx_setspeed": state.speedMilliseconds = arguments.first?.integerValue ?? 0
+        case "fx_setgridsize":
+            state.gridX = max(1, Int(arguments.first?.integerValue ?? 1))
+            state.gridY = max(1, Int(arguments.count > 1 ? arguments[1].integerValue : 1))
+        case "fx_getenabled": return .boolean(state.enabled)
+        case "fx_getwrap": return .boolean(state.wrap)
+        case "fx_getrect": return .boolean(state.rect)
+        case "fx_getbgfx": return .boolean(state.backgroundFX)
+        case "fx_getclear": return .boolean(state.clear)
+        case "fx_getrealtime": return .boolean(state.realtime)
+        case "fx_getlocalized": return .boolean(state.localized)
+        case "fx_getbilinear": return .boolean(state.bilinear)
+        case "fx_getalphamode": return .boolean(state.alphaMode)
+        case "fx_getspeed": return .integer(state.speedMilliseconds)
+        case "fx_update", "fx_restart":
+            // The skin has changed whatever its callbacks read (a needle's angle) and is telling the
+            // host to re-run them. This is the repaint that moves the meter.
+            layerFXStates[object.stableID] = state
+            layerFXNeedsEvaluation.insert(object.stableID)
+            requestRepaint(for: object)
+            return .null
+        default: return .null
+        }
+        layerFXStates[object.stableID] = state
+        layerFXNeedsEvaluation.insert(object.stableID)
+        requestRepaint(for: object)
+        return .null
+    }
+}

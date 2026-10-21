@@ -259,7 +259,7 @@ All engine code is in `Sources/NullPlayer/WinampModern/`; all UI/controller code
 | Resource cache + scene renderer | `WasabiRenderer.swift` — the spine: scene walk, clipping, dispatch |
 | Sprites, text, colour, hit testing, Layer FX | `WasabiRendererSprites.swift`, `…Text.swift`, `…Colour.swift`, `…HitTesting.swift`, `…LayerFX.swift` |
 | MAKI parser + interpreter | `MakiBytecode.swift` |
-| Script runtime + method dispatch | `WinampModernScriptRuntime.swift` — the VM loop, the event surface, object lifecycle |
+| Script runtime + method dispatch | `WinampModernScriptRuntime.swift` — the class, its stored state, dispatch and teardown; by concern: `…Signatures.swift` (the arity tables), `…Config.swift` (`cfgattrib`/`ConfigAttribute`), `…WindowGeometry.swift`, `…Visibility.swift`, `…XUIParams.swift`, `…GroupInstantiation.swift`, `…Equalizer.swift`, `…LayerFX.swift`, `…Map.swift`, `…XmlDoc.swift`, `…HostControls.swift` |
 | MAKI receivers, by class | `WinampModernScriptRuntimeSystem.swift` (System, PlEdit, ColorMgr), `…Desktop.swift` (System's clock, screen and window lookups), `…Object.swift` (GuiObject), `…Window.swift` (GuiObject's window, stacking and snapping methods), `…Dynamic.swift` (objects a script makes with `new`), `…Menu.swift` (PopupMenu), `…Timer.swift` (`target*`), `…Text.swift` |
 | Skin-facing host API | `WinampModernHost.swift` |
 | Component model + host protocol | `WinampModernComponents.swift` |
