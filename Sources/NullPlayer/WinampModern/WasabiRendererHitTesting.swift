@@ -156,7 +156,7 @@ extension WasabiSceneRenderer {
     /// uses 15 times) all paint exactly as before. `sysregion="-2"` appears in 11 of the 18 installed
     /// skins.
     static func isRegionOnly(_ object: WasabiObject) -> Bool {
-        guard object.tag.is(.layer) || object.tag.is(.animatedLayer), let value = windowRegionValue(of: object)
+        guard object.tag.is(anyOf: [.layer, .animatedLayer]), let value = windowRegionValue(of: object)
         else { return false }
         return value < 0
     }
@@ -553,7 +553,7 @@ extension WasabiSceneRenderer {
         // An `animatedlayer` is a layer that moves. MMD3's rotary volume/bass/treble knobs are
         // animated layers with their own `onLeftButtonDown` handlers, and leaving the type out here
         // meant a click never reached them.
-        return (object.tag.is(.layer) || object.tag.is(.animatedLayer)) && object.attributes["ghost"] != "1"
+        return object.tag.is(anyOf: [.layer, .animatedLayer]) && object.attributes["ghost"] != "1"
     }
 
     /// The coverage at which a pixel is still part of the window.

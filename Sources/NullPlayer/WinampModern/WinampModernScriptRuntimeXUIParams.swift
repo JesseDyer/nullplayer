@@ -174,7 +174,7 @@ extension WinampModernScriptRuntime {
         // The measurement outranks the declared `w`. For a `<text>` the *box* and the *string* are
         // two different numbers, and "auto" is the string's — a label declared `w="0" relatw="1"`
         // stretches to its parent and would otherwise answer with that stretch.
-        if object.tag.is(.text) || object.tag.is(.songticker) {
+        if object.tag.is(anyOf: [.text, .songticker]) {
             let text = WasabiTextMetrics.content(of: object, host: host)
             return Int32(clamping: Int(metrics.width(of: object, text: text).rounded(.up)))
         }
@@ -202,7 +202,7 @@ extension WinampModernScriptRuntime {
         // tab. Answering 60 made each tab 96 tall, which stretched all seven icons vertically and
         // pushed the strip 37px per tab down the column. Measured, the answer is the font's 24 and
         // the arithmetic lands back on the skin's own 60.
-        if object.tag.is(.text) || object.tag.is(.songticker) {
+        if object.tag.is(anyOf: [.text, .songticker]) {
             return Int32(clamping: Int(metrics.lineHeight(of: object).rounded(.up)))
         }
         if let explicit = object.attributes["h"], let height = Int32(explicit), height > 0 { return height }

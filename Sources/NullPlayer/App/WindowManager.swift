@@ -120,16 +120,6 @@ enum UIScaleLevel: String, Codable, CaseIterable {
         }) ?? .p100
     }
 
-    /// This level, or the largest one at or above 100% below it that fits `size` (unscaled) into
-    /// `area` — 100% when none does.
-    func capped(fitting size: CGSize, into area: CGSize) -> UIScaleLevel {
-        let fits = { (level: UIScaleLevel) in
-            size.width * level.scaleFactor <= area.width && size.height * level.scaleFactor <= area.height
-        }
-        guard !fits(self) else { return self }
-        return Self.allCases.last { $0.scaleFactor >= 1 && $0.scaleFactor <= scaleFactor && fits($0) } ?? .p100
-    }
-
     init?(storedRawValue: String) {
         switch storedRawValue {
         case "normal":

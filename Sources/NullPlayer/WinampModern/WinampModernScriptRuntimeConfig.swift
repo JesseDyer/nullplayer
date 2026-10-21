@@ -130,7 +130,7 @@ extension WinampModernScriptRuntime {
 
     @discardableResult
     func toggleActivation(of object: WasabiObject) -> Bool {
-        guard object.tag.is(.toggleButton) || object.tag.is(.nStatesButton),
+        guard object.tag.is(anyOf: [.toggleButton, .nStatesButton]),
               Self.configBinding(of: object) == nil else { return false }
         // An `nstatesbutton` is a togglebutton that counts: a click advances it to the next state
         // and wraps, and `getCurCfgVal()` is how its script reads the position it landed on.

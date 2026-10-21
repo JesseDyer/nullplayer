@@ -4,6 +4,25 @@ import Foundation
 
 /// Visibility: what a script's `setVisible`, `isVisible` and `isActive` answer, and the rule that a
 /// layout is never left with no way to seek. Split out of `WinampModernScriptRuntime.swift`.
+
+/// What `setVisible` remembers between events. Only this file writes it.
+struct WinampModernScriptVisibility {
+    /// Objects a script hid during this event that carry a *positional* host action, checked once the
+    /// event unwinds (see `settleStrandedControls`).
+    fileprivate var strandingCandidates: Set<WasabiObjectID> = []
+
+    /// Objects the skin's own script has **closed**, as opposed to ones that merely start life
+    /// `visible="0"` and have never been opened. The `autoopen` fallback needs the difference: a
+    /// page the script deliberately shut is a decision to respect, while an unopened one is exactly
+    /// what the fallback exists to open. Big Bento's `mcvcore` closes the whole file-info page when
+    /// it switches the Multi Content View to the stretched visualization, and the fallback reopened
+    /// one of those groups on the next reveal — two pages on screen at once.
+    fileprivate(set) var scriptClosedObjects: Set<WasabiObjectID> = []
+
+    /// The object is showing again, however it got there.
+    mutating func reopened(_ id: WasabiObjectID) { scriptClosedObjects.remove(id) }
+}
+
 extension WinampModernScriptRuntime {
     // MARK: - A layout must not be left with no way to seek
 
@@ -45,9 +64,9 @@ extension WinampModernScriptRuntime {
     /// visible, so the action still has a carrier. That is the difference the rule keys on — a
     /// capability of the layout, not the identity of the skin.
     func settleStrandedControls() {
-        guard !strandingCandidates.isEmpty else { return }
-        let candidates = strandingCandidates
-        strandingCandidates.removeAll()
+        guard !visibility.strandingCandidates.isEmpty else { return }
+        let candidates = visibility.strandingCandidates
+        visibility.strandingCandidates.removeAll()
         for id in candidates {
             guard let object = loadedSkin.runtime.graph.object(withID: id),
                   let action = Self.strandableAction(of: object),
@@ -77,6 +96,12 @@ extension WinampModernScriptRuntime {
         return found
     }
 
+    /// `isInvalid()` — the object did not come up. For a *null* receiver that is answered in the
+    /// interpreter; here it means an image-backed object whose bitmap never resolved, which is what
+    /// the engine actually asks about. ClassicPro probes for optional artwork by declaring a hidden
+    /// layer over it (`read.bg.left image="player.left.alt"`) and asking whether that layer is
+    /// invalid; answering "valid" for a skin that ships no `mainframe_lr.png` made `player.maki`
+    /// swap the window frame over to bitmaps that do not exist, punching holes in the window.
     func isInvalid(_ object: WasabiObject) -> Bool {
         guard let imageID = object.attributes["image"] ?? object.attributes["bitmap"] else { return false }
         guard let definition = loadedSkin.runtime.resources.resolvedDefinition(identifier: imageID),
@@ -96,10 +121,10 @@ extension WinampModernScriptRuntime {
                   visible ? 1 : 0, MakiInterpreter.traceStack.last ?? "-")
         }
         #endif
-        if visible { scriptClosedObjects.remove(object.stableID) }
-        else { scriptClosedObjects.insert(object.stableID) }
+        if visible { visibility.reopened(object.stableID) }
+        else { visibility.scriptClosedObjects.insert(object.stableID) }
         if changed, !visible, Self.strandableAction(of: object) != nil {
-            strandingCandidates.insert(object.stableID)
+            visibility.strandingCandidates.insert(object.stableID)
         }
         if changed { noteGeometryChange() }
         notifyGraphDidMutate()

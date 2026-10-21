@@ -97,48 +97,18 @@ capture() {
         exit 1
     fi
 
-    # A sweep is a build. An edit landing mid-run invalidates the pass, and the pair of passes is
-    # what is being compared, so an uncommitted difference between them is exactly the thing this
-    # guard is for.
-    if [ "$allow_dirty" -eq 0 ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-        echo "wal_render_sweep: working tree is dirty; commit, stash-free-worktree, or pass --allow-dirty" >&2
-        git status --short >&2
-        exit 1
-    fi
+    # The pair of passes is what is being compared, so an uncommitted difference between them is
+    # exactly the thing this guard is for.
+    wal_require_clean_tree wal_render_sweep "$allow_dirty" || exit 1
 
     mkdir -p "$out/png"
     rm -f "$out"/png/*.log "$out"/raw-*.txt "$out"/stderr-*.txt
     [ "$shards" -gt "$archives" ] && shards=$archives
     echo "wal_render_sweep: capturing $archives skins in $shards shard(s) -> $out"
-    if ! swift build --build-tests ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} > "$out/build.txt" 2>&1; then
-        echo "wal_render_sweep: build failed; see $out/build.txt" >&2
-        tail -30 "$out/build.txt" >&2
-        exit 1
-    fi
+    wal_build_tests wal_render_sweep "$out" || exit 1
 
-    # The shards run the built bundle with `xctest`, not `swift test --skip-build`: SwiftPM holds a
-    # lock on .build for the whole run, which queued K `swift test`s one behind another (measured
-    # 2026-10-19: K=1/2/4 took 90/89/94 s).
-    local bundle
-    bundle="$(swiftpm_bin_path debug 2>/dev/null)/NullPlayerPackageTests.xctest"
-    # B170: shard i takes every K-th archive of the sha256 order, so the split depends on content
-    # alone, never on file names or tier. Each path is followed by a `:` so a shard of one skin is
-    # still a list, which the harness treats as a sweep (per-skin subdirectory and log).
-    local ordered status=0 shard wal pids=()
-    ordered=$(printf '%s\n' "$list" | while IFS= read -r path; do
-                  printf '%s\t%s\n' "$(shasum -a 256 "$path" | cut -d' ' -f1)" "$path"
-              done | sort)
-    for ((shard = 0; shard < shards; shard++)); do
-        wal=$(printf '%s\n' "$ordered" | awk -F'\t' -v k="$shards" -v i="$shard" '(NR - 1) % k == i { printf "%s:", $2 }')
-        # Redirect, do not pipe. See the note at the top.
-        WINAMP_MODERN_WAL="$wal" \
-        WINAMP_MODERN_RENDER_DUMP="$out/png" \
-        WINAMP_MODERN_RENDER_BITMAPS=1 \
-            xcrun xctest -XCTest NullPlayerAppTests.WinampModernRenderDumpTests "$bundle" \
-            > "$out/raw-$shard.txt" 2> "$out/stderr-$shard.txt" &
-        pids+=($!)
-    done
-    for pid in "${pids[@]}"; do wait "$pid" || status=$?; done
+    local status=0
+    wal_run_shards "$shards" "$list" render_shard || status=$?
     cat "$out"/raw-*.txt > "$out/raw.txt"
     cat "$out"/stderr-*.txt > "$out/stderr.txt"
 
@@ -168,6 +138,16 @@ capture() {
         echo "wal_render_sweep: skins that failed to load:" >&2
         grep ' FAILED ' "$out/invariants.txt" >&2
     fi
+}
+
+# render_shard <shard> <archives:…> <bundle>: one shard of `capture` (whose `$out` it writes to), for
+# wal_run_shards. Redirect, do not pipe — see the note at the top.
+render_shard() {
+    WINAMP_MODERN_WAL="$2" \
+    WINAMP_MODERN_RENDER_DUMP="$out/png" \
+    WINAMP_MODERN_RENDER_BITMAPS=1 \
+        xcrun xctest -XCTest NullPlayerAppTests.WinampModernRenderDumpTests "$3" \
+        > "$out/raw-$1.txt" 2> "$out/stderr-$1.txt"
 }
 
 # select_touching <features.tsv> <feature,…> <archive list>: the archives whose index rows name any of

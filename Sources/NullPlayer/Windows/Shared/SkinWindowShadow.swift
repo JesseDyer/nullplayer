@@ -82,9 +82,10 @@ final class SkinWindowShadow {
 
     nonisolated static let isTraceEnabled = ProcessInfo.processInfo.environment["NP_SKIN_SHADOW_TRACE"] == "1"
 
-    /// `WINAMP_MODERN_ASSUME_VISIBLE=1`, debug builds: pull shapes whatever the parent's occlusion
-    /// says, so a shadow can be driven and captured while the screen is locked. The same switch as
-    /// the `.wal` view's, so one variable captures the whole picture.
+    /// `WINAMP_MODERN_ASSUME_VISIBLE=1`, debug builds: treat the parent as on screen whatever its
+    /// occlusion says, so a window and its shadow can be driven and captured while the screen is
+    /// locked — the way to capture a live window when nobody is at the machine. The `.wal` view reads
+    /// this one too, so one variable captures the whole picture.
     #if DEBUG
     nonisolated static let assumesParentVisible =
         ProcessInfo.processInfo.environment["WINAMP_MODERN_ASSUME_VISIBLE"] == "1"

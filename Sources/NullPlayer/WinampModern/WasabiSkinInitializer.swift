@@ -1537,7 +1537,7 @@ final class WasabiSkinInitializer {
             // pair is otherwise unreachable: opening "VU Meters Small" resolved the id back to the
             // large meter. Winamp's own by-id lookups keep answering with the first declaration,
             // which is what a renamed *second* preserves.
-            if parent == nil, typeName.caseInsensitiveCompare("container") == .orderedSame,
+            if parent == nil, WasabiTag(typeName).is(.container),
                let declaredID = attributes["id"], !declaredID.isEmpty {
                 switch resolveContainerRootIdentity(declaredID: declaredID, location: node.location) {
                 case .keep:
@@ -1583,7 +1583,7 @@ final class WasabiSkinInitializer {
             // (`setVisible`) — and a script hiding its own window at startup is the ordinary case, so
             // the second answer buries the first. Defix hides `VISCON` from `CORE_SCRIPT.maki` and
             // every later reader then classified the window as a stub that does not exist (B16).
-            if parent == nil, typeName.caseInsensitiveCompare("container") == .orderedSame {
+            if parent == nil, object.tag.is(.container) {
                 _ = object.setAttribute(WinampModernContainerTopology.declaredVisibleAttribute,
                                         value: object.attributes["visible"] ?? "1")
             }

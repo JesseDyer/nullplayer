@@ -118,7 +118,7 @@ final class WinampModernMainView: NSView {
             let object = node.object
             let action = object.attributes["action"]?.lowercased() ?? "-"
             let id = object.attributes["id"] ?? object.attributes["xuitag"] ?? "-"
-            let looksRelevant = action == "seek" || object.tag.is(.slider) || object.tag.is(.progressGrid)
+            let looksRelevant = action == "seek" || object.tag.is(anyOf: [.slider, .progressGrid])
                 || id.lowercased().contains("seek")
             guard looksRelevant else { continue }
             NSLog("SEEK_TRACE   id=%@ type=%@ action=%@ value=%@ normalized=%.4f frame=%@",
@@ -299,7 +299,7 @@ final class WinampModernMainView: NSView {
         let rects = renderer.sceneNodes().compactMap { node -> (rect: NSRect, warped: WasabiObject?)? in
             let object = node.object
             let rect = viewRect(fromSkin: node.frame).insetBy(dx: -2, dy: -2)
-            if object.tag.is(.animatedLayer) || object.tag.is(.songticker) { return (rect, nil) }
+            if object.tag.is(anyOf: [.animatedLayer, .songticker]) { return (rect, nil) }
             if object.tag.is(.text) {
                 // A plain `text` that opts into ticker scrolling also needs the redraw clock.
                 let ticker = (object.attributes["ticker"] ?? "0").lowercased()
@@ -1044,20 +1044,13 @@ final class WinampModernMainView: NSView {
     /// each time cost 40% of the main thread on its own — more than the paint it saved.
     private(set) var isOnScreen = false
 
-    /// `WINAMP_MODERN_ASSUME_VISIBLE=1`, debug builds: treat every window as on screen whatever its
-    /// occlusion says, so a locked screen or a screen saver does not stop the window painting. The
-    /// way to drive and capture a live window when nobody is at the machine.
-    #if DEBUG
-    static let assumesVisible = ProcessInfo.processInfo.environment["WINAMP_MODERN_ASSUME_VISIBLE"] == "1"
-    #else
-    static let assumesVisible = false
-    #endif
-
     /// Repaints a hidden window skipped; the next time it shows, it redraws whole.
     var repaintDeferredWhileHidden = false
 
+    /// `WINAMP_MODERN_ASSUME_VISIBLE=1` (`SkinWindowShadow.assumesParentVisible`) treats the window as
+    /// on screen whatever its occlusion says, so a locked screen does not stop it painting.
     private func occlusionDidChange() {
-        isOnScreen = Self.assumesVisible || (window?.occlusionState.contains(.visible) ?? false)
+        isOnScreen = SkinWindowShadow.assumesParentVisible || (window?.occlusionState.contains(.visible) ?? false)
         guard !isTornDown, isOnScreen, repaintDeferredWhileHidden else { return }
         repaintDeferredWhileHidden = false
         invalidateRectCaches()
@@ -2522,7 +2515,7 @@ final class WinampModernMainView: NSView {
     private func visualizationRects() -> [NSRect] {
         if let visualizationRectsCache { return visualizationRectsCache }
         var rects = renderer.sceneNodes().compactMap { node -> NSRect? in
-            guard node.object.tag.is(.vis) || node.object.tag.is(.eqVis) else { return nil }
+            guard node.object.tag.is(anyOf: [.vis, .eqVis]) else { return nil }
             return viewRect(fromSkin: node.frame).insetBy(dx: -2, dy: -2)
         }
         // A `{0000000A}` holder drawing its own analyzer (BB9) is not a `<vis>` and was invisible to

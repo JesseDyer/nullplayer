@@ -173,7 +173,7 @@ extension WinampModernScriptRuntime {
     func settleGeometryIfNeeded() {
         // Never mid-draw: a Layer FX callback runs inside a repaint, and settling geometry from there
         // would re-solve the scene while it is being painted.
-        guard !isEvaluatingLayerFX, geometrySettle.begin() else { return }
+        guard !layerFX.isEvaluating, geometrySettle.begin() else { return }
         defer { geometrySettle.end() }
         // Before the resize pass, and independently of whether a scene is listening: the stranding
         // rule is about the graph, and a headless load has no `geometryDidSettle` to hang it off.

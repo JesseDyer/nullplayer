@@ -10,6 +10,10 @@ struct WinampModernLayerFXStore {
     /// re-evaluated when it asked for `fx_setRealtime(1)`).
     private var meshes: [WasabiObjectID: WasabiLayerFXMesh] = [:]
     private var stale: Set<WasabiObjectID> = []
+    /// While a mesh is being evaluated, the callbacks run *inside a repaint*. A script that touched
+    /// the graph from one would ask for another repaint and settle geometry mid-draw, so both are
+    /// suppressed for the duration and the pending repaint is the one already in flight.
+    fileprivate(set) var isEvaluating = false
 
     func state(of id: WasabiObjectID) -> WasabiLayerFXState? { states[id] }
     var hasEnabled: Bool { states.values.contains { $0.enabled } }
@@ -64,7 +68,7 @@ extension WinampModernScriptRuntime {
     /// The warp for one layer, or `nil` when the layer has no enabled FX (the overwhelming majority —
     /// this is checked for every object in every frame, so the miss has to be a dictionary lookup).
     func layerFXMesh(for object: WasabiObject) -> WasabiLayerFXMesh? {
-        guard !isTornDown, !isEvaluatingLayerFX else { return nil }
+        guard !isTornDown, !layerFX.isEvaluating else { return nil }
         guard let state = layerFX.state(of: object.stableID), state.enabled else { return nil }
         if let cached = layerFX.freshMesh(for: object.stableID) {
             return cached.isIdentity ? nil : cached
@@ -85,7 +89,7 @@ extension WinampModernScriptRuntime {
     /// `fx_setRealtime(1)` means "re-run the callbacks every frame", and the frame clock is here, so a
     /// realtime layer is marked stale on each pass rather than re-evaluated inside the draw.
     func refreshLayerFXMeshes() {
-        guard !isTornDown, !isEvaluatingLayerFX else { return }
+        guard !isTornDown, !layerFX.isEvaluating else { return }
         for (id, state) in layerFX.enabled {
             if state.realtime { layerFX.invalidate(id) }
             guard layerFX.isStale(id),
@@ -145,8 +149,8 @@ extension WinampModernScriptRuntime {
         let hasFirst = hasBinding(for: object, event: events.0)
         let hasSecond = hasBinding(for: object, event: events.1)
         var sources = [CGPoint](repeating: .zero, count: columns * rows)
-        isEvaluatingLayerFX = true
-        defer { isEvaluatingLayerFX = false }
+        layerFX.isEvaluating = true
+        defer { layerFX.isEvaluating = false }
         for row in 0..<rows {
             for column in 0..<columns {
                 let x = CGFloat(column) / CGFloat(columns - 1)

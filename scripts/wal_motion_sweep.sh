@@ -40,41 +40,22 @@ list=$(wal_corpus_archives "$corpus") || exit 1
 archives=$(printf '%s' "$list" | grep -c .)
 [ "$archives" -gt 0 ] || { echo "wal_motion_sweep: no .wal archives in $corpus" >&2; exit 1; }
 
-if [ "$allow_dirty" -eq 0 ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-    echo "wal_motion_sweep: working tree is dirty; commit, use a worktree, or pass --allow-dirty" >&2
-    git status --short >&2
-    exit 1
-fi
+wal_require_clean_tree wal_motion_sweep "$allow_dirty" || exit 1
 
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 rm -f "$out"/motion-*.tsv "$out"/raw-*.txt
 [ "$shards" -gt "$archives" ] && shards=$archives
 echo "wal_motion_sweep: $archives archives in $shards shard(s) -> $out (rev $(git rev-parse --short HEAD 2>/dev/null || echo unknown))"
-if ! swift build --build-tests ${SWIFTPM_ARGS[@]+"${SWIFTPM_ARGS[@]}"} > "$out/build.txt" 2>&1; then
-    echo "wal_motion_sweep: build failed; see $out/build.txt" >&2
-    tail -30 "$out/build.txt" >&2
-    exit 1
-fi
+wal_build_tests wal_motion_sweep "$out" || exit 1
 
-# Sharded as wal_render_sweep.sh does (B170): every K-th archive of the sha256 order, run on the
-# built bundle with `xctest` because SwiftPM's .build lock serialises K `swift test`s.
-bundle="$(swiftpm_bin_path debug 2>/dev/null)/NullPlayerPackageTests.xctest"
-ordered=$(printf '%s\n' "$list" | while IFS= read -r path; do
-              printf '%s\t%s\n' "$(shasum -a 256 "$path" | cut -d' ' -f1)" "$path"
-          done | sort)
-pids=()
-for ((shard = 0; shard < shards; shard++)); do
-    wal=$(printf '%s\n' "$ordered" | awk -F'\t' -v k="$shards" -v i="$shard" '(NR - 1) % k == i { printf "%s:", $2 }')
-    # Redirect, do not pipe.
-    WINAMP_MODERN_MOTION_SWEEP="$wal" \
-    WINAMP_MODERN_MOTION_SWEEP_OUT="$out/motion-$shard.tsv" \
-        xcrun xctest -XCTest NullPlayerAppTests.WinampModernMotionSweepTests "$bundle" \
-        > "$out/raw-$shard.txt" 2>&1 &
-    pids+=($!)
-done
+run_shard() {
+    WINAMP_MODERN_MOTION_SWEEP="$2" \
+    WINAMP_MODERN_MOTION_SWEEP_OUT="$out/motion-$1.tsv" \
+        xcrun xctest -XCTest NullPlayerAppTests.WinampModernMotionSweepTests "$3" > "$out/raw-$1.txt" 2>&1
+}
 status=0
-for pid in "${pids[@]}"; do wait "$pid" || status=$?; done
+wal_run_shards "$shards" "$list" run_shard || status=$?
 [ "$status" -eq 0 ] || echo "wal_motion_sweep: a shard exited $status; read $out/raw-*.txt before trusting the result" >&2
 
 python3 -I - "$out" "$list" <<'PYMOTION'

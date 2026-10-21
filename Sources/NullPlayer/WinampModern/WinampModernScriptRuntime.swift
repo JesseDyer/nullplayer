@@ -66,11 +66,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     let timers: MakiTimerService
     let interpreter: MakiInterpreter
     var programs: [MakiProgram] = []
-    /// The `TreeItem`s scripts made, by their dynamic id, and each `GuiTree`'s top-level items.
-    var treeNodes: [UInt64: TreeNode] = [:]
+    var trees = WinampModernScriptTrees()
     /// Script-made GUI objects (`new Text` then `init`), by their dynamic id.
     var dynamicGUIObjects: [UInt64: WasabiObjectID] = [:]
-    var treeRoots: [WasabiObjectID: [UInt64]] = [:]
     private(set) var isTornDown = false
 
     /// Names of MAKI methods the runtime was asked for but does not implement, with a call count each.
@@ -81,8 +79,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// Diagnostics from script events that aborted without stopping the rest of the skin. Capped:
     /// a handler that fails on a repeating event (a timer or mouse move) would otherwise accumulate
     /// forever. The report de-duplicates anyway, so the cap costs no distinct information.
-    var scriptFailures: [WalDiagnostic] = []
+    private(set) var scriptFailures: [WalDiagnostic] = []
     static let maximumRecordedScriptFailures = 512
+
+    func recordScriptFailure(_ failure: WalFailure) {
+        guard scriptFailures.count < Self.maximumRecordedScriptFailures else { return }
+        scriptFailures.append(contentsOf: failure.diagnostics)
+    }
 
     /// The component kinds a holder in this skin is actually carrying, for `isNamedWindowVisible`.
     ///
@@ -705,9 +708,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
                     // down with it — the remaining scripts still run and the skin loads degraded.
                     // The interpreter's stack is local to `execute`, so an aborted event leaves no
                     // shared state behind. Every failure lands in the compatibility report.
-                    if scriptFailures.count < Self.maximumRecordedScriptFailures {
-                        scriptFailures.append(contentsOf: failure.diagnostics)
-                    }
+                    recordScriptFailure(failure)
                 }
             }
         }
@@ -759,7 +760,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         if visible, let layoutID = activeLayoutByContainer[containerID],
            let layout = loadedSkin.runtime.graph.object(withID: layoutID), !isVisible(layout) {
             _ = layout.setAttribute("visible", value: "1")
-            scriptClosedObjects.remove(layout.stableID)
+            visibility.reopened(layout.stableID)
             noteGeometryChange()
         }
         func walk(_ object: WasabiObject, ancestorsVisible: Bool) {
@@ -779,13 +780,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     // MARK: - Layer FX
 
     var layerFX = WinampModernLayerFXStore()
-    /// While a mesh is being evaluated, the callbacks run *inside a repaint*. A script that touched
-    /// the graph from one would ask for another repaint and settle geometry mid-draw, so both are
-    /// suppressed for the duration and the pending repaint is the one already in flight.
-    var isEvaluatingLayerFX = false
 
     func requestRepaint(for object: WasabiObject? = nil) {
-        guard !isEvaluatingLayerFX else { return }
+        guard !layerFX.isEvaluating else { return }
         if let object, let objectRepaintRequested = hooks.objectRepaintRequested { objectRepaintRequested(object) }
         else if let repaintRequested = hooks.repaintRequested { repaintRequested() }
         else { graphDidMutate?() }
@@ -1048,23 +1045,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         return Int32(max(0, min(255, (level * 255).rounded())))
     }
 
-    /// `isInvalid()` — the object did not come up. For a *null* receiver that is answered in the
-    /// interpreter; here it means an image-backed object whose bitmap never resolved, which is what
-    /// the engine actually asks about. ClassicPro probes for optional artwork by declaring a hidden
-    /// layer over it (`read.bg.left image="player.left.alt"`) and asking whether that layer is
-    /// invalid; answering "valid" for a skin that ships no `mainframe_lr.png` made `player.maki`
-    /// swap the window frame over to bitmaps that do not exist, punching holes in the window.
-    /// Objects a script hid during this event that carry a *positional* host action, checked once the
-    /// event unwinds (see `settleStrandedControls`).
-    var strandingCandidates: Set<WasabiObjectID> = []
-
-    /// Objects the skin's own script has **closed**, as opposed to ones that merely start life
-    /// `visible="0"` and have never been opened. The `autoopen` fallback needs the difference: a
-    /// page the script deliberately shut is a decision to respect, while an unopened one is exactly
-    /// what the fallback exists to open. Big Bento's `mcvcore` closes the whole file-info page when
-    /// it switches the Multi Content View to the stretched visualization, and the fallback reopened
-    /// one of those groups on the next reveal — two pages on screen at once.
-    var scriptClosedObjects: Set<WasabiObjectID> = []
+    var visibility = WinampModernScriptVisibility()
 
     /// Bind the host-provided singletons a program declares but never assigns.
     ///

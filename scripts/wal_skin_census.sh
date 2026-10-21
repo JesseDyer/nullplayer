@@ -74,12 +74,7 @@ if [ "$archives" -eq 0 ]; then
     exit 1
 fi
 
-if [ "$allow_dirty" -eq 0 ] && [ "$parse_only" -eq 0 ] \
-   && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-    echo "wal_skin_census: working tree is dirty; commit, use a worktree, or pass --allow-dirty" >&2
-    git status --short >&2
-    exit 1
-fi
+[ "$parse_only" -eq 1 ] || wal_require_clean_tree wal_skin_census "$allow_dirty" || exit 1
 
 rev=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 measured=$(date +%Y-%m-%d)

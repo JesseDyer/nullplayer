@@ -1469,7 +1469,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // groups back open on the next reveal — the visualization drawn over the details and cover.
         // An object that merely *starts* `visible="0"` and was never touched is still fair game;
         // that is what the fallback is for.
-        let scriptClosed = skinView?.scripts.scriptClosedObjects ?? []
+        let scriptClosed = skinView?.scripts.visibility.scriptClosedObjects ?? []
         func visit(_ object: WasabiObject) {
             if WinampModernComponentRegistry.isHolderElement(object.tag),
                WasabiSceneRenderer.componentKind(of: object) == kind, isAutoOpen(object) {
@@ -2872,5 +2872,17 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         if let trackLoadFailureObserver { NotificationCenter.default.removeObserver(trackLoadFailureObserver) }
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         tearDownSkin()
+    }
+}
+
+private extension UIScaleLevel {
+    /// This level, or the largest one at or above 100% below it that fits `size` (unscaled) into
+    /// `area` — 100% when none does.
+    func capped(fitting size: CGSize, into area: CGSize) -> UIScaleLevel {
+        let fits = { (level: UIScaleLevel) in
+            size.width * level.scaleFactor <= area.width && size.height * level.scaleFactor <= area.height
+        }
+        guard !fits(self) else { return self }
+        return Self.allCases.last { $0.scaleFactor >= 1 && $0.scaleFactor <= scaleFactor && fits($0) } ?? .p100
     }
 }

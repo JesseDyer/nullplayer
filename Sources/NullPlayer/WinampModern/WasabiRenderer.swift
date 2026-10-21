@@ -1551,7 +1551,7 @@ final class WasabiSceneRenderer {
     /// Frames are **parent-relative**, the space a script's own `getGuiX`/`getGuiY` reports in.
     func resizeTargets() -> [(object: WasabiObject, frame: CGRect)] {
         layoutNodes().compactMap { node in
-            guard node.object.tag.is(.layout) || node.object.tag.is(.group) || WasabiFrame.isFrame(node.object.tag)
+            guard node.object.tag.is(anyOf: [.layout, .group]) || WasabiFrame.isFrame(node.object.tag)
                     || loadedSkin.runtime.types.isXUITag(node.object.typeName) else { return nil }
             return (node.object, node.frame.offsetBy(dx: -node.parentFrame.minX,
                                                      dy: -node.parentFrame.minY))
@@ -2116,7 +2116,7 @@ final class WasabiSceneRenderer {
             return WasabiFormWidgets.checkBoxGlyph + WasabiFormWidgets.checkBoxLabelGap
                 + resources.metrics.width(of: object, text: label)
         }
-        guard object.tag.is(.text) || object.tag.is(.songticker) else { return nil }
+        guard object.tag.is(anyOf: [.text, .songticker]) else { return nil }
         return resources.metrics.width(of: object,
                                        text: WasabiTextMetrics.content(of: object, host: host))
     }
@@ -2524,7 +2524,7 @@ final class WasabiSceneRenderer {
                            pressed: pressed == object.stableID)
         }
 
-        if object.tag.is(.text) || object.tag.is(.songticker) {
+        if object.tag.is(anyOf: [.text, .songticker]) {
             drawText(object, frame: node.frame, context: context)
         } else if object.tag.is(.edit) {
             drawEdit(object, frame: node.frame, context: context)
@@ -2605,7 +2605,7 @@ final class WasabiSceneRenderer {
         // A plain `<button text="…">` draws its label over its artwork, as Wasabi's button does.
         // It arrives through `embed_xui`: Azenis² redefines `Wasabi:Button` as a grid under a bare
         // `<button>`, and its Switch/Prev/Next and search buttons were blank boxes.
-        if object.tag.is(.button) || object.tag.is(.toggleButton), let label = Self.ownLabel(of: object) {
+        if object.tag.is(anyOf: [.button, .toggleButton]), let label = Self.ownLabel(of: object) {
             drawText(label, object: object, frame: node.frame, context: context,
                      undeclaredColor: palette.listText)
         }

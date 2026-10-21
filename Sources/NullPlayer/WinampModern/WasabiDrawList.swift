@@ -22,8 +22,11 @@ import CoreText
 /// answer at the same point.
 final class WasabiDrawList {
     typealias Op = (CGContext) -> Void
+    /// Swaps a bitmap for one already in the replay context's colour space.
+    typealias ImageMatcher = (CGImage) -> CGImage
 
-    private(set) var ops: [Op] = []
+    /// Each op with the replay's matcher passed in, so nothing replay-scoped lives on the list.
+    private var steps: [(CGContext, ImageMatcher) -> Void] = []
 
     private struct State {
         var ctm: CGAffineTransform
@@ -56,18 +59,16 @@ final class WasabiDrawList {
 
     /// `matchImage`, when given, swaps each bitmap for one already in the replay context's colour
     /// space (`WinampModernCanvas.matched`).
-    func replay(into context: CGContext, matchImage: ((CGImage) -> CGImage)? = nil) {
-        self.matchImage = matchImage
-        for op in ops { op(context) }
-        self.matchImage = nil
+    func replay(into context: CGContext, matchImage: @escaping ImageMatcher = { $0 }) {
+        for step in steps { step(context, matchImage) }
     }
-
-    /// Set only for the length of a replay, on the replaying thread.
-    private var matchImage: ((CGImage) -> CGImage)?
 
     /// For a draw that needs a real context: run on the replaying thread, with the replay context.
     /// The closure must capture only immutable values.
-    func record(_ op: @escaping Op) { ops.append(op) }
+    func record(_ op: @escaping Op) { append(op) }
+
+    /// An op that never touches a bitmap.
+    private func append(_ op: @escaping Op) { steps.append { context, _ in op(context) } }
 
     // MARK: State the renderer reads back
 
@@ -83,7 +84,7 @@ final class WasabiDrawList {
         get { state.interpolationQuality }
         set {
             state.interpolationQuality = newValue
-            ops.append { $0.interpolationQuality = newValue }
+            append { $0.interpolationQuality = newValue }
         }
     }
 
@@ -91,69 +92,69 @@ final class WasabiDrawList {
 
     func saveGState() {
         saved.append(state)
-        ops.append { $0.saveGState() }
+        append { $0.saveGState() }
     }
 
     func restoreGState() {
         if let last = saved.popLast() { state = last }
-        ops.append { $0.restoreGState() }
+        append { $0.restoreGState() }
     }
 
     func translateBy(x: CGFloat, y: CGFloat) {
         state.ctm = state.ctm.translatedBy(x: x, y: y)
-        ops.append { $0.translateBy(x: x, y: y) }
+        append { $0.translateBy(x: x, y: y) }
     }
 
     func scaleBy(x: CGFloat, y: CGFloat) {
         state.ctm = state.ctm.scaledBy(x: x, y: y)
-        ops.append { $0.scaleBy(x: x, y: y) }
+        append { $0.scaleBy(x: x, y: y) }
     }
 
     func concatenate(_ transform: CGAffineTransform) {
         state.ctm = transform.concatenating(state.ctm)
-        ops.append { $0.concatenate(transform) }
+        append { $0.concatenate(transform) }
     }
 
-    func setAlpha(_ alpha: CGFloat) { ops.append { $0.setAlpha(alpha) } }
-    func setBlendMode(_ mode: CGBlendMode) { ops.append { $0.setBlendMode(mode) } }
-    func setShouldAntialias(_ value: Bool) { ops.append { $0.setShouldAntialias(value) } }
-    func setLineWidth(_ width: CGFloat) { ops.append { $0.setLineWidth(width) } }
-    func setLineCap(_ cap: CGLineCap) { ops.append { $0.setLineCap(cap) } }
+    func setAlpha(_ alpha: CGFloat) { append { $0.setAlpha(alpha) } }
+    func setBlendMode(_ mode: CGBlendMode) { append { $0.setBlendMode(mode) } }
+    func setShouldAntialias(_ value: Bool) { append { $0.setShouldAntialias(value) } }
+    func setLineWidth(_ width: CGFloat) { append { $0.setLineWidth(width) } }
+    func setLineCap(_ cap: CGLineCap) { append { $0.setLineCap(cap) } }
 
-    func setFillColor(_ color: CGColor) { ops.append { $0.setFillColor(color) } }
-    func setFillColor(gray: CGFloat, alpha: CGFloat) { ops.append { $0.setFillColor(gray: gray, alpha: alpha) } }
+    func setFillColor(_ color: CGColor) { append { $0.setFillColor(color) } }
+    func setFillColor(gray: CGFloat, alpha: CGFloat) { append { $0.setFillColor(gray: gray, alpha: alpha) } }
     func setFillColor(red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
-        ops.append { $0.setFillColor(red: red, green: green, blue: blue, alpha: alpha) }
+        append { $0.setFillColor(red: red, green: green, blue: blue, alpha: alpha) }
     }
-    func setStrokeColor(_ color: CGColor) { ops.append { $0.setStrokeColor(color) } }
+    func setStrokeColor(_ color: CGColor) { append { $0.setStrokeColor(color) } }
 
     // MARK: Clipping
 
     func clip(to rect: CGRect) {
         narrowClip(to: rect.applying(state.ctm))
-        ops.append { $0.clip(to: rect) }
+        append { $0.clip(to: rect) }
     }
 
     func clip(to rects: [CGRect]) {
         narrowClip(to: rects.reduce(CGRect.null) { $0.union($1.applying(state.ctm)) })
-        ops.append { $0.clip(to: rects) }
+        append { $0.clip(to: rects) }
     }
 
     func clip(to rect: CGRect, mask: CGImage) {
         narrowClip(to: rect.applying(state.ctm))
-        ops.append { $0.clip(to: rect, mask: mask) }
+        append { $0.clip(to: rect, mask: mask) }
     }
 
     /// Clips to the current path, which it consumes.
     func clip(using rule: CGPathFillRule = .winding) {
         narrowClip(to: pathBounds)
         pathBounds = .null
-        ops.append { $0.clip(using: rule) }
+        append { $0.clip(using: rule) }
     }
 
     func resetClip() {
         state.clip = initialClip
-        ops.append { $0.resetClip() }
+        append { $0.resetClip() }
     }
 
     private func narrowClip(to rect: CGRect) {
@@ -164,40 +165,40 @@ final class WasabiDrawList {
 
     func beginPath() {
         pathBounds = .null
-        ops.append { $0.beginPath() }
+        append { $0.beginPath() }
     }
 
     func move(to point: CGPoint) {
         addToPath(point)
-        ops.append { $0.move(to: point) }
+        append { $0.move(to: point) }
     }
 
     func addLine(to point: CGPoint) {
         addToPath(point)
-        ops.append { $0.addLine(to: point) }
+        append { $0.addLine(to: point) }
     }
 
     func addRect(_ rect: CGRect) {
         pathBounds = pathBounds.union(rect.applying(state.ctm))
-        ops.append { $0.addRect(rect) }
+        append { $0.addRect(rect) }
     }
 
     func addPath(_ path: CGPath) {
         let path = path.copy() ?? path
         pathBounds = pathBounds.union(path.boundingBoxOfPath.applying(state.ctm))
-        ops.append { $0.addPath(path) }
+        append { $0.addPath(path) }
     }
 
-    func closePath() { ops.append { $0.closePath() } }
+    func closePath() { append { $0.closePath() } }
 
     func fillPath(using rule: CGPathFillRule = .winding) {
         pathBounds = .null
-        ops.append { $0.fillPath(using: rule) }
+        append { $0.fillPath(using: rule) }
     }
 
     func strokePath() {
         pathBounds = .null
-        ops.append { $0.strokePath() }
+        append { $0.strokePath() }
     }
 
     private func addToPath(_ point: CGPoint) {
@@ -206,27 +207,26 @@ final class WasabiDrawList {
 
     // MARK: Drawing
 
-    func fill(_ rect: CGRect) { ops.append { $0.fill(rect) } }
-    func fill(_ rects: [CGRect]) { ops.append { $0.fill(rects) } }
-    func fillEllipse(in rect: CGRect) { ops.append { $0.fillEllipse(in: rect) } }
-    func stroke(_ rect: CGRect) { ops.append { $0.stroke(rect) } }
-    func stroke(_ rect: CGRect, width: CGFloat) { ops.append { $0.stroke(rect, width: width) } }
-    func strokeEllipse(in rect: CGRect) { ops.append { $0.strokeEllipse(in: rect) } }
-    func clear(_ rect: CGRect) { ops.append { $0.clear(rect) } }
+    func fill(_ rect: CGRect) { append { $0.fill(rect) } }
+    func fill(_ rects: [CGRect]) { append { $0.fill(rects) } }
+    func fillEllipse(in rect: CGRect) { append { $0.fillEllipse(in: rect) } }
+    func stroke(_ rect: CGRect) { append { $0.stroke(rect) } }
+    func stroke(_ rect: CGRect, width: CGFloat) { append { $0.stroke(rect, width: width) } }
+    func strokeEllipse(in rect: CGRect) { append { $0.strokeEllipse(in: rect) } }
+    func clear(_ rect: CGRect) { append { $0.clear(rect) } }
 
     func draw(_ image: CGImage, in rect: CGRect, byTiling: Bool = false) {
-        // Unowned: the list owns its ops, and outlives every replay of them.
-        ops.append { [unowned self] in $0.draw(matchImage?(image) ?? image, in: rect, byTiling: byTiling) }
+        steps.append { context, match in context.draw(match(image), in: rect, byTiling: byTiling) }
     }
 
     func drawLinearGradient(_ gradient: CGGradient, start: CGPoint, end: CGPoint,
                             options: CGGradientDrawingOptions) {
-        ops.append { $0.drawLinearGradient(gradient, start: start, end: end, options: options) }
+        append { $0.drawLinearGradient(gradient, start: start, end: end, options: options) }
     }
 
     /// `CTLineDraw` at `position`, which is where it leaves the text position.
     func draw(line: CTLine, at position: CGPoint) {
-        ops.append { context in
+        append { context in
             context.textPosition = position
             CTLineDraw(line, context)
         }
@@ -237,7 +237,7 @@ final class WasabiDrawList {
     /// is bound to the replay context, on the replaying thread (`current` is per thread), for the
     /// length of `body`. `body` must capture only immutable values.
     func drawWithAppKit(_ body: @escaping () -> Void) {
-        ops.append { context in
+        append { context in
             let previous = NSGraphicsContext.current
             NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
             body()

@@ -5,9 +5,11 @@ import Foundation
 /// column and row edits, and `GuiTree`/`TreeItem`. Split out of
 /// `WinampModernScriptRuntimeObject.swift`; see
 /// `skills/winamp-modern-skin-guide/reference/compatibility/maki-surface.md`.
-extension WinampModernScriptRuntime {
+/// The `TreeItem`s scripts made, by their dynamic id, and each `GuiTree`'s top-level items. Only
+/// this file reads or writes them.
+struct WinampModernScriptTrees {
     /// One `TreeItem`: a script-owned node a `GuiTree` holds. Its id is the `new TreeItem` object's.
-    struct TreeNode {
+    fileprivate struct Node {
         var label = ""
         var parent: UInt64?
         var children: [UInt64] = []
@@ -16,6 +18,11 @@ extension WinampModernScriptRuntime {
         var tree: WasabiObjectID?
     }
 
+    fileprivate var nodes: [UInt64: Node] = [:]
+    fileprivate var roots: [WasabiObjectID: [UInt64]] = [:]
+}
+
+extension WinampModernScriptRuntime {
     /// Answers the widget methods, or `nil` for anything it does not own so `invokeGUI` goes on.
     func invokeWidget(method: String, object: WasabiObject, arguments: [MakiValue]) throws -> MakiValue? {
         if WasabiGuiList.isTree(object), let value = try invokeTree(method: method, tree: object, arguments: arguments) {
@@ -268,18 +275,18 @@ extension WinampModernScriptRuntime {
     func invokeTreeItem(method: String, id: UInt64, arguments: [MakiValue]) throws -> MakiValue? {
         switch method {
         case "setlabel":
-            treeNodes[id, default: TreeNode()].label = arguments[0].stringValue
+            trees.nodes[id, default: .init()].label = arguments[0].stringValue
             refreshTree(containing: id)
             return .null
-        case "getlabel": return .string(treeNodes[id]?.label ?? "")
+        case "getlabel": return .string(trees.nodes[id]?.label ?? "")
         case "expand", "collapse":
-            treeNodes[id, default: TreeNode()].expanded = method == "expand"
+            trees.nodes[id, default: .init()].expanded = method == "expand"
             refreshTree(containing: id)
             _ = try dispatch(target: MakiObjectReference(.dynamic(id)), event: "on" + method, arguments: [])
             return .integer(1)
-        case "isexpanded": return .integer(treeNodes[id]?.expanded == true ? 1 : 0)
-        case "getnumchildren": return .integer(Int32(treeNodes[id]?.children.count ?? 0))
-        case "getparent": return treeNodes[id]?.parent.map(treeItemValue) ?? .null
+        case "isexpanded": return .integer(trees.nodes[id]?.expanded == true ? 1 : 0)
+        case "getnumchildren": return .integer(Int32(trees.nodes[id]?.children.count ?? 0))
+        case "getparent": return trees.nodes[id]?.parent.map(treeItemValue) ?? .null
         default: return nil
         }
     }
@@ -301,12 +308,12 @@ extension WinampModernScriptRuntime {
             refreshTree(tree)
             return .null
         case "deleteallitems":
-            for id in treeNodes.keys where treeNodes[id]?.tree == tree.stableID { treeNodes[id] = nil }
-            treeRoots[tree.stableID] = []
+            for id in trees.nodes.keys where trees.nodes[id]?.tree == tree.stableID { trees.nodes[id] = nil }
+            trees.roots[tree.stableID] = []
             refreshTree(tree)
             return .null
         case "enumrootitem":
-            let roots = sortedTreeChildren(treeRoots[tree.stableID] ?? [], of: tree)
+            let roots = sortedTreeChildren(trees.roots[tree.stableID] ?? [], of: tree)
             let index = Int(arguments[0].integerValue)
             return roots.indices.contains(index) ? treeItemValue(roots[index]) : .null
         case "enumallitems":
@@ -317,21 +324,21 @@ extension WinampModernScriptRuntime {
         // Depth-first under the item, or through the whole tree from null: 1010 Fullscreen finds a
         // second-level page ("Cover Search") by label to hang its own sub-page under it.
         case "getbylabel":
-            var pending = Array((item(arguments[0]).flatMap { treeNodes[$0]?.children }
-                                 ?? treeRoots[tree.stableID] ?? []).reversed())
+            var pending = Array((item(arguments[0]).flatMap { trees.nodes[$0]?.children }
+                                 ?? trees.roots[tree.stableID] ?? []).reversed())
             let wanted = arguments[1].stringValue
             while let id = pending.popLast() {
-                if treeNodes[id]?.label == wanted { return treeItemValue(id) }
-                pending.append(contentsOf: (treeNodes[id]?.children ?? []).reversed())
+                if trees.nodes[id]?.label == wanted { return treeItemValue(id) }
+                pending.append(contentsOf: (trees.nodes[id]?.children ?? []).reversed())
             }
             return .null
         case "selectitem":
             guard let id = item(arguments[0]) else { return .null }
             // Selecting an item shows it: every ancestor opens.
-            var ancestor = treeNodes[id]?.parent
+            var ancestor = trees.nodes[id]?.parent
             while let current = ancestor {
-                treeNodes[current]?.expanded = true
-                ancestor = treeNodes[current]?.parent
+                trees.nodes[current]?.expanded = true
+                ancestor = trees.nodes[current]?.parent
             }
             refreshTree(tree)
             try selectTreeItem(id, in: tree)
@@ -350,8 +357,8 @@ extension WinampModernScriptRuntime {
         let rows = flattenedTree(tree, visibleOnly: true)
         guard rows.indices.contains(row) else { return }
         let id = rows[row].id
-        if treeNodes[id]?.children.isEmpty == false {
-            treeNodes[id]?.expanded.toggle()
+        if trees.nodes[id]?.children.isEmpty == false {
+            trees.nodes[id]?.expanded.toggle()
             refreshTree(tree)
         }
         try selectTreeItem(id, in: tree)
@@ -375,20 +382,20 @@ extension WinampModernScriptRuntime {
         var ancestor = parent
         while let current = ancestor {
             if current == id { return }
-            ancestor = treeNodes[current]?.parent
+            ancestor = trees.nodes[current]?.parent
         }
-        if let old = treeNodes[id]?.parent { treeNodes[old]?.children.removeAll { $0 == id } }
-        treeRoots[tree]?.removeAll { $0 == id }
-        treeNodes[id, default: TreeNode()].parent = parent
-        treeNodes[id]?.tree = tree
-        if let parent { treeNodes[parent, default: TreeNode()].children.append(id) }
-        else { treeRoots[tree, default: []].append(id) }
+        if let old = trees.nodes[id]?.parent { trees.nodes[old]?.children.removeAll { $0 == id } }
+        trees.roots[tree]?.removeAll { $0 == id }
+        trees.nodes[id, default: .init()].parent = parent
+        trees.nodes[id]?.tree = tree
+        if let parent { trees.nodes[parent, default: .init()].children.append(id) }
+        else { trees.roots[tree, default: []].append(id) }
     }
 
     private func sortedTreeChildren(_ ids: [UInt64], of tree: WasabiObject) -> [UInt64] {
         guard tree.attributes[Self.treeSortedKey] == "1" else { return ids }
         return ids.sorted {
-            (treeNodes[$0]?.label ?? "").localizedStandardCompare(treeNodes[$1]?.label ?? "") == .orderedAscending
+            (trees.nodes[$0]?.label ?? "").localizedStandardCompare(trees.nodes[$1]?.label ?? "") == .orderedAscending
         }
     }
 
@@ -398,17 +405,17 @@ extension WinampModernScriptRuntime {
         func walk(_ ids: [UInt64], depth: Int) {
             guard depth < 32 else { return }
             for id in sortedTreeChildren(ids, of: tree) {
-                guard rows.count < WasabiGuiList.maximumItems, let node = treeNodes[id] else { return }
+                guard rows.count < WasabiGuiList.maximumItems, let node = trees.nodes[id] else { return }
                 rows.append((id, depth))
                 if !visibleOnly || node.expanded { walk(node.children, depth: depth + 1) }
             }
         }
-        walk(treeRoots[tree.stableID] ?? [], depth: 0)
+        walk(trees.roots[tree.stableID] ?? [], depth: 0)
         return rows
     }
 
     private func refreshTree(containing id: UInt64) {
-        guard let treeID = treeNodes[id]?.tree, let tree = loadedSkin.runtime.graph.object(withID: treeID) else { return }
+        guard let treeID = trees.nodes[id]?.tree, let tree = loadedSkin.runtime.graph.object(withID: treeID) else { return }
         refreshTree(tree)
     }
 
@@ -416,7 +423,7 @@ extension WinampModernScriptRuntime {
     /// an item that has children.
     private func refreshTree(_ tree: WasabiObject) {
         let rows = flattenedTree(tree, visibleOnly: true).map { row -> String in
-            let node = treeNodes[row.id]
+            let node = trees.nodes[row.id]
             let marker = node?.children.isEmpty == false ? (node?.expanded == true ? "▾ " : "▸ ") : "   "
             return String(repeating: "   ", count: row.depth) + marker + (node?.label ?? "")
         }

@@ -43,11 +43,7 @@ done
 
 archives=$(wal_corpus_archives "$corpus" | grep -c .) || { echo "wal_feature_index: no .wal archives in $corpus" >&2; exit 1; }
 
-if [ "$allow_dirty" -eq 0 ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-    echo "wal_feature_index: working tree is dirty; commit, use a worktree, or pass --allow-dirty" >&2
-    git status --short >&2
-    exit 1
-fi
+wal_require_clean_tree wal_feature_index "$allow_dirty" || exit 1
 
 mkdir -p "$out"
 out=$(cd "$out" && pwd)

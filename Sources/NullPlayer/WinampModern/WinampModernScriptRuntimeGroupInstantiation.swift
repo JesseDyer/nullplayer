@@ -84,9 +84,7 @@ extension WinampModernScriptRuntime {
                                                                 parameter: binding.parameter))
                 } catch let failure as WalFailure {
                     // Same tolerance as the initial load: an unreadable program is dropped, not fatal.
-                    if scriptFailures.count < Self.maximumRecordedScriptFailures {
-                        scriptFailures.append(contentsOf: failure.diagnostics)
-                    }
+                    recordScriptFailure(failure)
                 }
             }
             for child in object.children { try collect(child) }
