@@ -148,8 +148,8 @@ extension WinampModernScriptRuntime {
     /// The container whose window a show, hide or geometry write on `object` acts on: a container is
     /// its own, a layout is its container's (BB31), and anything else is not a window.
     static func windowTarget(of object: WasabiObject) -> WasabiObject? {
-        if object.is(.container) { return object }
-        if object.is(.layout) {
+        if object.tag.is(.container) { return object }
+        if object.tag.is(.layout) {
             return enclosingContainer(of: object)
         }
         return nil
@@ -162,7 +162,7 @@ extension WinampModernScriptRuntime {
     /// already open at its old size goes too, and a real size lets the next `show()` through. The size
     /// write itself neither hides nor shows anything.
     func noteScriptSize(of layout: WasabiObject, collapsed: Bool) {
-        guard layout.is(.layout) else { return }
+        guard layout.tag.is(.layout) else { return }
         if collapsed { scriptCollapsedLayouts.insert(layout.stableID) }
         else { scriptCollapsedLayouts.remove(layout.stableID) }
     }

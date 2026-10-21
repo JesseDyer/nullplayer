@@ -118,7 +118,7 @@ final class WinampModernMainView: NSView {
             let object = node.object
             let action = object.attributes["action"]?.lowercased() ?? "-"
             let id = object.attributes["id"] ?? object.attributes["xuitag"] ?? "-"
-            let looksRelevant = action == "seek" || object.is(.slider) || object.is(.progressGrid)
+            let looksRelevant = action == "seek" || object.tag.is(.slider) || object.tag.is(.progressGrid)
                 || id.lowercased().contains("seek")
             guard looksRelevant else { continue }
             NSLog("SEEK_TRACE   id=%@ type=%@ action=%@ value=%@ normalized=%.4f frame=%@",
@@ -297,8 +297,8 @@ final class WinampModernMainView: NSView {
         if let animatingRectsCache { return animatingRectsCache }
         let rects = renderer.sceneNodes().compactMap { node -> NSRect? in
             let object = node.object
-            var animates = (object.is(.animatedLayer) || object.is(.songticker))
-            if !animates, object.is(.text) {
+            var animates = (object.tag.is(.animatedLayer) || object.tag.is(.songticker))
+            if !animates, object.tag.is(.text) {
                 // A plain `text` that opts into ticker scrolling also needs the redraw clock.
                 let ticker = (object.attributes["ticker"] ?? "0").lowercased()
                 animates = !["0", "off", "false", "no"].contains(ticker)
@@ -760,10 +760,10 @@ final class WinampModernMainView: NSView {
     }
 
     private static func editControl(in object: WasabiObject) -> WasabiObject? {
-        if object.kind == .edit { return object }
+        if object.tag.kind == .edit { return object }
         var stack = object.children
         while let node = stack.popLast() {
-            if node.kind == .edit { return node }
+            if node.tag.kind == .edit { return node }
             stack.append(contentsOf: node.children)
         }
         return nil
@@ -1936,7 +1936,7 @@ final class WinampModernMainView: NSView {
     /// `move="0"` and `action=` are still refusals, because there the skin has said what it wants.
     func shouldPrimeWindowDrag(from object: WasabiObject) -> Bool {
         guard !shouldDragWindow(from: object) else { return false }
-        guard object.is(.layer) else { return false }
+        guard object.tag.is(.layer) else { return false }
         guard object.attributes["move"] != "0", object.attributes["action"] == nil else { return false }
         guard !scripts.hasBinding(for: object, event: "onleftbuttondown") else { return false }
         return Self.mouseEvents.contains { scripts.hasBinding(for: object, event: $0) }
@@ -2152,7 +2152,7 @@ final class WinampModernMainView: NSView {
         // point (Big Bento covers its own with an invisible `main.vis.trigger` layer carrying the
         // skin's settings page, and that menu wins), and it must have no right-button handler of its
         // own (Love is War Miku's `visualizer.maki` binds one).
-        if object.is(.vis),
+        if object.tag.is(.vis),
            !scripts.hasBinding(for: object, event: "onrightbuttondown"),
            !scripts.hasBinding(for: object, event: "onrightbuttonup") {
             showVisualizationMenu(from: object)
@@ -2305,13 +2305,16 @@ final class WinampModernMainView: NSView {
             let display = object.attributes["display"]?.lowercased()
             let action = object.attributes["action"]?.lowercased()
             let follows: Bool
-            switch object.namespace == .none ? object.kind : .other {
-            case .text, .songticker: follows = display == "time"
-            case .slider: follows = action == "seek"
-            // A `progressgrid` with no action of its own takes its value from the slider it is
-            // paired with, so it has to be treated as a possible seek bar.
-            case .progressGrid: follows = action == "seek" || action == nil
-            default: follows = false
+            if object.tag.is(anyOf: [.text, .songticker]) {
+                follows = display == "time"
+            } else if object.tag.is(.slider) {
+                follows = action == "seek"
+            } else if object.tag.is(.progressGrid) {
+                // A `progressgrid` with no action of its own takes its value from the slider it is
+                // paired with, so it has to be treated as a possible seek bar.
+                follows = action == "seek" || action == nil
+            } else {
+                follows = false
             }
             guard follows else { return nil }
             return viewRect(fromSkin: node.frame).insetBy(dx: -2, dy: -2)
@@ -2499,7 +2502,7 @@ final class WinampModernMainView: NSView {
     private func visualizationRects() -> [NSRect] {
         if let visualizationRectsCache { return visualizationRectsCache }
         var rects = renderer.sceneNodes().compactMap { node -> NSRect? in
-            guard node.object.is(.vis) || node.object.is(.eqVis) else { return nil }
+            guard node.object.tag.is(.vis) || node.object.tag.is(.eqVis) else { return nil }
             return viewRect(fromSkin: node.frame).insetBy(dx: -2, dy: -2)
         }
         // A `{0000000A}` holder drawing its own analyzer (BB9) is not a `<vis>` and was invisible to
@@ -2613,18 +2616,18 @@ final class WinampModernMainView: NSView {
         if object.attributes["move"] == "1", !Self.isControl(object) { return true }
         // The layout is the window's own background. A skin that paints the whole frame there and
         // hangs only controls off it (T800) otherwise has nothing to drag by at all.
-        if object.is(.layout) { return true }
+        if object.tag.is(.layout) { return true }
         // A bare group has no artwork of its own, so a click reaching one landed on the background it
         // covers, and without `move="1"` above the skin has not offered it as a handle.
-        if object.is(.group) { return false }
+        if object.tag.is(.group) { return false }
         // A layer a script hooks the mouse on is a control, not a handle — the same thing `move="0"`
         // says explicitly, for the skins that do not bother to say it. Love is War Miku's invisible
         // `visual.trigger` is one: dragging the window off it would eat the click that cycles the
         // visualization.
-        if object.is(.layer), Self.mouseEvents.contains(where: { scripts.hasBinding(for: object, event: $0) }) {
+        if object.tag.is(.layer), Self.mouseEvents.contains(where: { scripts.hasBinding(for: object, event: $0) }) {
             return false
         }
-        return object.is(.layer) && object.attributes["action"] == nil
+        return object.tag.is(.layer) && object.attributes["action"] == nil
     }
 
     private static let mouseEvents = ["onleftbuttondown", "onleftbuttonup", "onleftclick",
@@ -2637,7 +2640,7 @@ final class WinampModernMainView: NSView {
     ]
 
     private static func isControl(_ object: WasabiObject) -> Bool {
-        (object.namespace == .none && controlKinds.contains(object.kind)) || object.is(.button, in: .wasabi)
+        object.tag.is(anyOf: controlKinds) || object.tag.is(.button, in: .wasabi)
     }
 
     /// Show a script-built menu at the mouse and answer the command id the user picked (0 = nothing).
@@ -2795,7 +2798,7 @@ final class WinampModernMainView: NSView {
     }
 
     private func updateSlider(_ object: WasabiObject, point: CGPoint) {
-        guard object.is(.slider),
+        guard object.tag.is(.slider),
               let frame = renderer.frame(of: object), frame.width > 0, frame.height > 0 else { return }
         let vertical = WasabiSceneRenderer.isVerticalOrientation(object)
         let value = vertical ? 1 - (point.y - frame.minY) / frame.height
@@ -2832,7 +2835,7 @@ final class WinampModernMainView: NSView {
     /// carries. Only for sliders, and only when one was actually driven: every other pressed object
     /// releases without a position to report.
     private func noteFinalPosition(on object: WasabiObject) {
-        guard object.is(.slider) else { return }
+        guard object.tag.is(.slider) else { return }
         let target = scripts.embeddedControl(of: object) ?? object
         let position = Int32(target.attributes["value"]
                              ?? target.attributes["position"] ?? "") ?? 0

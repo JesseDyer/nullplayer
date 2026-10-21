@@ -31,7 +31,7 @@ extension WinampModernScriptRuntime {
         // volume control. See `WinampModernScriptRuntime.realizedLayouts`.
         case "getlayout":
             guard let match = object.children.first(where: {
-                $0.is(.layout) &&
+                $0.tag.is(.layout) &&
                 $0.xmlID?.caseInsensitiveCompare(arguments[0].stringValue) == .orderedSame
             }) ?? descendant(of: object, xmlID: arguments[0].stringValue) else { return .null }
             return isLayoutCreated(match, askedBy: program) ? objectValue(match) : .null
@@ -61,9 +61,9 @@ extension WinampModernScriptRuntime {
         case "getcurlayout":
             return objectValue(activeLayoutByContainer[object.stableID].flatMap(loadedSkin.runtime.graph.object(withID:)))
         case "switchtolayout":
-            guard object.is(.container),
+            guard object.tag.is(.container),
                   let next = object.children.first(where: {
-                      $0.is(.layout) &&
+                      $0.tag.is(.layout) &&
                       $0.xmlID?.caseInsensitiveCompare(arguments[0].stringValue) == .orderedSame
                   }) else { return .null }
             activeLayoutByContainer[object.stableID] = next.stableID
@@ -152,7 +152,7 @@ extension WinampModernScriptRuntime {
                 // can only guess at (B125: ClassicPro engine two writes `minimum_h` =
                 // titlebar+info+playback from `fullScreen(false)`, and our inferred floor was three
                 // times it).
-                if object.is(.layout),
+                if object.tag.is(.layout),
                    ["minimum_w", "minimum_h"].contains(key.lowercased()) {
                     object.noteScriptAuthoredMinimum(key)
                 }
@@ -246,7 +246,7 @@ extension WinampModernScriptRuntime {
             let clamped = max(0, min(255, arguments[0].integerValue))
             _ = object.setAttribute("alpha", value: String(clamped))
             notifyObjectDidMutate(object)
-            if object.is(.container),
+            if object.tag.is(.container),
                let id = object.xmlID {
                 containerAlphaChanged?(id, CGFloat(clamped) / 255.0)
             }
@@ -363,13 +363,13 @@ extension WinampModernScriptRuntime {
         // receiver is honestly not loading anything.
         case "isloading":
             // The XUI form (`<Wasabi:AlbumArt>`) keeps its namespace prefix in the element name.
-            guard object.kind == .albumArt else { return .boolean(false) }
+            guard object.tag.kind == .albumArt else { return .boolean(false) }
             return .boolean(host.isArtworkLoading)
-        case "getposition" where WasabiFrame.isFrame(object):
+        case "getposition" where WasabiFrame.isFrame(object.tag):
             // A splitter's position is its divider offset, not a slider value. ClassicPro reads it to
             // decide whether the side view is open (`mainFrame.getPosition()==0`).
             return .integer(Int32(clamping: Int(WasabiFrame.position(of: object))))
-        case "setposition" where WasabiFrame.isFrame(object):
+        case "setposition" where WasabiFrame.isFrame(object.tag):
             guard WasabiFrame.setPosition(Double(arguments[0].integerValue), on: object) else { return .null }
             noteGeometryChange()
             notifyGraphDidMutate()
@@ -672,7 +672,7 @@ extension WinampModernScriptRuntime {
             // child object would be a second, rival scale for the same pixels (see `getscale`
             // below, which stays 1 for exactly that reason). A non-layout receiver is accepted and
             // inert rather than refused — refusing a method aborts the handler that called it.
-            if object.is(.layout) {
+            if object.tag.is(.layout) {
                 let factor = arguments[0].doubleValue
                 // A skin is not allowed to drive the host off the end of the scale; the host snaps
                 // the request to one of its own levels anyway, and a garbage value should not reach
@@ -883,7 +883,7 @@ extension WinampModernScriptRuntime {
     private static func container(of object: WasabiObject) -> WasabiObject? {
         var candidate: WasabiObject? = object
         while let current = candidate {
-            if current.is(.container) { return current }
+            if current.tag.is(.container) { return current }
             candidate = current.parent
         }
         return nil
@@ -892,7 +892,7 @@ extension WinampModernScriptRuntime {
     func ancestor(of object: WasabiObject, type: WasabiKind) -> WasabiObject? {
         var candidate: WasabiObject? = object
         while let current = candidate {
-            if current.is(type) { return current }
+            if current.tag.is(type) { return current }
             candidate = current.parent
         }
         return nil
@@ -946,7 +946,7 @@ extension WinampModernScriptRuntime {
     ///
     /// Anything that is not a `GroupList` keeps whatever geometry it was instantiated with.
     func stackInGroupList(_ child: WasabiObject, list: WasabiObject) {
-        guard list.is(.groupList) else { return }
+        guard list.tag.is(.groupList) else { return }
         var top = 0.0
         for sibling in list.children where sibling !== child { top += stackedHeight(of: sibling) }
         _ = child.setAttribute("x", value: "0")

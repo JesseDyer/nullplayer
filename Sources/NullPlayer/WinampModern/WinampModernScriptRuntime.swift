@@ -95,7 +95,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         if let cachedClaimedComponentKinds { return cachedClaimedComponentKinds }
         var kinds: Set<WinampModernComponentKind> = []
         for object in loadedSkin.runtime.graph.allObjectsUnordered
-        where WinampModernComponentRegistry.isHolderElement(object) {
+        where WinampModernComponentRegistry.isHolderElement(object.tag) {
             guard let hold = object.attributes["hold"],
                   let kind = WinampModernComponentRegistry.kind(for: hold),
                   WinampModernAvailableComponents.offered.contains(kind) else { continue }
@@ -500,9 +500,9 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         self.programs = parsedPrograms
         self.boundScriptPaths = Set(loadedSkin.runtime.scriptBindings)
         self.scriptFailures = Array(parseFailures.prefix(Self.maximumRecordedScriptFailures))
-        for root in loadedSkin.runtime.graph.roots where root.is(.container) {
+        for root in loadedSkin.runtime.graph.roots where root.tag.is(.container) {
             let layouts = root.children.filter {
-                $0.is(.layout)
+                $0.tag.is(.layout)
             }
             // The layout a container comes up in: the one Winamp names `normal`, or its only one.
             // The first is the fallback rather than nothing, so a container that names neither still
@@ -519,10 +519,10 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// Record that a layout has been created — the host switching a window to it, as against a
     /// script's own `switchToLayout`. See `realizedLayouts`.
     func markLayoutRealized(_ layout: WasabiObject) {
-        guard layout.is(.layout) else { return }
+        guard layout.tag.is(.layout) else { return }
         realizedLayouts.insert(layout.stableID)
         if let container = layout.parent,
-           container.is(.container) {
+           container.tag.is(.container) {
             activeLayoutByContainer[container.stableID] = layout.stableID
         }
     }
@@ -581,7 +581,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// skin that a window it has not been asked to show is on screen is a worse answer than silence.
     private func dispatchColdStartLayoutShown() {
         guard let main = loadedSkin.runtime.graph.roots.first(where: {
-            $0.is(.container) &&
+            $0.tag.is(.container) &&
             $0.xmlID?.caseInsensitiveCompare("main") == .orderedSame
         }),
               let layoutID = activeLayoutByContainer[main.stableID],
@@ -616,7 +616,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     private func isSkinLevel(_ program: MakiProgram) -> Bool {
         guard let ownerID = program.ownerID,
               let owner = loadedSkin.runtime.graph.object(withID: ownerID) else { return true }
-        return owner.is(.scripts)
+        return owner.tag.is(.scripts)
     }
 
     /// Load and start the scripts a runtime-instantiated subtree declares, so nested components come
@@ -1139,7 +1139,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
 
     func findRoot(type: WasabiKind, xmlID: String) -> WasabiObject? {
         loadedSkin.runtime.graph.roots.first {
-            $0.is(type) &&
+            $0.tag.is(type) &&
             $0.xmlID?.caseInsensitiveCompare(xmlID) == .orderedSame
         }
     }

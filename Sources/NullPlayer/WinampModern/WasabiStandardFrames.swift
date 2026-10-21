@@ -37,6 +37,8 @@ enum WasabiStandardFrames {
             case .static: return "Wasabi:StandardFrame:Static"
             }
         }
+
+        static let tags = Set(allCases.map { WasabiTag($0.xuiTag) })
     }
 
     /// The measured conventional pairs. `modal` is included because skins declare it in the same
@@ -64,7 +66,7 @@ extension WasabiStandardFrames {
     static var titleHeight: Double { contentInset.y }
 
     static func isStandardFrame(_ object: WasabiObject) -> Bool {
-        object.namespace == .wasabiStandardFrame && [.status, .noStatus, .staticFrame].contains(object.kind)
+        Flavour.tags.contains(object.tag)
     }
 
     /// Set on a `<Wasabi:StandardFrame:*>` instance whose groupdef the skin never supplied, so the
@@ -274,11 +276,11 @@ extension WasabiStandardFrames {
     private static func hostsPlaylistCommandBar(_ object: WasabiObject) -> Bool {
         // `includeonly="{system}"` is the other kind of slot — Zygote's 14x9 title-bar box that
         // holds the system menu and nothing else; the command bar goes in the one that excludes it.
-        guard object.is(.layoutStatus),
+        guard object.tag.is(.layoutStatus),
               object.attributes["includeonly"] == nil else { return false }
         var ancestor = object.parent
         while let current = ancestor {
-            if current.is(.container) {
+            if current.tag.is(.container) {
                 let declared = current.attributes["component"] ?? current.attributes["hold"]
                 return declared.flatMap(WinampModernComponentRegistry.kind(for:)) == .playlist
             }
@@ -312,7 +314,7 @@ extension WasabiStandardFrames {
                 guard hostsPlaylistCommandBar(object) else { return }
                 var ancestor = object.parent
                 while let current = ancestor {
-                    if current.is(.layout),
+                    if current.tag.is(.layout),
                        addsOwnEntries(current) { return }
                     ancestor = current.parent
                 }

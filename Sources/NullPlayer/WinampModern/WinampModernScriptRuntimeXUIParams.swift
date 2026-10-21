@@ -49,7 +49,7 @@ extension WinampModernScriptRuntime {
         // frame script, which builds the body from `content`; with only XUI tags delivered, the
         // window was an empty frame.
         let isXUI = loadedSkin.runtime.types.isXUITag(object.typeName)
-        if isXUI || object.is(.group) {
+        if isXUI || object.tag.is(.group) {
             // In the order the tag wrote them, as Wasabi delivers them: Simple's `xui-button.m`
             // reads `symboltype` to decide what the `symbol` after it means, and alphabetised the
             // symbol came first and every button drew its symbol's group id as a label.
@@ -91,7 +91,7 @@ extension WinampModernScriptRuntime {
     /// one on screen.
     func applyCustomObjectGroup(_ key: String, value: String, to object: WasabiObject) {
         guard key.caseInsensitiveCompare("groupid") == .orderedSame,
-              object.kind == .customObject
+              object.tag.kind == .customObject
         else { return }
         // `children` is a value-typed array, so the loop iterates the snapshot it took even though
         // `discardSubtree` empties the property underneath it.
@@ -174,7 +174,7 @@ extension WinampModernScriptRuntime {
         // The measurement outranks the declared `w`. For a `<text>` the *box* and the *string* are
         // two different numbers, and "auto" is the string's — a label declared `w="0" relatw="1"`
         // stretches to its parent and would otherwise answer with that stretch.
-        if object.is(.text) || object.is(.songticker) {
+        if object.tag.is(.text) || object.tag.is(.songticker) {
             let text = WasabiTextMetrics.content(of: object, host: host)
             return Int32(clamping: Int(metrics.width(of: object, text: text).rounded(.up)))
         }
@@ -202,7 +202,7 @@ extension WinampModernScriptRuntime {
         // tab. Answering 60 made each tab 96 tall, which stretched all seven icons vertically and
         // pushed the strip 37px per tab down the column. Measured, the answer is the font's 24 and
         // the arithmetic lands back on the skin's own 60.
-        if object.is(.text) || object.is(.songticker) {
+        if object.tag.is(.text) || object.tag.is(.songticker) {
             return Int32(clamping: Int(metrics.lineHeight(of: object).rounded(.up)))
         }
         if let explicit = object.attributes["h"], let height = Int32(explicit), height > 0 { return height }
@@ -249,7 +249,7 @@ extension WinampModernScriptRuntime {
     static func enclosingContainer(of object: WasabiObject) -> WasabiObject? {
         var node: WasabiObject? = object.parent
         while let current = node {
-            if current.is(.container) { return current }
+            if current.tag.is(.container) { return current }
             node = current.parent
         }
         return nil

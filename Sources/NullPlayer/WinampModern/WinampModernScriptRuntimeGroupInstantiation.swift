@@ -101,7 +101,7 @@ extension WinampModernScriptRuntime {
     /// any runtime-created group: object-owned `onScriptLoaded`, then XUI params. Global scripts are
     /// already running and are deliberately not restarted.
     func startTrustedHostedWindowScripts(beneath root: WasabiObject) throws {
-        guard root.is(.container),
+        guard root.tag.is(.container),
               root.source.path == WasabiSurfaceSynthesizer.sourcePath,
               root.attributes[WinampModernContainerTopology.synthesizedAttribute] == "1"
         else {
@@ -110,7 +110,7 @@ extension WinampModernScriptRuntime {
                                            location: root.source))
         }
         if let layout = root.children.first(where: {
-            $0.is(.layout)
+            $0.tag.is(.layout)
         }) {
             activeLayoutByContainer[root.stableID] = layout.stableID
             realizedLayouts.insert(layout.stableID)
@@ -133,7 +133,7 @@ extension WinampModernScriptRuntime {
         }.filter { !$0.isEmpty }
         if let containerID = parts.first, let container = findRoot(type: .container, xmlID: containerID) {
             let layouts = container.children.filter {
-                $0.is(.layout)
+                $0.tag.is(.layout)
             }
             // `owner="main"` with no layout half means the container's first layout.
             if parts.count < 2 { if let first = layouts.first { return first } }

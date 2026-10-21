@@ -629,7 +629,7 @@ extension WinampModernScriptRuntime {
             // `frame_cont.getLayout("scdef")`. Without it the whole rebuild ran against a null layout
             // and the second framed window came up with no chrome at all.
             let layouts = instance.children.filter {
-                $0.is(.layout)
+                $0.tag.is(.layout)
             }
             if let opening = layouts.first(where: {
                 $0.xmlID?.caseInsensitiveCompare("normal") == .orderedSame
@@ -657,7 +657,7 @@ extension WinampModernScriptRuntime {
     private func hostedWindowContainer(of program: MakiProgram) -> WasabiObject? {
         guard let owner = program.ownerID.flatMap(loadedSkin.runtime.graph.object(withID:)),
               let container = ancestor(of: owner, type: .container) ?? (
-                  owner.is(.container) ? owner : nil),
+                  owner.tag.is(.container) ? owner : nil),
               container.source.path == WasabiSurfaceSynthesizer.sourcePath
         else { return nil }
         return container
@@ -696,7 +696,7 @@ extension WinampModernScriptRuntime {
         // here, and a skin need not size the pair alike (MoonLight's video chrome is 410x281 around a
         // 330x220 window). Read at the one moment it is knowable, and applied by the materializer.
         let layouts = container.children.filter {
-            $0.is(.layout)
+            $0.tag.is(.layout)
         }
         guard let layout = layouts.first else { return }
         func number(_ names: [String]) -> Double {
@@ -730,7 +730,7 @@ extension WinampModernScriptRuntime {
     private func liftHostedClient(into chrome: WasabiObject, for hosted: WasabiObject,
                                   pastHiddenControls hidden: [WasabiObject]) {
         func isLayout(_ object: WasabiObject?) -> Bool {
-            object?.is(.layout) == true
+            object?.tag.is(.layout) == true
         }
         func number(_ object: WasabiObject, _ name: String) -> Double? {
             object.attributes[name].flatMap(Double.init)
@@ -773,7 +773,7 @@ extension WinampModernScriptRuntime {
         // imageless layer. Anything else starting in the strip is something the skin still draws.
         let stillDrawn = drawn.contains { child in
             startsInStrip(child)
-                && (!child.is(.layer)
+                && (!child.tag.is(.layer)
                     || child.attributes["image"] != nil)
         }
         guard !stillDrawn else { return }

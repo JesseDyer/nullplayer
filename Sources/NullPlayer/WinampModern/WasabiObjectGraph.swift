@@ -27,10 +27,8 @@ struct WasabiScriptBinding: Hashable {
 final class WasabiObject {
     let stableID: WasabiObjectID
     let typeName: String
-    /// The tag's kind whatever its namespace: `Wasabi:Button` and `<button>` are both `.button`.
-    /// Ask `is(_:in:)` when the namespace matters (`WasabiKind`).
-    let kind: WasabiKind
-    let namespace: WasabiNamespace
+    /// `typeName` parsed: what kind of object this is, in which namespace.
+    let tag: WasabiTag
     let source: WalSourceLocation
     private(set) var attributes: [String: String]
     private(set) weak var parent: WasabiObject?
@@ -59,17 +57,11 @@ final class WasabiObject {
          source: WalSourceLocation, graph: WasabiObjectGraph, attributeOrder: [String] = []) {
         self.stableID = stableID
         self.typeName = typeName
-        (kind, namespace) = WasabiKind.parse(typeName)
+        self.tag = WasabiTag(typeName)
         self.declaredAttributeOrder = attributeOrder
         self.attributes = Dictionary(uniqueKeysWithValues: attributes.map { ($0.key.lowercased(), $0.value) })
         self.source = source
         self.graph = graph
-    }
-
-    /// Whether the tag is `kind` written in `namespace`: `is(.layout)` is a bare `<layout>`,
-    /// `is(.button, in: .wasabi)` the standard library's `Wasabi:Button`.
-    func `is`(_ kind: WasabiKind, in namespace: WasabiNamespace = .none) -> Bool {
-        self.kind == kind && self.namespace == namespace
     }
 
     var xmlID: String? { attributes["id"] }

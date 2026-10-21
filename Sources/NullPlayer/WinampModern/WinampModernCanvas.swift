@@ -52,6 +52,13 @@ final class WinampModernCanvas {
         let outline: CGImage?
     }
 
+    /// The canvas space for a window or context in `space`: that space when it is an RGB one, which
+    /// every display's is; sRGB otherwise.
+    static func colorSpace(matching space: CGColorSpace?) -> CGColorSpace {
+        if let space, space.model == .rgb { return space }
+        return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    }
+
     private var context: CGContext?
     /// The canvas's alpha, top row first, one byte a pixel: what decides `Frame.outline`. Compared
     /// over a frame's own rects only, so a readout tick inside the outline costs a row compare.

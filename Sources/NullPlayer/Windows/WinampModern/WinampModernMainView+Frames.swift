@@ -148,12 +148,6 @@ extension WinampModernMainView {
         return [kept.dropFirst().reduce(kept[0]) { $0.union($1) }]
     }
 
-    /// The window's colour space when it is an RGB one, which every display's is; sRGB otherwise.
-    private var canvasColorSpace: CGColorSpace {
-        if let space = window?.colorSpace?.cgColorSpace, space.model == .rgb { return space }
-        return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-    }
-
     private func pixelSize(scale: CGFloat) -> (width: Int, height: Int) {
         (Int((bounds.width * scale).rounded(.up)), Int((bounds.height * scale).rounded(.up)))
     }
@@ -174,7 +168,7 @@ extension WinampModernMainView {
         let whole = CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight)
         // Snapped out to whole device pixels, so a partial repaint's edges land on the grid the
         // canvas is drawn on. A new canvas is drawn whole: only the dirty rects would be filled.
-        let colorSpace = canvasColorSpace
+        let colorSpace = WinampModernCanvas.colorSpace(matching: window?.colorSpace?.cgColorSpace)
         let isWhole = frames.canvas.isFresh(pixelWidth: pixelWidth, pixelHeight: pixelHeight,
                                             colorSpace: colorSpace)
         let rects = isWhole

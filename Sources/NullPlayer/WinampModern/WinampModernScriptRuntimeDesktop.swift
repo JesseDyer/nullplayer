@@ -142,7 +142,7 @@ extension WinampModernScriptRuntime {
                 return objectValue(graph.allObjectsUnordered.first { WasabiSceneRenderer.componentKind(of: $0) == kind })
             }
             guard let object = graph.allObjectsUnordered.first(where: { $0.xmlID?.caseInsensitiveCompare(name) == .orderedSame }),
-                  let container = object.is(.container)
+                  let container = object.tag.is(.container)
                     ? object : ancestor(of: object, type: .container) else { return .null }
             _ = try setVisible(container, true)
             return objectValue(object)

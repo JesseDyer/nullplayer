@@ -166,7 +166,7 @@ extension WinampModernScriptRuntime {
         //
         // This is deliberately answered from the graph rather than from the host, so it holds in
         // the headless harness too, where no container visibility is reported at all.
-        if object.is(.layout),
+        if object.tag.is(.layout),
            let container = Self.enclosingContainer(of: object),
            let active = activeLayoutByContainer[container.stableID] {
             return active == object.stableID
@@ -184,7 +184,7 @@ extension WinampModernScriptRuntime {
     /// The container id of the window this object belongs to, for the host queries that are answered
     /// per window rather than per object.
     func enclosingWindowID(of object: WasabiObject) -> String? {
-        let container = object.is(.container)
+        let container = object.tag.is(.container)
             ? object
             : Self.enclosingContainer(of: object)
         guard let id = container?.xmlID, !id.isEmpty else { return nil }
@@ -206,7 +206,7 @@ extension WinampModernScriptRuntime {
         guard let query = containerActiveQuery else { return true }
         var node: WasabiObject? = object
         while let current = node {
-            if current.is(.container),
+            if current.tag.is(.container),
                let id = current.xmlID, !id.isEmpty {
                 return query(id) ?? false
             }

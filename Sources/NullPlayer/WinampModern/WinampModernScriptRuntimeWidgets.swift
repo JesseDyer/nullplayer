@@ -143,7 +143,7 @@ extension WinampModernScriptRuntime {
     static let mouseRedirectionKey = "nullplayer.mouseredir"
 
     static func isGroupList(_ object: WasabiObject) -> Bool {
-        object.is(.groupList)
+        object.tag.is(.groupList)
     }
 
     /// Where a press on `object` goes: its `setRedirection` target, or itself.

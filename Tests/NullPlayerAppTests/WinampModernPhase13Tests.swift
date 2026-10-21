@@ -253,8 +253,8 @@ final class WinampModernPhase13Tests: XCTestCase {
         XCTAssertEqual(WinampModernComponentRegistry.kindFromHolderIdentifier("centro.windowholder.visualization"),
                        .visualization)
         XCTAssertNil(WinampModernComponentRegistry.kindFromHolderIdentifier("centro.windowholder.other"))
-        XCTAssertTrue(WinampModernComponentRegistry.isHolderElement("Component"))
-        XCTAssertFalse(WinampModernComponentRegistry.isHolderElement("group"))
+        XCTAssertTrue(WinampModernComponentRegistry.isHolderElement(WasabiTag("Component")))
+        XCTAssertFalse(WinampModernComponentRegistry.isHolderElement(WasabiTag("group")))
     }
 
     // MARK: - 13.2 Inventory

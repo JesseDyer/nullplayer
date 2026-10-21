@@ -23,8 +23,8 @@ extension WinampModernScriptRuntime {
     /// Whether this object *is* a window — a `<container>` or one of its `<layout>`s. Both carry a
     /// desktop position rather than a position inside a parent.
     static func isWindowObject(_ object: WasabiObject) -> Bool {
-        object.is(.container)
-            || object.is(.layout)
+        object.tag.is(.container)
+            || object.tag.is(.layout)
     }
 
     /// Where the window backing this container or layout sits on the desktop, in Winamp's screen
@@ -104,7 +104,7 @@ extension WinampModernScriptRuntime {
     /// a layout's `x="12.7"` reads back as 12, and a 12 written back is not a move.
     func reportedOrigin(of object: WasabiObject) -> CGPoint {
         let isWindow = Self.isWindowObject(object)
-        if isWindow, object.is(.container),
+        if isWindow, object.tag.is(.container),
            let origin = windowOrigin(of: object) {
             return CGPoint(x: origin.x.rounded(), y: origin.y.rounded())
         }

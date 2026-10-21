@@ -6,8 +6,8 @@ import Foundation
 /// `<button>` is `button` in `none`. The two answer different questions, and a compare used to pick
 /// one by spelling — the full name or the namespace-dropped one — at each site, which is how B217
 /// found the two spellings matching differently from one line to the next. Now a site says which
-/// it means: `object.kind == .button` for either spelling, `object.is(.button)` for the bare tag
-/// only, `object.is(.button, in: .wasabi)` for the standard library's.
+/// it means: `tag.kind == .button` for any namespace, `tag.is(.button)` for the bare tag only,
+/// `tag.is(.button, in: .wasabi)` for the standard library's.
 ///
 /// The cases are the tags the engine treats specially; every other tag is `.other`. A skin's own
 /// XUI tags are not cases: they are the skin's, looked up in its registry.
@@ -64,12 +64,21 @@ enum WasabiNamespace {
     case other
 }
 
-extension WasabiKind {
-    /// `tag` split into its kind and namespace, ignoring case.
-    static func parse(_ tag: String) -> (kind: WasabiKind, namespace: WasabiNamespace) {
-        let lower = tag.lowercased()
-        guard let colon = lower.lastIndex(of: ":") else { return (WasabiKind(rawValue: lower) ?? .other, .none) }
-        let namespace: WasabiNamespace
+/// A tag parsed once into its kind and namespace, ignoring case (`WasabiKind`).
+struct WasabiTag: Hashable {
+    /// The local name whatever the namespace: `Wasabi:Button` and `<button>` are both `.button`, and
+    /// so is every other namespace's — `ColorThemes:List` is `.list`. Ask `is(_:in:)` when the
+    /// namespace matters.
+    let kind: WasabiKind
+    let namespace: WasabiNamespace
+
+    init(_ name: String) {
+        let lower = name.lowercased()
+        guard let colon = lower.lastIndex(of: ":") else {
+            kind = WasabiKind(rawValue: lower) ?? .other
+            namespace = .none
+            return
+        }
         switch lower[..<colon] {
         case "wasabi": namespace = .wasabi
         case "wasabi:standardframe": namespace = .wasabiStandardFrame
@@ -77,6 +86,17 @@ extension WasabiKind {
         case "colorthemes": namespace = .colorThemes
         default: namespace = .other
         }
-        return (WasabiKind(rawValue: String(lower[lower.index(after: colon)...])) ?? .other, namespace)
+        kind = WasabiKind(rawValue: String(lower[lower.index(after: colon)...])) ?? .other
+    }
+
+    /// Whether the tag is `kind` written in `namespace`: `is(.layout)` is a bare `<layout>`,
+    /// `is(.button, in: .wasabi)` the standard library's `Wasabi:Button`.
+    func `is`(_ kind: WasabiKind, in namespace: WasabiNamespace = .none) -> Bool {
+        self.kind == kind && self.namespace == namespace
+    }
+
+    /// Whether the tag is one of `kinds`, written in `namespace`.
+    func `is`(anyOf kinds: Set<WasabiKind>, in namespace: WasabiNamespace = .none) -> Bool {
+        self.namespace == namespace && kinds.contains(kind)
     }
 }

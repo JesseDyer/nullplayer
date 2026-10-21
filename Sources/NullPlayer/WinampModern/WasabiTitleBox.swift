@@ -16,6 +16,7 @@ import Foundation
 /// between them, and **none** ships a `wasabi.titlebox.*` bitmap — the artwork lives in Winamp).
 enum WasabiTitleBox {
     static let xuiTag = "Wasabi:TitleBox"
+    static let tag = WasabiTag(xuiTag)
     static let groupIdentifier = "wasabi.titlebox"
 
     /// Where the body sits inside the box: clear of the border, below the title.
@@ -28,7 +29,7 @@ enum WasabiTitleBox {
     /// Height of the title line above the border.
     static let titleHeight = 12.0
 
-    static func isTitleBox(_ object: WasabiObject) -> Bool { object.is(.titleBox, in: .wasabi) }
+    static func isTitleBox(_ object: WasabiObject) -> Bool { object.tag == tag }
 
     /// The title as written, trimmed — skins pad it for the artwork we do not have (Bio-Nid's begins
     /// with a space, which would otherwise indent the label past its own border).

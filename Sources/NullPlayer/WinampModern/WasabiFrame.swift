@@ -20,13 +20,8 @@ enum WasabiFrame {
     /// on each side, leaving the grab strip between them.
     static let dividerHalfThickness = 4.0
 
-    static func isFrame(typeName: String) -> Bool {
-        let (kind, namespace) = WasabiKind.parse(typeName)
-        return kind == .frame && (namespace == .none || namespace == .wasabi)
-    }
-
-    static func isFrame(_ object: WasabiObject) -> Bool {
-        object.kind == .frame && (object.namespace == .none || object.namespace == .wasabi)
+    static func isFrame(_ tag: WasabiTag) -> Bool {
+        tag.is(.frame) || tag.is(.frame, in: .wasabi)
     }
 
     /// The two group identifiers this frame instantiates, in `from`-edge-first document order

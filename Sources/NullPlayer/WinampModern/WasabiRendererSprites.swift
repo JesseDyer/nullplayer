@@ -158,7 +158,7 @@ extension WasabiSceneRenderer {
     /// Layer FX path, which warps exactly that image into exactly that rect.
     func layerImage(_ bitmap: WasabiBitmap, object: WasabiObject,
                     in frame: CGRect) -> (image: CGImage, rect: CGRect)? {
-        guard object.is(.animatedLayer) else { return (bitmap.image, frame) }
+        guard object.tag.is(.animatedLayer) else { return (bitmap.image, frame) }
         return animatedFrame(bitmap, object: object, in: frame)
     }
 

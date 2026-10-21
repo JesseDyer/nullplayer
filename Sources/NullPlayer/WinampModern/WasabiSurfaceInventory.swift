@@ -202,7 +202,7 @@ struct WinampModernSurfaceInventory {
                 // group references inherit that instance's position instead of their definition's.
                 let nodeOrder = enclosingOrder ?? documentOrder[ObjectIdentifier(node)]
 
-                if WinampModernComponentRegistry.isHolderElement(node.name) {
+                if WinampModernComponentRegistry.isHolderElement(WasabiTag(node.name)) {
                     if let kind = holderKind(of: node) { found.insert(kind) }
                 }
                 if isEqualizerControl(node) { equalizerControls = true }
@@ -348,7 +348,7 @@ struct WinampModernSurfaceInventory {
         if let content = node.attribute("content"), !content.isEmpty { identifiers.append(content) }
 
         // `<Wasabi:Frame left="…" right="…">` instantiates the two groups it names.
-        if WasabiFrame.isFrame(typeName: node.name) {
+        if WasabiFrame.isFrame(WasabiTag(node.name)) {
             for direction in ["left", "right", "top", "bottom"] {
                 if let pane = node.attribute(direction), !pane.isEmpty { identifiers.append(pane) }
             }

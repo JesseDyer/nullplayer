@@ -540,7 +540,7 @@ final class WasabiSkinRuntime {
     func isTrustedHostedHolder(_ object: WasabiObject) -> Bool {
         var node: WasabiObject? = object
         while let current = node {
-            if current.is(.container) {
+            if current.tag.is(.container) {
                 return trustedHostedContainerIDs.contains(current.stableID)
             }
             node = current.parent
@@ -790,7 +790,7 @@ final class WasabiSkinInitializer {
                                           documentOrder: [ObjectIdentifier: Int]) throws {
         var buckets: [WasabiObject] = []
         func collect(_ object: WasabiObject) {
-            if object.is(.componentBucket),
+            if object.tag.is(.componentBucket),
                let type = object.attributes["wndtype"], !type.isEmpty {
                 buckets.append(object)
             }
@@ -843,7 +843,7 @@ final class WasabiSkinInitializer {
                                                createdCount: inout Int,
                                                documentOrder: [ObjectIdentifier: Int]) throws -> WasabiObject {
         let existing = graph.roots.filter {
-            $0.is(.container) &&
+            $0.tag.is(.container) &&
             ($0.xmlID?.caseInsensitiveCompare(declaredID) == .orderedSame ||
              $0.attributes[WasabiSkinRuntime.dynamicInstanceAttribute]?
                 .caseInsensitiveCompare(declaredID) == .orderedSame)
@@ -1612,7 +1612,7 @@ final class WasabiSkinInitializer {
             // Panes, tab pages and a title box's body are groups named by id, not this widget's own
             // body, so they recurse on their own key rather than the widget's: a tab page holding a
             // second tab sheet is nesting, not recursion (Graviton, _Mercury; B178).
-            if WasabiFrame.isFrame(object) {
+            if WasabiFrame.isFrame(object.tag) {
                 let panes = WasabiFrame.paneIdentifiers(of: object).map {
                     WalXMLNode(name: "group", attributes: ["id": $0], location: node.location)
                 }

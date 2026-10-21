@@ -69,9 +69,9 @@ enum WasabiEmbeddedXUI {
             switch self {
             case .range, .commands, .structure: return true
             case .textStyling:
-                return embedded.kind == .text
+                return embedded.tag.kind == .text
             case .buttonLabel:
-                return (embedded.kind == .button || embedded.kind == .toggleButton)
+                return (embedded.tag.kind == .button || embedded.tag.kind == .toggleButton)
                     && embedded.attributes["text"] == nil && !(attributes["text"] ?? "").isEmpty
             }
         }
@@ -117,7 +117,7 @@ enum WasabiEmbeddedXUI {
     /// rather than special-casing the getter keeps the thumb, the hit test and the script's
     /// arithmetic on one number.
     private static func seedVerticalSlider(_ embedded: WasabiObject) {
-        guard embedded.is(.slider),
+        guard embedded.tag.is(.slider),
               WasabiSceneRenderer.isVerticalOrientation(embedded),
               embedded.attributes["action"] == nil,
               embedded.attributes["value"] == nil,
