@@ -112,10 +112,13 @@ extension WinampModernScriptRuntime {
         case "getid": return .string(object.xmlID ?? "")
         case "getparent": return objectValue(object.parent)
         case "getparentlayout": return objectValue(ancestor(of: object, type: .layout))
-        case "getxmlparam": return .string(object.attributes[arguments[0].stringValue.lowercased()] ?? "")
+        case "getxmlparam":
+            let key = arguments[0].stringValue.lowercased()
+            return .string(object.attributes[Self.declaredXMLParamKey(key)] ?? object.attributes[key] ?? "")
         case "setxmlparam":
             let key = arguments[0].stringValue
             let value = arguments[1].stringValue
+            _ = object.setAttribute(Self.declaredXMLParamKey(key.lowercased()), value: nil)
             // An image-valued param is a *load*, and a load that fails leaves the object wearing the
             // artwork it already had — including when the new id is empty, which loads nothing.
             //

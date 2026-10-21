@@ -174,6 +174,23 @@ extension WinampModernScriptRuntime {
         return layout.map(scriptCollapsedLayouts.contains) ?? false
     }
 
+    /// Where an object's **XML** value of a geometry param is kept once a target animation has moved
+    /// it. Wasabi's `gotoTarget` moves the object and leaves its XML params alone, so
+    /// `getXmlParam("y")` still answers the declared value. Alpha Media Player X5's EQ and Mute
+    /// levers are written against that: on is `setTargetY(getXmlParam("y") - 17)`, off is
+    /// `setTargetY(getXmlParam("y"))`. Read back as the moved position, off stayed put and a second
+    /// on sent the lever 17px above its switch, out of sight.
+    static func declaredXMLParamKey(_ key: String) -> String { "nullplayer.xmlparam.\(key)" }
+
+    /// `setAttribute` for an animation step, keeping the value the XML declared on the first move.
+    private func moveForTarget(_ object: WasabiObject, _ key: String, to value: String) -> Bool {
+        let declared = Self.declaredXMLParamKey(key)
+        if object.attributes[declared] == nil, let original = object.attributes[key] {
+            _ = object.setAttribute(declared, value: original)
+        }
+        return object.setAttribute(key, value: value)
+    }
+
     func startTargetAnimation(object: WasabiObject) {
         let id = object.stableID
         cancelTargetAnimation(objectID: id)
@@ -186,10 +203,10 @@ extension WinampModernScriptRuntime {
 
         let rawSpeed = Double(object.attributes["targetspeed"] ?? "0.5") ?? 0.5
         if rawSpeed <= 0 {
-            if hasX { _ = object.setAttribute("x", value: object.attributes["targetx"]!) }
-            if hasY { _ = object.setAttribute("y", value: object.attributes["targety"]!) }
-            if hasW { _ = object.setAttribute("w", value: object.attributes["targetw"]!) }
-            if hasH { _ = object.setAttribute("h", value: object.attributes["targeth"]!) }
+            if hasX { _ = moveForTarget(object, "x", to: object.attributes["targetx"]!) }
+            if hasY { _ = moveForTarget(object, "y", to: object.attributes["targety"]!) }
+            if hasW { _ = moveForTarget(object, "w", to: object.attributes["targetw"]!) }
+            if hasH { _ = moveForTarget(object, "h", to: object.attributes["targeth"]!) }
             if hasA { _ = object.setAttribute("alpha", value: object.attributes["targeta"]!) }
             _ = object.setAttribute("goingtotarget", value: "0")
             applyContainerGeometry(object)
@@ -264,17 +281,17 @@ extension WinampModernScriptRuntime {
         // second, for a text row fading in.
         var movedGeometry = false
         var movedAlpha = false
-        if state.hasTargetX { movedGeometry = object.setAttribute("x", value: String(Int(state.currentX.rounded()))) || movedGeometry }
-        if state.hasTargetY { movedGeometry = object.setAttribute("y", value: String(Int(state.currentY.rounded()))) || movedGeometry }
-        if state.hasTargetW { movedGeometry = object.setAttribute("w", value: String(Int(state.currentW.rounded()))) || movedGeometry }
-        if state.hasTargetH { movedGeometry = object.setAttribute("h", value: String(Int(state.currentH.rounded()))) || movedGeometry }
+        if state.hasTargetX { movedGeometry = moveForTarget(object, "x", to: String(Int(state.currentX.rounded()))) || movedGeometry }
+        if state.hasTargetY { movedGeometry = moveForTarget(object, "y", to: String(Int(state.currentY.rounded()))) || movedGeometry }
+        if state.hasTargetW { movedGeometry = moveForTarget(object, "w", to: String(Int(state.currentW.rounded()))) || movedGeometry }
+        if state.hasTargetH { movedGeometry = moveForTarget(object, "h", to: String(Int(state.currentH.rounded()))) || movedGeometry }
         if state.hasTargetA { movedAlpha = object.setAttribute("alpha", value: String(Int(state.currentAlpha.rounded()))) }
 
         if animationReached(state) {
-            if state.hasTargetX { _ = object.setAttribute("x", value: String(Int(state.targetX))) }
-            if state.hasTargetY { _ = object.setAttribute("y", value: String(Int(state.targetY))) }
-            if state.hasTargetW { _ = object.setAttribute("w", value: String(Int(state.targetW))) }
-            if state.hasTargetH { _ = object.setAttribute("h", value: String(Int(state.targetH))) }
+            if state.hasTargetX { _ = moveForTarget(object, "x", to: String(Int(state.targetX))) }
+            if state.hasTargetY { _ = moveForTarget(object, "y", to: String(Int(state.targetY))) }
+            if state.hasTargetW { _ = moveForTarget(object, "w", to: String(Int(state.targetW))) }
+            if state.hasTargetH { _ = moveForTarget(object, "h", to: String(Int(state.targetH))) }
             if state.hasTargetA { _ = object.setAttribute("alpha", value: String(Int(state.targetAlpha))) }
             activeTargetAnimations.removeValue(forKey: objectID)
             timers.cancel(id: TimerNamespace.targetAnimation.id(for: objectID))

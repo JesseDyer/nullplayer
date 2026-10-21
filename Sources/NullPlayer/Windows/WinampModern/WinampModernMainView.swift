@@ -94,8 +94,6 @@ final class WinampModernMainView: NSView {
     /// arrow back without stomping on a cursor somebody else set.
     private var showsResizeCursor = false
     private var lastPlaybackState: PlaybackState = .stopped
-    /// Last volume the scripts were told about, 0…255. −1 until the first update.
-    private var lastPostedVolume: Int32 = -1
 
     /// Last value sent to `onPostedPosition`, so the post happens on change rather than ten times a
     /// second. -1 is "never posted", which no real position can be.
@@ -2365,12 +2363,13 @@ final class WinampModernMainView: NSView {
             }
             lastPlaybackState = state
         }
-        let postedVolume = Int32(max(0, min(255, host.volume * 255)))
+        let postedVolume = WinampModernScriptRuntime.volumeLevel(host.volume)
         // A volume change from outside the skin (the menu bar, a keyboard shortcut, another window)
         // has to reach the scripts too, or a readout the skin drives from `onVolumeChanged` sits on a
-        // stale number. `setVolume` fires its own, so this only covers what the skin did not do.
-        if postedVolume != lastPostedVolume {
-            lastPostedVolume = postedVolume
+        // stale number. `setVolume` fires its own and records it, so this only covers what the skin
+        // did not do.
+        if postedVolume != scripts.announcedVolume {
+            scripts.announcedVolume = postedVolume
             _ = try? scripts.dispatchSystem(event: "onvolumechanged", arguments: [.integer(postedVolume)])
         }
         // An equalizer change made outside the skin — a preset, the menu bar, the classic EQ window,
@@ -2602,16 +2601,20 @@ final class WinampModernMainView: NSView {
     /// volume to nothing.
     private func dispatch(object: WasabiObject, event: String, point: CGPoint) {
         let object = scripts.mouseRedirectionTarget(of: object)
-        let local = pointInParentSpace(of: object, canvasPoint: point)
+        let local = pointInEventSpace(of: object, event: event, canvasPoint: point)
         _ = try? scripts.dispatch(object: object, event: event,
                                   arguments: [.integer(Int32(local.x)), .integer(Int32(local.y))])
     }
 
-    /// The canvas point in `object`'s parent's coordinates. Unchanged for anything whose parent sits
-    /// at the origin, which is why this was invisible until a skin put a knob inside a placed group.
-    func pointInParentSpace(of object: WasabiObject, canvasPoint: CGPoint) -> CGPoint {
-        guard let parent = renderer.resolvedGeometry(of: object)?.parent else { return canvasPoint }
-        return CGPoint(x: canvasPoint.x - parent.minX, y: canvasPoint.y - parent.minY)
+    /// The canvas point in the space `event` on `object` is measured in: the group of the script
+    /// listening for it (`WinampModernScriptRuntime.mouseEventSpace`), else `object`'s parent.
+    /// Unchanged for anything whose space sits at the origin, which is why this was invisible until a
+    /// skin put a knob inside a placed group.
+    func pointInEventSpace(of object: WasabiObject, event: String, canvasPoint: CGPoint) -> CGPoint {
+        let space = scripts.mouseEventSpace(of: object, event: event).flatMap { renderer.resolvedGeometry(of: $0)?.frame }
+            ?? renderer.resolvedGeometry(of: object)?.parent
+        guard let space else { return canvasPoint }
+        return CGPoint(x: canvasPoint.x - space.minX, y: canvasPoint.y - space.minY)
     }
 
     /// Whether a press on `object` moves the window. Internal so the drag policy can be tested

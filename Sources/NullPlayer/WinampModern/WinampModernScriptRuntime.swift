@@ -597,6 +597,14 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// setting that actually moved. Four entries — one per `WinampModernConfigBridge.Attribute`.
     var lastBridgedValues: [String: Int32] = [:]
 
+    /// The last volume `onVolumeChanged` reported, 0…255, or −1 before the first. One per skin, and
+    /// written by `setVolume` as well as by the window's poll: when only the poll kept it, a skin's
+    /// own `setVolume` was announced a second time on the next tick. Alpha Media Player X5's mute
+    /// takes an `onVolumeChanged` it did not expect as the user moving the volume, and un-muted.
+    var announcedVolume: Int32 = -1
+
+    static func volumeLevel(_ volume: Double) -> Int32 { Int32(max(0, min(255, volume * 255))) }
+
     var geometrySettle = WinampModernGeometrySettle()
 
     /// The ids the last diffing pass judged to have left the layout — the objects it told

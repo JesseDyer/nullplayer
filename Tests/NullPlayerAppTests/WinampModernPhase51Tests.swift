@@ -35,7 +35,7 @@ final class WinampModernPhase51Tests: XCTestCase {
         let scene = try makeScene()
         // The dial's canvas frame is (210 + 27, 10 + 25) — the group's origin plus its own x/y.
         XCTAssertEqual(scene.renderer.frame(of: scene.dial), CGRect(x: 237, y: 35, width: 48, height: 35))
-        let local = scene.view.pointInParentSpace(of: scene.dial, canvasPoint: CGPoint(x: 240, y: 51))
+        let local = scene.view.pointInEventSpace(of: scene.dial, event: "onleftbuttondown", canvasPoint: CGPoint(x: 240, y: 51))
         XCTAssertEqual(local, CGPoint(x: 30, y: 41))
         // Which is the whole point: the script subtracts its own getLeft()/getTop() from this and
         // lands inside its own artwork.
@@ -47,7 +47,7 @@ final class WinampModernPhase51Tests: XCTestCase {
     func testAControlAtTheOriginIsUnchanged() throws {
         let scene = try makeScene()
         let point = CGPoint(x: 12, y: 9)
-        XCTAssertEqual(scene.view.pointInParentSpace(of: scene.loose, canvasPoint: point), point)
+        XCTAssertEqual(scene.view.pointInEventSpace(of: scene.loose, event: "onleftbuttondown", canvasPoint: point), point)
     }
 
     /// An object the scene cannot place (a hidden layout's control, the headless case) keeps the
@@ -57,7 +57,7 @@ final class WinampModernPhase51Tests: XCTestCase {
         let offscreen = try XCTUnwrap(scene.loaded.runtime.graph.objects(xmlID: "elsewhere").first)
         let point = CGPoint(x: 40, y: 40)
         XCTAssertNil(scene.renderer.resolvedGeometry(of: offscreen))
-        XCTAssertEqual(scene.view.pointInParentSpace(of: offscreen, canvasPoint: point), point)
+        XCTAssertEqual(scene.view.pointInEventSpace(of: offscreen, event: "onleftbuttondown", canvasPoint: point), point)
     }
 
     // MARK: - Fixture
