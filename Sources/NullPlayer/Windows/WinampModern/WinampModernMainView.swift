@@ -1217,7 +1217,9 @@ final class WinampModernMainView: NSView {
         // Not every `{0000000A}` holder gets the engine: a letterbox strip is an analyzer's box, and
         // the bridge vends one surface per skin, so a second holder asking for it stole the picture
         // from the first. Everything not named here falls through to the renderer's analyzer (BB9).
-        let engineHolderID = WinampModernVisualizationHolder.engineHolder(among: holders)
+        let engineHolderID = WinampModernVisualizationHolder.engineHolder(
+            among: holders,
+            inVisualizationWindow: WinampModernContainerTopology.kind(of: renderer.container) == .visualization)
         let liveVis: Set<WasabiObjectID> = engineHolderID.map { [$0] } ?? []
         if Self.surfaceTrace {
             let boxes = holders.filter { $0.kind == .visualization }.map {

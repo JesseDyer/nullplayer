@@ -64,6 +64,9 @@
 - **Modern skins: button labels drawn once** — the Search button on five ClassicPro skins no longer
   draws its label twice, which had made it look smeared and bold, and the link buttons on
   krazyPlayer's About page and on Vortex's and 1010 Fullscreen's config pages now show their text.
+- **Modern skins: a visualization window that stays one visualization** — krazyPlayer's
+  Visualizations window no longer switches to a small analyzer, with a different menu, when it is
+  made short and wide; a skin's own visualization window now runs the full visualization at any size.
 
 ## 0.33.0
 

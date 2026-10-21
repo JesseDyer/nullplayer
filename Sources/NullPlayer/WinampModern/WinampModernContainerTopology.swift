@@ -255,7 +255,7 @@ enum WinampModernContainerTopology {
     /// `MLibrary`, and `eq` only look like their kinds by convention, and reading them as such would
     /// also make `colorthemes` a surface. The one id fallback is an exact short token (`eq`), which is
     /// how CornerAmp names the equalizer window it declares no GUID for.
-    private static func kind(of container: WasabiObject) -> WinampModernComponentKind? {
+    static func kind(of container: WasabiObject) -> WinampModernComponentKind? {
         if let declared = container.attributes["component"],
            let kind = WinampModernComponentRegistry.kind(for: declared) {
             return kind
