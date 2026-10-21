@@ -762,12 +762,6 @@ final class WasabiSceneRenderer {
     /// `isKeyWindow` before each paint. Defaults to active so the headless harness — which has no
     /// window at all — measures the state a skin is designed around.
     var isWindowActive = true
-    /// How many real device pixels one unit of the context's own device space is (B80). A bitmap
-    /// context's device space *is* its pixels, so this is 1 there — the harness, the opaque-backing
-    /// buffer. A layer-backed view on current macOS records `draw` into a display list at CTM 1.0
-    /// and has it replayed at the backing scale, so there the view sets the backing factor, or the
-    /// pixel grid `snappedToPixelGrid` aims at is a point, not a pixel.
-    var devicePixelsPerContextUnit: CGFloat = 1
     /// `WINAMP_MODERN_PIXEL_SNAP=0` is the A/B switch for `snappedToPixelGrid`.
     static let snapsToPixelGrid = ProcessInfo.processInfo.environment["WINAMP_MODERN_PIXEL_SNAP"] != "0"
     private(set) var layout: WasabiObject
@@ -1412,13 +1406,21 @@ final class WasabiSceneRenderer {
         }
     }
 
-    /// The scene recorded and replayed into `context` at once: the harness's and the tests' draw,
-    /// and a window too large for a canvas. Every other window draws through `WinampModernCanvas`.
+    /// The scene rendered into `context` at once, through a `WinampModernCanvas` as a window renders
+    /// it: the harness's and the tests' draw, so the corpus sweep checks the pipeline the app shows.
+    /// The canvas covers the context's clip at its device scale, snapped out to whole pixels, so the
+    /// blit back is a copy. A clip too large for a canvas is drawn into straight.
     func draw(in context: CGContext, pressed: WasabiObjectID? = nil,
               hovered: WasabiObjectID? = nil) {
-        guard layoutWantsOpaqueBacking,
-              let backed = drawSceneOpaquely(in: context, pressed: pressed, hovered: hovered)
-        else {
+        let clip = context.boundingBoxOfClipPath.intersection(CGRect(origin: .zero, size: canvasSize))
+        guard !clip.isNull, !clip.isEmpty else { return }
+        let transform = context.ctm
+        let scale = min(max((abs(transform.a * transform.d - transform.b * transform.c)).squareRoot(), 1), 8)
+        let left = Int((clip.minX * scale).rounded(.down))
+        let bottom = Int((clip.minY * scale).rounded(.down))
+        let width = Int((clip.maxX * scale).rounded(.up)) - left
+        let height = Int((clip.maxY * scale).rounded(.up)) - bottom
+        guard width * height <= Self.maximumPrescaledPixels else {
             let list = WasabiDrawList(ctm: context.ctm,
                                       clip: context.boundingBoxOfClipPath.applying(context.ctm),
                                       interpolationQuality: context.interpolationQuality)
@@ -1426,56 +1428,23 @@ final class WasabiSceneRenderer {
             list.replay(into: context)
             return
         }
-        context.saveGState()
-        // The buffer was rasterised at this context's own device scale and snapped to its pixel
-        // grid, so this is a copy. Interpolating it would soften every edge in the window.
-        context.interpolationQuality = .none
-        context.draw(backed.image, in: backed.rect)
-        context.restoreGState()
-    }
-
-    /// Render the scene into a readable buffer and promote its alpha, returning the picture and the
-    /// rect it belongs in. Nil whenever the buffer cannot be made, which falls back to drawing
-    /// straight into the caller's context — a window that is merely translucent beats no window.
-    private func drawSceneOpaquely(in context: CGContext, pressed: WasabiObjectID?,
-                                   hovered: WasabiObjectID?) -> (image: CGImage, rect: CGRect)? {
-        let clip = context.boundingBoxOfClipPath.intersection(CGRect(origin: .zero, size: canvasSize))
-        guard !clip.isNull, !clip.isEmpty else { return nil }
-        let transform = context.ctm
-        let scale = min(max((abs(transform.a * transform.d - transform.b * transform.c)).squareRoot(), 1), 8)
-
-        // Snap out to whole device pixels, so the blit back lands on the grid it was drawn on.
-        let left = Int((clip.minX * scale).rounded(.down))
-        let bottom = Int((clip.minY * scale).rounded(.down))
-        let width = Int((clip.maxX * scale).rounded(.up)) - left
-        let height = Int((clip.maxY * scale).rounded(.up)) - bottom
-        guard width > 0, height > 0, width * height <= Self.maximumPrescaledPixels else { return nil }
         let rect = CGRect(x: CGFloat(left) / scale, y: CGFloat(bottom) / scale,
                           width: CGFloat(width) / scale, height: CGFloat(height) / scale)
-
-        // RGBA, as `WinampModernCanvas` explains.
-        guard let buffer = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                     bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-
-        // The buffer's device space is its pixels, whatever the window's context says.
-        let pixelsPerUnit = devicePixelsPerContextUnit
-        devicePixelsPerContextUnit = 1
-        defer { devicePixelsPerContextUnit = pixelsPerUnit }
-        buffer.scaleBy(x: scale, y: scale)
-        buffer.translateBy(x: -rect.minX, y: -rect.minY)
-        let list = WasabiDrawList(ctm: buffer.ctm, clip: CGRect(x: 0, y: 0, width: width, height: height),
-                                  interpolationQuality: buffer.interpolationQuality)
-        record(into: list, pressed: pressed, hovered: hovered)
-        list.replay(into: buffer)
-
-        guard let data = buffer.data else { return nil }
-        var image = vImage_Buffer(data: data, height: vImagePixelCount(height),
-                                  width: vImagePixelCount(width), rowBytes: buffer.bytesPerRow)
-        Self.promoteAlphaToRegion(&image)
-        guard let image = buffer.makeImage() else { return nil }
-        return (image, rect)
+        let whole = CGRect(x: 0, y: 0, width: width, height: height)
+        let scene = WasabiDrawList(ctm: CGAffineTransform(scaleX: scale, y: scale), clip: whole)
+        scene.translateBy(x: -rect.minX, y: -rect.minY)
+        record(into: scene, pressed: pressed, hovered: hovered)
+        let colorSpace = context.colorSpace.flatMap { $0.model == .rgb ? $0 : nil }
+            ?? CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let job = WinampModernCanvas.Job(
+            pixelWidth: width, pixelHeight: height, colorSpace: colorSpace, scale: scale, rects: [whole],
+            scene: scene, chrome: nil, promotesAlpha: layoutWantsOpaqueBacking)
+        guard let frame = WinampModernCanvas().render(job) else { return }
+        context.saveGState()
+        // Interpolating a copy would soften every edge in the window.
+        context.interpolationQuality = .none
+        context.draw(frame.picture, in: rect)
+        context.restoreGState()
     }
 
     /// Record the whole scene into `list`. The walk reads the live graph, so it runs on the main

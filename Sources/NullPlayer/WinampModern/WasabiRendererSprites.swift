@@ -37,7 +37,7 @@ extension WasabiSceneRenderer {
     /// alone.
     func snappedToPixelGrid(_ rect: CGRect, in context: WasabiDrawList) -> CGRect {
         guard Self.snapsToPixelGrid else { return rect }
-        return Self.snapped(rect, ctm: context.ctm, devicePixelsPerUnit: devicePixelsPerContextUnit)
+        return Self.snapped(rect, ctm: context.ctm, devicePixelsPerUnit: context.devicePixelsPerUnit)
     }
 
     static func snapped(_ rect: CGRect, ctm: CGAffineTransform, devicePixelsPerUnit unit: CGFloat) -> CGRect {

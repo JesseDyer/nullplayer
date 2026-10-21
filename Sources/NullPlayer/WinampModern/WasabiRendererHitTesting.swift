@@ -352,7 +352,7 @@ extension WasabiSceneRenderer {
         context.saveGState()
         context.setBlendMode(.destinationOut)
         context.interpolationQuality = .none
-        if WasabiBitmapInterpolationPolicy.isInteger(abs(context.ctm.a) * devicePixelsPerContextUnit) {
+        if WasabiBitmapInterpolationPolicy.isInteger(context.deviceScale) {
             context.draw(cut, in: canvas)
         } else {
             context.setShouldAntialias(false)

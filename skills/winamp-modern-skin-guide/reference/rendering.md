@@ -315,8 +315,8 @@ changed pixels were *partially* transparent and only 2 were empty.
 255, zero left alone. In a premultiplied buffer the colours are *already* the composite over black,
 so that one channel is the whole fix; the window context cannot be read back, which is why there is a
 buffer. In the app that buffer is the window's canvas (`WinampModernCanvas`), which promotes each
-frame's dirty rects after replaying the scene into them; the harness's `draw(in:)` renders the same
-recorded scene into a buffer of its own, sized to the caller's clip.
+frame's dirty rects after replaying the scene into them; the harness's `draw(in:)` renders one
+canvas job of its own, sized to the caller's clip, so the sweep checks the window's pipeline (B231).
 
 Three traps in that buffer, all measured on `main/normal` at 2x against a 2.81 ms/frame baseline, and
 all of them things to copy rather than rediscover:
@@ -498,9 +498,9 @@ also the nearer answer.
   does not move.
 - **The grid is the real pixel grid, not the context's.** A `.wal` view's `draw` runs at **CTM 1.0**
   on a 2x panel: AppKit records it into a display list and replays that at the backing scale. So
-  the direct-draw fallback sets `devicePixelsPerContextUnit` to the backing factor over the CTM it
-  was handed, while the canvas and the harness's opaque buffer, which are bitmaps already at device
-  resolution, set it to 1. Snapping to the context's own unit
+  the direct-draw fallback's `WasabiDrawList` carries `devicePixelsPerUnit` = the backing factor
+  over the CTM it was handed, while the canvas's lists (the window's and the harness's, which renders
+  through a `WinampModernCanvas` too), bitmaps already at device resolution, carry 1. Snapping to the context's own unit
   would have moved every edge to a whole *point* — up to a full device pixel off.
 - `WINAMP_MODERN_PIXEL_SNAP=0` turns it off; `WINAMP_MODERN_RENDER_SEAMS=1` counts what is left
   (`reference/harness.md`).

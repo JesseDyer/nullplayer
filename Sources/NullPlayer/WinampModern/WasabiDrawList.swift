@@ -39,11 +39,19 @@ final class WasabiDrawList {
     /// points by the CTM as they are added, so this does too.
     private var pathBounds = CGRect.null
 
+    /// How many real device pixels one unit of the replay context's device space is (B80). A bitmap
+    /// context's device space *is* its pixels, so this is 1 there — the canvas, the harness. A
+    /// layer-backed view records `draw` into a display list at CTM 1.0 and has it replayed at the
+    /// backing scale, so a list replayed there carries the backing factor, or the pixel grid
+    /// `snappedToPixelGrid` aims at is a point, not a pixel.
+    let devicePixelsPerUnit: CGFloat
+
     /// `ctm` and `clip` (device space) are the replay context's own at the moment the replay starts.
     init(ctm: CGAffineTransform, clip: CGRect,
-         interpolationQuality: CGInterpolationQuality = .default) {
+         interpolationQuality: CGInterpolationQuality = .default, devicePixelsPerUnit: CGFloat = 1) {
         state = State(ctm: ctm, clip: clip, interpolationQuality: interpolationQuality)
         initialClip = clip
+        self.devicePixelsPerUnit = devicePixelsPerUnit
     }
 
     func replay(into context: CGContext) {
@@ -57,6 +65,8 @@ final class WasabiDrawList {
     // MARK: State the renderer reads back
 
     var ctm: CGAffineTransform { state.ctm }
+    /// Real device pixels per user-space unit along x, here in the walk.
+    var deviceScale: CGFloat { abs(state.ctm.a) * devicePixelsPerUnit }
 
     var boundingBoxOfClipPath: CGRect {
         state.clip.isNull ? .null : state.clip.applying(state.ctm.inverted())

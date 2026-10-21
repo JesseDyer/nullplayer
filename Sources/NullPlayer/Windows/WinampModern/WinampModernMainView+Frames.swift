@@ -188,8 +188,6 @@ extension WinampModernMainView {
         // cached on the notification: a window can lose key without either notification reaching us
         // (the app deactivating, a sheet), and the read is one Boolean.
         renderer.isWindowActive = window?.isKeyWindow ?? true
-        // The canvas's device space is its pixels (B80).
-        renderer.devicePixelsPerContextUnit = 1
         let base = CGAffineTransform(scaleX: scale, y: scale)
         let scene = WasabiDrawList(ctm: base, clip: clip)
         scene.saveGState()
@@ -217,17 +215,19 @@ extension WinampModernMainView {
         // A display-list context arrives at CTM 1.0 and is replayed at the backing scale, a bitmap
         // one already carries it (B80).
         let contextScale = abs(context.ctm.a)
-        renderer.devicePixelsPerContextUnit = contextScale > 0
-            ? max(1, (window?.backingScaleFactor ?? 1) / contextScale) : 1
+        let pixelsPerUnit = contextScale > 0 ? max(1, (window?.backingScaleFactor ?? 1) / contextScale) : 1
         context.saveGState()
         if skinScale != 1 { context.scaleBy(x: skinScale, y: skinScale) }
+        let clip = context.boundingBoxOfClipPath.applying(context.ctm)
         if drawsHostChrome {
-            let chrome = WasabiDrawList(ctm: context.ctm,
-                                        clip: context.boundingBoxOfClipPath.applying(context.ctm))
+            let chrome = WasabiDrawList(ctm: context.ctm, clip: clip, devicePixelsPerUnit: pixelsPerUnit)
             drawHostChrome(in: chrome)
             chrome.replay(into: context)
         }
-        renderer.draw(in: context, pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID)
+        let scene = WasabiDrawList(ctm: context.ctm, clip: clip, interpolationQuality: context.interpolationQuality,
+                                   devicePixelsPerUnit: pixelsPerUnit)
+        renderer.record(into: scene, pressed: pressedObject?.stableID, hovered: hoveredObject?.stableID)
+        scene.replay(into: context)
         context.restoreGState()
     }
 

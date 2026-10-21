@@ -10,6 +10,7 @@ final class WinampModernConfiguration {
     init(namespace: String, defaults: UserDefaults = WinampModernConfiguration.processDefaults) {
         self.namespace = Self.safeComponent(namespace)
         self.defaults = defaults
+        foldStoredKeys()
     }
 
     /// Where a skin's settings live: the app's own domain, except in an `xctest` process — the corpus
@@ -57,40 +58,43 @@ final class WinampModernConfiguration {
         for name in defaults.dictionaryRepresentation().keys where name.hasPrefix(prefix) {
             defaults.removeObject(forKey: name)
         }
-        spellingsByFoldedKey = nil
     }
 
     static let keyPrefix = "winampModern.config."
 
+    private var namespacePrefix: String { "\(Self.keyPrefix)\(namespace)." }
+
     private func sectionPrefix(_ section: String) -> String {
-        "\(Self.keyPrefix)\(namespace).\(Self.safeComponent(section))."
+        namespacePrefix + Self.safeComponent(section).lowercased() + "."
     }
 
     private func storageKey(section: String, key: String) -> String {
-        storedSpelling(of: sectionPrefix(section) + Self.safeComponent(key))
+        sectionPrefix(section) + Self.safeComponent(key).lowercased()
     }
 
     /// Wasabi names an attribute case-insensitively, and so does the old MAKI compiler, which folds
     /// strings differing only in case into one: Anunaki's `main.maki` registers "Normal" as `normal`
     /// (sharing its layout id's string) while `inits.maki` and the Config Panel spell it `Normal`.
     /// Stored under the exact spelling those were two settings — Party! cleared one, the player-mode
-    /// script read the other and switched straight back to normal. A key resolves to the spelling
-    /// already stored, so nothing persisted is lost; a new key keeps the spelling it arrives with.
-    private var spellingsByFoldedKey: [String: String]?
-
-    private func storedSpelling(of key: String) -> String {
-        if spellingsByFoldedKey == nil {
-            let prefix = "\(Self.keyPrefix)\(namespace)."
-            var index: [String: String] = [:]
-            for name in defaults.dictionaryRepresentation().keys.sorted() where name.hasPrefix(prefix) {
-                index[name.lowercased()] = index[name.lowercased()] ?? name
-            }
-            spellingsByFoldedKey = index
+    /// script read the other and switched straight back to normal. So section and key are stored
+    /// lowercased, and a store written before that is folded once here: where two spellings were
+    /// both stored, the one that sorts first keeps its value, and the collision is logged.
+    private func foldStoredKeys() {
+        let prefix = namespacePrefix
+        var spellings: [String: [String]] = [:]
+        for name in defaults.dictionaryRepresentation().keys where name.hasPrefix(prefix) {
+            let folded = prefix + name.dropFirst(prefix.count).lowercased()
+            if folded != name { spellings[folded, default: []].append(name) }
         }
-        let folded = key.lowercased()
-        if let stored = spellingsByFoldedKey?[folded] { return stored }
-        spellingsByFoldedKey?[folded] = key
-        return key
+        for (folded, names) in spellings {
+            let all = Set(names + (defaults.object(forKey: folded) != nil ? [folded] : [])).sorted()
+            guard let winner = all.first, let value = defaults.object(forKey: winner) else { continue }
+            if all.count > 1 {
+                NSLog("WinampModern config: %@ stored as %@; keeping %@", folded, all.joined(separator: ", "), winner)
+            }
+            for name in all where name != folded { defaults.removeObject(forKey: name) }
+            defaults.set(value, forKey: folded)
+        }
     }
 
     /// `static`, for the reason `WinampModernComponentRegistry.normalize` is written over bytes:
