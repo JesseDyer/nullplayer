@@ -109,13 +109,13 @@ extension WasabiSceneRenderer {
         }
     }
 
-    /// The controls whose press is a command by their type alone.
-    private static let commandKinds: Set<WasabiKind> = [.button, .toggleButton, .nStatesButton, .slider]
-
     /// Whether an object carries a command of its own, independent of being draggable — the test that
     /// separates a skin's window-drag surface from a control that also moves the window.
+    ///
+    /// The **bare** kinds only, unlike `isInteractive`: a `Wasabi:Button` with no command of its own
+    /// is still a drag surface — Styx's title strip is a `<Wasabi:button move="1">`.
     private static func hasOwnCommand(_ object: WasabiObject) -> Bool {
-        if object.tag.is(anyOf: commandKinds) { return true }
+        if object.tag.is(anyOf: WasabiKind.commands) { return true }
         return object.attributes["action"] != nil
             || object.attributes[WasabiClickGesture.double.actionAttribute] != nil
             || object.attributes[WasabiClickGesture.right.actionAttribute] != nil
@@ -294,6 +294,19 @@ extension WasabiSceneRenderer {
             }
         }
         return boxes
+    }
+
+    /// Whether a `sysregion="1"` box is backed black: every layout that has not opted in to
+    /// per-pixel alpha with `desktopalpha="1"` (B151). See `regionBoxes()`.
+    private var layoutBacksRegionBoxes: Bool {
+        guard let raw = layout.attributes["desktopalpha"] else { return true }
+        return Int(raw.trimmingCharacters(in: .whitespaces)) != 1
+    }
+
+    /// The `sysregion` boxes this layout paints black — what `drawScene` fills, and so part of the
+    /// window for the pointer too.
+    func backedRegionBoxes() -> [CGRect] {
+        layoutBacksRegionBoxes ? regionBoxes() : []
     }
 
     /// The boxes a `Wasabi:StandardFrame:*` with `sysregion="1"` and no artwork of its own puts
@@ -507,7 +520,7 @@ extension WasabiSceneRenderer {
         // Bento's `query.pathurl` `Ok` is artwork-backed with `text=""`. Prakrit's Rep/Shu/Xfd
         // switches are alpha-0 `Wasabi:ToggleButton`s carrying only a `cfgattrib`, so every press
         // fell to the XUI wrapper and toggled nothing.
-        if object.tag.isStandard(anyOf: Self.commandKinds) { return true }
+        if object.tag.isStandard(anyOf: WasabiKind.commands) { return true }
         // A `<Menu>` is a hit region and nothing else — it draws no artwork and carries no `action`,
         // so without naming it here the pointer never reached a single entry of a skin's own menu
         // bar. Its box is explicit (`w="0" relatw="1" h="21"`) and `object(at:)` skips the alpha test

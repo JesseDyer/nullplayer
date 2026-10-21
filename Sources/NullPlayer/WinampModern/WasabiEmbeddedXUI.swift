@@ -86,13 +86,11 @@ enum WasabiEmbeddedXUI {
             case .buttonArtwork:
                 // All or nothing: a button that states its own `image` keeps its own artwork whole,
                 // rather than gaining the wrapper's hover and press frames over it.
-                return embedded.tag.is(anyOf: buttonKinds) && embedded.attributes["image"] == nil
-                    && attributes["image"] != nil
+                return embedded.tag.is(anyOf: WasabiKind.buttons)
+                    && embedded.attributes["image"] == nil && attributes["image"] != nil
             }
         }
     }
-
-    private static let buttonKinds: Set<WasabiKind> = [.button, .toggleButton, .nStatesButton]
 
     /// The embedded widget's tag when `object` is an `embed_xui` wrapper, else nil.
     static func embeddedTag(of object: WasabiObject) -> String? { object.attributes[markerKey] }

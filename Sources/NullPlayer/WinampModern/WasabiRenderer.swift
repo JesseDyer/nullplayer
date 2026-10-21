@@ -1359,19 +1359,6 @@ final class WasabiSceneRenderer {
         return Int(raw.trimmingCharacters(in: .whitespaces)) == 0
     }
 
-    /// Whether a `sysregion="1"` box is backed black: every layout that has not opted in to
-    /// per-pixel alpha with `desktopalpha="1"` (B151). See `regionBoxes()`.
-    private var layoutBacksRegionBoxes: Bool {
-        guard let raw = layout.attributes["desktopalpha"] else { return true }
-        return Int(raw.trimmingCharacters(in: .whitespaces)) != 1
-    }
-
-    /// The `sysregion` boxes this layout paints black — what `drawScene` fills, and so part of the
-    /// window for the pointer too.
-    func backedRegionBoxes() -> [CGRect] {
-        layoutBacksRegionBoxes ? regionBoxes() : []
-    }
-
     /// Channel maps for `promoteAlphaToRegion`: one that leaves a channel alone, and one that
     /// promotes every non-zero alpha to fully opaque — the window's region, as a lookup table.
     private static let identityChannelTable: [UInt8] = (0...255).map(UInt8.init)

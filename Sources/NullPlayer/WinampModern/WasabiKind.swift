@@ -52,6 +52,13 @@ enum WasabiKind: String {
     case vis
     case windowHolder = "windowholder"
     case other
+
+    /// The buttons. Each site still says which namespace it means: `isInteractive` hit-tests a
+    /// `Wasabi:Button` as a button, while `hasOwnCommand` leaves one with no command a drag surface.
+    static let buttons: Set<WasabiKind> = [.button, .toggleButton, .nStatesButton]
+
+    /// The controls whose press is a command by their type alone.
+    static let commands: Set<WasabiKind> = buttons.union([.slider])
 }
 
 /// The namespace a tag was written in: `Wasabi:`, `Wasabi:StandardFrame:`, `Winamp:`,
