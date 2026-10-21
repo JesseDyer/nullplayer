@@ -287,25 +287,25 @@ final class WinampModernMainView: NSView {
     }
 
     /// The boxes of everything in this scene that moves on its own — animated layers, song tickers,
-    /// ticker text, and any layer whose script has switched Layer FX on.
+    /// ticker text, and any layer whose script has switched Layer FX on. A warped layer carries its
+    /// object, so a tick can skip it while its mesh holds still.
     ///
     /// Repainting *these* rather than the whole window is what keeps an animation smooth: Defix's
     /// player costs 19.3 ms a frame repainted whole at Retina scale and 6.9 ms clipped to its meters,
     /// and a 33 ms animation step cannot survive the first number. Cached because the scene walk is
     /// not free and the boxes only move when the scene itself does.
-    private func animatingRects() -> [NSRect] {
+    private func animatingRects() -> [(rect: NSRect, warped: WasabiObject?)] {
         if let animatingRectsCache { return animatingRectsCache }
-        let rects = renderer.sceneNodes().compactMap { node -> NSRect? in
+        let rects = renderer.sceneNodes().compactMap { node -> (rect: NSRect, warped: WasabiObject?)? in
             let object = node.object
-            var animates = (object.tag.is(.animatedLayer) || object.tag.is(.songticker))
-            if !animates, object.tag.is(.text) {
+            let rect = viewRect(fromSkin: node.frame).insetBy(dx: -2, dy: -2)
+            if object.tag.is(.animatedLayer) || object.tag.is(.songticker) { return (rect, nil) }
+            if object.tag.is(.text) {
                 // A plain `text` that opts into ticker scrolling also needs the redraw clock.
                 let ticker = (object.attributes["ticker"] ?? "0").lowercased()
-                animates = !["0", "off", "false", "no"].contains(ticker)
+                if !["0", "off", "false", "no"].contains(ticker) { return (rect, nil) }
             }
-            if !animates { animates = scripts.layerFXState(of: object)?.enabled == true }
-            guard animates else { return nil }
-            return viewRect(fromSkin: node.frame).insetBy(dx: -2, dy: -2)
+            return scripts.layerFXState(of: object)?.enabled == true ? (rect, object) : nil
         }
         animatingRectsCache = rects
         return rects
@@ -317,18 +317,38 @@ final class WinampModernMainView: NSView {
             repaintDeferredWhileHidden = true
             return
         }
-        let rects = animatingRects()
+        let rects = animatingRects().compactMap { rect, warped -> NSRect? in
+            guard let warped else { return rect }
+            return warpChanged(warped) ? rect : nil
+        }
+        guard !rects.isEmpty else { return }
         // A scene with a great many moving parts is cheaper to repaint in one pass than to invalidate
         // piece by piece.
-        guard !rects.isEmpty, rects.count <= 24 else {
+        guard rects.count <= 24 else {
             needsDisplay = true
             return
         }
         for rect in rects { setNeedsDisplay(rect) }
     }
 
+    /// Whether a warped layer's mesh moved since this view last painted it. `fx_setRealtime(1)`
+    /// re-runs the callbacks every tick, and a skin may answer the same warp every time: cPro's About
+    /// `animationscreen` did, and repainting it whole at 30 Hz pinned the CPU with nothing moving.
+    /// `bgfx` is never rendered, so the mesh alone decides the layer's pixels. Kept per view, by the
+    /// object's stable id: every window of a skin shares its scripts, and one window's tick must not
+    /// consume the change another has yet to paint.
+    private func warpChanged(_ object: WasabiObject) -> Bool {
+        let mesh = scripts.layerFXMesh(for: object)
+        // `nil` for a never-painted layer, `.some(nil)` for one last painted unwarped.
+        let painted: WasabiLayerFXMesh?? = paintedWarps[object.stableID]
+        paintedWarps[object.stableID] = mesh
+        return painted != .some(mesh)
+    }
+
     /// Dropped whenever the scene itself may have changed shape.
-    private var animatingRectsCache: [NSRect]?
+    private var animatingRectsCache: [(rect: NSRect, warped: WasabiObject?)]?
+    /// The mesh each warped layer was last painted with (`warpChanged`).
+    private var paintedWarps: [WasabiObjectID: WasabiLayerFXMesh?] = [:]
 
     /// Switch this view's container to one of its own layouts. Returns false when the container has
     /// no such layout, so a script's `switchToLayout` on a container we do not host is a no-op rather
