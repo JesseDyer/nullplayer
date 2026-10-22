@@ -213,11 +213,11 @@ final class WinampModernInteractionSweepTests: XCTestCase {
         func send(_ event: String, at canvas: CGPoint? = nil) {
             if let canvas {
                 pointer = canvas
-                // Parent-relative, as `WinampModernMainView.dispatch(object:event:point:)` sends them.
-                let parent = renderer.resolvedGeometry(of: pressed)?.parent ?? .zero
+                // As `WinampModernMainView.dispatch(object:event:point:)` sends them.
+                let local = runtime.pointInEventSpace(of: pressed, event: event, canvasPoint: canvas,
+                                                      renderer: renderer)
                 _ = try? runtime.dispatch(object: pressed, event: event,
-                                          arguments: [.integer(Int32(canvas.x - parent.minX)),
-                                                      .integer(Int32(canvas.y - parent.minY))])
+                                          arguments: [.integer(Int32(local.x)), .integer(Int32(local.y))])
             } else {
                 _ = try? runtime.dispatch(object: pressed, event: event)
             }

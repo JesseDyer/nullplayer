@@ -2601,20 +2601,9 @@ final class WinampModernMainView: NSView {
     /// volume to nothing.
     private func dispatch(object: WasabiObject, event: String, point: CGPoint) {
         let object = scripts.mouseRedirectionTarget(of: object)
-        let local = pointInEventSpace(of: object, event: event, canvasPoint: point)
+        let local = scripts.pointInEventSpace(of: object, event: event, canvasPoint: point, renderer: renderer)
         _ = try? scripts.dispatch(object: object, event: event,
                                   arguments: [.integer(Int32(local.x)), .integer(Int32(local.y))])
-    }
-
-    /// The canvas point in the space `event` on `object` is measured in: the group of the script
-    /// listening for it (`WinampModernScriptRuntime.mouseEventSpace`), else `object`'s parent.
-    /// Unchanged for anything whose space sits at the origin, which is why this was invisible until a
-    /// skin put a knob inside a placed group.
-    func pointInEventSpace(of object: WasabiObject, event: String, canvasPoint: CGPoint) -> CGPoint {
-        let space = scripts.mouseEventSpace(of: object, event: event).flatMap { renderer.resolvedGeometry(of: $0)?.frame }
-            ?? renderer.resolvedGeometry(of: object)?.parent
-        guard let space else { return canvasPoint }
-        return CGPoint(x: canvasPoint.x - space.minX, y: canvasPoint.y - space.minY)
     }
 
     /// Whether a press on `object` moves the window. Internal so the drag policy can be tested

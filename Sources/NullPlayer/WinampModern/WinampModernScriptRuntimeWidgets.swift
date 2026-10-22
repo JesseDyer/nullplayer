@@ -184,6 +184,18 @@ extension WinampModernScriptRuntime {
         return sequence(first: parent, next: { $0.parent }).first { owners.contains($0.stableID) }
     }
 
+    /// The canvas point in the space `event` on `object` is measured in: `mouseEventSpace`, else
+    /// `object`'s parent. Unchanged for anything whose space sits at the origin, which is why this was
+    /// invisible until a skin put a knob inside a placed group. The view and both click harnesses
+    /// convert through here, so a probe drives exactly what the app sends.
+    func pointInEventSpace(of object: WasabiObject, event: String, canvasPoint: CGPoint,
+                           renderer: WasabiSceneRenderer) -> CGPoint {
+        let space = mouseEventSpace(of: object, event: event).flatMap { renderer.resolvedGeometry(of: $0)?.frame }
+            ?? renderer.resolvedGeometry(of: object)?.parent
+        guard let space else { return canvasPoint }
+        return CGPoint(x: canvasPoint.x - space.minX, y: canvasPoint.y - space.minY)
+    }
+
     /// A `CfgGroup`'s attribute: `cfgguid` plus `cfgattrib`, or the `{guid};name` form a control uses.
     static func cfgGroupBinding(of object: WasabiObject) -> (section: String, key: String)? {
         if let guid = object.attributes["cfgguid"], !guid.isEmpty {
