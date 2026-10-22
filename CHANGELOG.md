@@ -138,6 +138,9 @@
   - 1010's ten EQ sliders spread across the equalizer instead of bunching at its left edge.
   - 1010's clock shows its colons instead of gaps, and impulse's clock reads `1:13` instead of `1 13`.
   - corneramp redux and Shield Amp's theme buttons are full width, so "Previous" no longer reads "Pr…".
+- **Modern skins: a song title that does not fit its box no longer spills across the player**
+  - With scrolling off, a title slightly too long for its box is cut at the box as Winamp cuts it;
+    a skin's own captions still draw whole when the Mac's font runs a little wider.
 
 ## 0.33.0
 

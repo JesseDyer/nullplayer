@@ -90,8 +90,20 @@ the window around it, so it keeps its own box like Winamp's `DrawText`. JRS's re
 script sets the 54px song ticker to `ticker="0"` when "Scroll Basic Songticker" is unchecked, and
 bounded by the layout the title ran across the remote and off both sides. The same rule cleaned up
 Enkera's, NEO_CLASSIC's and Symplicipod's shade titles in the sweep and left every cPro tab strip
-byte-identical. Proportional or fixed slacks do not separate the two: cPro's tab label overruns its
-17px box by ~30%, so any threshold that cut JRS also cut `BRO` to `BRC`.
+byte-identical.
+
+**How far the release reaches depends on whose string it is (B242).** The skin's own words — a
+literal, a resolved `:componentname`, a message a script writes (Big Bento's `CROSSFADE OFF`) — were
+fitted to their box against Winamp's face, so any overrun is ours (a substituted font: JRS's
+`Playlist Editor` is 15px over its 45px box; or a box the skin squeezed: cPro's `alignByResize`
+shrinks every tab when the strip is narrow) and they are released to the group however far over.
+**Track data** — `WasabiTextMetrics.showsTrackData`: an un-overridden binding or songticker, or any
+string carrying the playing track's title, artist or album — has no length an author could size for,
+and Winamp cuts it at its box; it gets only `boxMargin` of slack, B87's measurement disagreement.
+Anunaki's "Classic No Scroll" songticker is why: released to an LCD group as wide as the player, a
+long title ran across the chrome. Neither a ratio nor a pixel count separates the two over the corpus
+(wTunes' About line is 63px over and wants releasing, JRS's artist ticker 55px and wants cutting), and
+neither does content origin alone: JRS's and Defix's tickers are a script's `setText` of the metadata.
 
 > **Gotcha, now historical: there were two scissors, and moving one alone did nothing.**
 > `NSString.draw(in:)` lays the string out *inside* the rect it is given and cuts it there, so

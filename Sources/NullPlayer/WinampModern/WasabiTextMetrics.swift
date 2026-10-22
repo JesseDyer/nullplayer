@@ -645,6 +645,22 @@ final class WasabiTextMetrics {
         return !(object.attributes["display"] ?? "").isEmpty
     }
 
+    /// Whether `text` is the playing track's rather than words the skin wrote: a host binding no
+    /// script has overridden, or any string carrying the track's title, artist or album — JRS's and
+    /// Defix's tickers are a script's `setText` of the metadata, and are the same data. A skin sizes a
+    /// box for its own words; it cannot size one for a title.
+    static func showsTrackData(_ object: WasabiObject, text: String, host: WinampModernHost) -> Bool {
+        let scripted = [scriptAlternateTextKey, scriptTextKey].contains {
+            !(object.attributes[$0] ?? "").isEmpty
+        }
+        if !scripted, isHostBoundText(object) { return true }
+        // ponytail: substring match, so a one-letter artist marks any caption holding that letter as
+        // track data — which only cuts it at its box, as Winamp does. Match whole fields if it bites.
+        return [host.trackTitle, host.trackArtist, host.trackAlbum].contains {
+            !$0.isEmpty && text.localizedCaseInsensitiveContains($0)
+        }
+    }
+
     /// Whether this object is the skin's playlist status line, by **either** of the two forms skins
     /// use: `id="PE_Info"` or `display="PE_Info"`. Both are live in the measured corpus.
     static func isPlaylistStatusLine(_ object: WasabiObject) -> Bool {

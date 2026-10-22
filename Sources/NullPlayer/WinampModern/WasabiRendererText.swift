@@ -111,8 +111,8 @@ extension WasabiSceneRenderer {
             if !visible.isNull, drawFrame.minX >= visible.maxX - 1 { return }
         }
 
-        let clip = horizontalClip(of: object, measured: measured, frame: frame, scrolls: scroll != nil,
-                                  wraps: wraps, context: context)
+        let clip = horizontalClip(of: object, text: text, measured: measured, frame: frame,
+                                  scrolls: scroll != nil, wraps: wraps, context: context)
         context.saveGState()
         context.clip(to: clip)
         context.translateBy(x: 0, y: frame.midY)
@@ -354,8 +354,9 @@ extension WasabiSceneRenderer {
     }
 
     /// What a string is scissored to: its own box, or released horizontally to the ambient clip.
-    private func horizontalClip(of object: WasabiObject, measured: CGFloat, frame: CGRect,
-                                scrolls: Bool, wraps: Bool, context: WasabiDrawList) -> CGRect {
+    private func horizontalClip(of object: WasabiObject, text: String, measured: CGFloat,
+                                frame: CGRect, scrolls: Bool, wraps: Bool,
+                                context: WasabiDrawList) -> CGRect {
         // A `<text>`'s box is a **layout anchor, not a scissor**, horizontally (B87). A skin sizes its
         // own boxes from the very measurement this renderer draws with and then routinely declares one
         // a pixel or two narrower than the string it just measured: ClassicPro's SUI tab is
@@ -382,15 +383,21 @@ extension WasabiSceneRenderer {
         // "Scroll Basic Songticker" is unchecked), and with the layout as the bound the title ran
         // across the remote and off both sides of the window.
         //
-        // The release is for a box **somewhat** short of its string — a measurement shortfall, which
-        // scales with the string — never for a string that does not fit at all. Anunaki's "Classic No
-        // Scroll" songticker turns `ticker` off on a 180px box inside an LCD group as wide as the whole
-        // player, and a long title released to that group ran across the window's chrome. Over the
-        // corpus sweep the skins' own captions overrun by at most 1.33x (JRS's `Playlist Editor` in
-        // 45px; cPro's tabs 1.06-1.14x) and the long-title test strings start at 1.41x, so the cut is
-        // between the two.
-        if !scrolls, !wraps, object.parent?.tag.is(.layout) != true,
-           measured <= frame.width * Self.measurementSlack {
+        // How far the release reaches depends on **whose string it is**, because the two reasons a
+        // string overruns its box are different. The skin's own words — a literal, a frame's component
+        // name, a message a script writes (Big Bento's `CROSSFADE OFF`) — were fitted to their box by
+        // the author against Winamp's face, so whatever is left over is ours: a substituted or
+        // differently-sized font (JRS's `Playlist Editor`, 15px over its 45px box) or a box the skin
+        // squeezed (cPro's `alignByResize` shrinks every tab to fit a narrow strip). Those are released
+        // to their group, however far over. The **track's** data — a binding, a songticker, or a
+        // script's copy of the metadata — has no length the author could size for, and Winamp cuts it
+        // at its box. It gets only B87's measurement disagreement, which is bounded by the margin
+        // `getTextWidth()` already reports: Anunaki's "Classic No Scroll" songticker turns `ticker` off
+        // on a 180px box inside an LCD as wide as the whole player, and a long title released to that
+        // group ran across the window's chrome.
+        guard !scrolls, !wraps, object.parent?.tag.is(.layout) != true else { return frame }
+        if measured - frame.width <= WasabiTextMetrics.boxMargin
+            || !WasabiTextMetrics.showsTrackData(object, text: text, host: host) {
             let ambient = context.boundingBoxOfClipPath
             let minX = min(frame.minX, ambient.minX)
             let maxX = max(frame.maxX, ambient.maxX)
@@ -593,9 +600,6 @@ extension WasabiSceneRenderer {
     /// script driving one of them continuously, not a working limit.
     private static let maximumTextAttributes = 256
 
-    /// How much wider than its box a non-scrolling string may measure and still be drawn whole — the
-    /// share of an overrun put down to this renderer measuring wider than Winamp (B87).
-    private static let measurementSlack: CGFloat = 1.375
     /// Gap between the repeats of a continuously scrolling ticker, in skin pixels.
     private static let tickerGap: CGFloat = 40
     /// Ticker scroll speed, in skin pixels per second.
