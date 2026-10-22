@@ -46,12 +46,11 @@ def plate(size, pad=150, r=120, a=190, blur=70):
 font = ImageFont.truetype(HN, 230, index=1)
 icon = Image.open(ICON).convert("RGBA").resize((300, 300), Image.LANCZOS)
 tw = int(font.getlength("NullPlayer"))
-logo = Image.new("RGBA", (300 + 50 + tw + 40, 520))
+logo = Image.new("RGBA", (300 + 50 + tw + 40, 450))
 logo.alpha_composite(icon, (0, 30))
 ld = ImageDraw.Draw(logo)
 ld.text((350, 180), "NullPlayer", font=font, fill=(28, 30, 38, 255), anchor="lm")
 ld.text((logo.width // 2, 405), "nullplayer.fyi", font=ImageFont.truetype(HN, 76, index=0), fill=(45, 48, 60, 255), anchor="mm")
-ld.text((logo.width // 2, 485), "version 0.33.1", font=ImageFont.truetype(HN, 54, index=0), fill=(70, 74, 88, 255), anchor="mm")
 logo = logo.resize((int(logo.width * 0.5), int(logo.height * 0.5)), Image.LANCZOS)
 brand = plate(logo.size, 110, 90, 170, 50)
 brand.alpha_composite(logo, (110, 110))
@@ -168,16 +167,31 @@ for t0, n, oy, sp in [(POP, 260, RIM - 40, 1.0), (FINALE, 220, RIM - 10, 0.85)]:
                              vr=rng.uniform(-9, 9), flip=rng.uniform(5, 12)))
 
 # --- finale caption
-cap = Image.new("RGBA", (1500, 260))
+cap = Image.new("RGBA", (1500, 330))
 cd = ImageDraw.Draw(cap)
 cd.text((750, 90), f"{len(files)} more skins certified", font=ImageFont.truetype(HN, 130, index=1), fill=(28, 30, 38, 255), anchor="mm")
 cd.text((750, 215), "Winamp Modern skins, on a Mac only in NullPlayer", font=ImageFont.truetype(HN, 58, index=0), fill=(45, 48, 60, 255), anchor="mm")
+cd.text((750, 290), "version 0.33.1", font=ImageFont.truetype(HN, 46, index=0), fill=(70, 74, 88, 255), anchor="mm")
 cap = cap.crop(cap.getbbox())
 caption = plate(cap.size, 120, 100, 200, 55)
 caption.alpha_composite(cap, (120, 120))
 
 def bez(p0, p1, p2, s):
     return tuple((1 - s) ** 2 * a + 2 * (1 - s) * s * b + s * s * c for a, b, c in zip(p0, p1, p2))
+
+LID_VX, LID_VY, G, FLOOR, BOUNCE = 520, -1500, 3000, 150, 0.5   # lid flight, px/s; FLOOR = landing drop below its rest
+
+def lid_y(dt):
+    """Lid's vertical offset `dt` s after the pop: a parabola to FLOOR, then damped bounces."""
+    y, vy = 0, LID_VY
+    while dt > 0 and abs(vy) > 50:
+        tl = (-vy + math.sqrt(vy * vy + 2 * G * (FLOOR - y))) / G   # time until it hits the floor
+        if dt < tl:
+            return y + vy * dt + G * dt * dt / 2
+        dt, y, vy = dt - tl, FLOOR, -BOUNCE * (vy + G * tl)
+    return y if dt <= 0 else FLOOR
+
+LID_LAND = (-LID_VY + math.sqrt(LID_VY ** 2 + 2 * G * FLOOR)) / G   # first touchdown, s after the pop
 
 def paste(fr, im, cx, cy):
     x0, y0 = int(cx - im.width / 2), int(cy - im.height / 2)
@@ -210,14 +224,15 @@ for n in range(N):
         im = im.rotate(ang, Image.BICUBIC, expand=True)
         paste(stage, fade(im, min(1, u / 0.04)), *p)
     stage.alpha_composite(body)
-    if t < POP + 2:                                         # lid: wobble, then pops up and away
+    if t < POP + 3.6:                                       # lid: wobble, pops up flipping, lands flat, bounces off right
         w = max(0, t - (POP - 0.9))
-        u = ease((t - POP) / 1.6) if t > POP else 0
-        ang = (4 * math.sin(w * 38) * min(1, w / 0.9)) * (t < POP) + 70 * u
+        dt = max(0, t - POP)
+        dx = LID_VX * dt
+        ang = (4 * math.sin(w * 38) * min(1, w / 0.9)) * (t < POP) - 360 * smooth(dt / LID_LAND)
         hop = 10 * abs(math.sin(w * 19)) * min(1, w / 0.9) * (t < POP)
         im = lid.rotate(ang, Image.BICUBIC, expand=True)
-        lx = (LID_BOX[0] + LID_BOX[2]) / 2 + 760 * u
-        ly = (LID_BOX[1] + LID_BOX[3]) / 2 - hop - 900 * u + 260 * u * u
+        lx = (LID_BOX[0] + LID_BOX[2]) / 2 + dx
+        ly = (LID_BOX[1] + LID_BOX[3]) / 2 - hop + lid_y(dt)
         paste(stage, im, lx, ly)
     fr.alpha_composite(stage, (0, oy)) if oy < H else None
     fr.alpha_composite(fade(brand, ease((t - 0.3) / 1.0)), BRAND_XY)   # logo stays above the skins
