@@ -4,6 +4,8 @@
 
 ### Fixes
 
+- **Quitting no longer hangs with a Windows Media Player skin** — the skin's settings watcher could
+  wait on the app while the app waited on its final save, freezing quit.
 - **Geiss no longer goes black after Tripex** — switching the Visualizations window's engine away
   from Tripex left OpenGL state behind that could make Geiss draw nothing; each new engine now
   starts from a clean context.
