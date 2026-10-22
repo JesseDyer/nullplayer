@@ -160,14 +160,17 @@ extension WinampModernScriptRuntime {
         return target
     }
 
-    /// The group a mouse event on `object` is measured from: the nearest ancestor whose **own** script
-    /// listens for `event` on it, or `nil` — the parent's space — when no ancestor's script does.
+    /// The group a mouse event on `object` is measured from: its parent, unless that parent is an XUI
+    /// widget instance (`<groupdef xuitag=…>`) whose own script is not listening — then the space
+    /// climbs past it, as far as the first plain group or listening script's group. `nil` means the
+    /// parent.
     ///
-    /// A script works in the space of the group it is loaded in. Lobe's dial is a direct child of its
-    /// script's group, so the two readings agree there; Alpha Media Player X5's slider channels are
-    /// one level deeper, a `main.c` layer inside an `amp:channel.v` widget, and its player script
-    /// clamps `y` to the channel's top *in the player group* — told the widget-relative point, bass and
-    /// treble pinned at their top and volume landed 128px off the press.
+    /// A widget is one control to the script that placed it. Alpha Media Player X5's slider channels
+    /// are a `main.c` layer inside an `amp:channel.v`, and its player script clamps `y` to the
+    /// channel's top *in the player group* — told the widget-relative point, bass and treble pinned at
+    /// their top and volume landed 128px off the press. A plain group is a space of its own whoever
+    /// listens: JRS's layout-level knob script subtracts `getTop()` inside `eq.normal.group`, and Lobe's
+    /// dial script sits in the dial's own group.
     func mouseEventSpace(of object: WasabiObject, event: String) -> WasabiObject? {
         let target = MakiObjectReference(.gui(object.stableID))
         let event = event.lowercased()
@@ -180,8 +183,10 @@ extension WinampModernScriptRuntime {
             }
             return listens ? program.ownerID : nil
         })
-        guard !owners.isEmpty, let parent = object.parent else { return nil }
-        return sequence(first: parent, next: { $0.parent }).first { owners.contains($0.stableID) }
+        let types = loadedSkin.runtime.types
+        guard !owners.isEmpty, let parent = object.parent, types.isXUITag(parent.typeName) else { return nil }
+        return sequence(first: parent, next: { $0.parent })
+            .first { owners.contains($0.stableID) || !types.isXUITag($0.typeName) }
     }
 
     /// The canvas point in the space `event` on `object` is measured in: `mouseEventSpace`, else

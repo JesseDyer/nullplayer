@@ -30,11 +30,11 @@ import ZIPFoundation
 /// if `x` is parent-relative and `getMousePosX()` is not. mmd3's own knob group is at (0, 0), which
 /// is why the two conventions agreed there and the defect stayed invisible for 50 phases.
 ///
-/// **Refined 2026-10-21: the space is the listening script's group.** Alpha Media Player X5's slider
-/// channels are a `main.c` layer inside an `amp:channel.v` widget, one level below the player group
-/// its script is loaded in, and that script clamps `y` to the channel's top *in the player group*.
-/// Told the widget-relative point, bass and treble pinned at their top. Lobe's dial is a direct child
-/// of its script's group, so both readings give it the same point.
+/// **Refined 2026-10-21: an XUI widget is not a space of its own to an outside script.** Alpha Media
+/// Player X5's slider channels are a `main.c` layer inside an `amp:channel.v` widget, and its player
+/// script clamps `y` to the channel's top *in the player group*; told the widget-relative point,
+/// bass and treble pinned at their top. A plain group still is one: JRS's layout-level knob script
+/// subtracts `getTop()` inside its EQ group, and moving it to the script's own space broke it.
 final class WinampModernPhase51Tests: XCTestCase {
 
     func testAControlInAPlacedGroupIsToldItsParentRelativePoint() throws {
@@ -78,13 +78,28 @@ final class WinampModernPhase51Tests: XCTestCase {
         XCTAssertEqual(scene.point(of: knob, point), CGPoint(x: 60, y: 200), "the player script's own space")
     }
 
-    /// A listener that is not an ancestor — a script elsewhere holding the object — says nothing about
-    /// where the object sits, so the parent's space stands.
-    func testAListenerOutsideTheAncestryKeepsTheParentSpace() throws {
+    /// JRS's shape: the listener is further out, but the parent is a plain group, so it is the space.
+    func testAPlainGroupParentStaysTheSpaceWhoeverListens() throws {
+        let scene = try makeScene()
+        let layout = try XCTUnwrap(scene.loaded.runtime.graph.objects(xmlID: "normal").first)
+        scene.listen(to: scene.dial, from: layout)
+        XCTAssertEqual(scene.point(of: scene.dial, CGPoint(x: 240, y: 51)), CGPoint(x: 30, y: 41))
+    }
+
+    /// A widget's own script hears its own space.
+    func testAWidgetsOwnScriptHearsTheWidgetSpace() throws {
+        let scene = try makeScene()
+        let knob = try XCTUnwrap(scene.loaded.runtime.graph.objects(xmlID: "knob").first)
+        scene.listen(to: knob, from: try XCTUnwrap(scene.loaded.runtime.graph.objects(xmlID: "channel").first))
+        XCTAssertEqual(scene.point(of: knob, CGPoint(x: 160, y: 200)), CGPoint(x: 10, y: 72))
+    }
+
+    /// Any script outside the widget — not only one in an ancestor — hears the widget's host space.
+    func testAListenerOutsideTheAncestryHearsTheWidgetsHostSpace() throws {
         let scene = try makeScene()
         let knob = try XCTUnwrap(scene.loaded.runtime.graph.objects(xmlID: "knob").first)
         scene.listen(to: knob, from: try XCTUnwrap(scene.loaded.runtime.graph.objects(xmlID: "seeker").first))
-        XCTAssertEqual(scene.point(of: knob, CGPoint(x: 160, y: 200)), CGPoint(x: 10, y: 72))
+        XCTAssertEqual(scene.point(of: knob, CGPoint(x: 160, y: 200)), CGPoint(x: 60, y: 200))
     }
 
     // MARK: - Fixture
@@ -119,11 +134,11 @@ final class WinampModernPhase51Tests: XCTestCase {
           <groupdef id="seeker" w="152" h="159">
             <layer id="dial" image="art" x="27" y="25" w="48" h="35"/>
           </groupdef>
-          <groupdef id="channel" w="40" h="100">
+          <groupdef id="channel" xuitag="test:channel" w="40" h="100">
             <layer id="knob" image="art" x="0" y="0" w="40" h="35"/>
           </groupdef>
           <groupdef id="player" w="300" h="300">
-            <group id="channel" x="50" y="128" w="40" h="100"/>
+            <test:channel id="channel" x="50" y="128" w="40" h="100"/>
           </groupdef>
           <container id="Main">
             <layout id="normal" w="400" h="300">
