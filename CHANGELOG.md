@@ -41,106 +41,83 @@
   the end of a song moved the highlight but kept playing the same song, for as long as 17 minutes
   on a large playlist. The chosen track now loads and plays at once. A song that fails to stream
   also moves on to the next one and plays it, instead of stopping there.
-- **Modern skins: more skins open and run**
+- **Modern skins: loading**
   - 54 skins that failed to load now open.
-  - Ten more skins' scripts no longer fail outright.
+  - Ten more skins' scripts no longer fail at load.
   - Accented text in older skins shows correctly.
-  - Skin scripts can use dozens more of Winamp's features, so more of their menus, lists and
-    readouts work.
-- **Modern skins: sixteen more skins look as designed**
-  - Prakrit's player is no longer see-through, and its equalizer is no longer empty.
+  - Dozens more Winamp script functions are supported.
+- **Modern skins: layout and artwork**
+  - Prakrit's player is no longer see-through; its equalizer is no longer empty.
   - wTunes is no longer cut off on the right.
   - Anunaki's display and NEO_CLASSIC's album-art pane appear; NEO_CLASSIC's titles are centred.
   - WinampAzenis2's text buttons have labels.
   - Vortex's Party! layout shows its panes.
-  - Enkera's and Nullsoft 2000's shade modes lay out properly.
-  - BOOM and 96 other skins get the uppercase window titles they ask for.
+  - Enkera's and Nullsoft 2000's shade modes lay out correctly.
+  - BOOM and 96 other skins show uppercase window titles.
+  - 1010 Fullscreen's ten EQ sliders span the equalizer instead of bunching at the left.
+  - corneramp redux and Shield Amp's theme buttons are full width ("Previous", not "Pr…").
+  - Ebonite's and iNTELLI_design's window-mode buttons are no longer squashed.
+  - No divider strip across Prakrit's Stop and Next buttons, or similar overhangs on Copperdeck
+    II's equalizer and cPro Venus's seek bar.
+  - MoonLight's equalizer labels are in place; Pure Inspired's seek line appears.
 - **Modern skins: Preferences, settings and About pages**
   - 1010 Fullscreen's Preferences shows its tree, About sheet and Cover Search page.
-  - Mac OS X Panther's and Official Tristania's Preferences show their About sheets, and Panther's
-    tabs are visible.
+  - Mac OS X Panther's and Official Tristania's Preferences show their About sheets; Panther's tabs
+    are visible.
   - Anunaki's Config Panel shows its five tabs.
-  - machina's help and configuration screens, and JRS's configuration, draw on the skin's own
-    background. machina's help screen gets its switch button.
-  - Link buttons on krazyPlayer's About page and on Vortex's and 1010 Fullscreen's config pages show
+  - machina's help and configuration screens and JRS's configuration draw on the skin's background;
+    machina's help screen has its switch button.
+  - Link buttons on krazyPlayer's About page and Vortex's and 1010 Fullscreen's config pages show
     their text.
-  - The Search button on five ClassicPro skins no longer looks smeared.
-- **Modern skins: playlists you can edit**
-  - JRS, Mac OS X Panther and about 220 other skins now show Winamp's Add, Rem, Sel, Misc and List
-    buttons.
+  - The Search button on five ClassicPro skins is no longer smeared.
+- **Modern skins: playlists**
+  - JRS, Mac OS X Panther and about 220 other skins show Add, Rem, Sel, Misc and List buttons.
   - Nitrous Audio's playlist shows its rows.
-- **Modern skins: more buttons and controls work**
-  - Skin buttons that eject, minimize, quit or open the Windows menu now do so.
-  - cPro2 minimal's system button quits on a double-click, and cPro2's clock shows the right time.
+- **Modern skins: buttons, sliders and switches**
+  - Skin buttons for eject, minimize, quit and the Windows menu work.
+  - cPro2 minimal's system button quits on double-click; cPro2's clock shows the correct time.
   - Clicking the stock track notifier brings the player forward.
   - mmd3's bass knob turns the equalizer on.
-  - Text and album art that a skin makes clickable respond to clicks.
-- **Modern skins: cover art in Mac OS X Panther, Ebonite and similar skins**
-  - Skins that look for a `cover.jpg` or `folder.jpg` beside the song show the track's cover.
-  - Works for local files and for Plex, Jellyfin, Emby and Subsonic, and changes with the track.
-- **Modern skins: windows open, move and resize properly**
+  - Clickable skin text and album art respond to clicks.
+  - Official Tristania: equalizer sliders no longer fill their whole track (multipass's EQ bars
+    also line up); Play shows pause while playing and pauses on click; the repeat, shuffle and
+    crossfade indicators work; the Fade slider keeps its value instead of resetting to 1 second.
+  - Prakrit's Rep, Shu and Xfd buttons toggle repeat, shuffle and crossfade.
+  - Alpha Media Player X5: bass, treble and volume sliders follow the pointer; the EQ and Mute
+    levers move and stay visible; Mute no longer turns itself off.
+- **Modern skins: cover art**
+  - Skins that look for `cover.jpg` or `folder.jpg` beside the song (Mac OS X Panther, Ebonite and
+    others) show the track's cover, for local files and Plex, Jellyfin, Emby and Subsonic.
+- **Modern skins: window placement**
   - Vortex, Alpha Media Player X5 and 1010 Fullscreen stay on screen.
-  - A window with no room beside the player opens in a screen corner, not on top of it.
-  - Dronev11's compact player can be dragged again.
-  - A skin's own resize corner, such as Itemskin's playlist corner, resizes both edges.
+  - Nitrous Audio's monitor mode, 1010 Fullscreen's party mode and ClassicPro's maximize fit the
+    screen at UI Sizes above 100%.
+  - A window with no room beside the player opens in a screen corner instead of over it.
+  - Dronev11's compact player and Prakrit's main window can be dragged.
+  - A skin's resize corner, such as Itemskin's playlist corner, resizes both edges.
   - A skin's video window no longer opens empty at launch.
-  - krazyPlayer's Visualizations window keeps its full visualization when made short and wide.
-- **Modern skins: sharper and lighter**
-  - Windows draw at full Retina resolution, so text is crisper at UI Sizes like 125% and 135%.
-  - Playback uses less CPU (about 40% less on cPro Bento).
+  - krazyPlayer's Visualizations window keeps its full visualization when short and wide.
+- **Modern skins: text**
+  - Copperdeck II's track title, MoonLight's title and clock, and cPro2 minimal's artist and title
+    lines appear.
+  - With scrolling off, a title too long for its box is clipped to the box: JRS's remote, and
+    Enkera's, NEO_CLASSIC's and Symplicipod's shade titles, no longer overlap other controls.
+  - Text in a skin's own font is positioned as in Winamp: CPro Winamp for Mac's time display is no
+    longer cut off; Winamp 2000 and about twenty other skins shift a pixel or two.
+  - Segoe UI text draws at Winamp's size, so cPro2 minimal's elapsed time no longer overlaps the
+    track length.
+  - 1010 Fullscreen's clock shows its colons; impulse's clock reads `1:13`, not `1 13`.
+  - wTunes' About text and Vortex's `POSITION` label are centred and no longer clipped.
+  - The Windows menu no longer shows names like `About%09Alt+A` (wTunes, CopperdeckII and others).
+- **Modern skins: VU meters**
+  - wTunes' needle meters move with the music.
+  - VU levels decay like a real meter instead of jumping on every peak.
+- **Modern skins: rendering and performance**
+  - Windows render at full Retina resolution; text is sharper at UI Sizes like 125% and 135%.
+  - Lower CPU use during playback (about 40% less on cPro Bento).
   - Soft-edged skins such as meridian no longer have darkened edges.
-  - CopperdeckII's rounded corners lose the thin dark line beside them.
-  - The drop shadow follows the window, so Anunaki's sliding equalizer leaves no shadow behind.
-- **Modern skins: Official Tristania's buttons and sliders work**
-  - Moving an equalizer slider no longer fills its whole track with colour; multipass's equalizer
-    bars also line up with their sliders.
-  - The big Play button shows its pause symbol while playing, and a click pauses.
-  - The repeat, shuffle and crossfade indicators show and switch.
-  - The Fade slider keeps the crossfade length you drag it to instead of snapping back to 1 second.
-  - Ebonite's and iNTELLI_design's window-mode buttons are no longer squashed.
-- **Modern skins: Prakrit's buttons work and its window drags**
-  - The Rep, Shu and Xfd buttons switch repeat, shuffle and crossfade.
-  - The main window can be dragged by its frame.
-  - A divider strip no longer runs across the Stop and Next buttons; Copperdeck II's equalizer
-    and cPro Venus's seek bar lose similar overhanging pieces.
-- **Modern skins: wTunes' VU meters move, and every skin's VU meters are smoother**
-  - wTunes' two needle meters follow the music; they never moved before.
-  - VU levels now fall back like a real meter instead of twitching on every peak, in wTunes and
-    the other skins with VU meters.
-  - wTunes' About text is centred, as is Vortex's `POSITION` label, which is no longer cut off.
-  - The Windows menu no longer shows names like `About%09Alt+A` in wTunes, CopperdeckII and
-    similar skins.
-- **Modern skins: song titles stay inside their display**
-  - JRS's remote no longer spills the song title across the remote and off the window when
-    ticker scrolling is off; Enkera's, NEO_CLASSIC's and Symplicipod's shade titles no longer
-    run over their buttons and clock.
-  - MoonLight shows its song title and clock, and its equalizer labels sit where they belong;
-    Pure Inspired's seek line appears.
-- **Modern skins: Alpha Media Player X5's sliders and switches work**
-  - The bass, treble and volume sliders follow the pointer; treble used to stay put and bass jumped
-    to the top.
-  - The EQ and Mute switch levers move and stay on their switches instead of disappearing.
-  - Mute stays on instead of switching itself off a moment later.
-- **Modern skins: Copperdeck II shows the song title**
-  - The main display's track title was missing; it now scrolls above the bitrate line.
-- **Modern skins: CPro Winamp for Mac's time display is no longer cut off at the top**
-  - Text in a skin's own font now sits where Winamp puts it; Winamp 2000's clock and text in about
-    twenty other skins move a pixel or two to match.
-- **Modern skins: cPro2 minimal shows the artist and title, and its clock no longer runs into the
-  track length**
-  - The artist and song title lines were blank; they now show the playing track.
-  - Text in Segoe UI, which the Mac does not have, now draws at the size Winamp draws it, so the
-    big elapsed time no longer sits on top of the track length beneath it.
-- **Modern skins: full-screen skins fit the screen at any UI Size**
-  - Nitrous Audio's monitor mode, 1010 Fullscreen's party mode and ClassicPro's maximize opened
-    larger than the screen whenever UI Size was above 100%; they now fill it exactly.
-- **Modern skins: 1010 Fullscreen's equalizer and clock, corneramp and Shield Amp's theme buttons**
-  - 1010's ten EQ sliders spread across the equalizer instead of bunching at its left edge.
-  - 1010's clock shows its colons instead of gaps, and impulse's clock reads `1:13` instead of `1 13`.
-  - corneramp redux and Shield Amp's theme buttons are full width, so "Previous" no longer reads "Pr…".
-- **Modern skins: a song title that does not fit its box no longer spills across the player**
-  - With scrolling off, a title slightly too long for its box is cut at the box as Winamp cuts it;
-    a skin's own captions still draw whole when the Mac's font runs a little wider.
+  - No dark line beside CopperdeckII's rounded corners.
+  - The drop shadow follows the window; Anunaki's sliding equalizer leaves no shadow behind.
 
 ## 0.33.0
 
