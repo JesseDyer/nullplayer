@@ -136,9 +136,9 @@ final class WinampModernMainView: NSView {
     private var activeStateObservers: [NSObjectProtocol] = []
     private(set) var isTornDown = false
 
-    /// This window's drop shadow, built from the scene's outline (`WinampModernMainView+Shadow`).
     /// The window's pixels and the frames on their way to them (`WinampModernMainView+Frames`).
-    let frames = WinampModernFrames()
+    lazy var frames = makeFrames()
+    /// This window's drop shadow, built from the scene's outline (`WinampModernMainView+Shadow`).
     let windowShadow = SkinWindowShadow()
     /// The scene readers graph writes this turn still owe (`WinampModernMainView+GraphSettle`).
     var pendingGraphSettle: WinampModernGraphSettle = []
@@ -311,8 +311,8 @@ final class WinampModernMainView: NSView {
 
     private func repaintAnimatingObjects() {
         guard !isTornDown else { return }
-        guard isOnScreen else {
-            repaintDeferredWhileHidden = true
+        guard frames.isOnScreen else {
+            frames.owesWholeFrame = true
             return
         }
         let rects = animatingRects().compactMap { rect, warped -> NSRect? in
@@ -611,8 +611,8 @@ final class WinampModernMainView: NSView {
             if let object, !self.owns(object) { return }
             // A window nobody can see does not paint for the skin's animation: it catches up in one
             // pass when it comes back (`occlusionDidChange`).
-            guard self.isOnScreen else {
-                self.repaintDeferredWhileHidden = true
+            guard self.frames.isOnScreen else {
+                self.frames.owesWholeFrame = true
                 return
             }
             if let object {
@@ -957,7 +957,15 @@ final class WinampModernMainView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         let resized = newSize != frame.size
         super.setFrameSize(newSize)
-        if resized { windowShadow.invalidateShape("resize") }
+        guard resized else { return }
+        windowShadow.invalidateShape("resize")
+        canvasGeometryDidChange()
+    }
+
+    /// A move to a display of another scale or colour space.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        canvasGeometryDidChange()
     }
 
     override func layout() {
@@ -970,6 +978,7 @@ final class WinampModernMainView: NSView {
         reconcileBrowserSurfaces(browsers)
         layoutHostedSubviews(browsers: browsers)
         cachedHolders = nil
+        frames.pumpNewCanvas()
     }
 
     /// Invalidate just one skin object's box (plus a pixel of slop for resampling at the edges).
@@ -1022,7 +1031,7 @@ final class WinampModernMainView: NSView {
         if drivesScripts { scheduleLiveClicksOnce() }
         #endif
         matchResizableMaskToLayout()
-        needsDisplay = true
+        canvasGeometryDidChange()
     }
 
     /// AppKit's edge band only where the skin offers no handle of its own (B161).
@@ -1035,29 +1044,16 @@ final class WinampModernMainView: NSView {
         }
     }
 
-    /// Whether any of this view's window is visible: ordered in, not minimized, on the current Space
-    /// and not wholly covered (B119).
+    /// Tell the frames whether the window is visible — ordered in, not minimized, on the current
+    /// Space and not wholly covered (B119) — and redraw it whole if it hid with repaints owed.
     ///
-    /// A skin's hidden windows kept painting. Their scripts run whether or not anyone can see them —
-    /// WMP11-BlueVU's never-opened *VU Meters Small* re-warped both needles ~100 times a second — and
-    /// AppKit still displays an ordered-out window that has been invalidated. Measured on a release
-    /// build with *VU Meters Large* open and music playing: main-thread busy **81.4% → 48.3%**, and
-    /// `CGDisplayListDrawInContextDelegate` 19.0% → 0.0%.
-    ///
-    /// **Cached** from the occlusion notification rather than asked per call: this is read on every
-    /// script notification, thousands of times a second, and a first draft that asked the window
-    /// each time cost 40% of the main thread on its own — more than the paint it saved.
-    private(set) var isOnScreen = false
-
-    /// Repaints a hidden window skipped; the next time it shows, it redraws whole.
-    var repaintDeferredWhileHidden = false
-
     /// `WINAMP_MODERN_ASSUME_VISIBLE=1` (`SkinWindowShadow.assumesParentVisible`) treats the window as
     /// on screen whatever its occlusion says, so a locked screen does not stop it painting.
     private func occlusionDidChange() {
-        isOnScreen = SkinWindowShadow.assumesParentVisible || (window?.occlusionState.contains(.visible) ?? false)
-        guard !isTornDown, isOnScreen, repaintDeferredWhileHidden else { return }
-        repaintDeferredWhileHidden = false
+        frames.isOnScreen = SkinWindowShadow.assumesParentVisible
+            || (window?.occlusionState.contains(.visible) ?? false)
+        guard !isTornDown, frames.isOnScreen, frames.owesWholeFrame else { return }
+        frames.owesWholeFrame = false
         invalidateRectCaches()
         needsLayout = true
         needsDisplay = true
@@ -1068,10 +1064,8 @@ final class WinampModernMainView: NSView {
     /// (`WinampModernMainView+Frames`). Only a window too large for a canvas draws.
     override var wantsUpdateLayer: Bool { !frames.drawsDirectly }
 
-    override func updateLayer() {
-        guard !isTornDown else { return }
-        showFrame()
-    }
+    /// Nothing to do at display: every picture is presented as it lands (`WinampModernFrames`).
+    override func updateLayer() {}
 
     override func draw(_ dirtyRect: NSRect) {
         guard !isTornDown, let context = NSGraphicsContext.current?.cgContext else { return }
@@ -1084,10 +1078,12 @@ final class WinampModernMainView: NSView {
     }
 
     /// Every invalidation, `needsDisplay = true` and AppKit's own included, is a request for a new
-    /// frame: recorded now, rendered off the main thread, shown when it lands.
+    /// frame: recorded at the end of the turn, rendered off the main thread, shown when it lands.
     override func setNeedsDisplay(_ invalidRect: NSRect) {
-        requestFrame(invalidRect)
-        super.setNeedsDisplay(invalidRect)
+        guard !frames.drawsDirectly else { return super.setNeedsDisplay(invalidRect) }
+        let rect = invalidRect.intersection(bounds)
+        guard !rect.isNull, !rect.isEmpty, !isTornDown else { return }
+        frames.request(rect)
     }
 
     /// `WINAMP_MODERN_PAINT_RATE=1` — frames shown per second per window, and how much of the window
@@ -2565,6 +2561,7 @@ final class WinampModernMainView: NSView {
         activeStateObservers.forEach(NotificationCenter.default.removeObserver)
         activeStateObservers.removeAll()
         windowShadow.detach()
+        frames.target = .idle
         isTornDown = true
     }
 

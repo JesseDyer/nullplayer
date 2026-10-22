@@ -78,7 +78,8 @@ final class WinampModernCanvas {
 
     /// Draw `job` into the canvas.
     func render(_ job: Job) -> Frame? {
-        if isFresh(pixelWidth: job.pixelWidth, pixelHeight: job.pixelHeight, colorSpace: job.colorSpace) {
+        let fresh = isFresh(pixelWidth: job.pixelWidth, pixelHeight: job.pixelHeight, colorSpace: job.colorSpace)
+        if fresh {
             context = CGContext(data: nil, width: job.pixelWidth, height: job.pixelHeight,
                                 bitsPerComponent: 8, bytesPerRow: 0, space: job.colorSpace,
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
@@ -117,7 +118,8 @@ final class WinampModernCanvas {
         }
 
         guard let picture = context.makeImage() else { return nil }
-        let changed = job.rects.reduce(false) { updateAlpha(data, rect: $1, in: context) || $0 }
+        // A new canvas always reports its outline, even an empty one: the last was another size.
+        let changed = job.rects.reduce(fresh) { updateAlpha(data, rect: $1, in: context) || $0 }
         return Frame(picture: picture, outline: changed ? outlineImage(width: context.width,
                                                                        height: context.height) : nil)
     }

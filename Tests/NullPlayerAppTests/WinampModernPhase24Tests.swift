@@ -541,17 +541,14 @@ final class WinampModernPhase24Tests: XCTestCase {
         addTeardownBlock { scripts.teardown() }
         let view = WinampModernMainView(renderer: renderer, scripts: scripts, host: host)
         addTeardownBlock { view.teardown() }
-        // A window, so AppKit actually tracks the dirty state.
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: renderer.canvasSize),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = view
-        view.displayIfNeeded()
-        let layer = try XCTUnwrap(view.layer, "a `.wal` view is layer-backed")
-        // `needsDisplay` on a layer-backed view forwards to its layer and reads back false, so the
-        // layer is where the invalidation is observable.
-        XCTAssertFalse(layer.needsDisplay(), "clean to begin with")
+        // Never ordered in, so hidden: a request shows up as a whole frame owed on reveal.
+        view.frames.isOnScreen = false
+        view.frames.owesWholeFrame = false
         view.updateSpectrum((0..<64).map { Float($0) / 64 })
-        XCTAssertTrue(layer.needsDisplay(), "levels arriving must invalidate the view")
+        XCTAssertTrue(view.frames.owesWholeFrame, "levels arriving must ask for a frame")
         XCTAssertFalse(host.spectrumLevels.isEmpty)
     }
 

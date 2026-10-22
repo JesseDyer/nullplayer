@@ -571,24 +571,30 @@ context would. Two escape hatches cover code that needs a real context: `drawWit
 thread, and `record` for a whole draw function (the host chrome's gloss frame). **A recorded closure
 captures values, never the renderer or a `WasabiObject`**, or it races the next script tick.
 
-`WinampModernCanvas` (`Windows/WinampModern/`) replays the list into the window's own bitmap on a
-per-view serial queue (`WinampModernMainView+Frames.swift`):
+`WinampModernCanvas` (`WinampModern/`) replays the list into the window's own bitmap on a per-view
+serial queue. `WinampModernFrames` (`Windows/WinampModern/WinampModernMainView+Frames.swift`) owns
+the scheduling, and the view hands it two closures: `record` (the scene walk) and `present`:
 
 - **Device resolution.** The canvas is `bounds × backingScaleFactor`, with the UI Size in `bounds`.
   The old opaque buffer ran at the display-list context's CTM 1.0 (B80), so every opaque layout was
   drawn at point resolution and stretched 2x; Anunaki's player buffer was 708x349 at 100% on a 2x
   panel. Pixel art looks the same; text and fractional-scale edges are sharper.
-- **Every invalidation is a frame request.** `setNeedsDisplay(_:)` keeps the rect and schedules one
-  pump per runloop turn. One frame is in flight at a time; dirt that arrives meanwhile is recorded
-  fresh when it lands. A new canvas (size or colour space) and a picture of the wrong size are drawn
-  whole, synchronously, so the window never shows a stale size. A hidden window keeps no dirt and
-  redraws whole on reveal.
-- **The picture is the layer's `contents`** (`updateLayer`), not a blit in `draw(_:)`. Blitting it
-  colour-matched and re-formatted the whole image on the main thread every frame: 15.7% of cPro
-  Bento's main thread with the canvas in Device RGB. With the canvas in the window's own colour space
-  it was still 8.8%; as `contents` it is about 1.5% (`CA::Transaction::commit`). The bitmaps are
-  colour-matched once each as they are drawn, on the queue. `draw(_:)` survives only for a window too
-  large for a canvas (`drawDirectly`).
+- **Every invalidation is a frame request.** `setNeedsDisplay(_:)` hands the rect to
+  `WinampModernFrames.request`, which schedules one pump per runloop turn. One frame is in flight at
+  a time; dirt that arrives meanwhile is recorded fresh when it lands. A hidden window keeps no dirt
+  (`isOnScreen`) and redraws whole on reveal (`owesWholeFrame`).
+- **A new canvas is one event, drawn whole.** The frames' `target` is `idle`, `canvas(Geometry)` or
+  `direct` (too large for a canvas). `setFrameSize`, `viewDidChangeBackingProperties` and the move to
+  a window set it, and nothing else does. A geometry the canvas was not last drawn whole at renders
+  synchronously from `layout()` (`pumpNewCanvas`), so it lands in the transaction that resizes the
+  layer. Any change of target drops the frame still in flight, so frames are presented strictly in
+  order with one counter.
+- **The picture is the layer's `contents`**, assigned by `present` as each frame lands, not a blit
+  in `draw(_:)`; `updateLayer` does nothing. Blitting it colour-matched and re-formatted the whole
+  image on the main thread every frame: 15.7% of cPro Bento's main thread with the canvas in Device
+  RGB. With the canvas in the window's own colour space it was still 8.8%; as `contents` it is about
+  1.5% (`CA::Transaction::commit`). The bitmaps are colour-matched once each as they are drawn, on
+  the queue. `draw(_:)` survives only for a window too large for a canvas (`drawDirectly`).
 - **The canvas keeps an alpha mirror** for the drop shadow, compared over each frame's rects with
   `vImageExtractChannel` and `memcmp`. An alpha-only `CGImage` cannot be made with `CGImage`'s own
   initializer (it answers nil); `outlineImage` makes it through an alpha-only `CGContext`.
