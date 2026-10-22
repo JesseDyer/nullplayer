@@ -121,6 +121,8 @@
     to the top.
   - The EQ and Mute switch levers move and stay on their switches instead of disappearing.
   - Mute stays on instead of switching itself off a moment later.
+- **Modern skins: Copperdeck II shows the song title**
+  - The main display's track title was missing; it now scrolls above the bitrate line.
 
 ## 0.33.0
 

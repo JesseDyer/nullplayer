@@ -63,6 +63,15 @@ final class WinampModernPhase69Tests: XCTestCase {
         XCTAssertEqual(ceil(46 * 1.4), 65, "the height the removed host patch used, for the record")
     }
 
+    /// A `<SongTicker>` is a Wasabi text too. CopperdeckII's states no `h`, and its song title was a
+    /// zero-height box clipped to nothing.
+    func testAHeightlessSongTickerSizesToItsFont() throws {
+        let renderer = try makeRenderer(layout: """
+          <SongTicker id="ticker" x="0" y="0" w="157" fontsize="10"/>
+        """)
+        XCTAssertEqual(try frame(of: "ticker", in: renderer).height, 10)
+    }
+
     /// Only `<text>` auto-sizes. A layer or a group with no `h` keeps taking its height from its
     /// artwork or from nothing, which is what every other object in the corpus is laid out against.
     func testOnlyTextTakesAFontsHeight() throws {

@@ -404,7 +404,8 @@ The height it takes now is `WasabiTextMetrics.lineHeight(of:)`, which is the sam
 > so the title ran down through the artist. A per-surface height guess anywhere else in the engine is
 > the same bug waiting to happen — auto-sizing belongs here, in the intrinsic-size rules.
 
-Only `<text>` auto-sizes vertically. Everything else with no `h` keeps taking its height from its
+Only `<text>` and `<SongTicker>` (a Wasabi text subclass) auto-sizes vertically — CopperdeckII's
+song title is a heightless `<SongTicker>` and drew nothing until it was included. Everything else with no `h` keeps taking its height from its
 artwork or from nothing, which is what the corpus is laid out against.
 
 #### A container's `x`/`y`/`w`/`h` are its window's (BB27, 2026-08-25)

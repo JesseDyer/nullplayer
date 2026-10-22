@@ -2200,9 +2200,10 @@ final class WasabiSceneRenderer {
         // That patch guessed `fontsize * 1.4`, which is 18 pixels taller than the line the skin
         // spaced its rows for, and the title then sat on top of the artist underneath it (BB27).
         // `lineHeight` is the same number `getAutoHeight()` answers, so the box a script measures and
-        // the box we draw are one measurement.
+        // the box we draw are one measurement. A `<SongTicker>` is a Wasabi text too: CopperdeckII's
+        // states no `h`, and its song title was a zero-height box.
         if object.attributes["h"] == nil,
-           object.tag.is(.text) {
+           object.tag.is(anyOf: [.text, .songticker]) {
             intrinsic.height = Double(resources.metrics.lineHeight(of: object))
         }
         // A window-chrome button whose artwork Winamp supplied and the skin does not. It has no
