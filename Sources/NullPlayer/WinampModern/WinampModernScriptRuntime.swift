@@ -601,9 +601,22 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
     /// written by `setVolume` as well as by the window's poll: when only the poll kept it, a skin's
     /// own `setVolume` was announced a second time on the next tick. Alpha Media Player X5's mute
     /// takes an `onVolumeChanged` it did not expect as the user moving the volume, and un-muted.
-    var announcedVolume: Int32 = -1
+    private(set) var announcedVolume: Int32 = -1
 
     static func volumeLevel(_ volume: Double) -> Int32 { Int32(max(0, min(255, volume * 255))) }
+
+    /// Record a volume a skin's own `setVolume` announced. Taken from `host.volume`, not the level
+    /// the skin passed, so the poll's reading of the same volume compares equal after a float round trip.
+    func noteVolumeAnnounced() { announcedVolume = Self.volumeLevel(host.volume) }
+
+    /// Announce a volume change made outside the skin — the menu bar, a keyboard shortcut, another
+    /// window — so a readout the skin drives from `onVolumeChanged` does not sit on a stale number.
+    func announceVolumeIfChanged() {
+        let level = Self.volumeLevel(host.volume)
+        guard level != announcedVolume else { return }
+        announcedVolume = level
+        _ = try? dispatchSystem(event: "onvolumechanged", arguments: [.integer(level)])
+    }
 
     var geometrySettle = WinampModernGeometrySettle()
 
@@ -614,7 +627,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
 
     func hasBinding(for object: WasabiObject, event: String? = nil) -> Bool {
         let event = event?.lowercased()
-        return hasBinding(for: object) { event == nil || $0 == event }
+        return !programsBinding(object) { event == nil || $0 == event }.isEmpty
     }
 
     /// The presses that make an object a control. Wasabi gives every non-ghost GuiObject its rect, so
@@ -626,12 +639,13 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
                                            "onrightbuttonup", "onrightclick"]
 
     func hasPressBinding(for object: WasabiObject) -> Bool {
-        hasBinding(for: object) { Self.pressEvents.contains($0) }
+        !programsBinding(object) { Self.pressEvents.contains($0) }.isEmpty
     }
 
-    private func hasBinding(for object: WasabiObject, event matches: (String) -> Bool) -> Bool {
+    /// The scripts with a handler bound to `object` for an event `matches` accepts.
+    func programsBinding(_ object: WasabiObject, event matches: (String) -> Bool) -> [MakiProgram] {
         let target = MakiObjectReference(.gui(object.stableID))
-        return programs.contains { program in
+        return programs.filter { program in
             program.bindings.contains { binding in
                 if !matches(program.methods[binding.methodIndex].name) { return false }
                 let variable = program.variables[binding.variableIndex]

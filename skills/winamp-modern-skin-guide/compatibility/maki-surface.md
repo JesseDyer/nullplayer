@@ -81,9 +81,10 @@ By area:
 - **Window scaling**: `<layout>.setScale(f)` is answered by **NullPlayer's own UI Size** — the level
   nearest the requested factor — and by nothing else. A `.wal` scene is always laid out on the skin's
   pixel grid, with UI Size applied at the view's drawing and input boundaries, so a second
-  layout-local scale would be a rival for the same pixels. `getScale()` therefore still answers **1**
-  whatever size the windows are drawn at: the layout's own scale really is 1, and ClassicPro's resize
-  arithmetic (which multiplies by it) is in skin pixels. On a receiver that is not a layout the call
+  layout-local scale would be a rival for the same pixels. `getScale()` answers **that UI Size**
+  (`hooks.uiScaleQuery`; 1 in the harness): skins that fill the screen size the layout to
+  `viewport / getScale()` — Nitrous Audio's monitor mode, 1010 Fullscreen's party mode, ClassicPro's
+  maximize — and answered 1 at 135% they opened 1.35× the screen. On a receiver that is not a layout the call
   is accepted and inert. Measured demand: Defix's seven configurator buttons (100, 125, 150, 175,
   200, 250, 300 — the ladder gained 175/250/300 for them), Ebonite's `standardframe.m` and boom's
   `prefs.m`; all three call it on a layout. **Not** dispatched: `onScale`, the layout event Wasabi
@@ -590,7 +591,8 @@ guard on the echo; any `onVolumeChanged` arriving unguarded while muted is read 
 volume, and the skin un-mutes. The window's playback poll kept its own last-posted volume, which
 `setVolume` never updated, so the poll announced the skin's change a second time on its next tick and
 the mute undid itself within a second. The last announced level is now `announcedVolume` on the
-runtime, one per skin and written by both senders.
+runtime, one per skin: `setVolume` records it (`noteVolumeAnnounced`) and the poll goes through
+`announceVolumeIfChanged`.
 
 **Script events callable as methods.** A script may invoke one of its own handlers directly to reuse
 it (`slidercb.onSetPosition(slidercb.getPosition())`). Only events with a known arity are callable —

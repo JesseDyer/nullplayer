@@ -1386,9 +1386,10 @@ the current alpha (defaulting to 255). The speed=0 snap path already handled thi
 `?? object.attributes["alpha"] ?? "255"`.
 
 **A target animation moves the object, not its XML.** `getXmlParam("x"/"y"/"w"/"h")` still answers
-the declared value after `gotoTarget` has moved it; the first animated write stashes the original under
-`declaredXMLParamKey` (`WinampModernScriptRuntimeTimer.swift`), and `setXmlParam` — which *is* the XML —
-drops it. Alpha Media Player X5's EQ and Mute levers depend on it: on is
+the declared value after `gotoTarget` has moved it; the first animated write
+(`WasabiObject.moveForTarget`) keeps the original in the object's `declaredXMLParams` — off
+`attributes`, so nothing draws, dumps or forwards it — `getXmlParam` reads it through `xmlParam(_:)`,
+and `setXmlParam` — which *is* the XML — drops it. Alpha Media Player X5's EQ and Mute levers depend on it: on is
 `setTargetY(getXmlParam("y") - 17)`, off is `setTargetY(getXmlParam("y"))`. Answered with the moved
 position, off went nowhere and a second on put the lever 17px above its switch, out of sight
 (2026-10-21).

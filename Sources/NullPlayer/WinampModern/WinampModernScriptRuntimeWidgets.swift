@@ -171,18 +171,9 @@ extension WinampModernScriptRuntime {
     /// their top and volume landed 128px off the press. A plain group is a space of its own whoever
     /// listens: JRS's layout-level knob script subtracts `getTop()` inside `eq.normal.group`, and Lobe's
     /// dial script sits in the dial's own group.
-    func mouseEventSpace(of object: WasabiObject, event: String) -> WasabiObject? {
-        let target = MakiObjectReference(.gui(object.stableID))
+    private func mouseEventSpace(of object: WasabiObject, event: String) -> WasabiObject? {
         let event = event.lowercased()
-        let owners = Set(programs.compactMap { program -> WasabiObjectID? in
-            let listens = program.bindings.contains { binding in
-                guard program.methods[binding.methodIndex].name == event else { return false }
-                let variable = program.variables[binding.variableIndex]
-                return self.object(variable.value, equals: target)
-                    || variable.classMembers.contains { self.object(program.variables[$0].value, equals: target) }
-            }
-            return listens ? program.ownerID : nil
-        })
+        let owners = Set(programsBinding(object) { $0 == event }.compactMap(\.ownerID))
         let types = loadedSkin.runtime.types
         guard !owners.isEmpty, let parent = object.parent, types.isXUITag(parent.typeName) else { return nil }
         return sequence(first: parent, next: { $0.parent })

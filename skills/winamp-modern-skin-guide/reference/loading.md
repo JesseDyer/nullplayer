@@ -525,8 +525,10 @@ Two traps in the same attribute:
   where 0% collapses the group but the plain relative reading gives the ordinary fill-the-parent
   idiom, and on `relatw="5"`, which is not a percentage at all. Enumerate the whole corpus before
   believing a mechanism derived from two skins.
-- **A non-numeric value must stay absolute**, because that is also `atoi`'s answer and two skins
-  depend on it: corneramp_redux and Shield_Amp ship a literal `relatw="%"`.
+- **A non-numeric value stays absolute** (`atoi`'s answer) — **except a literal `"%"`, which is
+  percent mode** like `2` (`WasabiGeometry.percentFlag`). corneramp_redux and Shield_Amp's theme
+  buttons are `w="50"`/`"25"` with `relatw="%"`: read as absolute, "Previous" drew as "Pr…" in a 50px
+  box. 1010 Fullscreen's ten EQ bands are laid out the same way.
 
 Use `atoi` semantics (leading integer), not `Int(_:)`, which refuses a trailing character and would
 send `"1px"` down the opposite branch from the one Winamp takes.

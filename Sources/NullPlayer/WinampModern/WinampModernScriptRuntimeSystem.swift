@@ -68,7 +68,7 @@ extension WinampModernScriptRuntime {
         case "setvolume":
             let level = Int32(UInt8(truncatingIfNeeded: arguments[0].integerValue))
             host.volume = Double(level) / 255
-            announcedVolume = Self.volumeLevel(host.volume)
+            noteVolumeAnnounced()
             // The change is what a skin listens for. Re-entrancy is bounded by the dispatch guard, so
             // a handler that sets the volume again cannot recurse.
             _ = try? dispatchSystem(event: "onvolumechanged", arguments: [.integer(level)])

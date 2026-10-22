@@ -112,13 +112,11 @@ extension WinampModernScriptRuntime {
         case "getid": return .string(object.xmlID ?? "")
         case "getparent": return objectValue(object.parent)
         case "getparentlayout": return objectValue(ancestor(of: object, type: .layout))
-        case "getxmlparam":
-            let key = arguments[0].stringValue.lowercased()
-            return .string(object.attributes[Self.declaredXMLParamKey(key)] ?? object.attributes[key] ?? "")
+        case "getxmlparam": return .string(object.xmlParam(arguments[0].stringValue) ?? "")
         case "setxmlparam":
             let key = arguments[0].stringValue
             let value = arguments[1].stringValue
-            _ = object.setAttribute(Self.declaredXMLParamKey(key.lowercased()), value: nil)
+            object.forgetDeclaredXMLParam(key)
             // An image-valued param is a *load*, and a load that fails leaves the object wearing the
             // artwork it already had — including when the new id is empty, which loads nothing.
             //
@@ -672,9 +670,9 @@ extension WinampModernScriptRuntime {
         case "setscale":
             // "Scale all my windows to this." Answered by the host's UI Size, and only from a
             // **layout** receiver: that is the only form in the corpus, and a scale stamped on a
-            // child object would be a second, rival scale for the same pixels (see `getscale`
-            // below, which stays 1 for exactly that reason). A non-layout receiver is accepted and
-            // inert rather than refused — refusing a method aborts the handler that called it.
+            // child object would be a second, rival scale for the same pixels. A non-layout
+            // receiver is accepted and inert rather than refused — refusing a method aborts the
+            // handler that called it.
             if object.tag.is(.layout) {
                 let factor = arguments[0].doubleValue
                 // A skin is not allowed to drive the host off the end of the scale; the host snaps
@@ -686,10 +684,10 @@ extension WinampModernScriptRuntime {
             }
             return .null
         case "getscale":
-            // The scene is always on the skin's own pixel grid: UI Size is applied at the view's
-            // drawing/input boundary and is deliberately invisible to scripts (Phase 10), so the
-            // layout's own scale is 1. ClassicPro multiplies its resize arithmetic by this.
-            return .float(1)
+            // The scale the layout is drawn at, which here is UI Size. Skins that fill the screen
+            // size the layout to `viewport / getScale()` — Nitrous Audio's monitor mode, 1010's
+            // party mode, ClassicPro's maximize — and answered 1 at 135% they opened 1.35× the screen.
+            return .float(Double(hooks.uiScaleQuery?() ?? 1))
         case "setredraw":
             // A redraw hint (`widgetsManager` throttles its list while populating). The renderer
             // repaints from the graph, so there is no suspended-drawing state to honour.

@@ -86,6 +86,32 @@ final class WasabiObject {
         scriptAuthoredMinimumAxes.insert(key.lowercased())
     }
 
+    /// The **XML** value of each geometry param a target animation has moved the object off.
+    /// Wasabi's `gotoTarget` moves the object and leaves its XML params alone, so `getXmlParam("y")`
+    /// still answers the declared value. Alpha Media Player X5's EQ and Mute levers are written
+    /// against that: on is `setTargetY(getXmlParam("y") - 17)`, off is `setTargetY(getXmlParam("y"))`.
+    /// Read back as the moved position, off stayed put and a second on sent the lever 17px above its
+    /// switch, out of sight. Kept off `attributes`, which are drawn, dumped and forwarded to XUI
+    /// scripts; `setXmlParam` drops an entry, because that does write the XML value.
+    private var declaredXMLParams: [String: String] = [:]
+
+    /// What `getXmlParam(key)` answers.
+    func xmlParam(_ key: String) -> String? {
+        let key = key.lowercased()
+        return declaredXMLParams[key] ?? attributes[key]
+    }
+
+    /// `setAttribute` for a target animation step, keeping the value the XML declared on the first move.
+    @discardableResult
+    func moveForTarget(_ key: String, to value: String) -> Bool {
+        if declaredXMLParams[key] == nil { declaredXMLParams[key] = attributes[key] }
+        return setAttribute(key, value: value)
+    }
+
+    func forgetDeclaredXMLParam(_ key: String) {
+        declaredXMLParams.removeValue(forKey: key.lowercased())
+    }
+
     /// The graph's structure counter, for callers memoizing something that depends on this object's
     /// position in the tree rather than only on the object itself.
     var graphStructureGeneration: UInt64 { graph?.structureGeneration ?? 0 }

@@ -131,6 +131,13 @@
   - The artist and song title lines were blank; they now show the playing track.
   - Text in Segoe UI, which the Mac does not have, now draws at the size Winamp draws it, so the
     big elapsed time no longer sits on top of the track length beneath it.
+- **Modern skins: full-screen skins fit the screen at any UI Size**
+  - Nitrous Audio's monitor mode, 1010 Fullscreen's party mode and ClassicPro's maximize opened
+    larger than the screen whenever UI Size was above 100%; they now fill it exactly.
+- **Modern skins: 1010 Fullscreen's equalizer and clock, corneramp and Shield Amp's theme buttons**
+  - 1010's ten EQ sliders spread across the equalizer instead of bunching at its left edge.
+  - 1010's clock shows its colons instead of gaps, and impulse's clock reads `1:13` instead of `1 13`.
+  - corneramp redux and Shield Amp's theme buttons are full width, so "Previous" no longer reads "Pr…".
 
 ## 0.33.0
 

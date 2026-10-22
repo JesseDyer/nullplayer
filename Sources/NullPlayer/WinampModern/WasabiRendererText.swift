@@ -282,7 +282,7 @@ extension WasabiSceneRenderer {
             // `measured` above is already the fixed-pitch width, so the box a skin sizes from
             // `getTextWidth()` stays put as the digits change — which is the jitter `forcefixed`
             // exists to stop — while the string itself is drawn with the font's own advances, from
-            // that reserved room's aligned edge.
+            // that reserved room's left or right edge, or centred on its own drawn width.
             //
             // Drawing each glyph centred in a widest-digit cell was the earlier reading, and cPro2
             // Dark Aluminum rules it out. `info-text.m` places the total time at
@@ -456,15 +456,14 @@ extension WasabiSceneRenderer {
             var x = startX + origin
             for character in text.lowercased() {
                 let (column, row) = positions[character] ?? positions[" "] ?? (0, 0)
-                let cell = run.cellWidth(of: character)
                 // Top-left origin: `cropping(to:)` indexes pixel rows directly (see `bitmap(identifier:)`).
                 let cropRect = CGRect(x: CGFloat(column * charWidth), y: CGFloat(row * charHeight),
-                                      width: cell, height: CGFloat(charHeight))
+                                      width: CGFloat(charWidth), height: CGFloat(charHeight))
                 if x + run.advanceWidth(of: character) >= frame.minX, x <= frame.maxX,
                    cropRect.maxY <= CGFloat(sheet.height), cropRect.maxX <= CGFloat(sheet.width),
                    let glyph = cropped(sheet.image, to: cropRect) {
                     drawImage(glyph, in: CGRect(x: x, y: top,
-                                                width: cell, height: CGFloat(charHeight)),
+                                                width: CGFloat(charWidth), height: CGFloat(charHeight)),
                               context: context)
                 }
                 x += run.advanceWidth(of: character)

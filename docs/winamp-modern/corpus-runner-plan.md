@@ -22,9 +22,11 @@ supported-surface manifest. Re-open one only when the queue runs dry or a fix ne
 and tooltips). Re-run `wal_motion_sweep.sh` / `wal_interaction_sweep.sh` after the method batch
 lands — many of those suspects are handlers aborting on the methods above — and only then decide.
 
-### Progress: the B169 silver intake, first pass (2026-10-20)
+### Done: the B169 intake, promoted to gold (2026-10-22)
 
-The 25 skins B169 admitted to Silver were tried in the app and fixed skin by skin. Each fix is
+The 25 skins B169 admitted to Silver were tried in the app, fixed skin by skin, and **promoted to
+gold on 2026-10-22** (manifest tier, files moved to `WinampModernCorpus/gold/`), with rows on
+`skin-compatibility.md` (24 B, 1010 Fullscreen C). Each fix is
 general, so it applies to every skin with the same shape, named after the skin that showed it.
 
 | Skin | What was wrong | Fix (where) |
@@ -61,6 +63,22 @@ The other skins showed nothing more on a first look. Left: Dronev11's playlist i
 bar (cosmetic), and its own cover script (`behaviors.m`, `file://` only) still finds no cover. Filed from the code review: B216 (check `.wmz`
 placement after the tiler change, then move the tiler out of `WindowManager.swift`) and B217 (one
 type-name accessor; one button-label rule).
+
+Third pass, at promotion (2026-10-22):
+
+| Skin | What was wrong | Fix (where) |
+|---|---|---|
+| Nitrous_Audio_CTI_2_Glass, 1010_Fullscreen, ClassicPro maximize | Monitor/party mode opened 1.35× the screen at 135% UI Size | `getScale()` answers UI Size (`hooks.uiScaleQuery`); the skins size to `viewport / getScale()` |
+| 1010_Fullscreen, corneramp_redux, Shield_Amp | EQ bands bunched left; theme buttons cut to "Pr…" | A literal `relat*="%"` is percent mode (`WasabiGeometry.percentFlag`) |
+| 1010_Fullscreen, impulse | Clock colons drew as gaps | A bitmap colon draws its whole atlas cell; only the advance narrows to `timecolonwidth` (`BitmapRun`) |
+
+Left open on 1010 Fullscreen (graded C): its song title draws ~12px low and overlaps the clock.
+Aligning skin-shipped TrueType by cap top fixed it and moved ~50 other skins wrong (corneramp, Winamp
+2000, CPro for Mac), so it was rolled back; the cause is unknown without a Winamp reference.
+
+**Next:** B233 (frame-presentation refactor), then intake #2 — re-weight gain first (§8 *Progress*,
+B169 entry: count a new tag once, `tag@attr` only on known tags). B212 needs a second display; B216's
+`.wmz` census waits on a go-ahead.
 
 Below is reference: the pipeline as designed (§3), what was built (§7), and the corpus-scale
 decisions (§8).

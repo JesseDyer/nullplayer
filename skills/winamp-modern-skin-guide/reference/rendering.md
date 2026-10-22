@@ -1054,8 +1054,8 @@ alone, so without it the knob turned and the EQ never changed (B194).
 
 | value | meaning |
 |---|---|
-| `0`, absent, non-numeric (`"%"`) | absolute |
-| `2` | **percentage** of the parent's span — `span * value / 100` |
+| `0`, absent, non-numeric | absolute |
+| `2`, or a literal `"%"` | **percentage** of the parent's span — `span * value / 100` |
 | any other non-zero (`1`, `5`, `"1px"`) | additive — `value + span` |
 
 Corpus census (2026-08-31, 53 skins + the ClassicPro engine): `1` ×8197, `0` ×360, **`2` ×89**,

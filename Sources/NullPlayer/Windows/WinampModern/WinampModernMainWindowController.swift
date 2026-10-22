@@ -2202,6 +2202,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         scripts.hooks.uiScaleRequested = { [weak self] factor in
             self?.applyUIScaleRequest(factor)
         }
+        scripts.hooks.uiScaleQuery = { [weak self] in self?.skinScale ?? 1 }
         // `System.getMonitorWidth/Height()` describe the display the skin is actually occupying,
         // including during startup before its borderless window becomes the application's main
         // window. `NSScreen.frame` is already in logical screen points; never multiply it by the

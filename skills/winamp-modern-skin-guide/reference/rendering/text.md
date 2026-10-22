@@ -345,10 +345,11 @@ Reported live 2026-09-03 across the cPro family — *"there is a space between t
 and the readout drew `1:03: 16`, nine pixels of empty cell per colon.
 
 - **The colon advances by its declared cell; every other glyph keeps `charwidth + hspacing`.** The
-  glyph is **cropped** to that cell rather than centred in it, because a sheet's ink is at the cell's
-  left edge — which is also what the Core Text path's per-cell clip does with a `timecolonwidth`
-  narrower than the glyph. Every corpus case declares a cell narrower than the atlas advance, so the
-  two paths never disagree in practice.
+  colon's **whole atlas cell is drawn** and only the advance narrows — the next glyph draws over
+  the rest. Cropping it to the declared width worked for cPro, whose colon is inked at the cell's
+  left edge, and erased 1010 Fullscreen's, which is inked mid-cell in a 60px atlas against
+  `timecolonwidth="29"` (every colon drew as a gap). An alpha-scan for the ink is not an option:
+  cPro's cells are opaque, so the scan reads the whole cell as ink and the colons vanish.
 - **Only a clock reads it** (`WasabiTextMetrics.bitmapColonWidth`, gated on the same
   `display=` set as `clockRun`), so a label carrying a stray `timecolonwidth` is still one
   fixed-pitch run.

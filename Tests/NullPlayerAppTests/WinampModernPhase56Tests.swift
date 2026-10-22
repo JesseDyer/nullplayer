@@ -92,13 +92,20 @@ final class WinampModernPhase56Tests: XCTestCase {
         }
     }
 
-    /// `atoi("%")` is 0, and two skins depend on that answer — corneramp_redux and Shield_Amp ship a
-    /// literal `relatw="%"`. A non-numeric value must stay absolute.
+    /// A non-numeric value stays absolute — `atoi` answers 0.
     func testANonNumericValueStaysAbsolute() {
-        for value in ["%", "", "none", "false", "no", "abc"] {
+        for value in ["", "none", "false", "no", "abc"] {
             let spec = WasabiGeometrySpec(attributes: ["w": "10", "relatw": value])
             XCTAssertEqual(spec.resolve(in: parent).width, 10, "relatw=\"\(value)\" is absolute")
         }
+    }
+
+    /// …except a literal `"%"`, which is percent mode like `2`: corneramp_redux and Shield_Amp's
+    /// theme buttons are `w="50" relatw="%"`, and 1010 Fullscreen's EQ bands are laid out the same way.
+    func testALiteralPercentIsPercentMode() {
+        let spec = WasabiGeometrySpec(attributes: ["w": "10", "relatw": "%"])
+        XCTAssertEqual(spec.resolve(in: parent).width,
+                       WasabiGeometrySpec(attributes: ["w": "10", "relatw": "2"]).resolve(in: parent).width)
     }
 
     func testZeroAndAbsentStayAbsolute() {

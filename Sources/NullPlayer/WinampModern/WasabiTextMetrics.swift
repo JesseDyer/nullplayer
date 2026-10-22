@@ -258,18 +258,26 @@ final class WasabiTextMetrics {
     /// grow it: Cell's Visitor TT2 has a 0.7 em cell, and scaled by it the timer's digits drew 10px
     /// tall against the 6–7 its own `sc.png` shows, overfilling the brackets drawn for them (#581).
     static func gdiSized(_ font: NSFont) -> NSFont {
-        // Windows has no Helvetica — GDI's FontSubstitutes draws Arial for it, and here it is MS Sans
-        // Serif's stand-in — so its cell is Arial's, not its own.
-        guard font.familyName != "Helvetica" else { return font }
+        guard !gdiDrawsAsArial(font) else { return font }
         let cell = winMetricsPerEm(of: font).map { $0.ascent + $0.descent }
             ?? (font.ascender - font.descender) / font.pointSize
-        guard cell > arialCellPerEm + 0.01, cell < 3 else { return font }
+        let scale = gdiScale(cellPerEm: cell)
+        guard scale != 1 else { return font }
         // Bridged through `NSFont?` for the same reason as `resolvedFont`'s constructor: a CoreText
         // constructor imported as non-optional can still hand back null.
-        let sized: NSFont? = CTFontCreateCopyWithAttributes(
-            font, font.pointSize * arialCellPerEm / cell, nil, nil) as NSFont
+        let sized: NSFont? = CTFontCreateCopyWithAttributes(font, font.pointSize * scale, nil, nil) as NSFont
         return sized ?? font
     }
+
+    /// How GDI scales a face's em against Arial's at the same `fontsize`: down by a cell taller than
+    /// Arial's, and **never up** (see `gdiSized`).
+    static func gdiScale(cellPerEm cell: CGFloat) -> CGFloat {
+        cell > arialCellPerEm + 0.01 && cell < 3 ? arialCellPerEm / cell : 1
+    }
+
+    /// Windows has no Helvetica — GDI's FontSubstitutes draws Arial for it, and here it is MS Sans
+    /// Serif's stand-in — so its cell is Arial's, not its own, and Arial's two cells agree.
+    static func gdiDrawsAsArial(_ font: NSFont) -> Bool { font.familyName == "Helvetica" }
 
     /// A face's OS/2 `usWinAscent`/`usWinDescent` per em — the cell GDI lays a line out in — or
     /// `nil` when it has no OS/2 table.
@@ -292,11 +300,11 @@ final class WasabiTextMetrics {
     /// agree and this answers the face's own line and 0. A face that does not is drawn too high:
     /// CPro Winamp for Mac's Helvetica Neue LT Com has an hhea ascender of 0.714 em — its cap height,
     /// with a 0.2 line gap above — against a win ascent of 0.952, so its `fontsize="44"` clock rose
-    /// 4px out of its 28px box and lost the tops of its digits. Helvetica is drawn as Arial on
-    /// Windows (`gdiSized`), whose two cells agree, so it keeps its own.
+    /// 4px out of its 28px box and lost the tops of its digits. Helvetica keeps its own line
+    /// (`gdiDrawsAsArial`).
     static func gdiLine(of font: NSFont) -> (cell: CGFloat, baselineDrop: CGFloat) {
         let own = font.ascender - font.descender
-        guard font.familyName != "Helvetica", let win = winMetricsPerEm(of: font) else { return (own, 0) }
+        guard !gdiDrawsAsArial(font), let win = winMetricsPerEm(of: font) else { return (own, 0) }
         let ascent = win.ascent * font.pointSize
         return ((win.ascent + win.descent) * font.pointSize, ascent - font.ascender)
     }
@@ -336,8 +344,7 @@ final class WasabiTextMetrics {
     static func substituteScale(forMissing name: String) -> CGFloat {
         let stem = windowsFontFileStem(of: name).lowercased()
         let family = windowsFontFileFamilies[stem] ?? name
-        guard let cell = missingFaceCellPerEm[family.lowercased()] else { return 1 }
-        return arialCellPerEm / cell
+        return missingFaceCellPerEm[family.lowercased()].map(gdiScale) ?? 1
     }
 
     private static let missingFaceCellPerEm: [String: CGFloat] = ["segoe ui": 2724.0 / 2048.0]
@@ -568,27 +575,20 @@ final class WasabiTextMetrics {
         // cell, so advancing the whole cell leaves the rest of it as a gap before the seconds:
         // ClassicPro's `numfont.png` is 15px per glyph with a 6px colon and its engine declares
         // `timecolonwidth="6"` for exactly that reason — without it every cPro clock reads `1:03: 16`
-        // (B-cPro colon gap). Enkera, TRON Legacy and impulse are the corpus's other bitmap-font clocks
-        // and all of them declare a cell *narrower* than the atlas advance, so the glyph is cropped to
-        // its cell rather than centred in it — which is also what the Core Text path's per-cell clip
-        // does with a `timecolonwidth` narrower than the glyph.
+        // (B-cPro colon gap). The colon's whole atlas cell is still drawn — only its advance narrows
+        // — and the next glyph is drawn over the rest of it. Cropping the colon to the narrowed cell
+        // assumed it is inked at the cell's left edge, true of ClassicPro's sheet but not of
+        // 1010_Fullscreen's, which inks it mid-cell of a 60px cell with `timecolonwidth="29"`, so a
+        // left crop held nothing and every colon drew as a gap.
         private let colonAdvance: CGFloat?
-        private let colonCrop: CGFloat?
 
         init(definition: WalResourceDefinition, colonWidth: CGFloat?) {
             let cell = max(1, Int(Double(definition.attributes["charwidth"] ?? "1") ?? 1))
             let spacing = Int(Double(definition.attributes["hspacing"] ?? "0") ?? 0)
-            let colon = colonWidth.map { max(1, $0.rounded()) }
             charWidth = cell
             charHeight = max(1, Int(Double(definition.attributes["charheight"] ?? "1") ?? 1))
             advance = CGFloat(max(1, cell + spacing))
-            colonAdvance = colon
-            colonCrop = colon.map { min(CGFloat(cell), $0) }
-        }
-
-        /// The atlas cell a glyph is cropped to.
-        func cellWidth(of character: Character) -> CGFloat {
-            character == ":" ? (colonCrop ?? CGFloat(charWidth)) : CGFloat(charWidth)
+            colonAdvance = colonWidth.map { max(1, $0.rounded()) }
         }
 
         func advanceWidth(of character: Character) -> CGFloat {
@@ -600,7 +600,7 @@ final class WasabiTextMetrics {
         /// short, so a centred "VOLUME: 50%" sat 3.5px right of its box (#581).
         func width(of text: String) -> CGFloat {
             text.reduce(0) { $0 + advanceWidth(of: $1) }
-                + (text.last.map { max(0, cellWidth(of: $0) - advanceWidth(of: $0)) } ?? 0)
+                + (text.last.map { max(0, CGFloat(charWidth) - advanceWidth(of: $0)) } ?? 0)
         }
     }
 

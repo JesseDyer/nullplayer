@@ -1,6 +1,6 @@
 # Alpha Media Player X5
 
-`Alpha_Media_Player_X5.wal` · author Dmitry Pozdniakov, version 1.1. In the silver corpus.
+`Alpha_Media_Player_X5.wal` · author Dmitry Pozdniakov, version 1.1. In the gold corpus (promoted 2026-10-22).
 
 A full-screen single-window SUI: one `main/fullscreen` layout declared 1024×768 (resized to the
 canvas, 1229 wide on a 16:10 panel), with every panel — player, playlist, equalizer, library,

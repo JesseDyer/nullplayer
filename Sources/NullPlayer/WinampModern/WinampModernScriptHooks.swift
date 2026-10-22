@@ -43,6 +43,9 @@ struct WinampModernScriptHooks {
     /// two would fight over every window's size. `nil` in the harness, and while a skin is still
     /// loading the host defers the request rather than resizing windows that do not exist yet.
     var uiScaleRequested: ((CGFloat) -> Void)?
+    /// The scale every window is drawn at — UI Size — which `layout.getScale()` answers. `nil` in the
+    /// harness, which draws at 1.
+    var uiScaleQuery: (() -> CGFloat)?
     /// The whole display containing the skin's player window, in logical screen points. MAKI's
     /// monitor methods are global (there is no GUI-object receiver from which to find a window), so
     /// the window layer supplies the screen explicitly. AppKit points are intentional: converting

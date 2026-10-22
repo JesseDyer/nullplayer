@@ -2363,19 +2363,11 @@ final class WinampModernMainView: NSView {
             }
             lastPlaybackState = state
         }
-        let postedVolume = WinampModernScriptRuntime.volumeLevel(host.volume)
-        // A volume change from outside the skin (the menu bar, a keyboard shortcut, another window)
-        // has to reach the scripts too, or a readout the skin drives from `onVolumeChanged` sits on a
-        // stale number. `setVolume` fires its own and records it, so this only covers what the skin
-        // did not do.
-        if postedVolume != scripts.announcedVolume {
-            scripts.announcedVolume = postedVolume
-            _ = try? scripts.dispatchSystem(event: "onvolumechanged", arguments: [.integer(postedVolume)])
-        }
+        scripts.announceVolumeIfChanged()
         // An equalizer change made outside the skin — a preset, the menu bar, the classic EQ window,
         // a restored session — reaches the scripts on the same beat, and only when it moved.
         scripts.refreshEqualizerState()
-        scripts.postPosition(postedVolume, to: .volume)
+        scripts.postPosition(WinampModernScriptRuntime.volumeLevel(host.volume), to: .volume)
         needsDisplay = true
     }
 
