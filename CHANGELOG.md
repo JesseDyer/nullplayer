@@ -12,24 +12,6 @@
   (crashes when switching skins or effects). Geiss now runs in one place at a time: whichever
   started it first keeps it, the other shows black, and it moves over as soon as the first one
   switches away, is hidden or closes.
-- **Modern skins whose window buttons have missing artwork no longer get stuck in shade mode** —
-  the Motorhead skin's compact bar had invisible minimize, shade and close buttons, so there was no
-  way back to the full player. They now draw as simple glyphs and work.
-- **Modern skins: seeking, time readouts and the file-type readout work in skins like ONYX V2** —
-  large numbers in a skin's scripts (such as one hour in milliseconds) were cut short, which sent
-  every track down the skin's "longer than an hour" path and broke its seek control. The file-type
-  readout now shows the file's real extension, and for server streams it never shows the server
-  login that was part of the stream address.
-- **Modern skins: the ONYX V2 mini player shows its volume level, and its visualization sits in the
-  player** — the volume bar's fill was never drawn, and the visualization opened as a separate
-  window away from the player (and as a black square in the mini player). It now opens over the
-  player's art box, follows the player when moved, and stays hidden in the mini player.
-- **Modern skins: text in fonts other than Arial is no longer oversized** — fonts with tall line
-  spacing such as Impact and Tahoma were drawn larger than Winamp draws them, so TOX Milla's timer
-  lost the tops of its digits. They now match each skin's own screenshot.
-- **Modern skins: no more flickering line below the XENERGY player** — the skin's visualization
-  sits in the space its config drawer slides into, and it drew on the desktop even with the drawer
-  closed. That space is now outside the window, as in Winamp.
 - **Library Browser Tiles mode keeps tiles small in a narrow window** — narrowing the window made
   the tiles bigger, down to a single column of two large tiles. Tiles are now never wider than
   120 pt: a narrower window fits more, smaller tiles.
@@ -47,6 +29,8 @@
   - Accented text in older skins shows correctly.
   - Dozens more Winamp script functions are supported.
 - **Modern skins: layout and artwork**
+  - ONYX V2's mini player shows its volume fill; its visualization opens over the player's art
+    box, follows the player, and stays hidden in the mini player.
   - Prakrit's player is no longer see-through; its equalizer is no longer empty.
   - wTunes is no longer cut off on the right.
   - Anunaki's display and NEO_CLASSIC's album-art pane appear; NEO_CLASSIC's titles are centred.
@@ -74,6 +58,10 @@
   - JRS, Mac OS X Panther and about 220 other skins show Add, Rem, Sel, Misc and List buttons.
   - Nitrous Audio's playlist shows its rows.
 - **Modern skins: buttons, sliders and switches**
+  - Window buttons with missing artwork draw as glyphs, so Motorhead's compact bar can leave
+    shade mode.
+  - ONYX V2's seek control and time readouts work (large numbers in skin scripts were
+    truncated); its file-type readout shows the real extension and never a server login.
   - Skin buttons for eject, minimize, quit and the Windows menu work.
   - cPro2 minimal's system button quits on double-click; cPro2's clock shows the correct time.
   - Clicking the stock track notifier brings the player forward.
@@ -98,6 +86,8 @@
   - A skin's video window no longer opens empty at launch.
   - krazyPlayer's Visualizations window keeps its full visualization when short and wide.
 - **Modern skins: text**
+  - Fonts with tall line spacing, such as Impact and Tahoma, are no longer oversized; TOX Milla's
+    timer keeps the tops of its digits.
   - Copperdeck II's track title, MoonLight's title and clock, and cPro2 minimal's artist and title
     lines appear.
   - With scrolling off, a title too long for its box is clipped to the box: JRS's remote, and
@@ -113,6 +103,8 @@
   - wTunes' needle meters move with the music.
   - VU levels decay like a real meter instead of jumping on every peak.
 - **Modern skins: rendering and performance**
+  - No flickering line below the XENERGY player: its visualization's drawer space is outside
+    the window while the drawer is closed.
   - Windows render at full Retina resolution; text is sharper at UI Sizes like 125% and 135%.
   - Lower CPU use during playback (about 40% less on cPro Bento).
   - Soft-edged skins such as meridian no longer have darkened edges.
