@@ -260,24 +260,44 @@ final class WasabiTextMetrics {
         // Windows has no Helvetica — GDI's FontSubstitutes draws Arial for it, and here it is MS Sans
         // Serif's stand-in — so its cell is Arial's, not its own.
         guard font.familyName != "Helvetica" else { return font }
-        let unitsPerEm = CGFloat(CTFontGetUnitsPerEm(font))
-        let cell: CGFloat
-        if let table = CTFontCopyTable(font, CTFontTableTag(kCTFontTableOS2), []) as Data?,
-           table.count >= 78, unitsPerEm > 0 {
-            func uint16(_ offset: Int) -> CGFloat {
-                CGFloat(UInt16(table[table.startIndex + offset]) << 8
-                        | UInt16(table[table.startIndex + offset + 1]))
-            }
-            cell = (uint16(74) + uint16(76)) / unitsPerEm
-        } else {
-            cell = (font.ascender - font.descender) / font.pointSize
-        }
+        let cell = winMetricsPerEm(of: font).map { $0.ascent + $0.descent }
+            ?? (font.ascender - font.descender) / font.pointSize
         guard cell > arialCellPerEm + 0.01, cell < 3 else { return font }
         // Bridged through `NSFont?` for the same reason as `resolvedFont`'s constructor: a CoreText
         // constructor imported as non-optional can still hand back null.
         let sized: NSFont? = CTFontCreateCopyWithAttributes(
             font, font.pointSize * arialCellPerEm / cell, nil, nil) as NSFont
         return sized ?? font
+    }
+
+    /// A face's OS/2 `usWinAscent`/`usWinDescent` per em — the cell GDI lays a line out in — or
+    /// `nil` when it has no OS/2 table.
+    static func winMetricsPerEm(of font: NSFont) -> (ascent: CGFloat, descent: CGFloat)? {
+        let unitsPerEm = CGFloat(CTFontGetUnitsPerEm(font))
+        guard unitsPerEm > 0,
+              let table = CTFontCopyTable(font, CTFontTableTag(kCTFontTableOS2), []) as Data?,
+              table.count >= 78 else { return nil }
+        func uint16(_ offset: Int) -> CGFloat {
+            CGFloat(UInt16(table[table.startIndex + offset]) << 8
+                    | UInt16(table[table.startIndex + offset + 1]))
+        }
+        return (uint16(74) / unitsPerEm, uint16(76) / unitsPerEm)
+    }
+
+    /// Where GDI puts a line that TextKit would put elsewhere: its cell, and how much lower its
+    /// baseline sits than the face's `ascender` puts it.
+    ///
+    /// GDI lays a line out in the OS/2 win cell; CoreText in the hhea one. Most faces make the two
+    /// agree and this answers the face's own line and 0. A face that does not is drawn too high:
+    /// CPro Winamp for Mac's Helvetica Neue LT Com has an hhea ascender of 0.714 em — its cap height,
+    /// with a 0.2 line gap above — against a win ascent of 0.952, so its `fontsize="44"` clock rose
+    /// 4px out of its 28px box and lost the tops of its digits. Helvetica is drawn as Arial on
+    /// Windows (`gdiSized`), whose two cells agree, so it keeps its own.
+    static func gdiLine(of font: NSFont) -> (cell: CGFloat, baselineDrop: CGFloat) {
+        let own = font.ascender - font.descender
+        guard font.familyName != "Helvetica", let win = winMetricsPerEm(of: font) else { return (own, 0) }
+        let ascent = win.ascent * font.pointSize
+        return ((win.ascent + win.descent) * font.pointSize, ascent - font.ascender)
     }
 
     /// Arial's GDI cell per em, `(1854 + 434) / 2048` — the face `pixelHeightToPointSize` was measured on.

@@ -224,7 +224,19 @@ pixel went through the group's clip and took the bottom off every `0`, `3` and `
 and the reporter was right about which of the two it was: an earlier attempt at the same screenshot
 shrank the glyphs instead and was rejected.
 
-The **vertical scissor moved to the object's own box** in the same change. It used to follow the
+**The cell and the baseline are GDI's: OS/2 `usWinAscent`/`usWinDescent`, not hhea**
+(`WasabiTextMetrics.gdiLine`, 2026-10-21). CoreText lays a line out by the hhea ascender; GDI by the
+win ascent. Most faces make the two agree and nothing moves. A skin-shipped face that does not is drawn
+high: CPro Winamp for Mac's `Helvetica_n.ttf` (Helvetica Neue LT Com) has an hhea ascender of 0.714 em
+— its cap height, with a 0.2 line gap — against a win ascent of 0.952, so its `fontsize="44"` clock in
+a 28px box rose 4px and lost the top of every digit to the box's clip. Reported live as *"the time
+display is clipped on top"*. The correction is applied as a delta (`win ascent − ascender`) on top of
+the TextKit baseline, so every face whose cells agree — Arial, Impact (TOX Milla's calibration),
+Tahoma, Trebuchet — draws byte-identically. Helvetica is exempt, as in `gdiSized`: Windows draws it as
+Arial. Sweep: 83 of 970 renders across 20 skins moved, nearly all 1–2px; Winamp 2000's clock moved
+toward its own `screenshot.png`; nothing newly clipped. Wrapping text keeps its measured block.
+
+The **vertical scissor moved to the object's own box** in B144's change. It used to follow the
 *shifted* rect, which is the same rect while the line fits and is dragged out of the box the moment a
 negative offset exists — carrying the cut above the box with it, where BB27 and B87 both say the box
 bounds the string.

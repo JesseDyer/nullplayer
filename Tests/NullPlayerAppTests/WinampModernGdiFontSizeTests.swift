@@ -16,4 +16,17 @@ final class WinampModernGdiFontSizeTests: XCTestCase {
             XCTAssertEqual(WasabiTextMetrics.gdiSized(font).pointSize, 19.2, accuracy: 0.01, name)
         }
     }
+
+    /// A face whose win and hhea cells agree keeps its own line — Arial's and Impact's do, and TOX
+    /// Milla's timer was calibrated on Impact's. Helvetica is drawn as Arial on Windows, so it keeps
+    /// its own too. (The face that does not agree, CPro Winamp for Mac's Helvetica Neue, is a skin
+    /// asset and is pinned by the corpus render sweep.)
+    func testAFaceWhoseCellsAgreeKeepsItsOwnLine() throws {
+        for name in ["ArialMT", "Impact", "Helvetica"] {
+            let font = try XCTUnwrap(NSFont(name: name, size: 35.2))
+            let line = WasabiTextMetrics.gdiLine(of: font)
+            XCTAssertEqual(line.cell, font.ascender - font.descender, accuracy: 0.5, name)
+            XCTAssertEqual(line.baselineDrop, 0, accuracy: 0.5, name)
+        }
+    }
 }

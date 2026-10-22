@@ -122,15 +122,18 @@ extension WasabiSceneRenderer {
         // the face's own line, and DT_VCENTER centres it: TOX Milla's Impact 24 timer in a 15px box
         // lands on the rows its screenshot shows only this way, and loses its top to the box
         // centred on the full `fontsize`.
+        //
+        // …and it is GDI's cell, OS/2's win metrics, not CoreText's hhea one (`gdiLine`).
         let lineCell = font.ascender - font.descender
         let cell: CGFloat
+        var baselineDrop: CGFloat = 0
         if wraps {
             let bounds = (text as NSString).boundingRect(
                 with: CGSize(width: frame.width, height: .greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes)
             cell = max(lineCell, ceil(bounds.height))
         } else {
-            cell = lineCell
+            (cell, baselineDrop) = WasabiTextMetrics.gdiLine(of: font)
         }
         // Centring is the one alignment that moves, and only when the line does not fit. `top` and
         // `bottom` keep the clamp Phase 38 measured: a skin that names an edge is asking for the
@@ -138,7 +141,7 @@ extension WasabiSceneRenderer {
         // own box is not what it meant.
         let alignedVertically = WasabiTextMetrics.verticalAlignment(of: object)
         let offset = alignedVertically.offset(cell: cell, in: frame.height)
-        let inset = alignedVertically == .center ? offset : max(0, offset)
+        let inset = (alignedVertically == .center ? offset : max(0, offset)) + baselineDrop
         // `offsetx`/`offsety` shift the *string* inside its own box without moving the box — so the
         // object still measures and hit-tests where it was declared, and its parent still clips it
         // where it was. Big Bento Modern's SUI tab labels are the measured case: `offsetx="35"` puts

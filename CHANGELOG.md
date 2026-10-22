@@ -123,6 +123,9 @@
   - Mute stays on instead of switching itself off a moment later.
 - **Modern skins: Copperdeck II shows the song title**
   - The main display's track title was missing; it now scrolls above the bitrate line.
+- **Modern skins: CPro Winamp for Mac's time display is no longer cut off at the top**
+  - Text in a skin's own font now sits where Winamp puts it; Winamp 2000's clock and text in about
+    twenty other skins move a pixel or two to match.
 
 ## 0.33.0
 
