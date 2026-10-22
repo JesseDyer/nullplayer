@@ -76,9 +76,38 @@ Left open on 1010 Fullscreen (graded C): its song title draws ~12px low and over
 Aligning skin-shipped TrueType by cap top fixed it and moved ~50 other skins wrong (corneramp, Winamp
 2000, CPro for Mac), so it was rolled back; the cause is unknown without a Winamp reference.
 
-**Next:** B233 (frame-presentation refactor), then intake #2 — re-weight gain first (§8 *Progress*,
-B169 entry: count a new tag once, `tag@attr` only on known tags). B212 needs a second display; B216's
+**Next:** `feat/wal-corpus-scale` (B169 intake → gold, B233) goes to PR. Then `fix/wal-scale-events`
+(B238, B239), then intake #2 on `feat/wal-intake-2` — re-weight gain first (§8 *Progress*, B169
+entry: count a new tag once, `tag@attr` only on known tags). B212 needs a second display; B216's
 `.wmz` census waits on a go-ahead.
+
+### Branch strategy for the intakes (2026-10-22)
+
+`feat/wal-corpus-scale` ran to 103 commits because it held the intake, the promotion, refactors
+and fixes at once. One intake of 25 took about a week of in-app work, and ~950 candidates remain
+(827 bronze + 54 quarantine + new crawl finds), so at that pace the whole set is ~38 weeks. The
+branch shape has to make that sustainable:
+
+- **One branch per intake, cut from `origin/main`**: `feat/wal-intake-<n>`. It holds the
+  re-weighting or rule change (if any), the intake run, the manifest update, and that batch's
+  in-app fixes. Nothing else rides along — a backlog row unrelated to the batch gets its own
+  `fix/…` branch, and non-`.wal` work (marketing, other subsystems) never lands on an intake branch.
+- **PR at two checkpoints, not one**: (1) *admitted* — `wal_intake.sh` run, manifest committed,
+  sweep baseline green; (2) *promoted* — the in-app pass done and the batch moved to gold. A batch
+  that runs past ~a week PRs what it has and continues on a fresh branch.
+- **Merge `origin/main` in every few days** while a branch is open; never rebase a branch others
+  may have pulled. Before opening the PR, confirm `gh pr view <N> --json files` matches the work.
+- **Small rows found during a pass** (like B238/B239 from intake #1) are filed, then fixed on a
+  short `fix/wal-<topic>` branch between batches, so the next batch's in-app pass doesn't trip on them.
+- **Push with an explicit upstream** (`git push -u origin <branch>`); a branch tracking
+  `origin/main` is one bare `git push` away from main.
+
+**Not every candidate gets a week's share.** By the B169 curve only 123 candidates cleared gain ≥ 3
+and 594 added nothing. Every fix is general (see the tables above), so a skin that adds no feature
+is covered by the fixes its look-alikes earned. Intakes run while a batch still clears the gain
+floor (re-measured after the re-weighting); once it doesn't, the rest is certified by the census
+and the pre-merge render sweep, with a hand pass only where `wal_reach.sh` shows a feature that no
+gold skin has.
 
 Below is reference: the pipeline as designed (§3), what was built (§7), and the corpus-scale
 decisions (§8).
