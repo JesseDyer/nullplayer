@@ -170,6 +170,11 @@ final class WasabiObject {
         markDirty(.structure)
     }
 
+    /// Whether this object or anything beneath it matches, stopping at the first that does.
+    func subtreeContains(where predicate: (WasabiObject) -> Bool) -> Bool {
+        predicate(self) || children.contains { $0.subtreeContains(where: predicate) }
+    }
+
     func addScriptBinding(_ binding: WasabiScriptBinding) {
         guard !isTornDown else { return }
         scriptBindings.append(binding)

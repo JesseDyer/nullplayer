@@ -58,6 +58,10 @@ enum MakiClassGUID {
     static let vis = "ce4f97be4e1977b098d45699276cc933"
     static let wac = "00c074a049a0fea2bbfa8dbe401616db"
     static let dropDownList = "36d59b714af803fd020595977a26dbb7"
+    /// `Layout`, whose `getContainer()` takes no argument where the global form takes a name.
+    static let layout = "60906d4e482e537e94cc04b072568861"
+    /// `PopupMenu` (`MakiProgram.popupMenuClassGUID`, canonicalized).
+    static let popupMenu = "f4787af44ef7b2bb4be7fb9c8da8bea9"
 
     /// GUI classes a script may `new` and then `init(parent)` into the graph, and the element each
     /// becomes. Nitrous Audio's playlist builds every row as `new Text` (`playlistPlus.m`).

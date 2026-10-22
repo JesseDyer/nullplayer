@@ -967,7 +967,7 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
             return MakiObjectReference(.playlistEditor)
         }
         let id = newObjectID()
-        if MakiClassGUID.canonical(classGUID) == "f4787af44ef7b2bb4be7fb9c8da8bea9" {
+        if MakiClassGUID.canonical(classGUID) == MakiClassGUID.popupMenu {
             popupCommands[id] = []
             return MakiObjectReference(.popupMenu(id))
         }
@@ -978,12 +978,6 @@ final class WinampModernScriptRuntime: MakiMethodDispatching {
         dynamicObjects[id] = state
         return MakiObjectReference(.dynamic(id))
     }
-
-    // MARK: - ColorMgr (the colour-theme manager)
-
-    // MARK: - PlEdit (the playlist editor)
-
-    // MARK: - XmlDoc's callback parser
 
     func findRoot(type: WasabiKind, xmlID: String) -> WasabiObject? {
         loadedSkin.runtime.graph.roots.first {

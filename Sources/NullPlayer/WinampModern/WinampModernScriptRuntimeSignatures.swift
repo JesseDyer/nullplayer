@@ -198,6 +198,36 @@ enum WinampModernScriptSignatures {
         "playitem": .init(argumentCount: 1, returnKind: .null),
     ]
 
+    /// Verbs answered only on their **declaring** class — which is what the interpreter passes as
+    /// `classGUID`, and the reason a short verb like `apply` can be given an arity at all. Registering
+    /// one globally would hand its arity to every class that happens to declare the same verb, and a
+    /// wrong argument count is the one error the interpreter cannot recover from: it leaves values on
+    /// the stack and desynchronises everything after the call. See `reference/scripting.md` →
+    /// *`PlEdit`*, which records that failure mode. Checked before `generalSignatures`.
+    private static let classSignatures: [String: [String: MakiMethodSignature]] = [
+        MakiClassGUID.playlistEditor: playlistEditorSignatures,
+        MakiClassGUID.playlistManager: playlistManagerSignatures,
+        // `Layout.getContainer()` takes nothing; the global form names the container.
+        MakiClassGUID.layout: ["getcontainer": .init(argumentCount: 0, returnKind: .object)],
+        MakiClassGUID.colorManager: [
+            "getgammaset": .init(argumentCount: 1, returnKind: .object),
+            "getcolor": .init(argumentCount: 1, returnKind: .object),
+        ],
+        MakiClassGUID.gammaSet: ["apply": .init(argumentCount: 0, returnKind: .null)],
+        MakiClassGUID.application: ["shutdown": .init(argumentCount: 0, returnKind: .null)],
+        // The other arities of three events `dispatchableEventArity` keys by name (B182).
+        // `selectItem` is `(id, hover)` on a drop-down and `(item)` on a tree; `GuiList`'s
+        // `getItemSelected(pos)` takes a row, the drop-down's nothing.
+        MakiClassGUID.dropDownList: [
+            "selectitem": .init(argumentCount: 2, returnKind: .null),
+            "getitemselected": .init(argumentCount: 0, returnKind: .string),
+        ],
+        MakiClassGUID.guiTree: ["selectitem": .init(argumentCount: 1, returnKind: .null)],
+        MakiClassGUID.wac: ["onnotify": .init(argumentCount: 3, returnKind: .integer)],
+        MakiClassGUID.system: ["onaccelerator": .init(argumentCount: 3, returnKind: .null)],
+        MakiClassGUID.vis: ["onframe": .init(argumentCount: 0, returnKind: .null)],
+    ]
+
     /// Every verb that is **not** gated on a declaring class, and the arity the interpreter must
     /// unwind the stack by.
     ///
@@ -856,57 +886,13 @@ enum WinampModernScriptSignatures {
     static func signature(for method: String, classGUID: String?) -> MakiMethodSignature? {
         // Both of these were recomputed per test below — the GUID five times, through a fold that
         // is itself O(n²) (see `MakiClassGUID.canonical`). They are loop-invariant for the call.
-        let canonical = classGUID.map(MakiClassGUID.canonical)
         let name = method.lowercased()
-        if method.caseInsensitiveCompare("getcontainer") == .orderedSame,
-           canonical == "60906d4e482e537e94cc04b072568861" {
-            return .init(argumentCount: 0, returnKind: .object)
-        }
         // A program compiled without a class table (the pre-5.0 MAKI layout) carries no GUID here, so
-        // it does not reach this. None of the measured corpus's PlEdit callers are in that form.
-        if canonical == MakiClassGUID.playlistEditor,
-           let signature = Self.playlistEditorSignatures[name] {
+        // it does not reach the class-gated table. None of the measured corpus's PlEdit callers are in
+        // that form.
+        if let canonical = classGUID.map(MakiClassGUID.canonical),
+           let signature = Self.classSignatures[canonical]?[name] {
             return signature
-        }
-        if canonical == MakiClassGUID.playlistManager,
-           let signature = Self.playlistManagerSignatures[name] {
-            return signature
-        }
-        // The colour-theme pair, both gated by their **declaring** class — which is what the
-        // interpreter passes here, and the reason `apply` can be given an arity at all. Registering
-        // either name globally would hand its arity to every class that happens to declare the same
-        // verb, and a wrong argument count is the one error the interpreter cannot recover from: it
-        // leaves values on the stack and desynchronises everything after the call. See
-        // `reference/scripting.md` → *`PlEdit`*, which records that failure mode.
-        switch canonical {
-        case MakiClassGUID.colorManager where method.caseInsensitiveCompare("getgammaset") == .orderedSame:
-            return .init(argumentCount: 1, returnKind: .object)
-        // Gated for the same reason `getGammaSet` is — "getColor" is exactly the sort of verb another
-        // class could declare with a different arity.
-        case MakiClassGUID.colorManager where method.caseInsensitiveCompare("getcolor") == .orderedSame:
-            return .init(argumentCount: 1, returnKind: .object)
-        case MakiClassGUID.gammaSet where method.caseInsensitiveCompare("apply") == .orderedSame:
-            return .init(argumentCount: 0, returnKind: .null)
-        // The other arities of three events `dispatchableEventArity` keys by name (B182).
-        // `selectItem` is `(id, hover)` on a drop-down and `(item)` on a tree.
-        case MakiClassGUID.dropDownList where name == "selectitem":
-            return .init(argumentCount: 2, returnKind: .null)
-        // `GuiList.getItemSelected(pos)` takes a row; the drop-down's takes nothing.
-        case MakiClassGUID.dropDownList where name == "getitemselected":
-            return .init(argumentCount: 0, returnKind: .string)
-        case MakiClassGUID.guiTree where name == "selectitem":
-            return .init(argumentCount: 1, returnKind: .null)
-        case MakiClassGUID.wac where name == "onnotify":
-            return .init(argumentCount: 3, returnKind: .integer)
-        case MakiClassGUID.system where name == "onaccelerator":
-            return .init(argumentCount: 3, returnKind: .null)
-        case MakiClassGUID.vis where name == "onframe":
-            return .init(argumentCount: 0, returnKind: .null)
-        // `Application.shutdown()`; gated for the same reason, a short verb another class could declare.
-        case MakiClassGUID.application where method.caseInsensitiveCompare("shutdown") == .orderedSame:
-            return .init(argumentCount: 0, returnKind: .null)
-        default:
-            break
         }
         if let signature = Self.generalSignatures[name] { return signature }
         // A script may call one of its own event handlers directly to reuse it — MMD3 runs its

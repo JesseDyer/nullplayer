@@ -3,6 +3,14 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B240 — The GDI font emulation has its own file — closed 2026-10-22
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B240 | **Move the GDI font emulation out of `WasabiTextMetrics.swift`, which is at 1,000 lines.** `gdiSized`, `gdiScale`, `gdiDrawsAsArial`, `gdiLine`, `winMetricsPerEm`, `substituteScale`, `arialCellPerEm` and `missingFaceCellPerEm` are one concern — sizing and placing a face the way Windows GDI does — and grew the file from 939 lines on `origin/main` to 1,000 on this branch. Give them a `WasabiGdiFontMetrics.swift` (an extension or a caseless enum), with no behaviour change. Done when `WasabiTextMetrics.swift` is well under 1,000 lines, the GDI helpers live in the new file, and `swift test --filter WinampModern` passes unchanged | code health; no corpus demand | S | 3 |
+
+**Closed 2026-10-22**. The GDI helpers (`gdiSized`, `gdiScale`, `gdiDrawsAsArial`, `winMetricsPerEm`, `gdiLine`, `arialCellPerEm`, `substituteScale`, `missingFaceCellPerEm`) are an extension of `WasabiTextMetrics` in `WasabiGdiFontMetrics.swift`, moved verbatim, so no call site changed. `windowsFontFileStem` and `windowsFontFileFamilies` lost `private` because `substituteScale` reads them from the new file. `WasabiTextMetrics.swift` is 919 lines. `swift test --filter WinampModern`: 1629 tests, 2 failures. Both come from the uncommitted valign/clip change that B242 owns: `WinampModernB87Tests` and `WinampModernB144Tests` fail on the text-draw path, which this move does not touch.
+
 ## B233 — One presentation path for `.wal` frames, owned by `WinampModernFrames` — closed 2026-10-22
 
 | Id | Item | Reach | Effort | Tier |

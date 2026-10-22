@@ -300,13 +300,7 @@ extension WasabiStandardFrames {
             object.children.forEach { walk($0, visit: visit) }
         }
         func addsOwnEntries(_ layout: WasabiObject) -> Bool {
-            var found = false
-            walk(layout) { object in
-                if object.attributes["action"]?.caseInsensitiveCompare("PE_Add") == .orderedSame {
-                    found = true
-                }
-            }
-            return found
+            layout.subtreeContains { $0.attributes["action"]?.caseInsensitiveCompare("PE_Add") == .orderedSame }
         }
         var slots: [WasabiObject] = []
         for root in roots {
