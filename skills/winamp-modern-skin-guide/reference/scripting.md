@@ -304,7 +304,20 @@ subtraction is written at all. Sending the canvas point made LOBE's seek dial sa
 48×35 map — zero everywhere — so its dial seeked to 0 and its volume strip set 0 (B30, 2026-08-21;
 Styx's volume knob was the same). mmd3's own knob group is at (0, 0), which is why the two
 conventions agreed there and this survived 50 phases. Converted once, in
-`WinampModernMainView.dispatch`, so every mouse event (and the `RENDER_CLICK` probe) uses it.
+`WinampModernScriptRuntime.pointInEventSpace`, which the view, the `RENDER_CLICK` probe and the
+interaction sweep all call — until 2026-10-21 each harness kept its own copy, so neither could see a
+change to the rule.
+
+**An XUI widget is not a space of its own to a script outside it.** When the receiver's parent is a
+`<groupdef xuitag=…>` instance whose own script is not the listener, the space climbs past it to the
+first plain group or listening script's group (`mouseEventSpace`). Alpha Media Player X5's slider
+channels are a `main.c` layer inside an `amp:channel.v`, and its player script clamps `y` to the
+channel's top **in the player group** (`128…546` for volume); told the widget-relative point, bass and
+treble pinned at their top and volume landed 128px off the press. The first fix went further, to the
+listening script's group whatever lay between, and the interaction sweep caught it on JRS: its
+layout-level knob script reaches its knobs through a plain nested group and subtracts `getTop()` inside
+it, so the layout point put every press 113px off the knob's map. A **plain** group stays the space
+whoever listens; a widget's own script still hears the widget's space.
 
 **`System.getMousePos*` is the window's canvas, not the desktop — and stays so.** Winamp answers in
 screen space, but so do its `clientToScreen*`, viewport and layout `getLeft()`, and here all of those
@@ -1365,6 +1378,14 @@ defaults to `"0"` (correct for x/y/w/h) but wrong for alpha (would fade everythi
 The fix: `targetAlpha` uses `object.attributes["targeta"].flatMap(Double.init) ?? ca` where `ca` is
 the current alpha (defaulting to 255). The speed=0 snap path already handled this correctly with
 `?? object.attributes["alpha"] ?? "255"`.
+
+**A target animation moves the object, not its XML.** `getXmlParam("x"/"y"/"w"/"h")` still answers
+the declared value after `gotoTarget` has moved it; the first animated write stashes the original under
+`declaredXMLParamKey` (`WinampModernScriptRuntimeTimer.swift`), and `setXmlParam` — which *is* the XML —
+drops it. Alpha Media Player X5's EQ and Mute levers depend on it: on is
+`setTargetY(getXmlParam("y") - 17)`, off is `setTargetY(getXmlParam("y"))`. Answered with the moved
+position, off went nowhere and a second on put the lever 17px above its switch, out of sight
+(2026-10-21).
 
 **Alpha inheritance cascades to children.** `WasabiSceneNode.inheritedAlpha` propagates through the
 scene tree during `append()`. The main `draw` method sets `context.setAlpha(alphaFraction *

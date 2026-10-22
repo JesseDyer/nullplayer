@@ -468,7 +468,8 @@ scripts/wal_interaction_sweep.sh <outdir> --shards 30   # gold+silver, ~17 min; 
 `WinampModernInteractionSweepTests` (`WINAMP_MODERN_INTERACTION_SWEEP=<dir[:dir…]>`,
 `WINAMP_MODERN_INTERACTION_SWEEP_OUT=<file>`) is `RENDER_CLICK` generalised: every object in an open
 window's opening layout that a script binds a pointer event on, driven the way
-`WinampModernMainView` drives it — parent-relative x/y on the button events, none on `onLeftClick`,
+`WinampModernMainView` drives it — x/y on the button events converted by the view's own
+`pointInEventSpace` (`reference/scripting.md` → *An XUI widget is not a space of its own*), none on `onLeftClick`,
 the pointer parked where the press is for `isMouseOverRect` and `getMousePosX`. The press goes to
 whatever the hit test returns there, so a control an `embed_xui` group wraps (`bento:tabbutton`,
 `Wasabi:Frame`) is driven through its inner object and reaches the group by the runtime's own

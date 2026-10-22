@@ -116,6 +116,11 @@
     run over their buttons and clock.
   - MoonLight shows its song title and clock, and its equalizer labels sit where they belong;
     Pure Inspired's seek line appears.
+- **Modern skins: Alpha Media Player X5's sliders and switches work**
+  - The bass, treble and volume sliders follow the pointer; treble used to stay put and bass jumped
+    to the top.
+  - The EQ and Mute switch levers move and stay on their switches instead of disappearing.
+  - Mute stays on instead of switching itself off a moment later.
 
 ## 0.33.0
 

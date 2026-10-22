@@ -538,7 +538,7 @@ By area:
 | `onLeftButtonDblClk` | yes (Phase 24) | `mouseDown` with `clickCount == 2` |
 | `onMouseWheelUp` / `onMouseWheelDown` | yes | **two** arguments, dispatched at the **layout** — see `reference/scripting.md` → *The mouse wheel is a layout event*. NullPlayer's own colour-theme list and playlist holder take the wheel first |
 | mouse down/up/click/move, `onEnterArea`/`onLeaveArea`, `onRightButtonUp` | yes | with the click's x/y |
-| `onVolumeChanged` | yes | `setVolume`, and any change made outside the skin |
+| `onVolumeChanged` | yes | `setVolume`, and any change made outside the skin — **once each**. The window's poll compares against `announcedVolume`, which `setVolume` writes too, so a skin's own change is never announced a second time (Alpha Media Player X5, 2026-10-21; see *A write that changes nothing is not an event*) |
 | `onPostedPosition`, `onSetPosition`, `onTargetReached`, `onAction`, `onEqFreqChanged`, `onGetCancelComponent` | yes | — |
 | `onToggle` | yes | from `setActivated` **when the activation actually changes** (B111) **and, since Phase 33, from a user click**: a togglebutton flips its own `activated` and then notifies, as in Wasabi. Until then the only sender was a script talking to itself, so a togglebutton a person clicked was inert however completely the skin implemented it — multipass's bottom drawer opens from this event and from nothing else. `setActivatedNoCallback` is the deliberate silent write **for a state that moved**; an unchanged `setActivated` sends nothing at all, and that is what lets a skin call it from inside the very event its own handler answers. Dispatching it unconditionally is how Itemskin came up silent — see *A write that changes nothing is not an event* below. A `cfgattrib`-bound control is excluded: the stored preference *is* its state, and it has `onDataChanged` as its route |
 | `onActivate(activated)` | yes (B32) | the **indicator's** event, not `onToggle`'s twin: raised whenever a button's activation changes, whoever changed it — and **only** when it changes (B111). Sent from `toggleActivation`, `setActivated` (never `setActivatedNoCallback`), a `cfgattrib` write — and, unlike `onToggle`, a bound control is **not** excluded, because for it the stored preference *is* the activation. A `cfgattrib` write reaches every object bound to that attribute, since a skin declares the same switch once per layout. It had no sender at all before, so no skin could show a toggle's state: mmd3 gives Crossfade/Shuffle/Repeat identical `image` and `activeImage` and does the whole indication with six `ghost="1"` layers at `activated * 255`. 8 of the 30 skins installed when this was measured declare a handler. A change made **outside** the skin (NullPlayer's Playback menu, a restored session) arrives through `refreshBridgedConfigState()` on `.audioPlaybackOptionsChanged` — an indicator is written once and never polled |
@@ -583,6 +583,14 @@ Two things generalise from it:
   with no image, no action and no coordinates, a 0×0 object a user can never click.
   `WINAMP_MODERN_CALL_TRACE=1` named it in one line (`setvolume(0)` with nobody asking) where the
   markup and the disassembly both read as innocent.
+
+**The converse: a change that happened is announced exactly once.** Alpha Media Player X5 (2026-10-21)
+counts on it. Its mute sets a guard, calls `setVolume(0)`, and its `onVolumeChanged` consumes the
+guard on the echo; any `onVolumeChanged` arriving unguarded while muted is read as the user moving the
+volume, and the skin un-mutes. The window's playback poll kept its own last-posted volume, which
+`setVolume` never updated, so the poll announced the skin's change a second time on its next tick and
+the mute undid itself within a second. The last announced level is now `announcedVolume` on the
+runtime, one per skin and written by both senders.
 
 **Script events callable as methods.** A script may invoke one of its own handlers directly to reuse
 it (`slidercb.onSetPosition(slidercb.getPosition())`). Only events with a known arity are callable —
