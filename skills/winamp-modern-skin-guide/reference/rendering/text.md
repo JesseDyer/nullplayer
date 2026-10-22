@@ -236,6 +236,13 @@ Tahoma, Trebuchet — draws byte-identically. Helvetica is exempt, as in `gdiSiz
 Arial. Sweep: 83 of 970 renders across 20 skins moved, nearly all 1–2px; Winamp 2000's clock moved
 toward its own `screenshot.png`; nothing newly clipped. Wrapping text keeps its measured block.
 
+**A missing face stands in at the size GDI would draw *it* at** (`substituteScale(forMissing:)`,
+2026-10-21). `gdiSized` reads a face's cell from its OS/2 table, and a face that is not installed has
+none to read, so the Arial stand-in took Arial's em. A table carries the cells of missing Windows faces
+that a skin's own screenshot has confirmed — Segoe UI's 1.33 em, the only entry. cPro2 minimal's
+`font="Segoe UI" fontsize="40"` clock drew 3px too tall and low and sat on the track length below it.
+Sweep: Formamp's Segoe UI title shrank. Nothing else moved.
+
 The **vertical scissor moved to the object's own box** in B144's change. It used to follow the
 *shifted* rect, which is the same rect while the line fits and is dragged out of the box the moment a
 negative offset exists — carrying the cut above the box with it, where BB27 and B87 both say the box

@@ -201,7 +201,8 @@ final class WasabiTextMetrics {
                                  : "is neither a declared font resource nor a font installed on this "
                                    + "system")
             }
-            return substituteFont(size: size, traits: traits)
+            return substituteFont(size: size * Self.substituteScale(forMissing: identifier ?? ""),
+                                  traits: traits)
         }
         let key = path.lowercased()
         let cgFont: CGFont?
@@ -324,6 +325,22 @@ final class WasabiTextMetrics {
         let fallback: NSFont? = .systemFont(ofSize: size)
         return fallback.flatMap { Self.applying(traits, to: $0) }
     }
+
+    /// How much smaller GDI draws a missing Windows face's em than Arial's at the same `fontsize`,
+    /// so the stand-in takes the size the named face would have had — `gdiSized`'s rule, with the
+    /// cell read from a table because the face is not here to read it from.
+    ///
+    /// Segoe UI's win cell is `(2210 + 514) / 2048` = 1.33 em. cPro2 minimal styles its elapsed clock
+    /// `font="Segoe UI" fontsize="40"` in a 31px box; drawn at Arial's em the digits ran 3px taller
+    /// and lower than its `screenshot.png` and sat on the track length beneath them.
+    static func substituteScale(forMissing name: String) -> CGFloat {
+        let stem = windowsFontFileStem(of: name).lowercased()
+        let family = windowsFontFileFamilies[stem] ?? name
+        guard let cell = missingFaceCellPerEm[family.lowercased()] else { return 1 }
+        return arialCellPerEm / cell
+    }
+
+    private static let missingFaceCellPerEm: [String: CGFloat] = ["segoe ui": 2724.0 / 2048.0]
 
     /// The face an unresolvable name substitutes to — the same default an *undeclared* list font
     /// takes, so the two never disagree about what "the skin did not give us a face" looks like.

@@ -126,6 +126,11 @@
 - **Modern skins: CPro Winamp for Mac's time display is no longer cut off at the top**
   - Text in a skin's own font now sits where Winamp puts it; Winamp 2000's clock and text in about
     twenty other skins move a pixel or two to match.
+- **Modern skins: cPro2 minimal shows the artist and title, and its clock no longer runs into the
+  track length**
+  - The artist and song title lines were blank; they now show the playing track.
+  - Text in Segoe UI, which the Mac does not have, now draws at the size Winamp draws it, so the
+    big elapsed time no longer sits on top of the track length beneath it.
 
 ## 0.33.0
 

@@ -17,10 +17,18 @@ extension WinampModernScriptRuntime {
     /// is meant to fill the group those numbers already placed, and the song title landed a second
     /// display's width down and to the right — over the playback buttons (B142).
     ///
-    /// Only geometry: `font`, `align` and `color` reach the wrapper on purpose — a `<group>` has no
-    /// use for them and forwarding them to the text inside is the whole point of the tag.
+    /// Only geometry and `id`: `font`, `align` and `color` reach the wrapper on purpose — a `<group>`
+    /// has no use for them and forwarding them to the text inside is the whole point of the tag.
+    /// `id` is the object's own name, and handed on it *renames* the control inside: cPro2 minimal's
+    /// `<SC:OneDirectionText>` embeds a `<OneDirectionText id="sc.main.text">` whose script forwards
+    /// every param onto its `my.text.main`, which became a second `sc.main.text` that the `embed_xui`
+    /// link could no longer find — so `sc_text.maki`'s `setText` landed on the wrapper and the
+    /// artist and title lines drew nothing. `nullplayer.*` keys are our own markers; no skin's
+    /// script was ever handed one.
     static func isConsumedBeforeXUIParams(_ name: String) -> Bool {
-        WasabiGeometrySpec.geometryAttributes.contains(name.lowercased())
+        let lowered = name.lowercased()
+        return WasabiGeometrySpec.geometryAttributes.contains(lowered)
+            || lowered == "id" || lowered.hasPrefix("nullplayer.")
             || name == WasabiSkinInitializer.skinTabSheetAttribute
     }
 

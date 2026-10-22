@@ -17,6 +17,15 @@ final class WinampModernGdiFontSizeTests: XCTestCase {
         }
     }
 
+    /// A missing Segoe UI stands in at the em GDI would draw Segoe UI at — its 1.33 em cell against
+    /// Arial's 1.117 — under its family name or its Windows filename. Anything else keeps its size.
+    func testAMissingSegoeUIStandsInAtItsOwnSize() {
+        for name in ["Segoe UI", "segoeui.ttf"] {
+            XCTAssertEqual(WasabiTextMetrics.substituteScale(forMissing: name), 0.84, accuracy: 0.01, name)
+        }
+        XCTAssertEqual(WasabiTextMetrics.substituteScale(forMissing: "UNVR67X.ttf"), 1)
+    }
+
     /// A face whose win and hhea cells agree keeps its own line — Arial's and Impact's do, and TOX
     /// Milla's timer was calibrated on Impact's. Helvetica is drawn as Arial on Windows, so it keeps
     /// its own too. (The face that does not agree, CPro Winamp for Mac's Helvetica Neue, is a skin

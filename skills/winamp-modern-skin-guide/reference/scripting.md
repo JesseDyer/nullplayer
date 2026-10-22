@@ -160,6 +160,12 @@ Three ordering rules make or break this:
   it is geometry only: `font`, `align` and `color` reach the wrapper on purpose, because a `<group>`
   has no use for them and forwarding them to the text inside is the whole point of the tag. The same
   filter applies to a param a *script* writes (`deliverRuntimeXUIParam`), for the same reason.
+  **`id` is claimed too** (2026-10-21), and so are our own `nullplayer.*` markers. cPro2 minimal's
+  `<SC:OneDirectionText>` embeds a `<OneDirectionText id="sc.main.text">` whose script copies every
+  param onto its `my.text.main`; handed the `id`, it renamed that text to a second `sc.main.text`,
+  the `embed_xui` link lost it, and `sc_text.maki`'s `setText` landed on the empty wrapper — no artist
+  or title. The SC objects themselves are the evidence for the claimed set: they take `mymove` and
+  `ttip` precisely because `move` and `tooltip` never reach a script.
 - **`notify="key,value"`** on a group instance delivers `onSetXuiParam("key", "value")` even when the
   instance tag is `<group>`, not the XUI tag name. Lobe's Pledit uses
   `<group id="wasabi.standardframe.statusbar" notify="content,pledit.normal.content.group">` — the
