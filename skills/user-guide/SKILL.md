@@ -152,6 +152,8 @@ Previous, Play, Pause, Stop, Next
 - **EQ**: Show/hide Equalizer
 - **PL**: Show/hide Playlist
 
+Classic UI's clutterbar (the O A I D V strip at the main window's left edge): **O** opens the options menu, **A** toggles Always on Top, **I** shows Now Playing info, **D** toggles 200% UI Size, **V** opens the Visuals menu. A and D stay lit while on.
+
 Original and Original-Metal UI add: **HT** (Hide Title Bars), **CP** (Compact Mode), **VZ** (Visualizations), **FL** (Flow), **PM** (PeppyMeter), **AR** (Art), **SP** (Spectrum), **AA** (Audio Analysis), **WV** (Waveform), **LB** (Library)
 
 ## Media Sources
