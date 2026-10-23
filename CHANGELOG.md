@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### New features
+
+- **Classic skins' clutterbar works** — the O A I D V buttons on the main window's left edge now
+  open the options menu, toggle Always on Top, show Now Playing info, toggle double size and open
+  the Visuals menu, drawn with the skin's own pressed and lit art.
+
 ### Fixes
 
 - **Quitting no longer hangs with a Windows Media Player skin** — the skin's settings watcher could
