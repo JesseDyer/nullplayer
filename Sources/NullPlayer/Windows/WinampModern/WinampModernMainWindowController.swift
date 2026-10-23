@@ -203,6 +203,8 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         // A new skin places NullPlayer's windows afresh rather than where the last skin left them.
         WindowManager.shared.forgetSkinWindowPlacement()
         tearDownSkin()
+        // A UI Size the outgoing skin set goes back to the user's level (B238).
+        WindowManager.shared.endSkinUIScaleLevel()
         // A `setScale` that arrives while the skin is loading cannot be acted on: `loadSkin` runs
         // from this controller's own initializer, so `WindowManager.mainWindowController` is not
         // assigned yet and `applyDoubleSize` would return having changed nothing while the level it
@@ -2464,7 +2466,7 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
             level = level.capped(fitting: canvas, into: area)
         }
         guard WindowManager.shared.uiScaleLevel != level else { return }
-        WindowManager.shared.uiScaleLevel = level
+        WindowManager.shared.setUIScaleLevelForSkin(level)
     }
 
     /// The size the main window wants at `scale`, used by `WindowManager.applyDoubleSize` to place
@@ -2542,7 +2544,9 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
     }
 
     func applyUIScale(_ scale: CGFloat) {
-        skinScale = max(0.1, scale)
+        let newScale = max(0.1, scale)
+        let changed = newScale != skinScale
+        skinScale = newScale
         skinView?.skinScale = skinScale
         if let size = skinView?.scaledCanvasSize { resizeWindow(to: size, reason: "uiScale=\(skinScale)") }
         for container in auxiliaryContainers {
@@ -2555,6 +2559,10 @@ final class WinampModernMainWindowController: NSWindowController, MainWindowProv
         hostedWindowMaterializer?.applySkinScale(skinScale)
         applyLayoutConstraints()
         skinView?.needsDisplay = true
+        guard changed else { return }
+        for view in viewsByContainer.values where view.window?.isVisible == true {
+            view.dispatchScaleChanged(to: skinScale)
+        }
     }
 
     private func resizeWindow(to size: NSSize, reason: String = "skin") {

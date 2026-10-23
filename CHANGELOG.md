@@ -115,6 +115,11 @@
   - Soft-edged skins such as meridian no longer have darkened edges.
   - No dark line beside CopperdeckII's rounded corners.
   - The drop shadow follows the window; Anunaki's sliding equalizer leaves no shadow behind.
+- **A Modern skin's UI Size stays with that skin** — Alpha Media Player X5 raises UI Size to fit
+  the screen, and every skin loaded after it, in any mode and after a restart, opened at that size.
+  Switching skins now returns to the UI Size you chose, and a size you pick yourself is kept.
+- **Full-screen Modern skins refit when UI Size changes** — Nitrous Audio's monitor mode stayed
+  sized for the old UI Size and ran off the screen; it now fills the screen again.
 
 ## 0.33.0
 

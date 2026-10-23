@@ -76,8 +76,8 @@ Left open on 1010 Fullscreen (graded C): its song title draws ~12px low and over
 Aligning skin-shipped TrueType by cap top fixed it and moved ~50 other skins wrong (corneramp, Winamp
 2000, CPro for Mac), so it was rolled back; the cause is unknown without a Winamp reference.
 
-**Next:** `feat/wal-corpus-scale` (B169 intake → gold, B233) goes to PR. Then `fix/wal-scale-events`
-(B238, B239), then intake #2 on `feat/wal-intake-2` — re-weight gain first (§8 *Progress*, B169
+**Next:** `feat/wal-corpus-scale` (B169 intake → gold, B233) goes to PR. `fix/wal-scale-events`
+(B238, B239) is done; then intake #2 on `feat/wal-intake-2` — re-weight gain first (§8 *Progress*, B169
 entry: count a new tag once, `tag@attr` only on known tags). B212 needs a second display; B216's
 `.wmz` census waits on a go-ahead.
 

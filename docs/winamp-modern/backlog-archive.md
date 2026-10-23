@@ -3,6 +3,22 @@
 Closed backlog history moved from `WINAMP5_TASKS.md` and `BENTO_TASKS.md`. Entries below preserve the original text verbatim except for relative link targets adjusted to this directory; the added archive heading records the id, title, and close date. The live, reach-ranked backlog is [`WINAMP5_TASKS.md`](../../tasks/WINAMP5_TASKS.md).
 
 
+## B239 — `onScale` is dispatched on a UI Size change — closed 2026-10-22
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B239 | **`onScale` is never dispatched.** The layout event Wasabi raises when a scale changes is not sent on a UI Size change (`maki-surface.md`, *Window scaling*). Skins that size themselves from `viewport / getScale()` (Nitrous monitor mode, 1010 party mode, ClassicPro maximize) only re-read it on their own next resize, so changing UI Size while one is filling the screen leaves it at the old size; Ebonite uses the event to keep two layouts in step. Done when a UI Size change sends `onScale(newScale)` to each showing layout and Nitrous in monitor mode still fills the screen after UI Size goes 100% → 135% | `maki-event '[.]onscale$'`: gold 25/81, silver 5/29, bronze 100/827, quarantine 7/54 (manifest 9e68ffe0+dirty) | S | 2 |
+
+**Closed 2026-10-22**. `WinampModernMainWindowController.applyUIScale` sends `onScale(newScale)` to each showing container's active layout when the scale actually changes, through `WinampModernMainView.dispatchScaleChanged(to:)` → `WinampModernScriptRuntime.dispatchLayoutScale` (beside `onMove`/`onUserResize`). Verified live: Nitrous in monitor mode at 100% filled 1800×1130; Windows → UI Size → 135% resized it to 2430×1526 and its `onScale` handler re-fit it to 1800×1130. A layout hidden during the change is not told — filed as B244. `WinampModernPhase46Tests.testAScaleChangeIsAnnouncedToTheLayout` pins the dispatch.
+
+## B238 — A skin's UI Size ends with the skin — closed 2026-10-22
+
+| Id | Item | Reach | Effort | Tier |
+|---|---|---:|:---:|---|
+| B238 | **A skin's `setScale` raises UI Size for every skin loaded after it.** `layout.setScale(f)` is answered by the global UI Size (Phase 46), and that level persists, so a skin that scales itself on load leaves the next skin drawn at its size. Found promoting the B169 intake: Alpha_Media_Player_X5 raises UI Size to 135% on load (capped to fit), and switching to Nitrous_Audio_CTI_2_Glass afterwards opens it at 135%. Decide whether a skin-requested level is restored on skin change (Winamp's scale is per layout, so it dies with the skin), then do that. Done when loading Alpha then Nitrous opens Nitrous at the UI Size it had before Alpha, and a UI Size the user picked survives a skin switch | `maki-call '[.]setscale$'`: gold 11/81, silver 0/29, bronze 34/827, quarantine 3/54 (manifest 9e68ffe0+dirty) | S | 2 |
+
+**Closed 2026-10-22**. `WindowManager` keeps the user's level beneath the one a `.wal` skin's `setScale` asked for (`skinUIScaleOverride`, set through `setUIScaleLevelForSkin`); `WinampModernMainWindowController.loadSkin` calls `endSkinUIScaleLevel` before the next skin, which goes back to the user's level. Any other write to `uiScaleLevel` (the UI Size menu, a state restore) is the user's and drops the override. `reloadUI` carries `userUIScaleLevel` into the next mode and collapses from the drawn level, and `AppStateManager` persists `userUIScaleLevel`, so neither a mode switch nor a relaunch inherits the skin's level. Verified live on the debug build: Alpha (135%) → iTunes Miniplayer opened at 312×58 (1x); Alpha → Classic came up with UI Size 100% ticked; 150% picked in Classic → Modern (Alpha capped it to 135%) → iTunes Miniplayer opened at 468×87 (150%); Alpha → quit saved `uiScaleLevel: 100`, and after the relaunch iTunes Miniplayer opened at 1x. `WinampModernB238Tests` pins the override rules.
+
 ## B242 — Whose string it is decides how far it may overrun its box — closed 2026-10-22
 
 | Id | Item | Reach | Effort | Tier |
