@@ -25,6 +25,9 @@
   the end of a song moved the highlight but kept playing the same song, for as long as 17 minutes
   on a large playlist. The chosen track now loads and plays at once. A song that fails to stream
   also moves on to the next one and plays it, instead of stopping there.
+- **The About window always closes** — opening About while it was already open left a stuck copy on
+  screen that neither OK nor its close button could dismiss. Opening it again now brings the open
+  one to the front.
 - **Modern skins: loading**
   - 54 skins that failed to load now open.
   - Ten more skins' scripts no longer fail at load.
