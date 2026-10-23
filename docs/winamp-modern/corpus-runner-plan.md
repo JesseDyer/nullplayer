@@ -76,8 +76,18 @@ Left open on 1010 Fullscreen (graded C): its song title draws ~12px low and over
 Aligning skin-shipped TrueType by cap top fixed it and moved ~50 other skins wrong (corneramp, Winamp
 2000, CPro for Mac), so it was rolled back; the cause is unknown without a Winamp reference.
 
-**Next:** `feat/wal-corpus-scale` (B169 intake → gold, B233) goes to PR. Then `fix/wal-scale-events`
-(B238, B239), then intake #2 on `feat/wal-intake-2` — re-weight gain first (§8 *Progress*, B169
+Follow-up on `fix/wal-scale-events` (PR #593), for the two rows the promotion filed:
+
+| Skin | What was wrong | Fix (where) |
+|---|---|---|
+| Alpha_Media_Player_X5 | Its 135% UI Size stayed for every skin after it, in any mode and after a relaunch (B238) | `WindowManager` keeps the user's level beneath a skin's `setScale` level; the next skin load goes back to it, and mode switch and Save State carry the user's level |
+| Nitrous_Audio_CTI_2_Glass | Monitor mode stayed sized for the old UI Size after a change (B239) | A UI Size change sends `onScale(newScale)` to each showing layout (`dispatchLayoutScale`) |
+
+Left open from it: B244 (a layout hidden during the change misses `onScale`) and B245 (the host
+playlist under Nitrous overflows the screen at 135%).
+
+**Next:** `feat/wal-corpus-scale` (B169 intake → gold, B233) merged as #587; `fix/wal-scale-events`
+(B238, B239) is in review as #593. Then intake #2 on `feat/wal-intake-2` — re-weight gain first (§8 *Progress*, B169
 entry: count a new tag once, `tag@attr` only on known tags). B212 needs a second display; B216's
 `.wmz` census waits on a go-ahead.
 

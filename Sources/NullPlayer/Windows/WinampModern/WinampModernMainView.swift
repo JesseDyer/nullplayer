@@ -544,6 +544,12 @@ final class WinampModernMainView: NSView {
         scripts.dispatchWindowMove(container: renderer.container, layout: renderer.layout)
     }
 
+    /// UI Size changed. Wasabi's `onScale(newScale)`; see `WinampModernScriptRuntime.dispatchLayoutScale`.
+    func dispatchScaleChanged(to scale: CGFloat) {
+        guard !isTornDown else { return }
+        scripts.dispatchLayoutScale(layout: renderer.layout, scale: scale)
+    }
+
     /// Wasabi's `onUserResize()` — the resize the user dragged, which a standard frame answers by
     /// resizing the window it is glued to. See `WinampModernScriptRuntime.dispatchWindowUserResize`.
     func dispatchWindowUserResized() {

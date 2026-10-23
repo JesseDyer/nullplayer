@@ -87,9 +87,15 @@ By area:
   maximize — and answered 1 at 135% they opened 1.35× the screen. On a receiver that is not a layout the call
   is accepted and inert. Measured demand: Defix's seven configurator buttons (100, 125, 150, 175,
   200, 250, 300 — the ladder gained 175/250/300 for them), Ebonite's `standardframe.m` and boom's
-  `prefs.m`; all three call it on a layout. **Not** dispatched: `onScale`, the layout event Wasabi
-  raises when a scale changes (Ebonite uses it to keep two layouts in step, which our one global
-  scale already does)
+  `prefs.m`; all three call it on a layout. **A skin's level is the skin's** (B238): Winamp's scale
+  belongs to the layout, so `WindowManager` keeps the user's level beneath the one `setScale` asked
+  for (`setUIScaleLevelForSkin`), the next skin load goes back to it (`endSkinUIScaleLevel`), and a
+  mode switch and Save State carry `userUIScaleLevel`, never the skin's. Any other UI Size write — the
+  menu, a state restore — is the user's and drops the skin's claim. Without it Alpha Media Player X5's
+  135% opened every later skin at 135%. **`onScale(newScale)`** goes to each showing container's
+  active layout whenever UI Size changes (`dispatchLayoutScale`, B239), which is how Nitrous's monitor
+  mode re-fits the screen after a change instead of staying sized for the old scale. A layout hidden
+  during the change is not told (B244)
 - **Object validity**: `isInvalid()` is true for a null receiver *and* for an object whose declared
   bitmap never resolved. ClassicPro probes for optional artwork by declaring a hidden layer over it
   and asking that layer whether it is invalid
