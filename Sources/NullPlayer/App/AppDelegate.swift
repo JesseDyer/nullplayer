@@ -486,6 +486,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Menu Actions
     
     @objc func showAbout() {
+        // A second panel would replace the only strong reference to the first, leaving it on screen
+        // deallocated and deaf to OK and its close button.
+        if let aboutWindow {
+            aboutWindow.makeKeyAndOrderFront(nil)
+            return
+        }
         // Create custom About window.
         // The layout below runs top-down from `y` = 0; the window is then sized to what it
         // consumed, so the panel keeps an even bottom margin whichever rows are shown.
@@ -499,6 +505,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "About nullPlayer"
+        window.isReleasedWhenClosed = false  // `aboutWindow` owns it, and reopens it after a title-bar close
         window.appearance = NSAppearance(named: .darkAqua)  // light text on the dark panel's buttons
         window.isMovableByWindowBackground = true
         
